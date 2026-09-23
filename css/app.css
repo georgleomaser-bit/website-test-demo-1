@@ -779,3 +779,4 @@ body:not([data-view="chart"]) .chart-only { display: none; }
   .home-sec { padding-top: 56px; }
 }
 #rpanel-ai { flex: none; min-height: auto; overflow: visible; }
+.btn.danger-armed { border-color: var(--down); color: var(--down); background: var(--down-bg); animation: sent 0.5s var(--spring); }

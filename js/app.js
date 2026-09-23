@@ -52,7 +52,32 @@ const firstVisit = (() => {
   }
 })();
 const saved = loadSettings();
-const params = new URLSearchParams(location.search);
+// Deep-Links: ?symbol=SAP&tf=1h&view=chart oder kurz #SAP.1h / #markets
+function parseLink() {
+  const q = new URLSearchParams(location.search);
+  const out = { symbol: q.get("symbol"), tf: q.get("tf"), view: q.get("view") };
+  const h = decodeURIComponent(location.hash.slice(1));
+  if (/^[A-Za-z0-9~_-]+(\.[A-Za-z0-9]+)?$/.test(h)) {
+    if (VIEWS.includes(h)) out.view = h;
+    else {
+      const [sym, tf] = h.split(".");
+      if (market.has(sym.toUpperCase())) {
+        out.symbol = sym.toUpperCase();
+        out.view ||= "chart";
+      }
+      if (tf) out.tf = TIMEFRAMES.find((t) => t.id.toLowerCase() === tf.toLowerCase())?.id || null;
+    }
+  }
+  return out;
+}
+const params = { ...parseLink(), get(k) { return this[k] ?? null; }, has(k) { return this[k] != null; } };
+const embedded = (() => {
+  try {
+    return window.top !== window;
+  } catch (_) {
+    return true;
+  }
+})();
 const settings = {
   symbol: market.has(params.get("symbol")) ? params.get("symbol") : market.has(saved.symbol) ? saved.symbol : "AAPL",
   tf: TIMEFRAMES.some((t) => t.id === params.get("tf")) ? params.get("tf") : TIMEFRAMES.some((t) => t.id === saved.tf) ? saved.tf : "15m",
@@ -1077,11 +1102,12 @@ const isStandalone = () => matchMedia("(display-mode: standalone)").matches || n
 
 function setupInstall() {
   const btn = $("#install-btn");
-  btn.hidden = isStandalone();
+  btn.hidden = isStandalone() || embedded;
+  $("#hero-install").hidden = isStandalone() || embedded;
   window.addEventListener("beforeinstallprompt", (e) => {
     e.preventDefault();
     installEvent = e;
-    btn.hidden = false;
+    btn.hidden = embedded;
   });
   window.addEventListener("appinstalled", () => {
     installEvent = null;
@@ -1649,18 +1675,31 @@ function bindRipple() {
 
 // ---------- Teilen ----------
 function shareUrl() {
-  const u = new URL(location.href.split("?")[0].split("#")[0]);
-  u.searchParams.set("symbol", settings.symbol);
-  u.searchParams.set("tf", settings.tf);
-  if (settings.view !== "chart") u.searchParams.set("view", settings.view);
-  return u.toString();
+  let base = location.href.split("#")[0].split("?")[0];
+  // eingebettet (z. B. als geteilte Seite): Adresse der äußeren Seite verwenden
+  if (embedded && document.referrer) {
+    try {
+      const r = new URL(document.referrer);
+      if (r.pathname.length > 1) base = r.origin + r.pathname;
+    } catch (_) {
+      /* Referrer unbrauchbar */
+    }
+  }
+  const token = settings.view === "chart" ? `${settings.symbol}.${settings.tf}` : settings.view;
+  return `${base}#${token}`;
 }
+window.addEventListener("hashchange", () => {
+  const l = parseLink();
+  if (l.tf && l.tf !== settings.tf) setTimeframe(l.tf);
+  if (l.symbol && l.symbol !== settings.symbol) setSymbol(l.symbol);
+  else if (l.view && l.view !== settings.view) setView(l.view);
+});
 async function share() {
   const url = shareUrl();
   const q = market.quote(settings.symbol);
   const data = { title: `AKTEX · ${settings.symbol}`, text: `${q.name} (${settings.symbol}) ${num(q.price)} € ${pct(q.changePct)} – schau dir das auf AKTEX an:`, url };
   haptic(10);
-  if (navigator.share) {
+  if (navigator.share && !embedded) {
     try {
       await navigator.share(data);
       return;
@@ -1672,7 +1711,7 @@ async function share() {
     await navigator.clipboard.writeText(url);
     toast(url, "success", "Link kopiert");
   } catch (_) {
-    prompt("Link zum Teilen:", url);
+    toast(url, "info", "Link zum Teilen (bitte kopieren)");
   }
 }
 
@@ -1700,11 +1739,26 @@ bindSearch();
 bindIndicators();
 bindAlerts();
 bindMarkets();
-$("#reset-btn").addEventListener("click", () => {
-  if (confirm("Demo-Konto wirklich zurücksetzen? Alle Positionen, Orders und Alarme werden gelöscht.")) {
-    broker.reset();
-    toast(`Konto zurückgesetzt – ${eur(START_CASH)} Startguthaben.`, "success");
+// Zurücksetzen mit Bestätigung direkt am Button (zweiter Klick innerhalb von 4 s)
+let resetArmed = null;
+$("#reset-btn").addEventListener("click", (e) => {
+  const b = e.currentTarget;
+  if (!resetArmed) {
+    b.textContent = "Wirklich alles löschen? Nochmal klicken";
+    b.classList.add("danger-armed");
+    resetArmed = setTimeout(() => {
+      resetArmed = null;
+      b.textContent = "Demo-Konto zurücksetzen";
+      b.classList.remove("danger-armed");
+    }, 4000);
+    return;
   }
+  clearTimeout(resetArmed);
+  resetArmed = null;
+  b.textContent = "Demo-Konto zurücksetzen";
+  b.classList.remove("danger-armed");
+  broker.reset();
+  toast(`Konto zurückgesetzt – ${eur(START_CASH)} Startguthaben.`, "success");
 });
 
 chart.configure({ symbol: settings.symbol, tf: settings.tf, type: settings.type, indicators: new Set(settings.indicators), theme: settings.theme });
