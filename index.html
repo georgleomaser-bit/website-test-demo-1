@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aktex – Aktien in Echtzeit handeln</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▲</span>
+      <span class="name">aktex</span>
+      <span class="demo-badge">DEMO</span>
+    </div>
+    <div class="account">
+      <div class="stat">
+        <span class="label">Guthaben</span>
+        <span class="value" id="cash">–</span>
+      </div>
+      <div class="stat">
+        <span class="label">Depotwert</span>
+        <span class="value" id="portfolio-value">–</span>
+      </div>
+      <div class="stat">
+        <span class="label">Gesamt G/V</span>
+        <span class="value" id="total-pl">–</span>
+      </div>
+      <button class="btn ghost" id="reset-btn" title="Demo-Konto zurücksetzen">Zurücksetzen</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Marktübersicht -->
+    <section class="panel market">
+      <div class="panel-head">
+        <h2>Markt <span class="live-dot"></span><span class="live-text">LIVE</span></h2>
+        <input type="search" id="search" placeholder="Aktie suchen…" autocomplete="off" />
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Aktie</th>
+              <th class="num">Kurs</th>
+              <th class="num">Änderung</th>
+            </tr>
+          </thead>
+          <tbody id="market-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Detail + Handel -->
+    <section class="panel detail">
+      <div class="detail-head">
+        <div>
+          <h2 id="detail-name">–</h2>
+          <span class="muted" id="detail-symbol"></span>
+        </div>
+        <div class="detail-price">
+          <span id="detail-price">–</span>
+          <span id="detail-change" class="change"></span>
+        </div>
+      </div>
+      <canvas id="chart" height="260"></canvas>
+      <div class="detail-stats">
+        <div><span class="muted">Eröffnung</span><span id="stat-open">–</span></div>
+        <div><span class="muted">Tageshoch</span><span id="stat-high">–</span></div>
+        <div><span class="muted">Tagestief</span><span id="stat-low">–</span></div>
+        <div><span class="muted">Im Depot</span><span id="stat-owned">–</span></div>
+      </div>
+
+      <form class="trade" id="trade-form">
+        <div class="tabs">
+          <button type="button" class="tab active" data-side="buy">Kaufen</button>
+          <button type="button" class="tab" data-side="sell">Verkaufen</button>
+        </div>
+        <label>
+          Anzahl
+          <div class="qty">
+            <button type="button" class="btn ghost" id="qty-minus">−</button>
+            <input type="number" id="qty" min="1" step="1" value="1" />
+            <button type="button" class="btn ghost" id="qty-plus">+</button>
+            <button type="button" class="btn ghost" id="qty-max">Max</button>
+          </div>
+        </label>
+        <div class="summary">
+          <span class="muted">Geschätzter Betrag</span>
+          <strong id="order-total">–</strong>
+        </div>
+        <button type="submit" class="btn primary" id="trade-submit">Kaufen</button>
+      </form>
+    </section>
+
+    <!-- Depot + Verlauf -->
+    <section class="panel side">
+      <h2>Mein Depot</h2>
+      <div id="holdings" class="holdings"></div>
+      <h2 class="mt">Transaktionen</h2>
+      <ul id="history" class="history"></ul>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <footer class="footer">
+    Demo-Anwendung · Kurse sind simuliert und keine echten Marktdaten · Kein echtes Geld
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
