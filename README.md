@@ -32,6 +32,10 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 - **AKTEX AI:** technische Bewertung jeder Aktie (Tachometer, 16 Signale, Marken, Trade-Setup mit 1 %-Risiko)
 - **Ideen:** Community-Feed mit Trading-Ideen (eigene Ideen inkl. Chart-Screenshot teilen), Likes, Folgen
 - **Rangliste & Copy-Trading:** Top-Trader-Ranking (inkl. eigenem Depot), Portfolios mit einem Klick kopieren
+- **Ideen-Börse (USP):** versiegelte Ideen (SHA-256), live gemessene Performance, verifizierte Trefferquoten, 1-Klick-Handel mit Stop & Ziel, Royalties für Autoren
+- **Preismodell:** Free · Plus · Pro · Elite, AKTEX AI (99 €) und AI Premium (249 €), monatlich/jährlich, Add-ons, Preis- und Leistungsverzeichnis, volle Kostenaufstellung vor jeder Order
+- **AKTEX AI:** Berater-Chat (lokal oder mit Claude, wo verfügbar), Meldungen, Depot-Doktor, Chancen-Scan und **Autopilot** (Vorschläge oder selbstständig in deinen Limits, mit Protokoll und Not-Aus)
+- **Business-Dashboard:** Umsatz- und Bewertungsmodell mit Reglern, Umsatz nach Quelle, 5-Jahres-Pfad, Funnel
 - Geschäftsplan: siehe [`BUSINESS.md`](BUSINESS.md)
 
 **App & Design**
@@ -67,7 +71,8 @@ Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch
 | `js/broker.js` | Demo-Broker: Orders, Positionen, Gebühren, Alarme |
 | `js/analysis.js` | AKTEX AI – technische Analyse |
 | `js/community.js` | Community: Trader, Ideen, Rangliste |
-| `js/plans.js` | Tarife & Limits |
+| `js/plans.js` | Tarife, Add-ons & Limits |
+| `js/ai.js` | AKTEX AI: Scan, Depot-Doktor, Berater, Meldungen, Autopilot |
 | `js/chart.js` | Chart, Indikatoren, Zeichenwerkzeuge |
 | `js/app.js` | UI-Logik, Views, Teilen, Installation |
 | `manifest.webmanifest`, `sw.js` | App-Installation & Offline-Modus |

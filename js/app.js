@@ -1,11 +1,12 @@
 // Aktex – App-Steuerung (UI, Views, Order-Ticket, PWA)
 import { STOCKS, DEFAULT_WATCHLIST } from "./data.js";
-import { Market, TIMEFRAMES, tickStep } from "./market.js";
+import { Market, TIMEFRAMES, tickStep, toLocalSec } from "./market.js";
 import { Broker, START_CASH } from "./broker.js";
 import { ChartView, CHART_TYPES, INDICATORS } from "./chart.js";
 import { analyze } from "./analysis.js";
-import { PLANS, planById } from "./plans.js";
+import { PLANS, ADDONS, planById, planPrice } from "./plans.js";
 import { Community } from "./community.js";
+import { AktexAI, STRATEGIES } from "./ai.js";
 
 // ---------- Hilfsfunktionen ----------
 const $ = (s, root = document) => root.querySelector(s);
@@ -41,7 +42,7 @@ function saveSettings() {
 }
 
 // ---------- Zustand ----------
-const VIEWS = ["home", "chart", "markets", "ideas", "portfolio"];
+const VIEWS = ["home", "chart", "markets", "ideas", "ai", "portfolio", "business"];
 const market = new Market();
 const broker = new Broker(market);
 const firstVisit = (() => {
@@ -87,11 +88,16 @@ const settings = {
   watchlist: (Array.isArray(saved.watchlist) ? saved.watchlist : DEFAULT_WATCHLIST).filter((s) => market.has(s)),
   view: VIEWS.includes(params.get("view")) ? params.get("view") : params.has("symbol") ? "chart" : firstVisit ? "home" : "chart",
   plan: PLANS.some((p) => p.id === saved.plan) ? saved.plan : "free",
+  billing: saved.billing === "monthly" ? "monthly" : "yearly",
+  addons: Array.isArray(saved.addons) ? saved.addons.filter((a) => ADDONS.some((x) => x.id === a)) : [],
 };
 
 const community = new Community(market);
 broker.feeFn = () => planById(settings.plan).fee;
 const plan = () => planById(settings.plan);
+const aiEngine = new AktexAI(market, broker);
+const aiMode = () => plan().limits.ai || null; // null | "assist" | "auto"
+const hasAddon = (id) => settings.addons.includes(id) || ADDONS.find((a) => a.id === id).includedIn.includes(settings.plan);
 
 const ui = { ideaFilter: "all", ideaDir: "long", copyTrader: null, side: "buy", otype: "market", rtab: "watch", btab: "positions", hmPeriod: 1, sort: { key: "cap", dir: -1 } };
 
@@ -243,6 +249,9 @@ function applyView(view, animate = true) {
   if (view === "portfolio") renderPortfolio(true);
   if (view === "home") renderHome(true);
   if (view === "ideas") renderIdeas();
+  if (view === "business") renderBusiness(true);
+  if (view === "ai") renderAIView(true);
+  heroAnim(view === "home");
 }
 
 // ---------- Laufband ----------
@@ -375,13 +384,18 @@ function renderRightPanel() {
 }
 function renderBook() {
   const ob = market.orderBook(settings.symbol, 12);
+  const depth = hasAddon("l2") ? 12 : plan().limits.depth;
   const max = Math.max(...ob.bids.map((l) => l.size), ...ob.asks.map((l) => l.size));
-  const row = (l, side) => `<div class="lvl ${side}" data-px="${l.price}"><i style="width:${(l.size / max) * 100}%"></i><span>${num(l.price)}</span><span>${compact(l.size)}</span></div>`;
+  const row = (l, side, i) =>
+    i < depth
+      ? `<div class="lvl ${side}" data-px="${l.price}"><i style="width:${(l.size / max) * 100}%"></i><span>${num(l.price)}</span><span>${compact(l.size)}</span></div>`
+      : `<div class="lvl ${side} locked"><i style="width:${(l.size / max) * 100}%"></i><span>000,00</span><span>0.000</span></div>`;
+  const lock = depth < 12 ? `<div class="book-lock"><b>🔒 ${12 - depth} weitere Ebenen je Seite</b><span>Level-2-Orderbuch: Add-on für 4,99 €/Monat – in Pro und Elite inklusive</span><button class="btn primary small" data-open-plans>Level 2 freischalten</button></div>` : "";
   $("#book").innerHTML = `
     <div class="book-head"><span>Preis</span><span>Stück</span></div>
-    <div class="asks">${ob.asks.slice().reverse().map((l) => row(l, "ask")).join("")}</div>
+    <div class="asks">${ob.asks.map((l, i) => row(l, "ask", i)).reverse().join("")}</div>
     <div class="book-mid"><b>${num(market.get(settings.symbol).price)}</b><span>Spread ${num(ob.spread)}</span></div>
-    <div class="bids">${ob.bids.map((l) => row(l, "bid")).join("")}</div>`;
+    <div class="bids">${ob.bids.map((l, i) => row(l, "bid", i)).join("")}</div>${lock}`;
 }
 function renderTape() {
   $("#tape-body").innerHTML = market
@@ -430,6 +444,9 @@ function renderTicket() {
   $("#o-bp").previousElementSibling.textContent = ui.side === "buy" ? "Kaufkraft" : "Bestand";
   const fee = plan().fee;
   $("#o-fee").innerHTML = fee ? `${eur(fee)} <button type="button" class="fee-up" data-open-plans>0 € mit Pro</button>` : `<span class="up">0,00 € · ${plan().name}</span>`;
+  const spreadCost = ui.otype === "market" ? ((q.ask - q.bid) / 2) * qty : 0;
+  $("#o-spread").textContent = eur(spreadCost);
+  $("#o-costs").textContent = eur(fee + spreadCost);
 
   const slOn = $("#sl-on").checked && ui.side === "buy";
   const tpOn = $("#tp-on").checked && ui.side === "buy";
@@ -983,6 +1000,7 @@ function renderPortfolio(full = false) {
     ["Trades", `${st.trades}`, ""],
     ["Trefferquote", st.winRate == null ? "–" : nf2.format(st.winRate * 100) + " %", ""],
     ["Gebühren gezahlt", eur(broker.state.fees || 0), ""],
+    ["Royalties verdient", sEur(community.state.royaltyTotal || 0), (community.state.royaltyTotal || 0) > 0 ? "up" : ""],
     ["Tarif", `AKTEX ${plan().name}`, "plan-kpi"],
   ]
     .map(([k, v, c]) => `<div class="kpi"><span>${k}</span><b class="${c}">${v}</b></div>`)
@@ -993,6 +1011,11 @@ function renderPortfolio(full = false) {
   parts.push({ s: "Cash", v: broker.state.cash });
   parts.sort((a, b) => b.v - a.v);
   const colors = ["#4f8cff", "#22c55e", "#f59e0b", "#e056fd", "#06b6d4", "#ef4444", "#a3e635", "#f472b6", "#94a3b8"];
+  $("#donut").innerHTML = donut(
+    parts.map((p, i) => ({ label: p.s, value: p.v, color: p.s === "Cash" ? "#64748b" : colors[i % colors.length] })),
+    `<tspan x="100" dy="-4" class="dn-big">${compact(broker.positionsValue())}</tspan><tspan x="100" dy="18" class="dn-sub">investiert</tspan>`
+  );
+  renderTax();
   $("#alloc").innerHTML =
     `<div class="alloc-bar">${parts.map((p, i) => `<i style="flex-grow:${p.v};background:${p.s === "Cash" ? "#64748b" : colors[i % colors.length]}"></i>`).join("")}</div>` +
     `<ul class="alloc-list">${parts.map((p, i) => `<li><i style="background:${p.s === "Cash" ? "#64748b" : colors[i % colors.length]}"></i><b>${p.s}</b><span>${eur(p.v)}</span><span class="muted">${nf2.format((p.v / eq) * 100)} %</span></li>`).join("")}</ul>`;
@@ -1004,6 +1027,7 @@ function renderPortfolio(full = false) {
 
 // ---------- Ereignisse vom Broker ----------
 broker.on("fill", (f) => {
+  if (aiEngine.executing) return;
   const verb = f.side === "buy" ? "Gekauft" : "Verkauft";
   const pnl = f.pnl != null ? ` · G/V ${sEur(f.pnl)}` : "";
   toast(`${f.qty} × ${f.symbol} zu ${num(f.price)}${pnl}`, f.side === "buy" ? "success" : "sell", `${verb} (${{ market: "Market", limit: "Limit", stop: "Stopp" }[f.type]})`);
@@ -1048,8 +1072,10 @@ market.onTick(() => {
     renderTicker();
     syncTitle();
     if (settings.view === "home") renderHomeLive();
+    if (settings.view === "business" && slowTick % 5 === 0) renderBusiness();
     if (++slowTick % 5 === 0) {
       if (settings.view === "chart" && ui.rtab === "ai") renderAI();
+      if (slowTick % 25 === 0) checkSignals();
       if (settings.view === "ideas") renderLeaderboard();
       renderMarkets();
       renderPortfolio();
@@ -1145,16 +1171,76 @@ function setupInstall() {
 
 // ---------- Tarife ----------
 function renderPlans(el) {
-  el.innerHTML = PLANS.map((p) => {
-    const cur = p.id === settings.plan;
-    return `<div class="plan ${p.popular ? "popular" : ""} ${cur ? "current" : ""}">
-      ${p.popular ? '<span class="plan-badge">Beliebt</span>' : ""}
-      <h4>${p.name}</h4><p class="muted">${p.tagline}</p>
-      <div class="price"><b>${p.price ? nf2.format(p.price) + " €" : "0 €"}</b><span>/ Monat</span></div>
-      <ul>${p.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
-      <button class="btn ${p.popular ? "primary" : ""} plan-choose" data-plan="${p.id}" ${cur ? "disabled" : ""}>${cur ? "Aktueller Tarif" : p.price ? `${p.name} 14 Tage gratis` : "Kostenlos nutzen"}</button>
-    </div>`;
-  }).join("");
+  const billing = settings.billing;
+  const cur = plan();
+  const addonSum = ADDONS.filter((a) => settings.addons.includes(a.id) && !a.includedIn.includes(cur.id)).reduce((s, a) => s + a.price, 0);
+  const myMonthly = planPrice(cur, billing) + addonSum;
+  el.innerHTML = `
+    <div class="plans-top">
+      <div class="seg bill-seg" role="group" aria-label="Abrechnung">
+        <button class="${billing === "monthly" ? "active" : ""}" data-billing="monthly">Monatlich</button>
+        <button class="${billing === "yearly" ? "active" : ""}" data-billing="yearly">Jährlich <span class="save-chip">bis −23 %</span></button>
+      </div>
+      <div class="my-bill">Dein Abo: <b>${cur.name}</b>${addonSum ? ` + ${eur(addonSum)} Add-ons` : ""} = <b>${eur(myMonthly)} / Monat</b></div>
+    </div>
+    <div class="plan-cards">${PLANS.filter((p) => !p.group).map((p) => {
+      const price = planPrice(p, billing);
+      const isCur = p.id === settings.plan;
+      const save = (p.monthly - p.yearly) * 12;
+      const sub = !price
+        ? "dauerhaft kostenlos"
+        : billing === "yearly"
+          ? `${eur(p.yearly * 12)} jährlich abgerechnet · du sparst ${eur(save)}`
+          : `monatlich kündbar · ≈ ${eur((price * 12) / 365)} pro Tag`;
+      return `<div class="plan ${p.popular ? "popular" : ""} ${isCur ? "current" : ""}">
+        ${p.popular ? '<span class="plan-badge">Beliebteste Wahl</span>' : ""}
+        <h4>${p.name}</h4><p class="muted">${p.tagline}</p>
+        <div class="price">${billing === "yearly" && price ? `<s>${nf2.format(p.monthly)} €</s>` : ""}<b>${price ? nf2.format(price) + " €" : "0 €"}</b><span>/ Monat</span></div>
+        <div class="price-sub">${sub}</div>
+        <div class="fee-line"><span>Ordergebühr</span><b>${eur(p.fee)}</b></div>
+        <ul>${p.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+        <button class="btn ${p.popular ? "primary" : ""} plan-choose" data-plan="${p.id}" ${isCur ? "disabled" : ""}>${isCur ? "Aktueller Tarif" : price ? `${p.name} 14 Tage gratis testen` : "Kostenlos nutzen"}</button>
+      </div>`;
+    }).join("")}</div>
+    <div class="ai-plans">
+      <div class="ai-plans-head"><span class="spark-ic">✦</span><div><h4>AKTEX AI</h4><p class="muted">Dein KI-Berater – und auf Wunsch der Autopilot für dein Depot.</p></div></div>
+      <div class="ai-plan-cards">${PLANS.filter((p) => p.group === "ai").map((p) => {
+        const price = planPrice(p, billing);
+        const isCur = p.id === settings.plan;
+        return `<div class="plan ai-plan ${p.id} ${isCur ? "current" : ""}">
+          ${p.id === "aiprem" ? '<span class="plan-badge gold">Autopilot</span>' : ""}
+          <h4>${p.name}</h4><p class="muted">${p.tagline}</p>
+          <div class="price">${billing === "yearly" ? `<s>${nf2.format(p.monthly)} €</s>` : ""}<b>${nf2.format(price)} €</b><span>/ Monat</span></div>
+          <div class="price-sub">${billing === "yearly" ? `${eur(p.yearly * 12)} jährlich abgerechnet · du sparst ${eur((p.monthly - p.yearly) * 12)}` : `monatlich kündbar · ≈ ${eur((price * 12) / 365)} pro Tag`}</div>
+          <ul>${p.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+          <button class="btn primary plan-choose" data-plan="${p.id}" ${isCur ? "disabled" : ""}>${isCur ? "Aktueller Tarif" : `${p.name} 14 Tage gratis testen`}</button>
+        </div>`;
+      }).join("")}</div>
+    </div>
+    <h4 class="addons-h">Add-ons <span class="muted">– einzeln zubuchbar, monatlich kündbar</span></h4>
+    <div class="addons">${ADDONS.map((a) => {
+      const incl = a.includedIn.includes(settings.plan);
+      const on = settings.addons.includes(a.id);
+      return `<div class="addon ${incl || on ? "on" : ""}"><div class="ad-ic">${a.icon}</div>
+        <div class="ad-body"><b>${a.name}</b><span>${a.desc}</span></div>
+        <div class="ad-price">${incl ? '<span class="incl">inklusive</span>' : `<b>${eur(a.price)}</b><small>/ Monat</small>`}</div>
+        ${incl ? "" : `<button class="switch ${on ? "on" : ""}" data-addon="${a.id}" aria-pressed="${on}" aria-label="${a.name} ${on ? "abbestellen" : "buchen"}"><i></i></button>`}</div>`;
+    }).join("")}</div>
+    <details class="pricelist"><summary>Preis- und Leistungsverzeichnis</summary>
+      <div class="table-scroll"><table class="grid">
+        <thead><tr><th></th>${PLANS.map((p) => `<th class="num">${p.name}</th>`).join("")}</tr></thead>
+        <tbody>
+          <tr><td>Monatlich</td>${PLANS.map((p) => `<td class="num">${eur(p.monthly)}</td>`).join("")}</tr>
+          <tr><td>Jährlich (pro Monat)</td>${PLANS.map((p) => `<td class="num">${eur(p.yearly)}</td>`).join("")}</tr>
+          <tr><td>Ordergebühr</td>${PLANS.map((p) => `<td class="num">${eur(p.fee)}</td>`).join("")}</tr>
+          <tr><td>Ideen-Gebühr (vom Volumen)</td>${PLANS.map((p) => `<td class="num">${nf2.format(p.ideaFee * 100)} %</td>`).join("")}</tr>
+          <tr><td>Dein Creator-Anteil</td>${PLANS.map((p) => `<td class="num">${Math.round(p.creatorShare * 100)} %</td>`).join("")}</tr>
+          <tr><td>Depotführung</td>${PLANS.map(() => `<td class="num">0,00 €</td>`).join("")}</tr>
+          <tr><td>Orderbuch-Ebenen</td>${PLANS.map((p) => `<td class="num">${p.limits.depth}</td>`).join("")}</tr>
+          <tr><td>Indikatoren / Alarme</td>${PLANS.map((p) => `<td class="num">${p.limits.indicators > 50 ? "∞" : p.limits.indicators} / ${p.limits.alerts > 500 ? "∞" : p.limits.alerts}</td>`).join("")}</tr>
+        </tbody></table></div>
+      <p class="muted">Spread: Differenz zwischen Kauf- und Verkaufskurs, im Kurs enthalten und vor jeder Order im Ticket ausgewiesen. Es gibt keine weiteren Kosten.</p>
+    </details>`;
 }
 function openPlans(reason) {
   $("#plans-note").textContent = (reason ? reason + " " : "") + "Demo: Es findet keine Zahlung statt – Tarife lassen sich frei ausprobieren.";
@@ -1165,15 +1251,30 @@ function setPlan(id) {
   const p = planById(id);
   settings.plan = p.id;
   saveSettings();
-  syncPlan();
+  refreshMonetization();
   closeModals();
-  renderPlans($("#home-plans"));
-  renderTicket();
-  renderPortfolio();
-  if (p.price) {
+  if (p.monthly) {
     confetti();
     toast(`Alle ${p.name}-Funktionen sind freigeschaltet. Ordergebühr: ${eur(p.fee)}.`, "success", `Willkommen bei AKTEX ${p.name} 🎉`);
   } else toast("Du nutzt jetzt den Free-Tarif.", "info");
+}
+function toggleAddon(id) {
+  const a = ADDONS.find((x) => x.id === id);
+  const i = settings.addons.indexOf(id);
+  if (i >= 0) settings.addons.splice(i, 1);
+  else settings.addons.push(id);
+  saveSettings();
+  haptic(10);
+  refreshMonetization();
+  toast(i >= 0 ? `${a.name} abbestellt.` : `${a.name} ist aktiv (${eur(a.price)} / Monat).`, i >= 0 ? "info" : "success", i >= 0 ? "Add-on entfernt" : "Add-on gebucht");
+}
+function refreshMonetization() {
+  syncPlan();
+  if (settings.view === "ai") renderAIView(true);
+  for (const el of [$("#home-plans"), $("#modal-plans")]) if (el.childElementCount) renderPlans(el);
+  renderTicket();
+  renderRightPanel();
+  renderPortfolio();
   if (ui.rtab === "ai") renderAI(true);
 }
 function syncPlan() {
@@ -1277,13 +1378,13 @@ function applySetup(a) {
     ui.side = "buy";
     ui.otype = "market";
     const qty = Math.max(1, Math.floor((broker.equity() * 0.01) / Math.max(0.01, st.entry - st.sl)));
-    $("#qty").value = Math.min(qty, Math.floor(broker.buyingPower() / st.entry));
+    $("#qty").value = Math.min(qty, Math.floor((broker.equity() * 0.1) / st.entry), Math.floor(broker.buyingPower() / st.entry));
     $("#sl-on").checked = true;
     $("#tp-on").checked = true;
     $("#sl").value = roundTo(st.sl, step).toFixed(2);
     $("#tp").value = roundTo(st.tp, step).toFixed(2);
     renderTicket();
-    toast("Stückzahl so gewählt, dass der Stop maximal 1 % deines Depots riskiert.", "info", "Setup übernommen");
+    toast("Stückzahl so gewählt, dass der Stop maximal 1 % deines Depots riskiert (höchstens 10 % Positionsgröße).", "info", "Setup übernommen");
   } else {
     const pos = broker.position(settings.symbol);
     if (!pos) {
@@ -1317,6 +1418,7 @@ function spark(values, w, h, color) {
 }
 function renderHome(full = false) {
   renderPlans($("#home-plans"));
+  community.ready.then(renderUspDemo);
   if (full || !homeChart) buildHomeChart();
   renderHomeLive(true);
   if (!renderHome.observer) {
@@ -1384,35 +1486,93 @@ function avatar(t) {
   const txt = t.me ? "DU" : t.handle.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase();
   return `<span class="avatar" style="--c:${t.color}">${txt}</span>`;
 }
+function ideaChart(i, W = 320, H = 150) {
+  const m1 = market.get(i.symbol).m1;
+  const t0 = toLocalSec(i.created);
+  const tNow = m1[m1.length - 1].time;
+  const span = Math.max(3 * 3600, tNow - t0);
+  const tStart = t0 - span * 0.4;
+  let k = m1.length - 1;
+  while (k > 0 && m1[k - 1].time >= tStart) k--;
+  const src = m1.slice(k);
+  const step = Math.max(1, Math.ceil(src.length / 150));
+  const pts = src.filter((_, j) => j % step === 0 || j === src.length - 1);
+  const vals = pts.map((b) => b.close).concat([i.tp, i.sl, i.entry]);
+  const lo = Math.min(...vals);
+  const hi = Math.max(...vals);
+  const pad = (hi - lo) * 0.08 || 1;
+  const x = (t) => ((t - tStart) / (tNow - tStart || 1)) * (W - 58);
+  const y = (v) => 8 + (1 - (v - (lo - pad)) / (hi - lo + 2 * pad)) * (H - 16);
+  const before = pts.filter((b) => b.time <= t0);
+  const after = pts.filter((b) => b.time >= t0);
+  const line = (arr) => arr.map((b, j) => `${j ? "L" : "M"}${x(b.time).toFixed(1)} ${y(b.close).toFixed(1)}`).join(" ");
+  const col = i.perf >= 0 ? "var(--up)" : "var(--down)";
+  const gid = "ig" + i.id;
+  const lvl = (v, c, t) => `<line x1="0" x2="${W - 58}" y1="${y(v)}" y2="${y(v)}" stroke="${c}" stroke-dasharray="4 4" stroke-width="1"/><rect x="${W - 56}" y="${y(v) - 8}" width="56" height="16" rx="4" fill="${c}"/><text x="${W - 28}" y="${y(v) + 4}" text-anchor="middle" class="ic-lbl">${t}</text>`;
+  const px0 = x(t0);
+  let end = "";
+  if (i.status !== "open" && i.closedAt) end = `<circle cx="${x(i.closedAt)}" cy="${y(i.exit)}" r="5" fill="${i.status === "target" ? "var(--up)" : "var(--down)"}" stroke="var(--panel)" stroke-width="2"/>`;
+  return `<svg viewBox="0 0 ${W} ${H}" class="idea-svg" preserveAspectRatio="none">
+    <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${col}" stop-opacity=".28"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></linearGradient></defs>
+    <rect x="${px0}" y="0" width="${W - 58 - px0}" height="${H}" fill="var(--accent)" opacity=".05"/>
+    ${after.length > 1 ? `<path d="${line(after)} L${x(after[after.length - 1].time)} ${H} L${x(after[0].time)} ${H} Z" fill="url(#${gid})"/>` : ""}
+    <path d="${line(before)}" fill="none" stroke="var(--muted)" stroke-width="1.4" opacity=".7"/>
+    ${after.length > 1 ? `<path d="${line(after)}" fill="none" stroke="${col}" stroke-width="1.8"/>` : ""}
+    ${lvl(i.tp, "var(--up)", num(i.tp))}${lvl(i.sl, "var(--down)", num(i.sl))}${lvl(i.entry, "var(--accent)", num(i.entry))}
+    <line x1="${px0}" x2="${px0}" y1="0" y2="${H}" stroke="var(--accent)" stroke-width="1"/>
+    <circle cx="${px0}" cy="${y(i.entry)}" r="4.5" fill="var(--accent)" stroke="var(--panel)" stroke-width="2"/>
+    ${end}
+  </svg>`;
+}
+function statusBadge(i) {
+  if (i.status === "target") return `<span class="istatus target">✓ Ziel erreicht</span>`;
+  if (i.status === "stop") return `<span class="istatus stop">✗ Stop</span>`;
+  return `<span class="istatus open"><i></i>Läuft</span>`;
+}
+function ideaCard(i, k = 0) {
+  const t = authorOf(i);
+  const liked = community.isLiked(i.id);
+  const stats = t.me ? null : community.traderStats(i.author);
+  const long = i.dir === "long";
+  return `<article class="idea-card st-${i.status}" style="--k:${Math.min(k, 12)}" data-idea="${i.id}">
+    <header>${avatar(t)}<div class="who"><b>@${esc(t.handle)}</b><small>${esc(t.style)} · ${ago(i.created)}</small></div>
+      ${stats && stats.hitRate != null ? `<span class="verified" title="Überprüfte Trefferquote aus ${stats.closed} abgeschlossenen Ideen">✓ ${Math.round(stats.hitRate * 100)} %</span>` : ""}
+      ${t.me ? `<span class="mine-chip">Deine Idee</span>` : `<button class="follow-btn ${community.isFollowing(i.author) ? "on" : ""}" data-follow="${i.author}">${community.isFollowing(i.author) ? "Gefolgt" : "Folgen"}</button>`}
+    </header>
+    <div class="idea-vis" data-open-sym="${i.symbol}" data-open-tf="${i.tf}">${i.img && t.me ? `<img src="${i.img}" alt="Chart ${i.symbol}" loading="lazy" />` : ideaChart(i)}<span class="dir ${i.dir}">${long ? "▲ Long" : "▼ Short"}</span>${statusBadge(i)}</div>
+    <div class="idea-meta"><button class="sym-chip" data-open-sym="${i.symbol}" data-open-tf="${i.tf}">${i.symbol}</button><span class="muted">${TIMEFRAMES.find((x) => x.id === i.tf)?.label || i.tf}</span><b class="perf ${cls(i.perf)}">${pct(i.perf)}</b></div>
+    <h3>${esc(i.title)}</h3>
+    <p>${esc(i.body)}</p>
+    <div class="idea-levels"><span>Einstieg<b>${num(i.entry)}</b></span><span>Ziel<b class="up">${num(i.tp)}</b></span><span>Stop<b class="down">${num(i.sl)}</b></span></div>
+    <button class="seal" data-seal="${i.id}">🔒 Versiegelt ${new Date(i.created).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} · <code>${i.hash ? i.hash.slice(0, 12) : "wird versiegelt…"}</code></button>
+    <footer>
+      <button class="like ${liked ? "on" : ""}" data-like="${i.id}"><span class="heart">♥</span> ${i.likes + (liked ? 1 : 0)}</button>
+      <span class="muted" title="So oft wurde die Idee gehandelt">🔁 ${i.copies || 0}</span>
+      ${t.me ? `<span class="up royalty-chip">💸 ${eur(i.royalty || 0)}</span>` : ""}
+      <span class="spacer"></span>
+      <button class="btn primary small" data-idea-trade="${i.id}" ${i.status !== "open" ? "disabled" : ""}>${i.status !== "open" ? "Abgeschlossen" : "Idee handeln"}</button>
+    </footer>
+  </article>`;
+}
+function renderIdeaStats() {
+  const mine = community.state.ideas.map((i) => community.evaluate(i));
+  const closed = mine.filter((i) => i.status !== "open");
+  const hit = closed.length ? closed.filter((i) => i.status === "target").length / closed.length : null;
+  const copies = mine.reduce((a, i) => a + (i.copies || 0), 0);
+  const log = community.state.royaltyLog.slice(0, 4);
+  $("#idea-stats").innerHTML = `
+    <div class="is-tile big"><span>Deine Royalties</span><b class="up">${eur(community.state.royaltyTotal || 0)}</b><small>Creator-Anteil ${Math.round(plan().creatorShare * 100)} %${plan().creatorShare < 0.7 ? ` · <button class="fee-up" data-open-plans>bis 70 % mit Elite</button>` : ""}</small></div>
+    <div class="is-tile"><span>Deine Ideen</span><b>${mine.length}</b><small>${mine.length - closed.length} laufen</small></div>
+    <div class="is-tile"><span>Trefferquote (verifiziert)</span><b>${hit == null ? "–" : Math.round(hit * 100) + " %"}</b><small>${closed.length} abgeschlossen</small></div>
+    <div class="is-tile"><span>Von anderen gehandelt</span><b>${copies}×</b><small>Trades auf deine Ideen</small></div>
+    <div class="is-feed">${log.length ? log.map((e) => `<div><b>@${esc(e.copier)}</b> handelt deine ${e.symbol}-Idee <span class="up">+${eur(e.royalty)}</span></div>`).join("") : `<div class="muted">Teile eine Idee – sobald andere sie handeln, verdienst du mit.</div>`}</div>`;
+}
 function renderIdeas() {
   if (settings.view !== "ideas") return;
+  renderIdeaStats();
   const f = ui.ideaFilter;
   const ideas = community.allIdeas().filter((i) => (f === "all" ? true : f === "mine" ? i.author === "me" : f === "following" ? community.isFollowing(i.author) : i.dir === f));
-  $("#ideas-grid").innerHTML = ideas.length
-    ? ideas
-        .map((i, k) => {
-          const t = authorOf(i);
-          const liked = community.isLiked(i.id);
-          const st = market.get(i.symbol);
-          const vis = i.img ? `<img src="${i.img}" alt="Chart ${i.symbol}" loading="lazy" />` : spark(st.days.slice(-90).map((b) => b.close), 300, 110, i.dir === "long" ? "#22c55e" : "#ef4444");
-          return `<article class="idea-card" style="--k:${Math.min(k, 12)}" data-idea="${i.id}">
-            <header>${avatar(t)}<div class="who"><b>@${esc(t.handle)}</b><small>${esc(t.style)} · ${ago(i.created)}</small></div>
-              ${t.me ? `<button class="mini-btn" data-del-idea="${i.id}">Löschen</button>` : `<button class="follow-btn ${community.isFollowing(i.author) ? "on" : ""}" data-follow="${i.author}">${community.isFollowing(i.author) ? "Gefolgt" : "Folgen"}</button>`}
-            </header>
-            <div class="idea-vis" data-open-sym="${i.symbol}" data-open-tf="${i.tf}">${vis}<span class="dir ${i.dir}">${i.dir === "long" ? "▲ Long" : "▼ Short"}</span></div>
-            <div class="idea-meta"><button class="sym-chip" data-open-sym="${i.symbol}" data-open-tf="${i.tf}">${i.symbol}</button><span class="muted">${TIMEFRAMES.find((x) => x.id === i.tf)?.label || i.tf}</span><span class="muted">${num(st.price)} €</span></div>
-            <h3>${esc(i.title)}</h3>
-            <p>${esc(i.body)}</p>
-            <footer>
-              <button class="like ${liked ? "on" : ""}" data-like="${i.id}"><span class="heart">♥</span> ${i.likes + (liked ? 1 : 0)}</button>
-              <span class="muted">💬 ${i.comments}</span>
-              <span class="spacer"></span>
-              <button class="mini-btn" data-idea-trade="${i.id}">Handeln</button>
-            </footer>
-          </article>`;
-        })
-        .join("")
-    : `<div class="empty card">Noch keine Ideen in diesem Filter. ${f === "mine" ? "Teile deine erste Idee über „+ Idee teilen“." : ""}</div>`;
+  $("#ideas-grid").innerHTML = ideas.length ? ideas.map((i, k) => ideaCard(i, k)).join("") : `<div class="empty card">Noch keine Ideen in diesem Filter. ${f === "mine" ? "Teile deine erste Idee über „+ Idee teilen“." : ""}</div>`;
   renderLeaderboard();
 }
 function renderLeaderboard() {
@@ -1421,12 +1581,15 @@ function renderLeaderboard() {
   const rows = [...community.traders, me].sort((a, b) => b.ret1y - a.ret1y);
   const medal = ["🥇", "🥈", "🥉"];
   $("#leaderboard").innerHTML = rows
-    .map((t, i) => `<div class="lb-row ${t.me ? "me" : ""}">
+    .map((t, i) => {
+      const st = t.me ? null : community.traderStats(t.id);
+      return `<div class="lb-row ${t.me ? "me" : ""}">
       <span class="rank">${medal[i] || i + 1}</span>${avatar(t)}
-      <div class="who"><b>@${esc(t.handle)}</b><small>${esc(t.style)}${t.me ? "" : ` · ${compact(t.followers)} Follower`}</small></div>
+      <div class="who"><b>@${esc(t.handle)}</b><small>${t.me ? esc(t.style) : `${st.hitRate == null ? "–" : "✓ " + Math.round(st.hitRate * 100) + " % Treffer"} · ${compact(t.followers)} Follower`}</small></div>
       <b class="num ${cls(t.ret1y)}">${pct(t.ret1y)}</b>
       ${t.me ? "<span></span>" : `<button class="mini-btn" data-copy="${t.id}">Kopieren</button>`}
-    </div>`)
+    </div>`;
+    })
     .join("");
 }
 function openCopy(id) {
@@ -1483,22 +1646,24 @@ function bindGrowth() {
       toast(on ? `Du folgst jetzt @${community.trader(fl.dataset.follow).handle}.` : "Nicht mehr gefolgt.", on ? "success" : "info");
       return renderIdeas();
     }
-    const del = t.closest("[data-del-idea]");
-    if (del) {
-      community.removeIdea(del.dataset.delIdea);
-      return renderIdeas();
-    }
     const tr = t.closest("[data-idea-trade]");
-    if (tr) {
-      const idea = community.allIdeas().find((i) => i.id === tr.dataset.ideaTrade);
-      if (idea) {
-        setSymbol(idea.symbol);
-        ui.side = idea.dir === "long" ? "buy" : "sell";
-        renderTicket();
-        flashEl($("#ticket"));
-      }
+    if (tr) return openIdeaTrade(tr.dataset.ideaTrade);
+    const sealBtn = t.closest("[data-seal]");
+    if (sealBtn) {
+      const i = community.find(sealBtn.dataset.seal);
+      if (i) toast(`${new Date(i.created).toLocaleString("de-DE")} · SHA-256 ${i.hash ? i.hash.slice(0, 32) + "…" : "–"} · verkettet mit ${i.prev ? i.prev.slice(0, 8) + "…" : "–"}`, "info", "🔒 Versiegelte Idee");
       return;
     }
+    const bill = t.closest("[data-billing]");
+    if (bill) {
+      settings.billing = bill.dataset.billing;
+      saveSettings();
+      haptic(6);
+      for (const el of [$("#home-plans"), $("#modal-plans")]) if (el.childElementCount) renderPlans(el);
+      return;
+    }
+    const ad = t.closest("[data-addon]");
+    if (ad) return toggleAddon(ad.dataset.addon);
     const cp = t.closest("[data-copy]");
     if (cp) return openCopy(cp.dataset.copy);
     const flt = t.closest("#idea-filter [data-f]");
@@ -1511,6 +1676,7 @@ function bindGrowth() {
     if (dir) {
       ui.ideaDir = dir.dataset.d;
       $$("#idea-dir button").forEach((b) => b.classList.toggle("active", b === dir));
+      fillIdeaLevels();
     }
   });
   $("#plan-btn").addEventListener("click", () => openPlans());
@@ -1538,19 +1704,49 @@ function bindGrowth() {
     } else toast("Betrag zu klein oder nicht genug Kaufkraft.", "error");
   });
   $("#publish-btn").addEventListener("click", openIdeaModal);
-  $("#idea-form").addEventListener("submit", (e) => {
+  $("#idea-sym").addEventListener("change", fillIdeaLevels);
+  $("#itrade-qty").addEventListener("input", updateIdeaTradeCosts);
+  $("#itrade-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    community.addIdea({
-      symbol: $("#idea-sym").value,
+    const i = community.find(ui.tradeIdea);
+    if (!i) return;
+    const res = broker.placeOrder({ symbol: i.symbol, side: "buy", type: "market", qty: parseInt($("#itrade-qty").value, 10), sl: i.sl, tp: i.tp, ideaId: i.id, ideaFeePct: plan().ideaFee });
+    if (!res.ok) {
+      shake($("#itrade-form"));
+      return toast(res.msg, "error", "Order abgelehnt");
+    }
+    i.copies = (i.copies || 0) + 1;
+    closeModals();
+    confetti();
+    const fill = broker.state.fills[0];
+    toast(`@${authorOf(i).handle} erhält ${eur((fill?.ideaFee || 0) * 0.5)} Royalty. Stop & Ziel sind gesetzt.`, "success", `Idee gehandelt: ${i.symbol}`);
+    renderIdeas();
+  });
+  $("#idea-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const sym = $("#idea-sym").value;
+    const entry = market.get(sym).price;
+    const tp = parseFloat($("#idea-tp").value);
+    const sl = parseFloat($("#idea-sl").value);
+    const long = ui.ideaDir === "long";
+    if (!(long ? tp > entry && sl < entry : tp < entry && sl > entry)) {
+      shake($("#idea-form"));
+      return toast(long ? "Bei Long muss das Ziel über und der Stop unter dem Kurs liegen." : "Bei Short muss das Ziel unter und der Stop über dem Kurs liegen.", "error", "Bitte Ziel & Stop prüfen");
+    }
+    await community.addIdea({
+      symbol: sym,
       tf: settings.tf,
       dir: ui.ideaDir,
       title: $("#idea-title").value.trim(),
       body: $("#idea-body").value.trim(),
-      img: $("#idea-sym").value === settings.symbol ? ui.ideaShot : null,
+      entry,
+      tp,
+      sl,
+      img: sym === settings.symbol ? ui.ideaShot : null,
     });
     closeModals();
     confetti();
-    toast("Deine Idee ist jetzt in der Community sichtbar.", "success", "Idee veröffentlicht");
+    toast("Versiegelt und veröffentlicht. Sobald andere sie handeln, verdienst du Royalties.", "success", "Idee ist live 🔒");
     ui.ideaFilter = "all";
     $$("#idea-filter button").forEach((b) => b.classList.toggle("active", b.dataset.f === "all"));
     if (settings.view !== "ideas") setView("ideas");
@@ -1576,9 +1772,715 @@ function openIdeaModal() {
   } catch (_) {
     $("#idea-shot").hidden = true;
   }
+  fillIdeaLevels();
   openModal("#idea-modal");
   setTimeout(() => $("#idea-title").focus(), 50);
 }
+// Einstieg/Ziel/Stop aus der AKTEX-AI-Analyse vorschlagen
+function fillIdeaLevels() {
+  const sym = $("#idea-sym").value;
+  const st = market.get(sym);
+  const a = analyze(st.days.slice(-260));
+  const u = a.atr * 0.6;
+  const e = st.price;
+  const long = ui.ideaDir === "long";
+  const step = tickStep(e);
+  $("#idea-entry").value = e.toFixed(2);
+  $("#idea-tp").value = roundTo(long ? e + 2 * u : e - 2 * u, step).toFixed(2);
+  $("#idea-sl").value = roundTo(long ? e - u : e + u, step).toFixed(2);
+}
+function openIdeaTrade(id) {
+  const i = community.find(id);
+  if (!i) return;
+  if (i.status !== "open") return toast("Diese Idee ist bereits abgeschlossen.", "info");
+  if (i.dir !== "long") return toast("Short-Ideen lassen sich im Demo-Depot nicht handeln (keine Leerverkäufe).", "warn", "Nur Long-Ideen");
+  ui.tradeIdea = id;
+  const t = authorOf(i);
+  const q = market.quote(i.symbol);
+  const riskQty = Math.floor((broker.equity() * 0.01) / Math.max(0.01, q.ask - i.sl));
+  const capQty = Math.floor((broker.equity() * 0.1) / q.ask); // höchstens 10 % des Depots
+  $("#itrade-qty").value = Math.max(1, Math.min(riskQty, capQty, Math.floor(broker.buyingPower() / q.ask)));
+  $("#itrade-info").innerHTML = `
+    <div class="it-head">${avatar(t)}<div><b>${esc(i.title)}</b><small class="muted">@${esc(t.handle)} · versiegelt ${ago(i.created)} · <code>${(i.hash || "").slice(0, 10)}</code></small></div></div>
+    <div class="it-chart">${ideaChart(i, 360, 130)}</div>
+    <div class="idea-levels"><span>Einstieg<b>${num(i.entry)}</b></span><span>Aktuell<b>${num(q.ask)}</b></span><span>Ziel<b class="up">${num(i.tp)}</b></span><span>Stop<b class="down">${num(i.sl)}</b></span></div>
+    <p class="muted it-note">Ziel und Stop der Idee werden als Take-Profit und Stop-Loss übernommen. Stückzahl vorbelegt: max. 1 % Depotrisiko und höchstens 10 % des Depots.</p>`;
+  updateIdeaTradeCosts();
+  openModal("#itrade-modal");
+}
+function updateIdeaTradeCosts() {
+  const i = community.find(ui.tradeIdea);
+  if (!i) return;
+  const t = authorOf(i);
+  const q = market.quote(i.symbol);
+  const qty = parseInt($("#itrade-qty").value, 10) || 0;
+  const vol = qty * q.ask;
+  const c = broker.costs(qty, q.ask, plan().ideaFee);
+  const spread = ((q.ask - q.bid) / 2) * qty;
+  $("#itrade-costs").innerHTML = `
+    <div><dt>Ordervolumen</dt><dd>${eur(vol)}</dd></div>
+    <div><dt>Ordergebühr (${plan().name})</dt><dd>${eur(c.orderFee)}</dd></div>
+    <div><dt>Ideen-Gebühr (${nf2.format(plan().ideaFee * 100)} %)</dt><dd>${eur(c.ideaFee)}</dd></div>
+    <div class="sub"><dt>davon an @${esc(t.handle)}</dt><dd>${eur(c.ideaFee * 0.5)}</dd></div>
+    <div><dt>Spread-Kosten (im Kurs)</dt><dd>${eur(spread)}</dd></div>
+    <div class="total"><dt>Kosten gesamt</dt><dd>${eur(c.total + spread)}</dd></div>`;
+  $("#itrade-submit").textContent = `${qty} ${i.symbol} kaufen – Idee handeln`;
+}
+// ---------- Grafik-Helfer ----------
+function donut(parts, center, size = 200) {
+  const total = parts.reduce((a, p) => a + p.value, 0) || 1;
+  const r = 70;
+  const C = 2 * Math.PI * r;
+  let acc = 0;
+  const segs = parts
+    .filter((p) => p.value > 0)
+    .map((p) => {
+      const len = (p.value / total) * C;
+      const s = `<circle cx="100" cy="100" r="${r}" fill="none" stroke="${p.color}" stroke-width="26" stroke-dasharray="${Math.max(0, len - 2)} ${C}" stroke-dashoffset="${-acc}" transform="rotate(-90 100 100)" class="dn-seg"><title>${esc(p.label)}: ${nf2.format((p.value / total) * 100)} %</title></circle>`;
+      acc += len;
+      return s;
+    })
+    .join("");
+  return `<div class="donut"><svg viewBox="0 0 200 200" width="${size}" height="${size}"><circle cx="100" cy="100" r="${r}" fill="none" stroke="var(--panel-2)" stroke-width="26"/>${segs}<text x="100" y="100" text-anchor="middle" class="dn-text">${center}</text></svg>
+    <ul class="dn-legend">${parts.map((p) => `<li><i style="background:${p.color}"></i><span>${esc(p.label)}</span><b>${nf2.format((p.value / total) * 100)} %</b></li>`).join("")}</ul></div>`;
+}
+function tween(el, to, fmt, ms = 900) {
+  const from = +el.dataset.v || 0;
+  el.dataset.v = to;
+  const t0 = performance.now();
+  const stepF = (t) => {
+    const k = Math.min(1, (t - t0) / ms);
+    const e = 1 - Math.pow(1 - k, 4);
+    el.textContent = fmt(from + (to - from) * e);
+    if (k < 1) requestAnimationFrame(stepF);
+  };
+  requestAnimationFrame(stepF);
+}
+const bigEur = (v) => (v >= 1e9 ? nf2.format(v / 1e9) + " Mrd. €" : v >= 1e6 ? nf2.format(v / 1e6) + " Mio. €" : eur(v));
+
+// ---------- Steuer-Report (Add-on) ----------
+function renderTax() {
+  const realized = broker.state.realized || 0;
+  const taxable = Math.max(0, realized - 1000);
+  const tax = taxable * 0.26375;
+  const inner = `<div class="tax-grid">
+      <div><span>Realisierte Gewinne (nach Gebühren)</span><b class="${cls(realized)}">${sEur(realized)}</b></div>
+      <div><span>Sparerpauschbetrag</span><b>${eur(1000)}</b></div>
+      <div><span>Steuerpflichtig</span><b>${eur(taxable)}</b></div>
+      <div><span>Abgeltungsteuer + Soli (26,375 %)</span><b class="down">${eur(tax)}</b></div>
+      <div><span>Gezahlte Gebühren</span><b>${eur(broker.state.fees || 0)}</b></div>
+      <div><span>Royalties (Einkünfte)</span><b class="up">${eur(community.state.royaltyTotal || 0)}</b></div>
+    </div><p class="muted">Vereinfachte Schätzung ohne Kirchensteuer und Verlustverrechnung. Keine Steuerberatung.</p>`;
+  $("#tax-card").innerHTML = `<div class="card-head"><h2>🧾 Steuer-Report ${new Date().getFullYear()}</h2>${hasAddon("tax") ? '<span class="incl">aktiv</span>' : ""}</div>` +
+    (hasAddon("tax") ? inner : `<div class="ai-lock"><div class="ai-lock-blur">${inner}</div><div class="ai-lock-cta"><b>🔒 Steuer-Report</b><span>Add-on für 2,99 €/Monat – in Elite inklusive</span><button class="btn primary small" data-open-plans>Freischalten</button></div></div>`);
+}
+
+// ---------- AI-Signal-Alarme (Add-on) ----------
+const lastRatings = {};
+function checkSignals() {
+  if (!hasAddon("signals") || !chart.raw?.length) return;
+  const key = settings.symbol + settings.tf;
+  const r = analyze(chart.raw).rating;
+  if (lastRatings[key] && lastRatings[key] !== r.key) {
+    toast(`${settings.symbol} (${TIMEFRAMES.find((t) => t.id === settings.tf).label}) wechselt auf „${r.label}“.`, r.key.includes("buy") ? "success" : r.key.includes("sell") ? "sell" : "info", "⚡ AI-Signal");
+    beep(990, 0.1);
+    notify("AKTEX AI-Signal", `${settings.symbol}: ${r.label}`);
+  }
+  lastRatings[key] = r.key;
+}
+
+// ---------- Royalties: andere handeln deine Ideen (Simulation) ----------
+setInterval(() => {
+  const ev = community.simulateCopies(plan().creatorShare);
+  if (!ev.length) return;
+  const sum = ev.reduce((a, e) => a + e.royalty, 0);
+  broker.credit(sum, "Royalty");
+  const e = ev[0];
+  toast(`@${e.copier} handelt deine ${e.symbol}-Idee (${eur(e.volume)}).`, "success", `💸 +${eur(sum)} Royalty`);
+  beep(1320, 0.08);
+  if (settings.view === "ideas") renderIdeas();
+}, 11000);
+
+// ---------- Startseite: animierter Hintergrund & USP-Demo ----------
+let heroRaf = 0;
+function heroAnim(on) {
+  const cv = $("#hero-canvas");
+  cancelAnimationFrame(heroRaf);
+  if (!on || !cv || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const ctx = cv.getContext("2d");
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  const candles = [];
+  let price = 0.5;
+  let t = 0;
+  const resize = () => {
+    cv.width = cv.clientWidth * dpr;
+    cv.height = cv.clientHeight * dpr;
+  };
+  resize();
+  const draw = () => {
+    if (cv.width !== cv.clientWidth * dpr) resize();
+    const W = cv.width;
+    const H = cv.height;
+    t++;
+    if (t % 6 === 0) {
+      const o = price;
+      price = Math.min(0.85, Math.max(0.15, price + (Math.random() - 0.47) * 0.035));
+      candles.push({ x: W + 10, o, c: price, h: Math.max(o, price) + Math.random() * 0.02, l: Math.min(o, price) - Math.random() * 0.02 });
+    }
+    ctx.clearRect(0, 0, W, H);
+    const bw = 7 * dpr;
+    for (const c of candles) {
+      c.x -= 1.2 * dpr;
+      const up = c.c >= c.o;
+      const drift = (1 - c.x / W) * 0.25; // leicht ansteigend nach rechts
+      const Y = (v) => H * (1 - v + drift - 0.1);
+      ctx.globalAlpha = 0.16 * Math.min(1, c.x / (W * 0.3));
+      ctx.fillStyle = ctx.strokeStyle = up ? "#4f8cff" : "#6ea2f2";
+      ctx.beginPath();
+      ctx.moveTo(c.x, Y(c.h));
+      ctx.lineTo(c.x, Y(c.l));
+      ctx.lineWidth = dpr;
+      ctx.stroke();
+      ctx.fillRect(c.x - bw / 2, Math.min(Y(c.o), Y(c.c)), bw, Math.max(2, Math.abs(Y(c.o) - Y(c.c))));
+    }
+    while (candles.length && candles[0].x < -20) candles.shift();
+    heroRaf = requestAnimationFrame(draw);
+  };
+  draw();
+}
+function renderUspDemo() {
+  const el = $("#usp-demo");
+  if (!el) return;
+  const best = community.allIdeas().filter((i) => i.dir === "long").sort((a, b) => b.perf - a.perf)[0];
+  if (!best) return;
+  const royalty = (best.copies || 0) * 3000 * 0.002 * 0.5;
+  el.innerHTML = `${ideaCard(best)}<div class="usp-earn"><span>@${esc(authorOf(best).handle)} hat mit dieser Idee verdient</span><b>${eur(royalty)}</b><small>${best.copies} Trades × Ø 3.000 € × 0,20 % × 50 % Creator-Anteil (Beispiel)</small></div>`;
+}
+
+// ---------- Business-Dashboard ----------
+const BIZ = [
+  { k: "users", label: "Nutzer", min: 4, max: 7.7, step: 0.01, val: 6, fmt: (v) => compact(Math.round(10 ** v)) },
+  { k: "conv", label: "Anteil zahlender Nutzer", min: 1, max: 25, step: 0.5, val: 8, fmt: (v) => nf2.format(v) + " %" },
+  { k: "yearly", label: "Anteil Jahresabos", min: 0, max: 100, step: 5, val: 50, fmt: (v) => v + " %" },
+  { k: "trades", label: "Trades je aktivem Nutzer / Monat", min: 0, max: 20, step: 1, val: 4, fmt: (v) => String(v) },
+  { k: "idea", label: "Anteil Ideen-Trades", min: 0, max: 60, step: 5, val: 20, fmt: (v) => v + " %" },
+  { k: "cash", label: "Ø Guthaben pro Nutzer", min: 0, max: 10000, step: 250, val: 2000, fmt: (v) => eur(v) },
+  { k: "margin", label: "Zinsmarge auf Guthaben", min: 0, max: 3, step: 0.1, val: 1, fmt: (v) => nf2.format(v) + " %" },
+  { k: "multiple", label: "Bewertung (× Jahresumsatz)", min: 3, max: 20, step: 0.5, val: 10, fmt: (v) => nf2.format(v) + "×" },
+];
+const bizVals = Object.fromEntries(BIZ.map((b) => [b.k, b.val]));
+function bizModel(v, usersOverride) {
+  const users = usersOverride ?? 10 ** v.users;
+  const conv = v.conv / 100;
+  const paid = users * conv;
+  const y = v.yearly / 100;
+  const mix = { plus: 0.44, pro: 0.38, elite: 0.125, ai: 0.04, aiprem: 0.015 };
+  const subsM = paid * PLANS.filter((p) => mix[p.id]).reduce((a, p) => a + mix[p.id] * (y * p.yearly + (1 - y) * p.monthly), 0);
+  const trades = users * 0.35 * v.trades;
+  const streams = [
+    { label: "Abos", color: "#4f8cff", value: subsM * 12 },
+    { label: "Add-ons", color: "#a78bfa", value: paid * 0.25 * 5.5 * 12 },
+    { label: "Ordergebühren", color: "#22c55e", value: trades * (1 - v.idea / 100) * ((1 - conv) * 1 + conv * 0.45 * 0.5) * 12 },
+    { label: "Ideen-Börse", color: "#f59e0b", value: trades * (v.idea / 100) * 1500 * 0.0018 * 0.45 * 12 },
+    { label: "Zinsmarge", color: "#06b6d4", value: users * v.cash * (v.margin / 100) },
+  ];
+  const arr = streams.reduce((a, s) => a + s.value, 0);
+  return { users, paid, streams, arr, mrr: arr / 12, valuation: arr * v.multiple, arpu: arr / users };
+}
+function renderBusiness(full = false) {
+  if (settings.view !== "business") return;
+  const box = $("#biz-sliders");
+  if (!box.childElementCount) {
+    box.innerHTML = BIZ.map(
+      (b) => `<label class="slider"><span>${b.label}<b id="bv-${b.k}">${b.fmt(bizVals[b.k])}</b></span>
+      <input type="range" id="bs-${b.k}" min="${b.min}" max="${b.max}" step="${b.step}" value="${bizVals[b.k]}" /></label>`
+    ).join("");
+    box.addEventListener("input", (e) => {
+      const b = BIZ.find((x) => "bs-" + x.k === e.target.id);
+      if (!b) return;
+      bizVals[b.k] = +e.target.value;
+      $("#bv-" + b.k).textContent = b.fmt(bizVals[b.k]);
+      renderBusiness();
+    });
+  }
+  const m = bizModel(bizVals);
+  tween($("#biz-valuation"), m.valuation, bigEur, full ? 1400 : 500);
+  const need = 1e9 / (m.arpu * bizVals.multiple);
+  const prog = Math.min(1, Math.log10(Math.max(1, m.valuation)) / 11); // Skala bis 100 Mrd.
+  const unicorn = Math.log10(1e9) / 11;
+  $("#biz-bill").innerHTML = `
+    <div class="uni-bar"><i style="width:${prog * 100}%"></i><span class="uni-mark" style="left:${unicorn * 100}%">🦄 1 Mrd.</span></div>
+    <p>${m.valuation >= 1e9 ? `<b class="up">Unicorn-Status erreicht.</b> ` : ""}Für 1 Mrd. € Bewertung braucht AKTEX bei diesen Annahmen <b>${compact(Math.round(need))} Nutzer</b>.</p>`;
+  $("#biz-kpis").innerHTML = [
+    ["Jahresumsatz (ARR)", bigEur(m.arr)],
+    ["Monatsumsatz (MRR)", bigEur(m.mrr)],
+    ["Zahlende Nutzer", compact(Math.round(m.paid))],
+    ["Umsatz je Nutzer / Jahr", eur(m.arpu)],
+  ]
+    .map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`)
+    .join("");
+  $("#biz-arr-lbl").textContent = bigEur(m.arr) + " / Jahr";
+  $("#biz-donut").innerHTML = donut(m.streams, `<tspan x="100" dy="-4" class="dn-big">${bigEur(m.arr).replace(" €", "")}</tspan><tspan x="100" dy="18" class="dn-sub">€ pro Jahr</tspan>`, 220);
+
+  // 5-Jahres-Pfad
+  const W = 900;
+  const H = 260;
+  const Q = 20;
+  const pts = [];
+  for (let q = 0; q <= Q; q++) {
+    const s = 1 / (1 + Math.exp(-(q / Q - 0.55) * 9));
+    const s0 = 1 / (1 + Math.exp(0.55 * 9));
+    const users = 1e4 + (m.users - 1e4) * ((s - s0) / (1 - s0));
+    pts.push({ q, v: bizModel(bizVals, users).valuation });
+  }
+  const maxV = Math.max(pts[Q].v, 1.15e9) * 1.08;
+  const X = (q) => 50 + (q / Q) * (W - 70);
+  const Y = (v) => 16 + (1 - v / maxV) * (H - 46);
+  const path = pts.map((p, i) => `${i ? "L" : "M"}${X(p.q).toFixed(1)} ${Y(p.v).toFixed(1)}`).join(" ");
+  const yb = Y(1e9);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * maxV);
+  $("#biz-proj").innerHTML = `<svg viewBox="0 0 ${W} ${H}" class="proj-svg">
+    <defs><linearGradient id="pg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4f8cff" stop-opacity=".45"/><stop offset="1" stop-color="#4f8cff" stop-opacity="0"/></linearGradient></defs>
+    ${ticks.map((v) => `<line x1="50" x2="${W - 20}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--border)"/><text x="44" y="${Y(v) + 4}" text-anchor="end" class="ax">${bigEur(v).replace(" €", "")}</text>`).join("")}
+    ${[0, 1, 2, 3, 4, 5].map((y) => `<text x="${X(y * 4)}" y="${H - 8}" text-anchor="middle" class="ax">${y === 0 ? "Start" : "Jahr " + y}</text>`).join("")}
+    <path d="${path} L${X(Q)} ${Y(0)} L${X(0)} ${Y(0)} Z" fill="url(#pg)"/>
+    <path d="${path}" fill="none" stroke="#6ea2f2" stroke-width="3" class="proj-line"/>
+    <line x1="50" x2="${W - 20}" y1="${yb}" y2="${yb}" stroke="#d4af37" stroke-dasharray="6 5" stroke-width="1.5"/>
+    <text x="${W - 22}" y="${yb - 7}" text-anchor="end" class="ax gold">🦄 1 Mrd. € Bewertung</text>
+    <circle cx="${X(Q)}" cy="${Y(pts[Q].v)}" r="6" fill="#6ea2f2" stroke="var(--panel)" stroke-width="3"/>
+  </svg>`;
+
+  // Funnel
+  const stages = [
+    ["Besucher", m.users * 4, "#334155"],
+    ["Demo-Nutzer", m.users, "#4f8cff"],
+    ["Aktive Trader", m.users * 0.35, "#22c55e"],
+    ["Zahlende Abonnenten", m.paid, "#f59e0b"],
+    ["Elite- & AI-Kunden", m.paid * 0.18, "#d4af37"],
+  ];
+  const top = Math.sqrt(stages[0][1]);
+  $("#biz-funnel").innerHTML = stages
+    .map(([l, v, c]) => `<div class="fn-row"><div class="fn-bar" style="width:${Math.max(6, (Math.sqrt(v) / top) * 100)}%;background:${c}"><span>${compact(Math.round(v))}</span></div><em>${l}</em></div>`)
+    .join("");
+}
+
+// ---------- AKTEX AI: Ansicht, Chat, Autopilot ----------
+let llm = null; // Sprachmodell (nur in Claude-Umgebungen verfügbar)
+let llmOff = false;
+let chatCtl = null;
+const chat = []; // { role: "user"|"assistant", text, html, actions }
+const aiActions = new Map();
+try {
+  window.claude?.use?.("sample")?.then((s) => {
+    llm = s || null;
+    renderAIHeader();
+  }).catch(() => {});
+} catch (_) {
+  /* nicht verfügbar */
+}
+const aiUniverse = () => (aiEngine.state.config.universe === "watchlist" ? settings.watchlist : STOCKS.map((s) => s.s));
+
+function ring(value, label, size = 86, color = "#6ea2f2") {
+  const r = 34;
+  const C = 2 * Math.PI * r;
+  return `<div class="ring" style="--s:${size}px"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${r}" class="ring-bg"/><circle cx="40" cy="40" r="${r}" class="ring-fg" stroke="${color}" stroke-dasharray="${(value / 100) * C} ${C}" transform="rotate(-90 40 40)"/></svg><b>${value}</b><span>${label}</span></div>`;
+}
+const scoreColor = (v) => (v >= 70 ? "#22c55e" : v >= 45 ? "#f59e0b" : "#ef4444");
+
+function renderAIHeader() {
+  if (!$("#ai-chips")) return;
+  const mode = aiMode();
+  const c = aiEngine.state.config;
+  const ap = !mode ? "Autopilot gesperrt" : c.enabled ? (mode === "auto" && c.mode === "auto" ? "Autopilot handelt" : "Autopilot schlägt vor") : "Autopilot aus";
+  $("#ai-chips").innerHTML = `
+    <span class="chip-s ${mode ? "on" : ""}">${mode ? "✓ " + plan().name : "🔒 Nicht im Tarif " + plan().name}</span>
+    <span class="chip-s ${c.enabled && mode ? "live" : ""}"><i></i>${ap}</span>
+    <span class="chip-s">${llm && !llmOff ? "🧠 Sprachmodell: Claude" : "⚙️ AKTEX Engine (lokal)"}</span>`;
+  $("#ai-model").textContent = llm && !llmOff ? "antwortet mit Claude" : "lokale AKTEX Engine";
+  const n = aiEngine.state.unread;
+  $("#ai-badge").hidden = !n || !mode;
+  $("#ai-badge").textContent = n > 9 ? "9+" : n;
+}
+
+function renderAIView(full = false) {
+  if (settings.view !== "ai") return;
+  const mode = aiMode();
+  renderAIHeader();
+  const doc = aiEngine.doctor();
+  $("#ai-score").innerHTML = ring(doc.score, "Depot-Score", 128, scoreColor(doc.score));
+  $("#ai-locked").hidden = !!mode;
+  $("#ai-main").classList.toggle("is-locked", !mode);
+  $("#ai-opps-card").classList.toggle("is-locked", !mode);
+  $("#ai-doctor-card").classList.toggle("is-locked", !mode);
+  if (!mode) {
+    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
+  }
+  if (full && !chat.length) {
+    chat.push({ role: "assistant", html: `<p>Hallo! Ich bin <b>AKTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>` });
+  }
+  renderChat();
+  renderAutopilot();
+  renderFeed();
+  renderOpps();
+  renderDoctor(doc);
+  if (mode && full) {
+    aiEngine.state.unread = 0;
+    aiEngine.save();
+    renderAIHeader();
+    if (!aiEngine.state.feed.length) aiEngine.briefing(aiUniverse());
+  }
+}
+
+function fmtLLM(text) {
+  const lines = esc(text).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").split("\n");
+  let html = "";
+  let inList = false;
+  for (const l of lines) {
+    const m = l.match(/^\s*[-•*]\s+(.*)/);
+    if (m) {
+      if (!inList) html += "<ul>";
+      inList = true;
+      html += `<li>${m[1]}</li>`;
+    } else {
+      if (inList) html += "</ul>";
+      inList = false;
+      if (l.trim()) html += `<p>${l}</p>`;
+    }
+  }
+  return html + (inList ? "</ul>" : "");
+}
+
+function renderChat() {
+  const log = $("#chat-log");
+  if (!log) return;
+  log.innerHTML = chat
+    .map((m, k) => {
+      const acts = (m.actions || [])
+        .map((a) => {
+          const id = "a" + k + "_" + Math.random().toString(36).slice(2, 7);
+          aiActions.set(id, a);
+          return `<button class="${a.primary ? "btn primary small" : "mini-btn"}" data-ai-act="${id}" ${a.done ? "disabled" : ""}>${a.done ? "✓ " : ""}${esc(a.label)}</button>`;
+        })
+        .join("");
+      return `<div class="msg ${m.role}">${m.role === "assistant" ? '<span class="msg-av">✦</span>' : ""}<div class="bubble">${m.html ?? esc(m.text)}${m.pending ? '<span class="typing"><i></i><i></i><i></i></span>' : ""}${acts ? `<div class="msg-acts">${acts}</div>` : ""}</div></div>`;
+    })
+    .join("");
+  log.scrollTop = log.scrollHeight;
+}
+
+async function sendChat(text) {
+  text = text.trim();
+  if (!text) return;
+  if (!aiMode()) return openPlans("Der Berater-Chat ist Teil von AKTEX AI.");
+  chat.push({ role: "user", text });
+  const msg = { role: "assistant", html: "", pending: true };
+  chat.push(msg);
+  renderChat();
+  haptic(6);
+  if (llm && !llmOff) {
+    try {
+      await llmAnswer(text, msg);
+      return;
+    } catch (e) {
+      if (e?.code === "cancelled") {
+        msg.pending = false;
+        msg.html = msg.html || "<p class='muted'>Abgebrochen.</p>";
+        renderChat();
+        return;
+      }
+      if (["not_granted", "sampling_disabled", "tools_unavailable", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) llmOff = true;
+      msg.note = e?.code === "rate_limited" ? "Das Sprachmodell ist gerade ausgelastet – ich antworte mit der lokalen Engine." : "";
+      renderAIHeader();
+    } finally {
+      $("#chat-stop").hidden = true;
+    }
+  }
+  // Lokale Engine: kurze „Denkpause“, dann Antwort
+  await new Promise((r) => setTimeout(r, 450 + Math.random() * 500));
+  const ans = aiEngine.answer(text, { universe: aiUniverse() });
+  msg.pending = false;
+  msg.html = (msg.note ? `<p class="muted">${msg.note}</p>` : "") + ans.html;
+  msg.actions = ans.actions;
+  renderChat();
+}
+
+async function llmAnswer(text, msg) {
+  const rules = `Du bist AKTEX AI, der KI-Berater der Trading-App AKTEX. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- ").
+Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
+  const history = chat
+    .slice(0, -2)
+    .filter((m) => (m.text || m.plain) && !m.pending)
+    .slice(-8)
+    .map((m) => ({ role: m.role, content: m.text || m.plain }));
+  const turns = [{ role: "user", content: rules }, ...history, { role: "user", content: text }];
+  const proposals = [];
+  const tools = [
+    { name: "get_portfolio", description: "Liefert das Depot des Nutzers: Gesamtwert, Guthaben, Depot-Score, Positionen mit Gewicht, Gewinn/Verlust und AI-Rating sowie Hinweise.", execute: () => aiEngine.toolPortfolio() },
+    {
+      name: "analyze_stock",
+      description: "Technische Analyse einer Aktie: Kurs, Tagesänderung, AI-Score und Rating, Begründung, RSI, Unterstützung, Widerstand, vorgeschlagener Stop und Ziel.",
+      inputSchema: { type: "object", properties: { symbol: { type: "string", description: "Tickersymbol, z. B. SAP" } }, required: ["symbol"] },
+      execute: (i) => {
+        const sym = String(i.symbol || "").toUpperCase();
+        if (!market.has(sym)) throw new Error("Unbekanntes Symbol " + sym);
+        return aiEngine.toolAnalyze(sym);
+      },
+    },
+    { name: "scan_market", description: "Scannt alle Aktien und liefert die stärksten und schwächsten Signale mit Begründung.", execute: () => aiEngine.toolScan(aiUniverse()) },
+    {
+      name: "propose_trade",
+      description: "Schlägt dem Nutzer eine Order vor. Sie wird NICHT ausgeführt, sondern als Button angezeigt, den der Nutzer bestätigen muss. side ist buy oder sell.",
+      inputSchema: { type: "object", properties: { side: { type: "string", enum: ["buy", "sell"] }, symbol: { type: "string" }, qty: { type: "integer" }, reason: { type: "string" } }, required: ["side", "symbol", "qty"] },
+      execute: (i) => {
+        const sym = String(i.symbol || "").toUpperCase();
+        const qty = Math.floor(Number(i.qty));
+        const side = i.side === "sell" ? "sell" : "buy";
+        if (!market.has(sym) || !(qty > 0)) throw new Error("Ungültiger Vorschlag");
+        const v = aiEngine.toolAnalyze(sym);
+        proposals.push({ label: `${qty} ${sym} ${side === "buy" ? "kaufen" : "verkaufen"}`, side, sym, qty, primary: true, sl: side === "buy" ? v.suggestedStop : undefined, tp: side === "buy" ? v.suggestedTarget : undefined });
+        return "Vorschlag wird dem Nutzer als Button angezeigt.";
+      },
+    },
+    { name: "get_autopilot", description: "Status und Einstellungen des Autopiloten sowie die letzten Entscheidungen.", execute: () => ({ ...aiEngine.state.config, tier: aiMode(), lastDecisions: aiEngine.state.log.slice(0, 5).map((l) => `${l.side} ${l.qty} ${l.sym}: ${l.why}`) }) },
+  ];
+  chatCtl = new AbortController();
+  $("#chat-stop").hidden = false;
+  const { text: out } = await llm(turns, {
+    tools,
+    modelTier: "quick",
+    signal: chatCtl.signal,
+    onText: ({ text: t }) => {
+      msg.pending = false;
+      msg.html = fmtLLM(t);
+      renderChat();
+    },
+  });
+  msg.pending = false;
+  msg.plain = out;
+  msg.html = fmtLLM(out);
+  msg.actions = proposals;
+  renderChat();
+}
+
+function runAiAction(a, btn) {
+  if (a.open) return setSymbol(a.open);
+  const order = { symbol: a.sym, side: a.side, type: "market", qty: a.qty };
+  if (a.side === "buy" && a.sl && a.tp) {
+    const q = market.quote(a.sym);
+    if (a.sl < q.ask && a.tp > q.ask) {
+      const step = tickStep(q.ask);
+      order.sl = roundTo(a.sl, step);
+      order.tp = roundTo(a.tp, step);
+    }
+  }
+  const r = broker.placeOrder(order);
+  if (!r.ok) return toast(r.msg, "error", "Order abgelehnt");
+  a.done = true;
+  btn.disabled = true;
+  btn.textContent = "✓ " + a.label;
+  aiEngine.state.log.unshift({ ts: Date.now(), by: "Du (AI-Berater)", side: a.side, sym: a.sym, qty: a.qty, price: market.get(a.sym).price, why: "Vom Berater vorgeschlagen, von dir bestätigt" });
+  aiEngine.save();
+  if (settings.view === "ai") renderAutopilot();
+}
+
+function renderAutopilot() {
+  const el = $("#autopilot");
+  if (!el) return;
+  const c = aiEngine.state.config;
+  const mode = aiMode();
+  const auto = mode === "auto";
+  const eq = broker.equity();
+  const managed = Object.keys(aiEngine.state.managed).filter((s) => broker.position(s));
+  const used = managed.reduce((a, s) => a + broker.position(s).qty * market.get(s).price, 0);
+  const sl = (k, label, min, max, step, fmt) => `<label class="slider"><span>${label}<b id="apv-${k}">${fmt(c[k])}</b></span><input type="range" id="ap-${k}" data-ap="${k}" min="${min}" max="${max}" step="${step}" value="${c[k]}" /></label>`;
+  el.innerHTML = `
+    <div class="ap-head">
+      <div class="orb tiny ${c.enabled && mode ? "spin" : ""}"><i></i><i></i><i></i></div>
+      <div><h2>Autopilot</h2><small class="muted">${c.enabled && mode ? (auto && c.mode === "auto" ? "handelt selbstständig" : "macht Vorschläge") : "pausiert"}</small></div>
+      <button class="switch big ${c.enabled ? "on" : ""}" id="ap-toggle" aria-pressed="${c.enabled}" aria-label="Autopilot ein/aus"><i></i></button>
+    </div>
+    <div class="seg ap-mode" role="group">
+      <button class="${c.mode === "assist" ? "active" : ""}" data-apmode="assist">Vorschläge</button>
+      <button class="${c.mode === "auto" ? "active" : ""}" data-apmode="auto">${auto ? "" : "🔒 "}Autonom</button>
+    </div>
+    <div class="seg ap-strat" role="group">${Object.entries(STRATEGIES).map(([k, v]) => `<button class="${c.strategy === k ? "active" : ""}" data-apstrat="${k}" title="${v.desc}">${v.label}</button>`).join("")}</div>
+    <p class="muted ap-desc">${STRATEGIES[c.strategy].desc}</p>
+    ${sl("budgetPct", "Budget für den Autopiloten", 5, 100, 5, (v) => v + " % des Depots")}
+    ${sl("maxPosPct", "Max. je Aktie", 2, 25, 1, (v) => v + " %")}
+    ${sl("stopPct", "Stop-Loss", 2, 20, 0.5, (v) => "−" + nf2.format(v) + " %")}
+    ${sl("takePct", "Gewinnziel", 4, 40, 1, (v) => "+" + v + " %")}
+    ${sl("maxTrades", "Max. Trades pro Tag", 1, 40, 1, (v) => String(v))}
+    <div class="ap-row"><label class="chk"><input type="checkbox" id="ap-all" ${c.manageAll ? "checked" : ""}/> Auch meine eigenen Positionen verwalten</label>
+      <select id="ap-universe"><option value="all" ${c.universe === "all" ? "selected" : ""}>Alle ${STOCKS.length} Aktien</option><option value="watchlist" ${c.universe === "watchlist" ? "selected" : ""}>Nur Watchlist</option></select></div>
+    <div class="ap-stats">
+      <div><span>Investiert</span><b>${eur(used)}</b><small>${nf2.format((used / eq) * 100)} % von ${c.budgetPct} %</small></div>
+      <div><span>Positionen</span><b>${managed.length}</b><small>von der AI verwaltet</small></div>
+      <div><span>Realisiert</span><b class="${cls(aiEngine.state.aiPnl)}">${sEur(aiEngine.state.aiPnl)}</b><small>AI-Trades</small></div>
+    </div>
+    <div class="ap-budget"><i style="width:${Math.min(100, (used / eq) * 100 / Math.max(1, c.budgetPct) * 100)}%"></i></div>
+    ${aiEngine.state.proposals.length ? `<h4 class="ap-h">Offene Vorschläge</h4>${aiEngine.state.proposals.map((p) => `<div class="prop ${p.side}"><div><b>${p.side === "buy" ? "Kaufen" : "Verkaufen"}: ${p.qty} ${p.sym}</b><small>${esc(p.why)}</small></div><div class="prop-btns"><button class="btn primary small" data-prop-ok="${p.id}">Ausführen</button><button class="mini-btn" data-prop-no="${p.id}">✕</button></div></div>`).join("")}` : ""}
+    <h4 class="ap-h">Protokoll</h4>
+    <div class="ap-log">${aiEngine.state.log.length ? aiEngine.state.log.slice(0, 12).map((l) => `<div class="ap-entry ${l.side}"><span class="tag ${l.side}">${l.side === "buy" ? "Kauf" : "Verkauf"}</span><div><b>${l.qty} ${l.sym}</b> <small class="muted">${clock(l.ts)} · ${esc(l.by)}</small><small>${esc(l.why)}</small></div></div>`).join("") : '<div class="muted">Noch keine Entscheidungen.</div>'}</div>
+    <button class="btn kill" id="ap-kill">⏻ Not-Aus</button>`;
+}
+
+function renderFeed() {
+  const el = $("#ai-feed");
+  if (!el) return;
+  const f = aiEngine.state.feed;
+  el.innerHTML = f.length
+    ? f
+        .slice(0, 20)
+        .map(
+          (m) => `<div class="feed-item ${m.kind}"><span class="fi-ic">${m.icon}</span><div><b>${esc(m.title)}</b><p>${esc(m.text)}</p><small class="muted">${ago(m.ts)}</small>
+          ${m.proposal && aiEngine.state.proposals.some((p) => p.id === m.proposal) ? `<div class="msg-acts"><button class="btn primary small" data-prop-ok="${m.proposal}">Ausführen</button><button class="mini-btn" data-prop-no="${m.proposal}">Ablehnen</button></div>` : m.sym ? `<div class="msg-acts"><button class="mini-btn" data-ask="Was hältst du von ${m.sym}?">Fragen</button><button class="mini-btn" data-open-sym="${m.sym}">Chart</button></div>` : ""}</div></div>`
+        )
+        .join("")
+    : `<div class="muted">Noch keine Meldungen. Die AI meldet sich bei Signalwechseln, starken Bewegungen und Risiken.</div>`;
+}
+
+function renderOpps() {
+  const el = $("#ai-opps");
+  if (!el) return;
+  const top = aiEngine.scanAll(aiUniverse()).slice(0, 6);
+  el.innerHTML = top
+    .map((v) => {
+      const closes = aggregateCloses(v.sym);
+      const sc = Math.round((v.score + 1) * 50);
+      return `<button class="opp" data-ask="Was hältst du von ${v.sym}?">
+        <div class="opp-top">${ring(sc, "Score", 58, sc >= 60 ? "#22c55e" : sc >= 45 ? "#f59e0b" : "#ef4444")}<div><b>${v.sym}</b><small class="muted">${esc(v.name)}</small><span class="opp-rt ${v.score > 0.1 ? "up" : ""}">${v.rating.label}</span></div></div>
+        ${spark(closes, 200, 40, "#6ea2f2")}
+        <p>${esc(v.reason)}</p>
+        <div class="opp-px"><b>${num(v.price)} €</b><span class="${cls(v.dayChg)}">${pct(v.dayChg)}</span></div>
+      </button>`;
+    })
+    .join("");
+}
+function aggregateCloses(sym) {
+  const m1 = market.get(sym).m1;
+  const out = [];
+  for (let i = Math.max(0, m1.length - 1440); i < m1.length; i += 20) out.push(m1[i].close);
+  out.push(m1[m1.length - 1].close);
+  return out;
+}
+
+function renderDoctor(doc) {
+  const el = $("#ai-doctor");
+  if (!el) return;
+  el.innerHTML = `
+    <div class="doc-rings">${ring(doc.parts.div, "Streuung", 92, scoreColor(doc.parts.div))}${ring(doc.parts.risk, "Risiko", 92, scoreColor(doc.parts.risk))}${ring(doc.parts.qual, "Qualität", 92, scoreColor(doc.parts.qual))}${ring(doc.parts.liq, "Liquidität", 92, scoreColor(doc.parts.liq))}</div>
+    <ul class="doc-tips">${doc.tips.map((t) => `<li><span>${t.icon}</span><p>${esc(t.text)}</p>${t.sym ? `<button class="mini-btn" data-ask="Soll ich ${t.sym} verkaufen?">Beraten</button>` : ""}</li>`).join("")}</ul>`;
+}
+
+function bindAI() {
+  $("#chat-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("#chat-input").value;
+    $("#chat-input").value = "";
+    sendChat(v);
+  });
+  $("#chat-stop").addEventListener("click", () => chatCtl?.abort());
+  $("#feed-clear").addEventListener("click", () => {
+    aiEngine.state.unread = 0;
+    aiEngine.save();
+    renderAIHeader();
+  });
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const ask = t.closest("[data-ask]");
+    if (ask) {
+      if (settings.view !== "ai") setView("ai");
+      return sendChat(ask.dataset.ask);
+    }
+    const act = t.closest("[data-ai-act]");
+    if (act) {
+      const a = aiActions.get(act.dataset.aiAct);
+      if (a && !a.done) runAiAction(a, act);
+      return;
+    }
+    const ok = t.closest("[data-prop-ok]");
+    if (ok) {
+      const r = aiEngine.acceptProposal(ok.dataset.propOk);
+      if (!r.ok) toast(r.msg, "error", "Nicht ausgeführt");
+      return renderAIView();
+    }
+    const no = t.closest("[data-prop-no]");
+    if (no) {
+      aiEngine.dismissProposal(no.dataset.propNo);
+      return renderAIView();
+    }
+    if (t.closest("#ap-toggle")) {
+      if (!aiMode()) return openPlans("Der Autopilot ist Teil von AKTEX AI.");
+      const c = aiEngine.state.config;
+      c.enabled = !c.enabled;
+      aiEngine.save();
+      haptic(15);
+      toast(c.enabled ? (aiMode() === "auto" && c.mode === "auto" ? "Der Autopilot handelt jetzt selbstständig in deinen Limits." : "Der Autopilot schlägt dir Trades vor – du entscheidest.") : "Autopilot pausiert.", c.enabled ? "success" : "info", c.enabled ? "🤖 Autopilot an" : "Autopilot aus");
+      if (c.enabled) setTimeout(autopilotTick, 800);
+      return renderAIView();
+    }
+    const md = t.closest("[data-apmode]");
+    if (md) {
+      if (md.dataset.apmode === "auto" && aiMode() !== "auto") return openPlans("Selbstständiges Handeln ist Teil von AKTEX AI Premium.");
+      aiEngine.state.config.mode = md.dataset.apmode;
+      aiEngine.save();
+      return renderAIView();
+    }
+    const stg = t.closest("[data-apstrat]");
+    if (stg) {
+      aiEngine.state.config.strategy = stg.dataset.apstrat;
+      aiEngine.save();
+      return renderAutopilot();
+    }
+    if (t.closest("#ap-kill")) {
+      aiEngine.killSwitch();
+      haptic([40, 30, 40]);
+      toast("Autopilot gestoppt, offene Vorschläge verworfen. Deine Positionen und Stops bleiben bestehen.", "warn", "⏻ Not-Aus");
+      return renderAIView();
+    }
+  });
+  document.addEventListener("input", (e) => {
+    const k = e.target.dataset?.ap;
+    if (!k) return;
+    aiEngine.state.config[k] = +e.target.value;
+    aiEngine.save();
+    const fmt = { budgetPct: (v) => v + " % des Depots", maxPosPct: (v) => v + " %", stopPct: (v) => "−" + nf2.format(v) + " %", takePct: (v) => "+" + v + " %", maxTrades: (v) => String(v) }[k];
+    $("#apv-" + k).textContent = fmt(+e.target.value);
+  });
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "ap-all") aiEngine.state.config.manageAll = e.target.checked;
+    else if (e.target.id === "ap-universe") aiEngine.state.config.universe = e.target.value;
+    else return;
+    aiEngine.save();
+  });
+  aiEngine.on("trade", (l) => {
+    toast(`${l.side === "buy" ? "Kauf" : "Verkauf"}: ${l.qty} ${l.sym} – ${l.why}`, l.side === "buy" ? "success" : "sell", "🤖 Autopilot");
+    if (settings.view === "ai") renderAIView();
+  });
+  aiEngine.on("feed", (m) => {
+    renderAIHeader();
+    if (settings.view === "ai") renderFeed();
+    else if (m.kind !== "briefing" && aiMode()) toast(m.text, m.kind === "risk" ? "warn" : "info", `✦ ${m.title}`);
+  });
+}
+
+function autopilotTick() {
+  const mode = aiMode();
+  if (!mode || !aiEngine.state.config.enabled) return;
+  aiEngine.step(aiUniverse(), mode === "auto" && aiEngine.state.config.mode === "auto");
+  if (settings.view === "ai") renderAIView();
+}
+setInterval(autopilotTick, 15000);
+setInterval(() => {
+  if (!aiMode()) return;
+  const syms = [...new Set([...settings.watchlist, ...Object.keys(broker.state.positions)])];
+  aiEngine.watch(syms);
+  if (settings.view === "ai") {
+    renderOpps();
+    renderDoctor(aiEngine.doctor());
+    $("#ai-score").innerHTML = ring(aiEngine.doctor().score, "Depot-Score", 128, scoreColor(aiEngine.doctor().score));
+  }
+}, 25000);
 
 // ---------- Bewegung: Splash, Segmente, Ripple, Haptik ----------
 function haptic(pattern) {
@@ -1716,6 +2618,9 @@ async function share() {
 }
 
 // ---------- Start ----------
+community.ready.then(() => {
+  if (settings.view === "ideas") renderIdeas();
+});
 runSplash();
 buildToolbar();
 buildTicker();
@@ -1732,6 +2637,7 @@ $("#brand").addEventListener("click", () => {
 });
 $("#brand").addEventListener("dblclick", () => runSplash(true));
 bindGrowth();
+bindAI();
 bindTicket();
 bindTables();
 bindDrawbar();
@@ -1772,4 +2678,5 @@ renderBottom();
 renderTicker();
 setView(settings.view);
 setupInstall();
+renderAIHeader();
 market.start();

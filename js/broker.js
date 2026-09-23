@@ -117,7 +117,14 @@ export class Broker {
   }
 
   // ---------- Orders ----------
-  placeOrder({ symbol, side, type, qty, limitPrice, stopPrice, sl, tp }) {
+  // Gebühren einer Order: Ordergebühr laut Tarif + ggf. Ideen-Gebühr (Prozent vom Volumen)
+  costs(qty, price, ideaFeePct = 0) {
+    const orderFee = this.feeFn();
+    const ideaFee = qty * price * ideaFeePct;
+    return { orderFee, ideaFee, total: orderFee + ideaFee };
+  }
+
+  placeOrder({ symbol, side, type, qty, limitPrice, stopPrice, sl, tp, ideaId = null, ideaFeePct = 0 }) {
     const q = this.market.quote(symbol);
     qty = Math.floor(Number(qty));
     if (!Number.isFinite(qty) || qty <= 0) return { ok: false, msg: "Bitte eine gültige Stückzahl eingeben." };
@@ -126,7 +133,7 @@ export class Broker {
 
     if (side === "buy") {
       const px = type === "limit" ? limitPrice : type === "stop" ? stopPrice : q.ask;
-      if (qty * px + this.feeFn() > this.buyingPower() + 1e-6) return { ok: false, msg: "Nicht genügend Kaufkraft (inkl. Ordergebühr)." };
+      if (qty * px + this.costs(qty, px, ideaFeePct).total > this.buyingPower() + 1e-6) return { ok: false, msg: "Nicht genügend Kaufkraft (inkl. Gebühren)." };
       if (sl != null && !(sl < px)) return { ok: false, msg: "Stop-Loss muss unter dem Einstiegskurs liegen." };
       if (tp != null && !(tp > px)) return { ok: false, msg: "Take-Profit muss über dem Einstiegskurs liegen." };
       if (type === "stop" && stopPrice <= q.price) return { ok: false, msg: "Kauf-Stopp muss über dem aktuellen Kurs liegen." };
@@ -148,6 +155,8 @@ export class Broker {
       sl: side === "buy" ? sl ?? null : null,
       tp: side === "buy" ? tp ?? null : null,
       oco: null,
+      ideaId,
+      ideaFeePct,
       created: Date.now(),
       status: "open",
     };
@@ -196,7 +205,7 @@ export class Broker {
     const s = this.state;
     const sym = order.symbol;
     let pnl = null;
-    const fee = this.feeFn();
+    const { orderFee, ideaFee, total: fee } = this.costs(order.qty, price, order.ideaFeePct || 0);
     if (order.side === "buy") {
       const cost = order.qty * price;
       if (cost + fee > s.cash + 1e-6) {
@@ -224,7 +233,7 @@ export class Broker {
     }
 
     s.fees = (s.fees || 0) + fee;
-    const fill = { id: uid(), orderId: order.id, symbol: sym, side: order.side, type: order.type, qty: order.qty, price, fee, pnl, ts: Date.now(), time: nowSec() };
+    const fill = { id: uid(), orderId: order.id, symbol: sym, side: order.side, type: order.type, qty: order.qty, price, fee, orderFee, ideaFee, ideaId: order.ideaId || null, pnl, ts: Date.now(), time: nowSec() };
     s.fills.unshift(fill);
     s.fills.length = Math.min(s.fills.length, 500);
     order.status = "ausgeführt";
@@ -259,6 +268,14 @@ export class Broker {
     this.save();
     this.emit("reject", order);
     this.emit("change");
+  }
+
+  // Gutschrift (z. B. Royalties aus der Ideen-Börse)
+  credit(amount, note) {
+    this.state.cash += amount;
+    this.state.royalties = (this.state.royalties || 0) + amount;
+    this.save();
+    this.emit("change", { credit: amount, note });
   }
 
   // ---------- Alarme ----------
