@@ -38,8 +38,19 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 - **Business-Dashboard:** Umsatz- und Bewertungsmodell mit Reglern, Umsatz nach Quelle, 5-Jahres-Pfad, Funnel
 - Geschäftsplan: siehe [`BUSINESS.md`](BUSINESS.md)
 
+**AKTEX AI – 50 Funktionen** (Tab „✦ 50 Features“ in der AI-Ansicht)
+- Cockpit: Berater-Chat mit Kontext-Gedächtnis, Slash-Befehlen (`/prognose`, `/backtest`, `/risiko`, `/plan` …), Vorlesen, Limit-Orders und Alarme per Chat
+- **Zeitplan:** zeitgesteuerte Orders („Kaufe 10 SAP um 15:30“), Sparpläne (täglich/werktags/wöchentlich/monatlich), Wenn-Dann-Regeln (Kurs, RSI, Rating, Tagesänderung) mit Zeitfenster, Live-Countdowns und Verlauf
+- **Autopilot:** 5 Strategie-Presets, Handelszeiten, Tagesverlust-Notbremse, Konfidenz-Schwelle, ATR-Smart-Stops, Schattenmodus, Trade-Journal, Performance
+- **Labor:** Prognose-Korridor, Multi-Timeframe, Score-Erklärung, Muster & Zonen, Backtest, Monte Carlo, VaR, Korrelation, Sentiment-Index, Sektor-Rotation, Anomalie-Radar, ähnliche Setups, Positionsgröße, Rebalancing, Steuer-Tipps
+
+**Shop & Clips**
+- **Store mit Spotlight:** Themen-Pakete, die live nach Momentum rotieren (mit einem Klick investieren), Autopilot-Strategien, Academy-Kurse, AI-Reports, Merch, Geschenkkarten, Warenkorb und Bestellungen
+- **AKTEX Clips:** vertikaler Video-Feed (Doppeltipp = Like, Kommentare, Teilen, „Handeln“, Melden), eigene Videos hochladen, Chart-Clips aufnehmen
+
 **Konto & Bezahlsystem**
 - Onboarding (Profil, Erfahrung, Ziel, Risiko) mit Tarif-Empfehlung
+- **AKTEX Pay:** ein Bezahl-Sheet mit aufklappbaren Zeilen und „Zum Bezahlen halten“, gespeicherte Zahlungsmethode für Ein-Griff-Zahlungen
 - Checkout im Testmodus: Tarif, Laufzeit, Add-ons, Gutscheine, MwSt., Karte mit 3-D Secure, PayPal, Apple/Google Pay, SEPA, Klarna – nur Testdaten
 - Konto-Bereich: Profil, Abo & Zahlung, Rechnungen, Benachrichtigungen, Sicherheit, Datenexport (DSGVO)
 - „Verträge hier kündigen“, Rechtliches (Impressum, Datenschutz, AGB, Widerruf, Risikohinweise als Vorlagen)
@@ -58,6 +69,9 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 python3 -m http.server 8000
 # http://localhost:8000 öffnen
 ```
+
+## Launch
+Siehe [`LAUNCH.md`](LAUNCH.md) für die Checkliste zum öffentlichen Start (Technik, Backend, Recht, Vertrauen).
 
 ## Online stellen (Link zum Teilen)
 
@@ -82,6 +96,10 @@ Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch
 | `js/plans.js` | Tarife, Add-ons & Limits |
 | `js/ai.js` | AKTEX AI: Scan, Depot-Doktor, Berater, Meldungen, Autopilot |
 | `js/payments.js` | Checkout, Testkarten, Abo, Rechnungen, Stripe-Anbindung |
+| `js/ailab.js` | AI-Labor: Prognosen, Muster, Backtests, Risiko, Portfolio-Werkzeuge |
+| `js/scheduler.js` | Zeitplan: Timer, Sparpläne, Wenn-Dann-Regeln |
+| `js/shop.js` | Store: Spotlight-Pakete, Produkte, Warenkorb, Bestellungen |
+| `js/clips.js` | Clips: Feed-Renderer, Aufnahme, Speicherung (IndexedDB) |
 | `js/chart.js` | Chart, Indikatoren, Zeichenwerkzeuge |
 | `js/app.js` | UI-Logik, Views, Teilen, Installation |
 | `manifest.webmanifest`, `sw.js` | App-Installation & Offline-Modus |

@@ -1,12 +1,16 @@
 // Aktex – App-Steuerung (UI, Views, Order-Ticket, PWA)
 import { STOCKS, DEFAULT_WATCHLIST } from "./data.js";
-import { Market, TIMEFRAMES, tickStep, toLocalSec } from "./market.js";
+import { Market, TIMEFRAMES, tickStep, toLocalSec, aggregate } from "./market.js";
 import { Broker, START_CASH } from "./broker.js";
 import { ChartView, CHART_TYPES, INDICATORS } from "./chart.js";
 import { analyze } from "./analysis.js";
 import { PLANS, ADDONS, planById, planPrice } from "./plans.js";
 import { Community } from "./community.js";
 import { AktexAI, STRATEGIES } from "./ai.js";
+import * as lab from "./ailab.js";
+import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
+import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
+import { demoClips, drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
 
 // ---------- Hilfsfunktionen ----------
@@ -43,7 +47,7 @@ function saveSettings() {
 }
 
 // ---------- Zustand ----------
-const VIEWS = ["home", "chart", "markets", "ideas", "ai", "portfolio", "business", "account", "legal"];
+const VIEWS = ["home", "chart", "markets", "ideas", "clips", "ai", "shop", "portfolio", "business", "account", "legal"];
 const market = new Market();
 const broker = new Broker(market);
 const firstVisit = (() => {
@@ -96,8 +100,11 @@ const settings = {
 const community = new Community(market);
 broker.feeFn = () => planById(settings.plan).fee;
 const plan = () => planById(settings.plan);
+const planTitle = (p) => (p.name.startsWith("AKTEX") ? p.name : "AKTEX " + p.name);
 const aiEngine = new AktexAI(market, broker);
 const aiMode = () => plan().limits.ai || null; // null | "assist" | "auto"
+const scheduler = new Scheduler(market, broker);
+const shop = new Shop(market);
 const hasAddon = (id) => settings.addons.includes(id) || ADDONS.find((a) => a.id === id).includedIn.includes(settings.plan);
 
 const ui = { ideaFilter: "all", ideaDir: "long", copyTrader: null, side: "buy", otype: "market", rtab: "watch", btab: "positions", hmPeriod: 1, sort: { key: "cap", dir: -1 } };
@@ -194,7 +201,7 @@ function buildToolbar() {
   $("#theme-btn").addEventListener("click", () => {
     settings.theme = settings.theme === "dark" ? "light" : "dark";
     document.documentElement.dataset.theme = settings.theme;
-    $('meta[name="theme-color"]').content = settings.theme === "dark" ? "#0b0f17" : "#ffffff";
+    $('meta[name="theme-color"]').content = settings.theme === "dark" ? "#03040a" : "#ffffff";
     saveSettings();
     chart.configure({ theme: settings.theme });
     if (equityChart) buildEquityChart();
@@ -259,6 +266,9 @@ function applyView(view, animate = true) {
   if (view === "business") renderBusiness(true);
   if (view === "ai") renderAIView(true);
   if (view === "account") renderAccount();
+  if (view === "shop") renderShop();
+  if (view === "clips") renderClips();
+  else pauseClips();
   if (view === "legal") renderLegal();
   heroAnim(view === "home");
 }
@@ -1010,7 +1020,7 @@ function renderPortfolio(full = false) {
     ["Trefferquote", st.winRate == null ? "–" : nf2.format(st.winRate * 100) + " %", ""],
     ["Gebühren gezahlt", eur(broker.state.fees || 0), ""],
     ["Royalties verdient", sEur(community.state.royaltyTotal || 0), (community.state.royaltyTotal || 0) > 0 ? "up" : ""],
-    ["Tarif", `AKTEX ${plan().name}`, "plan-kpi"],
+    ["Tarif", `${planTitle(plan())}`, "plan-kpi"],
   ]
     .map(([k, v, c]) => `<div class="kpi"><span>${k}</span><b class="${c}">${v}</b></div>`)
     .join("");
@@ -1265,7 +1275,7 @@ function setPlan(id, quiet = false) {
   closeModals();
   if (p.monthly) {
     confetti();
-    toast(`Alle ${p.name}-Funktionen sind freigeschaltet. Ordergebühr: ${eur(p.fee)}.`, "success", `Willkommen bei AKTEX ${p.name} 🎉`);
+    toast(`Alle ${p.name}-Funktionen sind freigeschaltet. Ordergebühr: ${eur(p.fee)}.`, "success", `Willkommen bei ${planTitle(p)} 🎉`);
   } else toast("Du nutzt jetzt den Free-Tarif.", "info");
 }
 function toggleAddon(id) {
@@ -2122,11 +2132,18 @@ function renderAIView(full = false) {
   $("#ai-main").classList.toggle("is-locked", !mode);
   $("#ai-opps-card").classList.toggle("is-locked", !mode);
   $("#ai-doctor-card").classList.toggle("is-locked", !mode);
+  $$('.ai-pane[data-aipane="plan"], .ai-pane[data-aipane="lab"]').forEach((p) => p.classList.toggle("is-locked", !mode));
   if (!mode) {
     $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
   }
   if (full && !chat.length) {
     chat.push({ role: "assistant", html: `<p>Hallo! Ich bin <b>AKTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>` });
+  }
+  if (aiTab !== "cockpit") {
+    if (aiTab === "plan") renderPlanPane();
+    if (aiTab === "lab" && full) renderLab();
+    if (aiTab === "features") renderFeatures();
+    return;
   }
   renderChat();
   renderAutopilot();
@@ -2172,7 +2189,7 @@ function renderChat() {
           return `<button class="${a.primary ? "btn primary small" : "mini-btn"}" data-ai-act="${id}" ${a.done ? "disabled" : ""}>${a.done ? "✓ " : ""}${esc(a.label)}</button>`;
         })
         .join("");
-      return `<div class="msg ${m.role}">${m.role === "assistant" ? '<span class="msg-av">✦</span>' : ""}<div class="bubble">${m.html ?? esc(m.text)}${m.pending ? '<span class="typing"><i></i><i></i><i></i></span>' : ""}${acts ? `<div class="msg-acts">${acts}</div>` : ""}</div></div>`;
+      return `<div class="msg ${m.role}">${m.role === "assistant" ? '<span class="msg-av">✦</span>' : ""}<div class="bubble">${m.role === "assistant" && !m.pending && k > 0 ? `<button class="speak" data-speak="${k}" title="Vorlesen">🔊</button>` : ""}${m.html ?? esc(m.text)}${m.pending ? '<span class="typing"><i></i><i></i><i></i></span>' : ""}${acts ? `<div class="msg-acts">${acts}</div>` : ""}</div></div>`;
     })
     .join("");
   log.scrollTop = log.scrollHeight;
@@ -2207,7 +2224,7 @@ async function sendChat(text) {
   }
   // Lokale Engine: kurze „Denkpause“, dann Antwort
   await new Promise((r) => setTimeout(r, 450 + Math.random() * 500));
-  const ans = aiEngine.answer(text, { universe: aiUniverse() });
+  const ans = aiEngine.answer(text, { universe: aiUniverse(), scheduler, community });
   msg.pending = false;
   msg.html = (msg.note ? `<p class="muted">${msg.note}</p>` : "") + ans.html;
   msg.actions = ans.actions;
@@ -2215,7 +2232,7 @@ async function sendChat(text) {
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKTEX AI, der KI-Berater der Trading-App AKTEX. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- ").
+  const rules = `Du bist AKTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- ").
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -2251,6 +2268,67 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
         return "Vorschlag wird dem Nutzer als Button angezeigt.";
       },
     },
+    {
+      name: "forecast",
+      description: "Statistischer Prognose-Korridor einer Aktie für 20 Handelstage (Perzentile 5/25/50/75/95) und Wahrscheinlichkeit, +10 % zu berühren.",
+      inputSchema: { type: "object", properties: { symbol: { type: "string" } }, required: ["symbol"] },
+      execute: (i) => {
+        const sym = String(i.symbol || "").toUpperCase();
+        if (!market.has(sym)) throw new Error("Unbekanntes Symbol");
+        const f = lab.forecast(market, sym, 20);
+        const e = f.path[20];
+        return { price: +f.price.toFixed(2), p5: +e.p5.toFixed(2), p25: +e.p25.toFixed(2), p50: +e.p50.toFixed(2), p75: +e.p75.toFixed(2), p95: +e.p95.toFixed(2), probPlus10Pct: +lab.probReach(market, sym, f.price * 1.1, 20).toFixed(2) };
+      },
+    },
+    {
+      name: "backtest",
+      description: "Backtest von drei Strategien (SMA-Kreuzung, RSI-Umkehr, MACD mit Trendfilter) auf ca. 2 Jahren Tagesdaten; liefert Rendite, Trades, Trefferquote, maximalen Rückgang und Kaufen-und-Halten.",
+      inputSchema: { type: "object", properties: { symbol: { type: "string" } }, required: ["symbol"] },
+      execute: (i) => {
+        const sym = String(i.symbol || "").toUpperCase();
+        if (!market.has(sym)) throw new Error("Unbekanntes Symbol");
+        return ["sma", "rsi", "macd"].map((k) => {
+          const r = lab.backtest(market, sym, k);
+          return { strategy: r.label, returnPct: +(r.ret * 100).toFixed(1), buyHoldPct: +(r.buyHold * 100).toFixed(1), trades: r.trades, winRate: r.winRate, maxDrawdownPct: +(r.maxDD * 100).toFixed(1) };
+        });
+      },
+    },
+    {
+      name: "patterns",
+      description: "Muster-Scan einer Aktie: Kerzenmuster, RSI-Divergenz, Bollinger-Squeeze, Ausbruch, Trendstärke (ADX), Unterstützungs- und Widerstandszonen, Multi-Timeframe-Konsens.",
+      inputSchema: { type: "object", properties: { symbol: { type: "string" } }, required: ["symbol"] },
+      execute: (i) => {
+        const sym = String(i.symbol || "").toUpperCase();
+        if (!market.has(sym)) throw new Error("Unbekanntes Symbol");
+        const bars = lab.barsFor(market, sym, "1D");
+        const z = lab.zones(bars);
+        const m = lab.mtf(market, sym);
+        return { candles: lab.patterns(bars).map((p) => p.name), divergence: lab.divergence(bars)?.text || null, squeeze: lab.squeeze(bars), adx: lab.adx(bars), supports: z.supports.map((x) => +x.level.toFixed(2)), resistances: z.resistances.map((x) => +x.level.toFixed(2)), mtf: m.frames.map((f) => `${f.tf}: ${f.rating.label}`), confidencePct: lab.confidence(market, sym) };
+      },
+    },
+    { name: "portfolio_risk", description: "Risiko des Depots: Value at Risk 95/99 %, Expected Shortfall, Monte-Carlo-Perzentile nach 1 Jahr und Verlustwahrscheinlichkeit.", execute: () => {
+        const v = lab.valueAtRisk(broker, market);
+        const mc = lab.monteCarlo(broker, market, 252, 300);
+        return { var95: Math.round(v.var95), var99: Math.round(v.var99), es95: Math.round(v.es95), mcP5: Math.round(mc.p5), mcMedian: Math.round(mc.p50), mcP95: Math.round(mc.p95), lossProbability: +mc.lossProb.toFixed(2) };
+      } },
+    { name: "market_overview", description: "Marktüberblick: AKTEX Sentiment-Index (Angst & Gier), Sektor-Rotation und Anomalien.", execute: () => ({ sentiment: lab.sentimentIndex(market), sectors: lab.sectorRotation(market).map((x) => ({ name: x.name, d5: +(x.d5 * 100).toFixed(1), d20: +(x.d20 * 100).toFixed(1), phase: x.phase })), anomalies: lab.anomalies(market).map((x) => x.sym) }) },
+    {
+      name: "propose_schedule",
+      description: "Schlägt einen zeitgesteuerten Auftrag, Sparplan oder eine Wenn-Dann-Regel vor (Beschreibung in natürlicher Sprache, z. B. 'Kaufe 10 SAP um 15:30', 'Sparplan 200 € ASML monatlich', 'Verkaufe TSLA wenn über 260'). Der Nutzer bestätigt per Button.",
+      inputSchema: { type: "object", properties: { instruction: { type: "string" } }, required: ["instruction"] },
+      execute: (i) => {
+        const task = scheduler.parse(String(i.instruction || ""), (x) => aiEngine.findSymbols(x));
+        if (!task) throw new Error("Konnte den Auftrag nicht verstehen");
+        const desc = scheduler.describe({ ...task, at: task.at || Date.now() });
+        proposals.push({ label: `Zeitplan: ${desc}`, schedule: task, primary: true });
+        return "Vorschlag angezeigt: " + desc;
+      },
+    },
+    { name: "daily_plan", description: "Erstellt den KI-Tagesplan (schwache Positionen reduzieren, fehlende Stops setzen, starke Chancen kaufen). Wird dem Nutzer als ausführbarer Plan angezeigt.", execute: () => {
+        const steps = lab.dailyPlan(aiEngine, broker, market, aiUniverse());
+        if (steps.length) proposals.push({ label: `Plan ausführen (${steps.length} Schritte)`, plan: steps, primary: true });
+        return steps.map((x) => x.why);
+      } },
     { name: "get_autopilot", description: "Status und Einstellungen des Autopiloten sowie die letzten Entscheidungen.", execute: () => ({ ...aiEngine.state.config, tier: aiMode(), lastDecisions: aiEngine.state.log.slice(0, 5).map((l) => `${l.side} ${l.qty} ${l.sym}: ${l.why}`) }) },
   ];
   chatCtl = new AbortController();
@@ -2274,6 +2352,64 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
 
 function runAiAction(a, btn) {
   if (a.open) return setSymbol(a.open);
+  const done = () => {
+    a.done = true;
+    btn.disabled = true;
+    btn.textContent = "✓ " + a.label;
+  };
+  if (a.schedule) {
+    scheduler.add(a.schedule);
+    done();
+    toast(scheduler.describe(scheduler.state.tasks[0]), "success", "⏱ Auftrag angelegt");
+    return;
+  }
+  if (a.alert) {
+    broker.addAlert(a.alert.sym, a.alert.price);
+    done();
+    return toast(`Alarm für ${a.alert.sym} bei ${num(a.alert.price)} € aktiv.`, "success");
+  }
+  if (a.watch) {
+    for (const s of a.watch) if (!settings.watchlist.includes(s)) settings.watchlist.push(s);
+    saveSettings();
+    buildWatchlist();
+    done();
+    return toast(`${a.watch.length} Aktien in der Watchlist.`, "success");
+  }
+  if (a.idea) {
+    openIdeaModal();
+    $("#idea-sym").value = a.idea.sym;
+    ui.ideaDir = a.idea.dir;
+    $$("#idea-dir button").forEach((b) => b.classList.toggle("active", b.dataset.d === a.idea.dir));
+    fillIdeaLevels();
+    $("#idea-tp").value = a.idea.tp.toFixed(2);
+    $("#idea-sl").value = a.idea.sl.toFixed(2);
+    $("#idea-title").value = a.idea.title;
+    $("#idea-body").value = a.idea.body;
+    return;
+  }
+  if (a.lab) {
+    if (a.sym) labSym = a.sym;
+    labFocus = a.lab;
+    return setAiTab("lab");
+  }
+  if (a.plan) {
+    let ok = 0;
+    for (const st of a.plan) {
+      let r;
+      if (st.kind === "stop") r = broker.placeOrder({ symbol: st.sym, side: "sell", type: "stop", qty: st.qty, stopPrice: roundTo(st.price, tickStep(st.price)) });
+      else r = broker.placeOrder({ symbol: st.sym, side: st.kind === "buy" ? "buy" : "sell", type: "market", qty: st.qty });
+      if (r.ok) ok++;
+    }
+    done();
+    aiEngine.state.log.unshift({ ts: Date.now(), by: "Du (KI-Plan)", side: "buy", sym: a.plan.map((x) => x.sym).join(", "), qty: ok, price: 0, why: `${ok} von ${a.plan.length} Schritten ausgeführt` });
+    aiEngine.save();
+    return toast(`${ok} von ${a.plan.length} Schritten ausgeführt.`, ok ? "success" : "error", "KI-Plan");
+  }
+  if (a.limit) {
+    const r = broker.placeOrder({ symbol: a.sym, side: a.side, type: "limit", qty: a.qty, limitPrice: a.limit });
+    if (!r.ok) return toast(r.msg, "error", "Order abgelehnt");
+    return done();
+  }
   const order = { symbol: a.sym, side: a.side, type: "market", qty: a.qty };
   if (a.side === "buy" && a.sl && a.tp) {
     const q = market.quote(a.sym);
@@ -2397,6 +2533,12 @@ function bindAI() {
   });
   document.addEventListener("click", (e) => {
     const t = e.target;
+    const spk = t.closest("[data-speak]");
+    if (spk) {
+      const tmp = document.createElement("div");
+      tmp.innerHTML = chat[+spk.dataset.speak].html || "";
+      return speak(tmp.textContent);
+    }
     const ask = t.closest("[data-ask]");
     if (ask) {
       if (settings.view !== "ai") setView("ai");
@@ -2503,21 +2645,28 @@ function choosePlan(id) {
   }
   openCheckout(id);
 }
+// ---------- AKTEX Pay ----------
+// Ein elegantes Bezahl-Sheet für Abos, Shop-Bestellungen und Zahlungsmethoden (Testmodus)
+let pay = null;
 function openCheckout(planId, startStep = 0) {
+  if (startStep === 2) return openPay({ kind: "method" });
   const link = stripeLinkFor(planId, settings.billing);
   if (link && PAYMENT_CONFIG.mode === "live") {
     location.href = link;
     return;
   }
-  co = { step: startStep, planId, billing: settings.billing, addons: settings.addons.slice(), promo: null, method: "card", methodOnly: startStep === 2 };
+  openPay({ kind: "sub", planId, billing: settings.billing, addons: settings.addons.slice() });
+}
+function openPay(order) {
+  const saved = account.state.method;
+  pay = { promo: null, open: null, method: saved ? "saved" : "card", contact: { ...(account.state.profile || { name: "", email: "" }) }, address: { street: "", zip: "", city: "" }, ...order };
+  if (!account.state.profile && pay.kind !== "method") pay.open = "contact";
+  else if (!saved || pay.kind === "method") pay.open = "method";
   closeModals();
   setTimeout(() => {
-    renderCheckout();
-    openModal("#checkout-modal");
+    renderPay();
+    openModal("#pay-modal");
   }, 330);
-}
-function coQuote() {
-  return quote({ planId: co.planId, billing: co.billing, addons: co.addons, promo: co.promo });
 }
 function stepper(el, i) {
   $$(el + " span").forEach((s, k) => {
@@ -2525,89 +2674,106 @@ function stepper(el, i) {
     s.classList.toggle("cur", k === i);
   });
 }
-function summaryBox(q) {
-  const trialEnd = new Date(Date.now() + PAYMENT_CONFIG.trialDays * 86400000).toLocaleDateString("de-DE");
-  return `<div class="co-sum">
-    ${q.lines.map((l) => `<div><span>${esc(l.label)}</span><b>${eur(l.amount)}</b></div>`).join("")}
-    ${q.discount ? `<div class="up"><span>Gutschein ${q.promo.code} – ${esc(q.promo.label)}</span><b>−${eur(q.discount)}</b></div>` : ""}
-    <div class="muted small"><span>enthaltene MwSt. (19 %)</span><span>${eur(q.vat)}</span></div>
-    <div class="co-total"><span>Heute fällig</span><b>0,00 €</b></div>
-    <p class="muted small">${PAYMENT_CONFIG.trialDays} Tage kostenlos testen. Danach ${eur(q.total)} ${q.billing === "yearly" ? "pro Jahr" : "pro Monat"} ab ${trialEnd} (≈ ${eur(q.perMonth)}/Monat), jederzeit zum Ende der Laufzeit kündbar.</p>
-  </div>`;
-}
-function renderCheckout(dir = 1) {
-  const st = $("#co-stage");
-  stepper("#co-steps", co.step);
-  const q = coQuote();
-  let html = "";
-  if (co.step === 0) {
-    const paid = PLANS.filter((p) => p.monthly);
-    html = `<div class="co-grid"><div>
-      <h3>Tarif wählen</h3>
-      <div class="co-plans">${paid.map((p) => `<button class="co-plan ${p.id === co.planId ? "on" : ""} ${p.group ? "ai" : ""}" data-co-plan="${p.id}"><b>${p.name}</b><span>${eur(planPrice(p, co.billing))}<small>/Monat</small></span></button>`).join("")}</div>
-      <div class="seg co-bill"><button class="${co.billing === "monthly" ? "active" : ""}" data-co-bill="monthly">Monatlich</button><button class="${co.billing === "yearly" ? "active" : ""}" data-co-bill="yearly">Jährlich <span class="save-chip">spare bis 23 %</span></button></div>
-      <h4>Add-ons</h4>
-      <div class="co-addons">${ADDONS.map((a) => {
-        const incl = a.includedIn.includes(co.planId);
-        return `<label class="co-addon ${incl ? "incl-row" : ""}"><input type="checkbox" data-co-addon="${a.id}" ${incl || co.addons.includes(a.id) ? "checked" : ""} ${incl ? "disabled" : ""}/><span>${a.icon} ${a.name}</span><b>${incl ? "inklusive" : eur(a.price) + "/Monat"}</b></label>`;
-      }).join("")}</div>
-      <div class="promo"><input type="text" id="co-promo" placeholder="Gutscheincode (z. B. AKTEX20)" value="${co.promo || ""}" /><button class="btn" data-co-promo>Einlösen</button></div>
-    </div><div>${summaryBox(q)}<button class="btn primary big full" data-co-next>Weiter</button></div></div>`;
-  } else if (co.step === 1) {
-    const pr = account.state.profile;
-    html = `<div class="co-narrow"><h3>${pr ? "Angemeldet" : "Konto anlegen"}</h3>
-      ${pr ? `<div class="co-profile">${avatarFor(pr.name)}<div><b>${esc(pr.name)}</b><small class="muted">${esc(pr.email || "keine E-Mail hinterlegt")}</small></div></div>` : `
-      <label class="field"><span>Name</span><input type="text" id="co-name" required maxlength="60" autocomplete="name" /></label>
-      <label class="field"><span>E-Mail (optional)</span><input type="email" id="co-email" maxlength="120" autocomplete="email" /></label>
-      <p class="muted small">Dein Konto wird in dieser Demo nur in diesem Browser gespeichert.</p>`}
-      <div class="co-actions"><button class="btn" data-co-back>Zurück</button><button class="btn primary" data-co-next>Weiter zur Zahlung</button></div></div>`;
-  } else if (co.step === 2) {
-    const m = co.method;
-    const tabs = [
-      ["card", "💳 Karte"],
-      ["paypal", "PayPal"],
-      ["apple", "Apple Pay"],
-      ["google", "Google Pay"],
-      ["sepa", "🏦 SEPA"],
-      ["klarna", "Klarna"],
-    ];
-    let form = "";
-    if (m === "card")
-      form = `<div class="card-visual" id="card-visual"><div class="cv-chip"></div><div class="cv-brand" id="cv-brand"></div><div class="cv-num" id="cv-num">•••• •••• •••• ••••</div><div class="cv-row"><span id="cv-name">KARTENINHABER</span><span id="cv-exp">MM/JJ</span></div></div>
-        <label class="field"><span>Kartennummer</span><input type="text" id="cc-num" inputmode="numeric" autocomplete="off" placeholder="4242 4242 4242 4242" /></label>
-        <div class="row3"><label class="field"><span>Gültig bis</span><input type="text" id="cc-exp" inputmode="numeric" autocomplete="off" placeholder="MM/JJ" /></label><label class="field"><span>Prüfnummer</span><input type="text" id="cc-cvc" inputmode="numeric" autocomplete="off" placeholder="123" maxlength="4" /></label><label class="field"><span>Name</span><input type="text" id="cc-name" autocomplete="off" placeholder="Max Muster" /></label></div>
-        <div class="testcards"><span class="muted small">Testkarten:</span><button class="mini-btn" data-tc="4242424242424242">Erfolg</button><button class="mini-btn" data-tc="4000002500003155">3-D Secure</button><button class="mini-btn" data-tc="4000000000000002">Abgelehnt</button></div>`;
-    else if (m === "sepa")
-      form = `<label class="field"><span>Kontoinhaber</span><input type="text" id="sepa-name" autocomplete="off" placeholder="Max Muster" /></label><label class="field"><span>IBAN</span><input type="text" id="sepa-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" /></label>
-        <div class="testcards"><span class="muted small">Test-IBAN:</span><button class="mini-btn" data-tiban>DE89 3704 … 3000 einsetzen</button></div>
-        <p class="muted small">Ich ermächtige AKTEX, Zahlungen von meinem Konto mittels Lastschrift einzuziehen (SEPA-Lastschriftmandat, Testmodus).</p>`;
-    else form = `<div class="wallet-pane"><div class="wallet-logo ${m}">${{ paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna." }[m]}</div><p class="muted">Du bestätigst die Zahlung im nächsten Schritt im ${{ paypal: "PayPal-Fenster", apple: "Apple-Pay-Dialog", google: "Google-Pay-Dialog", klarna: "Klarna-Fenster" }[m]} (simuliert).</p></div>`;
-    html = `<div class="co-grid"><div>
-      <h3>${co.methodOnly ? "Zahlungsmethode ändern" : "Zahlung"}</h3>
-      <div class="pay-tabs">${tabs.map(([k, l]) => `<button class="${m === k ? "on" : ""}" data-co-method="${k}">${l}</button>`).join("")}</div>
-      <div class="pay-form" id="pay-form">${form}</div>
-      <p class="co-err" id="co-err" hidden></p>
-    </div><div>${co.methodOnly ? "" : summaryBox(q)}
-      ${co.methodOnly ? "" : `<label class="chk legal-chk"><input type="checkbox" id="co-legal" /> Ich akzeptiere die <a href="#" data-legal-open="terms">AGB</a> und habe die <a href="#" data-legal-open="withdrawal">Widerrufsbelehrung</a> und die <a href="#" data-legal-open="risk">Risikohinweise</a> gelesen.</label>`}
-      <button class="btn primary big full" data-co-pay>${co.methodOnly ? "Zahlungsmethode speichern" : "Zahlungspflichtig abonnieren"}</button>
-      ${co.methodOnly ? "" : `<p class="muted small center">Heute 0,00 € · danach ${eur(q.total)} ${q.billing === "yearly" ? "jährlich" : "monatlich"}</p>`}
-      <div class="co-actions"><button class="btn ghost" data-co-back>Zurück</button></div>
-    </div></div>`;
-  } else if (co.step === 3) {
-    const sub = account.state.sub;
-    html = `<div class="co-done"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg>
-      <h2>${co.methodOnly ? "Zahlungsmethode gespeichert" : `Willkommen bei AKTEX ${planById(co.planId).name}!`}</h2>
-      <p class="muted">${co.methodOnly ? esc(account.state.method?.label || "") : `Deine Testphase läuft bis ${new Date(sub.trialEnds).toLocaleDateString("de-DE")}. Alle Funktionen sind sofort freigeschaltet.`}</p>
-      <div class="co-done-actions">${co.methodOnly ? "" : `<button class="btn" data-invoice="0">Beleg ansehen</button>`}<button class="btn primary" data-co-finish>Los geht's</button></div></div>`;
+function payTotals() {
+  if (pay.kind === "sub") {
+    const q = quote({ planId: pay.planId, billing: pay.billing, addons: pay.addons, promo: pay.promo });
+    return { q, due: 0, after: q.total, lines: q.lines, discount: q.discount, vat: q.vat };
   }
-  st.innerHTML = `<div class="co-slide ${dir > 0 ? "fwd" : "back"}">${html}</div>`;
-  if (co.step === 2 && co.method === "card") bindCardInputs();
+  if (pay.kind === "shop") {
+    const lines = pay.items.map((i) => ({ label: `${i.qty}× ${i.name}`, amount: i.price * i.qty }));
+    const sub = lines.reduce((s, l) => s + l.amount, 0);
+    const physical = pay.items.some((i) => i.physical);
+    const ship = physical && sub < 50 ? 4.9 : 0;
+    if (ship) lines.push({ label: "Versand (kostenlos ab 50 €)", amount: ship });
+    const pr = pay.promo && PAYMENT_CONFIG.promos[pay.promo];
+    const discount = pr?.pct ? sub * pr.pct : 0;
+    const total = sub + ship - discount;
+    return { due: total, lines, discount, vat: total - total / (1 + PAYMENT_CONFIG.vatRate), physical };
+  }
+  return { due: 0, lines: [], discount: 0, vat: 0 };
+}
+function methodLabel(m) {
+  return m === "saved" ? account.state.method?.label : { card: "Neue Karte", paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", sepa: "SEPA-Lastschrift", klarna: "Klarna" }[m];
+}
+function renderPay() {
+  const T = payTotals();
+  const trialEnd = new Date(Date.now() + PAYMENT_CONFIG.trialDays * 86400000).toLocaleDateString("de-DE");
+  const p = pay.kind === "sub" ? planById(pay.planId) : null;
+  const row = (key, label, value, body) => `<div class="ps-row ${pay.open === key ? "open" : ""}" data-row="${key}"><button class="ps-head" data-ps-toggle="${key}"><span>${label}</span><b>${value}</b><i>›</i></button><div class="ps-body"><div>${body}</div></div></div>`;
+  let hero;
+  if (pay.kind === "sub") hero = `<div class="ps-product ${p.group ? "ai" : ""}"><div class="orb tiny spin"><i></i><i></i><i></i></div><div><b>${planTitle(p)}</b><small>${pay.billing === "yearly" ? "Jahresabo" : "Monatsabo"} · ${PAYMENT_CONFIG.trialDays} Tage gratis</small></div></div><div class="ps-amount"><span>Heute</span><b>0,00 €</b><small>danach ${eur(T.after)} ${pay.billing === "yearly" ? "pro Jahr" : "pro Monat"} ab ${trialEnd}</small></div>`;
+  else if (pay.kind === "shop") hero = `<div class="ps-product"><div class="ps-cart-ic">🛍️</div><div><b>AKTEX Store</b><small>${pay.items.reduce((s, i) => s + i.qty, 0)} Artikel</small></div></div><div class="ps-amount"><span>Gesamt</span><b>${eur(T.due)}</b><small>inkl. ${eur(T.vat)} MwSt.</small></div>`;
+  else hero = `<div class="ps-product"><div class="ps-cart-ic">💳</div><div><b>Zahlungsmethode</b><small>für dein AKTEX-Abo</small></div></div>`;
+
+  const rows = [];
+  if (pay.kind === "sub") {
+    const paid = PLANS.filter((x) => x.monthly);
+    rows.push(
+      row(
+        "plan",
+        "Tarif",
+        `${p.name} · ${pay.billing === "yearly" ? "jährlich" : "monatlich"}`,
+        `<div class="ps-plans">${paid.map((x) => `<button class="${x.id === pay.planId ? "on" : ""} ${x.group ? "ai" : ""}" data-ps-plan="${x.id}"><b>${x.name}</b><span>${eur(planPrice(x, pay.billing))}</span></button>`).join("")}</div>
+         <div class="seg ps-bill"><button class="${pay.billing === "monthly" ? "active" : ""}" data-ps-bill="monthly">Monatlich</button><button class="${pay.billing === "yearly" ? "active" : ""}" data-ps-bill="yearly">Jährlich <span class="save-chip">−23 %</span></button></div>
+         <div class="ps-addons">${ADDONS.map((a) => {
+           const incl = a.includedIn.includes(pay.planId);
+           return `<label><input type="checkbox" data-ps-addon="${a.id}" ${incl || pay.addons.includes(a.id) ? "checked" : ""} ${incl ? "disabled" : ""}/> ${a.icon} ${a.name}<b>${incl ? "inklusive" : "+" + eur(a.price)}</b></label>`;
+         }).join("")}</div>`
+      )
+    );
+  }
+  if (pay.kind === "shop") rows.push(row("items", "Warenkorb", `${pay.items.length} Position${pay.items.length > 1 ? "en" : ""}`, `<ul class="ps-items">${pay.items.map((i) => `<li><span>${i.icon || "•"}</span><div><b>${esc(i.name)}</b><small>${i.qty} × ${eur(i.price)}</small></div><b>${eur(i.qty * i.price)}</b></li>`).join("")}</ul>`));
+  if (pay.kind !== "method") {
+    rows.push(row("promo", "Gutschein", pay.promo ? `✓ ${pay.promo}` : "Hinzufügen", `<div class="promo"><input type="text" id="ps-promo" placeholder="z. B. AKTEX20" value="${pay.promo || ""}" /><button class="btn" data-ps-promo>Einlösen</button></div>`));
+    rows.push(
+      row(
+        "contact",
+        "Kontakt",
+        pay.contact.name ? esc(pay.contact.name) : "Angeben",
+        `<div class="row2"><label class="field"><span>Name</span><input type="text" id="ps-name" value="${esc(pay.contact.name || "")}" autocomplete="name" maxlength="60" /></label><label class="field"><span>E-Mail (optional)</span><input type="email" id="ps-email" value="${esc(pay.contact.email || "")}" autocomplete="email" maxlength="120" /></label></div><p class="muted small">Nur in diesem Browser gespeichert.</p>`
+      )
+    );
+  }
+  if (T.physical)
+    rows.push(row("address", "Lieferadresse", pay.address.city ? `${esc(pay.address.zip)} ${esc(pay.address.city)}` : "Angeben", `<label class="field"><span>Straße & Nr.</span><input type="text" id="ps-street" value="${esc(pay.address.street)}" autocomplete="street-address" /></label><div class="row2"><label class="field"><span>PLZ</span><input type="text" id="ps-zip" value="${esc(pay.address.zip)}" autocomplete="postal-code" /></label><label class="field"><span>Ort</span><input type="text" id="ps-city" value="${esc(pay.address.city)}" autocomplete="address-level2" /></label></div>`));
+  const m = pay.method;
+  const tabs = [["card", "💳 Karte"], ["paypal", "PayPal"], ["apple", "Apple Pay"], ["google", "Google Pay"], ["sepa", "SEPA"], ["klarna", "Klarna"]];
+  let form = "";
+  if (m === "card")
+    form = `<div class="card-visual" id="card-visual"><div class="cv-chip"></div><div class="cv-brand" id="cv-brand"></div><div class="cv-num" id="cv-num">•••• •••• •••• ••••</div><div class="cv-row"><span id="cv-name">KARTENINHABER</span><span id="cv-exp">MM/JJ</span></div></div>
+      <label class="field"><span>Kartennummer</span><input type="text" id="cc-num" inputmode="numeric" autocomplete="off" placeholder="4242 4242 4242 4242" /></label>
+      <div class="row3"><label class="field"><span>Gültig bis</span><input type="text" id="cc-exp" inputmode="numeric" autocomplete="off" placeholder="MM/JJ" /></label><label class="field"><span>CVC</span><input type="text" id="cc-cvc" inputmode="numeric" autocomplete="off" placeholder="123" maxlength="4" /></label><label class="field"><span>Name</span><input type="text" id="cc-name" autocomplete="off" placeholder="Max Muster" /></label></div>
+      <div class="testcards"><span class="muted small">Testkarten:</span><button class="mini-btn" data-tc="4242424242424242">Erfolg</button><button class="mini-btn" data-tc="4000002500003155">3-D Secure</button><button class="mini-btn" data-tc="4000000000000002">Abgelehnt</button></div>`;
+  else if (m === "sepa") form = `<label class="field"><span>Kontoinhaber</span><input type="text" id="sepa-name" autocomplete="off" /></label><label class="field"><span>IBAN</span><input type="text" id="sepa-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" /></label><div class="testcards"><span class="muted small">Test-IBAN:</span><button class="mini-btn" data-tiban>einsetzen</button></div>`;
+  else if (m !== "saved") form = `<div class="wallet-pane"><div class="wallet-logo ${m}">${{ paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna." }[m]}</div><p class="muted small">Du bestätigst im nächsten Schritt (simuliert).</p></div>`;
+  rows.push(
+    row(
+      "method",
+      "Bezahlen mit",
+      methodLabel(m) || "Wählen",
+      `${account.state.method ? `<button class="ps-saved ${m === "saved" ? "on" : ""}" data-ps-method="saved"><span>💳</span><b>${esc(account.state.method.label)}</b><small>gespeichert</small></button>` : ""}
+       <div class="pay-tabs">${tabs.map(([k, l]) => `<button class="${m === k ? "on" : ""}" data-ps-method="${k}">${l}</button>`).join("")}</div>
+       <div class="pay-form" id="pay-form">${form}</div>`
+    )
+  );
+  const sumRows = `${T.lines.map((l) => `<div><span>${esc(l.label)}</span><b>${eur(l.amount)}</b></div>`).join("")}${T.discount ? `<div class="up"><span>Gutschein ${pay.promo}</span><b>−${eur(T.discount)}</b></div>` : ""}<div class="muted"><span>enthaltene MwSt. (19 %)</span><span>${eur(T.vat)}</span></div>`;
+  $("#pay-sheet").innerHTML = `
+    <div class="ps-top"><div class="ps-brand">ΛKTEX <span>Pay</span></div><span class="test-chip">🧪 Testmodus</span><button class="icon-btn" data-close>✕</button></div>
+    <div class="ps-hero">${hero}</div>
+    <div class="ps-rows">${rows.join("")}</div>
+    ${pay.kind !== "method" ? `<details class="ps-sum"><summary>Kostenübersicht</summary><div class="co-sum">${sumRows}</div></details>` : ""}
+    ${pay.kind !== "method" ? `<label class="chk legal-chk"><input type="checkbox" id="ps-legal" /> Ich akzeptiere die <a href="#" data-legal-open="terms">AGB</a>, die <a href="#" data-legal-open="withdrawal">Widerrufsbelehrung</a> und die <a href="#" data-legal-open="risk">Risikohinweise</a>.</label>` : ""}
+    <p class="co-err" id="co-err" hidden></p>
+    <button class="hold-pay" id="hold-pay" aria-label="Zum Bezahlen gedrückt halten"><span class="hp-fill"></span><span class="hp-label">${pay.kind === "method" ? "Zum Speichern halten" : pay.kind === "sub" ? "Zum Abonnieren halten · zahlungspflichtig" : `Zum Bezahlen halten · ${eur(T.due)}`}</span></button>
+    <p class="ps-foot">🔒 Ende-zu-Ende verschlüsselt · Testmodus: es wird nichts abgebucht, nur Testkarten</p>`;
+  if (m === "card") bindCardInputs();
+  bindHold();
 }
 function bindCardInputs() {
   const num = $("#cc-num");
   const upd = () => {
     const v = num.value.replace(/\D/g, "");
-    $("#cv-num").textContent = (formatCard(v) || "").padEnd(19, "•").replace(/(.{4})(?=.)/g, "$1") || "•••• •••• •••• ••••";
+    $("#cv-num").textContent = formatCard(v) || "•••• •••• •••• ••••";
     const b = cardBrand(v);
     $("#cv-brand").textContent = { visa: "VISA", mastercard: "mastercard", amex: "AMEX" }[b] || "";
     $("#card-visual").dataset.brand = b;
@@ -2630,50 +2796,148 @@ function coError(msg) {
   const e = $("#co-err");
   e.textContent = msg;
   e.hidden = false;
-  shake($("#pay-form"));
+  shake($("#pay-sheet"));
   haptic([30, 40, 30]);
 }
-async function coPay() {
-  const m = co.method;
-  let method;
-  if (!co.methodOnly && !$("#co-legal").checked) return coError("Bitte AGB, Widerrufsbelehrung und Risikohinweise bestätigen.");
-  let needs3ds = false;
-  if (m === "card") {
-    const n = $("#cc-num").value.replace(/\D/g, "");
-    const exp = $("#cc-exp").value.match(/^(\d{2})\/(\d{2})$/);
-    if (!luhn(n)) return coError("Die Kartennummer ist ungültig.");
-    const tc = TEST_CARDS[n];
-    if (!tc) return coError("Testmodus: Bitte nur Testkarten verwenden (z. B. 4242 4242 4242 4242). Echte Karten werden nicht angenommen.");
-    if (!exp || +exp[1] < 1 || +exp[1] > 12 || new Date(2000 + +exp[2], +exp[1]) < new Date()) return coError("Das Ablaufdatum ist ungültig oder abgelaufen.");
-    if (!/^\d{3,4}$/.test($("#cc-cvc").value)) return coError("Bitte die Prüfnummer (CVC) eingeben.");
-    if (tc.result === "declined") return coProcess(() => coError("Die Bank hat die Zahlung abgelehnt (Testkarte „abgelehnt“). Bitte eine andere Karte verwenden."));
-    if (tc.result === "funds") return coProcess(() => coError("Nicht genügend Deckung (Testkarte). Bitte eine andere Karte verwenden."));
-    needs3ds = tc.result === "3ds";
-    method = { type: "card", brand: tc.brand, last4: n.slice(-4), label: `${{ visa: "Visa", mastercard: "Mastercard", amex: "American Express" }[tc.brand]} •••• ${n.slice(-4)}` };
-  } else if (m === "sepa") {
-    const iban = $("#sepa-iban").value.replace(/\s/g, "").toUpperCase();
-    if (!$("#sepa-name").value.trim()) return coError("Bitte den Kontoinhaber angeben.");
-    if (iban !== TEST_IBAN) return coError("Testmodus: Bitte die Test-IBAN DE89 3704 0044 0532 0130 00 verwenden.");
-    method = { type: "sepa", label: `SEPA-Lastschrift •••• ${iban.slice(-4)}` };
-  } else method = { type: m, label: { paypal: "PayPal (Testkonto)", apple: "Apple Pay (Test)", google: "Google Pay (Test)", klarna: "Klarna (Test)" }[m] };
-  coProcess(async () => {
-    if (needs3ds || m !== "card") {
-      const ok = await secureDialog(m, needs3ds);
-      if (!ok) return coError("Die Bestätigung wurde abgebrochen.");
-    }
-    coComplete(method);
+// Gedrückt halten zum Bezahlen (Maus, Touch oder Leertaste/Enter)
+function bindHold() {
+  const btn = $("#hold-pay");
+  let timer = null;
+  const start = (e) => {
+    if (btn.classList.contains("busy")) return;
+    e.preventDefault();
+    const err = validatePay();
+    if (err) return coError(err);
+    $("#co-err").hidden = true;
+    btn.classList.add("holding");
+    haptic(8);
+    timer = setTimeout(() => {
+      btn.classList.remove("holding");
+      btn.classList.add("busy");
+      haptic([12, 30, 12]);
+      runPay();
+    }, 900);
+  };
+  const cancel = () => {
+    clearTimeout(timer);
+    btn.classList.remove("holding");
+  };
+  btn.addEventListener("pointerdown", start);
+  btn.addEventListener("pointerup", cancel);
+  btn.addEventListener("pointerleave", cancel);
+  btn.addEventListener("keydown", (e) => {
+    if ((e.key === " " || e.key === "Enter") && !e.repeat) start(e);
   });
+  btn.addEventListener("keyup", cancel);
 }
-function coProcess(then) {
-  const st = $("#co-stage");
-  const ov = document.createElement("div");
-  ov.className = "co-processing";
-  ov.innerHTML = `<div class="spinner"></div><b>Zahlung wird geprüft …</b><span class="muted small">Sichere Verbindung (Testmodus)</span>`;
-  st.appendChild(ov);
-  setTimeout(() => {
-    ov.remove();
-    then();
-  }, 1300);
+function readPayForms() {
+  if ($("#ps-name")) pay.contact = { name: $("#ps-name").value.trim(), email: $("#ps-email").value.trim() };
+  if ($("#ps-street")) pay.address = { street: $("#ps-street").value.trim(), zip: $("#ps-zip").value.trim(), city: $("#ps-city").value.trim() };
+}
+function openPayRow(key) {
+  pay.open = key;
+  $$("#pay-sheet .ps-row").forEach((r) => r.classList.toggle("open", r.dataset.row === key));
+}
+function validatePay() {
+  readPayForms();
+  if (pay.kind !== "method") {
+    if (!pay.contact.name) {
+      pay.open = "contact";
+      renderPay();
+      return "Bitte deinen Namen angeben.";
+    }
+    if (payTotals().physical && (!pay.address.street || !/^\d{5}$/.test(pay.address.zip) || !pay.address.city)) {
+      pay.open = "address";
+      renderPay();
+      return "Bitte eine vollständige Lieferadresse angeben (PLZ fünfstellig).";
+    }
+    if (!$("#ps-legal").checked) return "Bitte AGB, Widerrufsbelehrung und Risikohinweise bestätigen.";
+  }
+  const m = pay.method;
+  if (m === "saved") {
+    pay.resolved = { method: account.state.method, needs3ds: false };
+    return null;
+  }
+  if (m !== "saved" && pay.open !== "method") {
+    openPayRow("method");
+    if (m === "card" || m === "sepa") return "Bitte die Zahlungsdaten eingeben.";
+  }
+  if (m === "card") {
+    const n = ($("#cc-num")?.value || "").replace(/\D/g, "");
+    const exp = ($("#cc-exp")?.value || "").match(/^(\d{2})\/(\d{2})$/);
+    if (!luhn(n)) return "Die Kartennummer ist ungültig.";
+    const tc = TEST_CARDS[n];
+    if (!tc) return "Testmodus: Bitte nur Testkarten verwenden (z. B. 4242 4242 4242 4242). Echte Karten werden nicht angenommen.";
+    if (!exp || +exp[1] < 1 || +exp[1] > 12 || new Date(2000 + +exp[2], +exp[1]) < new Date()) return "Das Ablaufdatum ist ungültig oder abgelaufen.";
+    if (!/^\d{3,4}$/.test($("#cc-cvc").value)) return "Bitte die Prüfnummer (CVC) eingeben.";
+    pay.resolved = { tc, method: { type: "card", brand: tc.brand, last4: n.slice(-4), label: `${{ visa: "Visa", mastercard: "Mastercard", amex: "American Express" }[tc.brand]} •••• ${n.slice(-4)}` }, needs3ds: tc.result === "3ds" };
+    return null;
+  }
+  if (m === "sepa") {
+    const iban = $("#sepa-iban").value.replace(/\s/g, "").toUpperCase();
+    if (!$("#sepa-name").value.trim()) return "Bitte den Kontoinhaber angeben.";
+    if (iban !== TEST_IBAN) return "Testmodus: Bitte die Test-IBAN DE89 3704 0044 0532 0130 00 verwenden.";
+    pay.resolved = { method: { type: "sepa", label: `SEPA-Lastschrift •••• ${iban.slice(-4)}` }, needs3ds: false };
+    return null;
+  }
+  pay.resolved = { method: { type: m, label: { paypal: "PayPal (Testkonto)", apple: "Apple Pay (Test)", google: "Google Pay (Test)", klarna: "Klarna (Test)" }[m] }, needs3ds: false, wallet: true };
+  return null;
+}
+async function runPay() {
+  const btn = $("#hold-pay");
+  const r = pay.resolved;
+  // Biometrie-/Bestätigungs-Animation
+  btn.querySelector(".hp-label").innerHTML = `<span class="face"><i></i></span> Bestätige …`;
+  await new Promise((res) => setTimeout(res, 700));
+  if (r.tc?.result === "declined" || r.tc?.result === "funds") {
+    btn.classList.remove("busy");
+    renderPay();
+    return coError(r.tc.result === "declined" ? "Die Bank hat die Zahlung abgelehnt (Testkarte „abgelehnt“)." : "Nicht genügend Deckung (Testkarte).");
+  }
+  if (r.needs3ds || r.wallet) {
+    const ok = await secureDialog(pay.method, r.needs3ds);
+    if (!ok) {
+      btn.classList.remove("busy");
+      renderPay();
+      return coError("Die Bestätigung wurde abgebrochen.");
+    }
+  }
+  btn.querySelector(".hp-label").innerHTML = `<span class="spinner sm"></span> Wird verarbeitet …`;
+  await new Promise((res) => setTimeout(res, 800));
+  payComplete(r.method);
+}
+function payComplete(method) {
+  if (pay.contact?.name) account.setProfile({ name: pay.contact.name, email: pay.contact.email || "" });
+  let title;
+  let sub;
+  let actions = `<button class="btn primary" data-ps-done>Fertig</button>`;
+  if (pay.kind === "method") {
+    account.state.method = method;
+    account.save();
+    title = "Gespeichert";
+    sub = method.label;
+  } else if (pay.kind === "sub") {
+    const q = payTotals().q;
+    account.subscribe(q, method);
+    settings.billing = pay.billing;
+    settings.addons = pay.addons.slice();
+    saveSettings();
+    setPlan(pay.planId, true);
+    title = `Willkommen bei ${planTitle(planById(pay.planId))}`;
+    sub = `Testphase bis ${new Date(account.state.sub.trialEnds).toLocaleDateString("de-DE")} · alle Funktionen sind aktiv`;
+    actions = `<button class="btn" data-invoice="0">Beleg</button>${actions}`;
+  } else {
+    const T = payTotals();
+    account.state.method = account.state.method || method;
+    const order = shopComplete(pay.items, T, method, pay.address);
+    title = "Bestellung bestätigt";
+    sub = `Bestellnummer ${order.no} · ${eur(T.due)}`;
+    actions = `<button class="btn" data-invoice="0">Rechnung</button>${actions}`;
+  }
+  confetti();
+  haptic([10, 40, 20]);
+  syncAccountUI();
+  $("#pay-sheet").innerHTML = `<div class="ps-success"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg><h2>${esc(title)}</h2><p class="muted">${esc(sub)}</p><div class="co-done-actions">${actions}</div></div>`;
 }
 function secureDialog(m, is3ds) {
   return new Promise((resolve) => {
@@ -2681,10 +2945,10 @@ function secureDialog(m, is3ds) {
     d.className = "secure-sheet";
     const title = is3ds ? "3-D Secure" : { paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna" }[m];
     d.innerHTML = `<div class="ss-box"><div class="ss-logo ${m}">${title}</div>
-      <p>${is3ds ? "Deine Bank bittet um Bestätigung. Öffne deine Banking-App (simuliert) oder bestätige hier." : "Bestätige das Abo über " + title + " (simuliert)."}</p>
+      <p>${is3ds ? "Deine Bank bittet um Bestätigung. Öffne deine Banking-App (simuliert) oder bestätige hier." : "Bestätige die Zahlung über " + title + " (simuliert)."}</p>
       <div class="ss-face" ${m === "apple" ? "" : "hidden"}><span></span></div>
       <div class="ss-actions"><button class="btn ghost" data-ss="0">Abbrechen</button><button class="btn primary" data-ss="1">${m === "apple" ? "Mit Face ID bestätigen" : "Bestätigen"}</button></div></div>`;
-    $("#checkout-modal .modal-box").appendChild(d);
+    $("#pay-sheet").appendChild(d);
     requestAnimationFrame(() => d.classList.add("open"));
     d.addEventListener("click", (e) => {
       const b = e.target.closest("[data-ss]");
@@ -2702,66 +2966,43 @@ function secureDialog(m, is3ds) {
     });
   });
 }
-function coComplete(method) {
-  if (!account.signedIn && co.profile) account.setProfile(co.profile);
-  if (co.methodOnly) {
-    account.state.method = method;
-    account.save();
-  } else {
-    const q = coQuote();
-    account.subscribe(q, method);
-    settings.billing = co.billing;
-    settings.addons = co.addons.slice();
-    saveSettings();
-    setPlan(co.planId, true);
-    confetti();
-  }
-  haptic([10, 40, 20]);
-  co.step = 3;
-  renderCheckout();
-  syncAccountUI();
-}
 function bindCheckout() {
-  $("#checkout-modal").addEventListener("click", (e) => {
+  $("#pay-sheet").addEventListener("click", (e) => {
     const t = e.target;
-    const pl = t.closest("[data-co-plan]");
+    const tog = t.closest("[data-ps-toggle]");
+    if (tog) {
+      readPayForms();
+      pay.open = pay.open === tog.dataset.psToggle ? null : tog.dataset.psToggle;
+      $$("#pay-sheet .ps-row").forEach((r) => r.classList.toggle("open", r.dataset.row === pay.open));
+      return;
+    }
+    const pl = t.closest("[data-ps-plan]");
     if (pl) {
-      co.planId = pl.dataset.coPlan;
-      return renderCheckout(0);
+      pay.planId = pl.dataset.psPlan;
+      return renderPay();
     }
-    const bl = t.closest("[data-co-bill]");
+    const bl = t.closest("[data-ps-bill]");
     if (bl) {
-      co.billing = bl.dataset.coBill;
-      return renderCheckout(0);
+      pay.billing = bl.dataset.psBill;
+      return renderPay();
     }
-    if (t.closest("[data-co-promo]")) {
-      const code = $("#co-promo").value.trim().toUpperCase();
-      if (!PAYMENT_CONFIG.promos[code]) {
-        shake($(".promo"));
-        return toast(`Der Code „${code}“ ist ungültig. Probier AKTEX20, START oder FOUNDER.`, "error", "Gutschein");
+    if (t.closest("[data-ps-promo]")) {
+      const code = $("#ps-promo").value.trim().toUpperCase();
+      if (!PAYMENT_CONFIG.promos[code] || (pay.kind === "shop" && !PAYMENT_CONFIG.promos[code].pct)) {
+        shake($("#pay-sheet .promo"));
+        return toast(`Der Code „${code}“ ist hier nicht gültig. Probier AKTEX20.`, "error", "Gutschein");
       }
-      co.promo = code;
+      pay.promo = code;
+      pay.open = account.state.method ? null : "method";
       toast(PAYMENT_CONFIG.promos[code].label, "success", `Gutschein ${code} eingelöst`);
-      return renderCheckout(0);
+      return renderPay();
     }
-    if (t.closest("[data-co-next]")) {
-      if (co.step === 1 && !account.signedIn) {
-        const name = $("#co-name").value.trim();
-        if (!name) return shake($("#co-name"));
-        co.profile = { name, email: $("#co-email").value.trim() };
-      }
-      co.step++;
-      return renderCheckout(1);
-    }
-    if (t.closest("[data-co-back]")) {
-      if (co.methodOnly) return closeModals();
-      co.step = Math.max(0, co.step - 1);
-      return renderCheckout(-1);
-    }
-    const me = t.closest("[data-co-method]");
+    const me = t.closest("[data-ps-method]");
     if (me) {
-      co.method = me.dataset.coMethod;
-      return renderCheckout(0);
+      readPayForms();
+      pay.method = me.dataset.psMethod;
+      pay.open = "method";
+      return renderPay();
     }
     const tc = t.closest("[data-tc]");
     if (tc) {
@@ -2769,27 +3010,25 @@ function bindCheckout() {
       $("#cc-num").value = formatCard(tc.dataset.tc);
       $("#cc-exp").value = "12/" + String((new Date().getFullYear() + 3) % 100).padStart(2, "0");
       $("#cc-cvc").value = "123";
-      $("#cc-name").value = account.state.profile?.name || co.profile?.name || "Max Muster";
+      $("#cc-name").value = pay.contact?.name || account.state.profile?.name || "Max Muster";
       ["#cc-num", "#cc-exp", "#cc-name"].forEach((s) => $(s).dispatchEvent(new Event("input")));
       return;
     }
     if (t.closest("[data-tiban]")) {
       $("#sepa-iban").value = "DE89 3704 0044 0532 0130 00";
-      $("#sepa-name").value = account.state.profile?.name || co.profile?.name || "Max Muster";
+      $("#sepa-name").value = pay.contact?.name || "Max Muster";
       return;
     }
-    if (t.closest("[data-co-pay]")) return coPay();
-    if (t.closest("[data-co-finish]")) {
+    if (t.closest("[data-ps-done]")) {
       closeModals();
       if (settings.view === "home") setView("chart");
-      return;
     }
   });
-  $("#checkout-modal").addEventListener("change", (e) => {
-    const a = e.target.dataset?.coAddon;
+  $("#pay-sheet").addEventListener("change", (e) => {
+    const a = e.target.dataset?.psAddon;
     if (!a) return;
-    co.addons = e.target.checked ? [...new Set([...co.addons, a])] : co.addons.filter((x) => x !== a);
-    renderCheckout(0);
+    pay.addons = e.target.checked ? [...new Set([...pay.addons, a])] : pay.addons.filter((x) => x !== a);
+    renderPay();
   });
 }
 
@@ -2814,10 +3053,10 @@ function openCancel() {
   const body = $("#cancel-body");
   if (!sub || sub.status === "canceled") {
     body.innerHTML = sub
-      ? `<p>Dein Abo <b>AKTEX ${planById(sub.plan).name}</b> ist bereits gekündigt und endet am <b>${new Date(sub.cancelAt).toLocaleDateString("de-DE")}</b>.</p><button class="btn" data-resume>Kündigung zurücknehmen</button>`
+      ? `<p>Dein Abo <b>${planTitle(planById(sub.plan))}</b> ist bereits gekündigt und endet am <b>${new Date(sub.cancelAt).toLocaleDateString("de-DE")}</b>.</p><button class="btn" data-resume>Kündigung zurücknehmen</button>`
       : `<p>Du hast aktuell kein kostenpflichtiges Abo. Es gibt nichts zu kündigen.</p>`;
   } else {
-    body.innerHTML = `<p>Vertrag: <b>AKTEX ${planById(sub.plan).name}</b> (${sub.billing === "yearly" ? "jährlich" : "monatlich"}), ${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"}.</p>
+    body.innerHTML = `<p>Vertrag: <b>${planTitle(planById(sub.plan))}</b> (${sub.billing === "yearly" ? "jährlich" : "monatlich"}), ${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"}.</p>
       <p>Die Kündigung wird zum <b>${new Date(sub.renews).toLocaleDateString("de-DE")}</b> wirksam. Bis dahin nutzt du alle Funktionen weiter.</p>
       <label class="field"><span>Grund (optional)</span><select id="cancel-reason"><option value="">Keine Angabe</option><option>Zu teuer</option><option>Nutze es zu selten</option><option>Funktion fehlt</option><option>Wechsel zu anderem Anbieter</option></select></label>
       <button class="btn danger-solid" data-cancel-now>Jetzt kündigen</button>
@@ -2831,7 +3070,7 @@ function bindCancel() {
     if (e.target.closest("[data-cancel-now]")) {
       const sub = account.cancel($("#cancel-reason").value);
       $("#cancel-body").innerHTML = `<div class="co-done small"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg>
-        <h3>Kündigung bestätigt</h3><p>Eingegangen am ${new Date().toLocaleString("de-DE")}. Dein Tarif <b>AKTEX ${planById(sub.plan).name}</b> endet am <b>${new Date(sub.cancelAt).toLocaleDateString("de-DE")}</b>. Danach wechselst du automatisch zu Free.</p></div>`;
+        <h3>Kündigung bestätigt</h3><p>Eingegangen am ${new Date().toLocaleString("de-DE")}. Dein Tarif <b>${planTitle(planById(sub.plan))}</b> endet am <b>${new Date(sub.cancelAt).toLocaleDateString("de-DE")}</b>. Danach wechselst du automatisch zu Free.</p></div>`;
       syncAccountUI();
       toast(`Dein Abo endet am ${new Date(sub.cancelAt).toLocaleDateString("de-DE")}.`, "info", "Kündigung bestätigt");
     }
@@ -2855,7 +3094,7 @@ function checkSubscription() {
   if (sub.status === "trial" && Date.now() >= sub.trialEnds) {
     // erste (Test-)Abbuchung nach der Testphase
     sub.status = "active";
-    account.addInvoice({ date: sub.trialEnds, lines: [{ label: `AKTEX ${planById(sub.plan).name} (${sub.billing === "yearly" ? "jährlich" : "monatlich"})`, amount: sub.total }], total: sub.total, note: "Abbuchung nach der Testphase (Testmodus)" });
+    account.addInvoice({ date: sub.trialEnds, lines: [{ label: `${planTitle(planById(sub.plan))} (${sub.billing === "yearly" ? "jährlich" : "monatlich"})`, amount: sub.total }], total: sub.total, note: "Abbuchung nach der Testphase (Testmodus)" });
     sub.renews = sub.trialEnds + (sub.billing === "yearly" ? 365 : 30) * 86400000;
     account.save();
   }
@@ -2893,7 +3132,7 @@ function renderOnboarding(dir = 1) {
     const p = planById(rec);
     html = `<div class="co-done"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg>
       <h2>Alles bereit, ${esc(ob.name || "Trader")}!</h2><p class="muted">Dein Profil: ${{ new: "Einsteiger", some: "Fortgeschritten", pro: "Profi" }[ob.exp]} · ${{ wealth: "Vermögensaufbau", trade: "Aktiv traden", income: "Dividenden" }[ob.goal]} · Risiko ${ob.risk}/7. Den Autopiloten habe ich auf „${STRATEGIES[ob.risk <= 3 ? "conservative" : ob.risk >= 6 ? "aggressive" : "balanced"].label}“ eingestellt.</p>
-      <div class="rec-card"><span class="usp-eyebrow">Unsere Empfehlung</span><h3>AKTEX ${p.name}</h3><p class="muted">${p.tagline} · ${eur(planPrice(p, settings.billing))}/Monat, ${PAYMENT_CONFIG.trialDays} Tage gratis</p></div>
+      <div class="rec-card"><span class="usp-eyebrow">Unsere Empfehlung</span><h3>${planTitle(p)}</h3><p class="muted">${p.tagline} · ${eur(planPrice(p, settings.billing))}/Monat, ${PAYMENT_CONFIG.trialDays} Tage gratis</p></div>
       <div class="co-done-actions"><button class="btn" data-ob-free>Kostenlos starten</button><button class="btn primary" data-ob-rec="${p.id}">${p.name} gratis testen</button></div></div>`;
   }
   $("#ob-stage").innerHTML = `<div class="co-slide ${dir > 0 ? "fwd" : "back"}">${html}</div>`;
@@ -2964,7 +3203,7 @@ function renderAcctMenu() {
   const pr = account.state.profile;
   const sub = account.state.sub;
   $("#acct-menu").innerHTML = pr
-    ? `<div class="menu-head">${avatarFor(pr.name)}<div><b>${esc(pr.name)}</b><small class="muted">AKTEX ${plan().name}${sub ? " · " + { trial: "Testphase", active: "aktiv", canceled: "gekündigt" }[sub.status] : ""}</small></div></div>
+    ? `<div class="menu-head">${avatarFor(pr.name)}<div><b>${esc(pr.name)}</b><small class="muted">${planTitle(plan())}${sub ? " · " + { trial: "Testphase", active: "aktiv", canceled: "gekündigt" }[sub.status] : ""}</small></div></div>
       <button data-goto="account" data-acct-tab="profile">👤 Profil & Konto</button><button data-goto="account" data-acct-tab="billing">💳 Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">🧾 Rechnungen</button><button data-open-plans>✦ Tarife</button><button data-goto="legal">⚖️ Rechtliches</button><button data-signout>Abmelden</button>`
     : `<div class="menu-head"><span class="avatar" style="--c:#64748b">?</span><div><b>Nicht angemeldet</b><small class="muted">Demo-Depot aktiv</small></div></div><button data-onboard>✨ Konto erstellen</button><button data-open-plans>✦ Tarife</button><button data-goto="legal">⚖️ Rechtliches</button>`;
 }
@@ -2978,13 +3217,13 @@ function renderAccount() {
   let html = "";
   if (acctTab === "profile") {
     html = pr
-      ? `<div class="profile-top">${avatarFor(pr.name).replace('class="avatar"', 'class="avatar xl"')}<div><h2>${esc(pr.name)}</h2><p class="muted">Mitglied seit ${new Date(pr.since).toLocaleDateString("de-DE")} · AKTEX ${plan().name}</p></div></div>
+      ? `<div class="profile-top">${avatarFor(pr.name).replace('class="avatar"', 'class="avatar xl"')}<div><h2>${esc(pr.name)}</h2><p class="muted">Mitglied seit ${new Date(pr.since).toLocaleDateString("de-DE")} · ${planTitle(plan())}</p></div></div>
         <form class="form narrow" id="profile-form"><label class="field"><span>Name</span><input type="text" id="pf-name" value="${esc(pr.name)}" maxlength="60" /></label><label class="field"><span>E-Mail</span><input type="email" id="pf-email" value="${esc(pr.email || "")}" maxlength="120" /></label><button class="btn primary">Speichern</button></form>
         ${account.state.onboarding ? `<div class="kv"><div><span>Erfahrung</span><b>${{ new: "Einsteiger", some: "Fortgeschritten", pro: "Profi" }[account.state.onboarding.exp] || "–"}</b></div><div><span>Ziel</span><b>${{ wealth: "Vermögensaufbau", trade: "Aktiv traden", income: "Dividenden" }[account.state.onboarding.goal] || "–"}</b></div><div><span>Risiko</span><b>${account.state.onboarding.risk}/7</b></div></div><button class="link-btn" data-onboard>Anlageprofil neu einrichten</button>` : `<button class="btn" data-onboard>Anlageprofil einrichten</button>`}`
       : `<div class="empty-state"><div class="orb small"><i></i><i></i><i></i></div><h3>Noch kein Konto</h3><p class="muted">Erstelle ein kostenloses Profil – in 30 Sekunden.</p><button class="btn primary" data-onboard>Konto erstellen</button></div>`;
   } else if (acctTab === "billing") {
     const p = plan();
-    html = `<div class="bill-card ${p.group ? "ai" : ""}"><div><span class="usp-eyebrow">Dein Tarif</span><h2>AKTEX ${p.name}</h2><p class="muted">${sub ? `${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"} · ${sub.billing === "yearly" ? "jährlich" : "monatlich"}` : p.monthly ? "Direkt aktiviert (ohne Checkout)" : "Kostenlos"}</p></div>
+    html = `<div class="bill-card ${p.group ? "ai" : ""}"><div><span class="usp-eyebrow">Dein Tarif</span><h2>${planTitle(p)}</h2><p class="muted">${sub ? `${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"} · ${sub.billing === "yearly" ? "jährlich" : "monatlich"}` : p.monthly ? "Direkt aktiviert (ohne Checkout)" : "Kostenlos"}</p></div>
         ${sub ? `<span class="status-pill ${sub.status}">${{ trial: "Testphase", active: "Aktiv", canceled: "Gekündigt" }[sub.status]}</span>` : ""}</div>
       ${sub ? `<div class="kv"><div><span>${sub.status === "trial" ? "Testphase bis" : sub.status === "canceled" ? "Endet am" : "Nächste Abbuchung"}</span><b>${new Date(sub.status === "canceled" ? sub.cancelAt : sub.status === "trial" ? sub.trialEnds : sub.renews).toLocaleDateString("de-DE")}</b></div><div><span>Zahlungsmethode</span><b>${esc(account.state.method?.label || "–")}</b></div><div><span>Gutschein</span><b>${sub.promo || "–"}</b></div></div>` : ""}
       <div class="btn-row"><button class="btn primary" data-open-plans>Tarif wechseln</button>${sub ? `<button class="btn" data-change-method>Zahlungsmethode ändern</button>` : ""}${PAYMENT_CONFIG.stripePortal ? `<a class="btn" href="${PAYMENT_CONFIG.stripePortal}" target="_blank" rel="noopener">Kundenportal</a>` : ""}</div>
@@ -2994,6 +3233,11 @@ function renderAccount() {
     html = inv.length
       ? `<div class="table-scroll"><table class="grid"><thead><tr><th>Nr.</th><th>Datum</th><th class="num">Betrag</th><th>Status</th><th></th></tr></thead><tbody>${inv.map((x, i) => `<tr><td>${x.no}</td><td>${new Date(x.date).toLocaleDateString("de-DE")}</td><td class="num">${eur(x.total)}</td><td><span class="status ok">${esc(x.status)}</span></td><td class="num"><button class="mini-btn" data-invoice="${i}">Ansehen</button></td></tr>`).join("")}</tbody></table></div>`
       : `<div class="empty">Noch keine Rechnungen. Sie erscheinen hier nach dem ersten Checkout.</div>`;
+  } else if (acctTab === "orders") {
+    const os = shop.state.orders;
+    html = os.length
+      ? os.map((o) => `<div class="order"><div class="order-h"><b>${o.no}</b><span class="muted">${new Date(o.date).toLocaleString("de-DE")}</span><span class="status ok">${esc(o.status)}</span><b>${eur(o.total)}</b></div><ul>${o.items.map((i) => `<li>${i.qty}× ${esc(i.name)}</li>`).join("")}</ul>${o.codes.length ? `<p>🎁 ${o.codes.map((c) => `<code>${c.code}</code> (${eur(c.value)})`).join(" · ")}</p>` : ""}${o.address ? `<small class="muted">Lieferung an ${esc(o.address.street)}, ${esc(o.address.zip)} ${esc(o.address.city)}</small>` : ""}</div>`).join("")
+      : `<div class="empty">Noch keine Bestellungen. <button class="link-btn" data-goto="shop">Zum Store</button></div>`;
   } else if (acctTab === "notify") {
     html = `${tog("push", "Push-Benachrichtigungen", "Order-Ausführungen und Alarme als System-Mitteilung")}${tog("fills", "Order-Bestätigungen", "Meldung bei jeder Ausführung")}${tog("ai", "AKTEX AI-Meldungen", "Signalwechsel, Risiken, Autopilot-Entscheidungen")}${tog("email", "Wochenreport per E-Mail", "Zusammenfassung deines Depots (im Echtbetrieb)")}
       <button class="btn" data-perm>Browser-Benachrichtigungen erlauben</button>`;
@@ -3128,11 +3372,15 @@ function togglePopover(id, render) {
 let cmdIdx = 0;
 function cmdItems(q) {
   const items = [
-    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["ai", "AKTEX AI"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
+    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["ai", "AKTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
     { icon: "✦", label: "Tarife ansehen", run: () => openPlans() },
     { icon: "💳", label: "Pro abonnieren (Checkout)", run: () => openCheckout("pro") },
     { icon: "🤖", label: "AI Premium abonnieren (Checkout)", run: () => openCheckout("aiprem") },
     { icon: "💡", label: "Idee teilen", run: () => openIdeaModal() },
+    { icon: "⏱", label: "Zeitplan / Timer anlegen", run: () => setAiTab("plan") },
+    { icon: "🧪", label: "AI-Labor öffnen", run: () => setAiTab("lab") },
+    { icon: "🎬", label: "Chart-Clip aufnehmen", run: () => recordChartClip() },
+    { icon: "🛍️", label: "Warenkorb öffnen", run: () => openCart() },
     { icon: "⏰", label: "Alarm erstellen", run: () => openAlertModal(settings.symbol, market.get(settings.symbol).price) },
     { icon: "◐", label: "Hell/Dunkel umschalten", run: () => $("#theme-btn").click() },
     { icon: "🔗", label: "Link teilen", run: () => share() },
@@ -3295,6 +3543,1005 @@ function odometer(el, text) {
   for (const ch of text) if (/\d/.test(ch)) cols[k++].style.transform = `translateY(-${+ch * 10}%)`;
 }
 
+// ---------- AKTEX AI: Tabs, Zeitplan, Labor, Features ----------
+let aiTab = "cockpit";
+let labSym = "NVDA";
+let labFocus = null;
+let labBt = "sma";
+let schedType = "once";
+function setAiTab(tab) {
+  aiTab = tab;
+  if (settings.view !== "ai") setView("ai");
+  $$("#ai-tabs [data-aitab]").forEach((b) => b.classList.toggle("active", b.dataset.aitab === tab));
+  $$(".ai-pane").forEach((p) => (p.hidden = p.dataset.aipane !== tab));
+  if (tab === "plan") renderPlanPane();
+  if (tab === "lab") renderLab();
+  if (tab === "features") renderFeatures();
+  if (tab === "cockpit") renderAIView();
+}
+
+// SVG-Helfer
+function svgLine(series, { w = 560, h = 210, pad = 62, band = null, markX = null, yFmt = (v) => num(v) } = {}) {
+  const all = series.flatMap((s) => s.data).concat(band ? band.flatMap((b) => [b.lo, b.hi]) : []);
+  const lo = Math.min(...all);
+  const hi = Math.max(...all);
+  // Breite aus allen Reihen inkl. Versatz und Bändern
+  const n = Math.max(...series.map((s) => s.data.length + (s.offset || 0)), ...(band ? band.flatMap((b) => b.pts.map((p) => p.i + 1)) : [0]));
+  const X = (i) => pad + (i / Math.max(1, n - 1)) * (w - pad - 8);
+  const Y = (v) => 8 + (1 - (v - lo) / (hi - lo || 1)) * (h - 26);
+  const ticks = [lo, (lo + hi) / 2, hi];
+  let out = ticks.map((t) => `<line x1="${pad}" x2="${w - 8}" y1="${Y(t)}" y2="${Y(t)}" class="gl"/><text x="${pad - 4}" y="${Y(t) + 3}" text-anchor="end" class="ax">${yFmt(t)}</text>`).join("");
+  if (band) {
+    for (const b of band) {
+      const up = b.pts.map((p) => `${X(p.i)},${Y(p.hi)}`).join(" ");
+      const dn = b.pts.map((p) => `${X(p.i)},${Y(p.lo)}`).reverse().join(" ");
+      out += `<polygon points="${up} ${dn}" fill="${b.color}" opacity="${b.op}"/>`;
+    }
+  }
+  for (const s of series) {
+    const off = s.offset || 0;
+    out += `<polyline points="${s.data.map((v, i) => `${X(i + off)},${Y(v)}`).join(" ")}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} class="ln"/>`;
+  }
+  if (markX != null) out += `<line x1="${X(markX)}" x2="${X(markX)}" y1="4" y2="${h - 16}" stroke="var(--muted)" stroke-dasharray="3 3"/>`;
+  return `<svg viewBox="0 0 ${w} ${h}" class="lab-svg">${out}</svg>`;
+}
+function bars(items, { max = null, fmt = (v) => nf2.format(v) } = {}) {
+  const m = max ?? Math.max(...items.map((i) => Math.abs(i.v)), 1e-9);
+  return `<div class="hbars">${items.map((i) => `<div class="hb"><span>${esc(i.label)}</span><div class="hb-track"><i class="${i.v >= 0 ? "pos" : "neg"}" style="width:${(Math.abs(i.v) / m) * 50}%;${i.v >= 0 ? "left:50%" : `right:50%`}"></i></div><b class="${i.v > 0 ? "up" : i.v < 0 ? "down" : ""}">${fmt(i.v)}</b></div>`).join("")}</div>`;
+}
+function gaugeSmall(v, label) {
+  const a = Math.PI * (1 - v / 100);
+  const x = 60 + 46 * Math.cos(a);
+  const y = 58 - 46 * Math.sin(a);
+  return `<svg viewBox="0 0 120 70" class="g-small"><defs><linearGradient id="gg" x1="0" x2="1"><stop offset="0" stop-color="#ef4444"/><stop offset=".5" stop-color="#eab308"/><stop offset="1" stop-color="#22c55e"/></linearGradient></defs><path d="M14 58 A46 46 0 0 1 106 58" fill="none" stroke="url(#gg)" stroke-width="9" stroke-linecap="round"/><circle cx="${x}" cy="${y}" r="7" fill="var(--text)" stroke="var(--panel)" stroke-width="3"/><text x="60" y="54" text-anchor="middle" class="g-val">${v}</text></svg><div class="g-lbl2">${label}</div>`;
+}
+
+// Labor
+function renderLab() {
+  const sel = $("#lab-sym");
+  if (!sel.options.length) sel.innerHTML = STOCKS.map((s) => `<option value="${s.s}">${s.s} – ${esc(s.n)}</option>`).join("");
+  sel.value = labSym;
+  const sym = labSym;
+  const card = (id, title, sub, body, wide = false) => `<section class="card lab-card ${wide ? "wide" : ""} ${labFocus === id ? "focus" : ""}" id="lab-${id}"><div class="card-head"><h2>${title}</h2><span class="muted">${sub}</span></div>${body}</section>`;
+  const f = lab.forecast(market, sym, 20);
+  const hist = f.history;
+  const H = hist.length;
+  const fanPts = (k1, k2) => f.path.map((p, t) => ({ i: H - 1 + t, lo: p[k1], hi: p[k2] }));
+  const forecastSvg = svgLine(
+    [
+      { data: hist, color: "#6ea2f2" },
+      { data: f.path.map((p) => p.p50), color: "#d4af37", dash: "5 4", offset: H - 1 },
+    ],
+    { w: 1100, h: 280, pad: 70, band: [{ pts: fanPts("p5", "p95"), color: "#7c9cff", op: 0.16 }, { pts: fanPts("p25", "p75"), color: "#b36bff", op: 0.24 }].map((b) => ({ ...b, lo: Math.min(...b.pts.map((p) => p.lo)), hi: Math.max(...b.pts.map((p) => p.hi)) })), markX: H - 1 }
+  );
+  const e20 = f.path[20];
+  const m = lab.mtf(market, sym);
+  const ex = lab.explain(market, sym);
+  const bars1d = lab.barsFor(market, sym, "1D");
+  const pats = lab.patterns(bars1d);
+  const dv = lab.divergence(bars1d);
+  const sq = lab.squeeze(bars1d);
+  const ad = lab.adx(bars1d);
+  const zn = lab.zones(bars1d);
+  const bt = lab.backtest(market, sym, labBt);
+  const mc = lab.monteCarlo(broker, market, 252, 500);
+  const vr = lab.valueAtRisk(broker, market);
+  const ddw = lab.drawdown(broker);
+  const corrSyms = (Object.keys(broker.state.positions).length >= 3 ? Object.keys(broker.state.positions) : settings.watchlist).slice(0, 8);
+  const cm = lab.correlation(market, corrSyms);
+  const si = lab.sentimentIndex(market);
+  const rot = lab.sectorRotation(market);
+  const an = lab.anomalies(market);
+  const sim = lab.similar(market, sym);
+  const rs = lab.relStrength(market, sym);
+  const rb = lab.rebalance(broker, market, "equal");
+  const v = aiEngine.scan(sym);
+  const sz = lab.sizing(broker.equity(), v.price, v.h.setup.sl, 1);
+  const hit = lab.hitProbability(v.price, v.h.setup.tp, v.h.setup.sl);
+  const vreg = lab.volRegime(market, sym);
+  const conf = lab.confidence(market, sym);
+  const cs = lab.communitySentiment(community, sym);
+  // Histogramm Monte Carlo
+  const bins = 24;
+  const mn = mc.finals[0];
+  const mxv = mc.finals[mc.finals.length - 1];
+  const hgram = new Array(bins).fill(0);
+  for (const x of mc.finals) hgram[Math.min(bins - 1, Math.floor(((x - mn) / (mxv - mn || 1)) * bins))]++;
+  const hmax = Math.max(...hgram);
+  const mcSvg = `<svg viewBox="0 0 520 170" class="lab-svg">${hgram.map((c, i) => { const x0 = mn + ((mxv - mn) * i) / bins; return `<rect x="${10 + i * 20.8}" y="${150 - (c / hmax) * 135}" width="18" height="${(c / hmax) * 135}" rx="3" fill="${x0 < mc.start ? "#ef4444" : "#22c55e"}" opacity=".75"/>`; }).join("")}<text x="10" y="166" class="ax">${bigEur(mn)}</text><text x="510" y="166" text-anchor="end" class="ax">${bigEur(mxv)}</text></svg>`;
+  const j = aiEngine.state.journal.slice(0, 8);
+  const sells = aiEngine.state.sells;
+  $("#lab-grid").innerHTML = [
+    card("forecast", "📈 Prognose-Korridor", `${sym} · 20 Handelstage`, `${forecastSvg}<div class="lab-kv"><div><span>Median</span><b>${eur(e20.p50)}</b></div><div><span>50 %-Spanne</span><b>${num(e20.p25)} – ${num(e20.p75)}</b></div><div><span>90 %-Spanne</span><b>${num(e20.p5)} – ${num(e20.p95)}</b></div><div><span>Chance +10 %</span><b>${Math.round(lab.probReach(market, sym, f.price * 1.1, 20) * 100)} %</b></div></div>`, true),
+    card("mtf", "🧭 Multi-Timeframe & Konfidenz", sym, `<div class="mtf">${m.frames.map((x) => `<div class="mtf-f"><span>${x.tf}</span>${gaugeSmall(Math.round((x.score + 1) * 50), x.rating.label)}</div>`).join("")}</div><div class="lab-kv"><div><span>Konsens</span><b>${m.rating.label}</b></div><div><span>Übereinstimmung</span><b>${Math.round(m.agreement * 100)} %</b></div><div><span>Signal-Konfidenz</span><b>${conf} %</b></div><div><span>Volatilität</span><b>${vreg.label}</b></div></div>`),
+    card("explain", "🔍 Warum dieses Rating?", `${sym} · ${ex.rating.label}`, bars(ex.items.slice(0, 10).map((i) => ({ label: i.name, v: i.contrib * 100 })), { fmt: (v) => (v > 0 ? "+" : "") + nf2.format(v) })),
+    card("patterns", "🕯️ Muster & Zonen", `${sym} · Tageschart`, `<ul class="lab-list">${pats.map((p) => `<li>${p.bias > 0 ? "🟢" : p.bias < 0 ? "🔴" : "⚪"} <b>${p.name}</b> – ${p.text}</li>`).join("") || "<li class='muted'>Keine markanten Kerzenmuster</li>"}${dv ? `<li>${dv.type === "bullish" ? "🟢" : "🔴"} ${dv.text}</li>` : ""}<li>${sq.squeeze ? "🟡 Bollinger-Squeeze aktiv" : "Bandbreite normal"}${sq.breakout ? ` · ${sq.breakout === "up" ? "🚀 Ausbruch nach oben" : "⚠️ Bruch nach unten"}` : ""}</li>${ad ? `<li>ADX ${nf2.format(ad.value)} – ${ad.label}</li>` : ""}</ul><div class="zones"><div><span>Widerstände</span>${zn.resistances.map((z) => `<b class="down">${num(z.level)}</b>`).join("") || "–"}</div><div><span>Unterstützungen</span>${zn.supports.map((z) => `<b class="up">${num(z.level)}</b>`).join("") || "–"}</div></div>`),
+    card("backtest", "⏪ Strategie-Backtest", `${sym} · ${bt.label}`, `<div class="seg bt-seg">${[["sma", "SMA 20/50"], ["rsi", "RSI"], ["macd", "MACD"]].map(([k, l]) => `<button class="${labBt === k ? "active" : ""}" data-bt="${k}">${l}</button>`).join("")}</div>${svgLine([{ data: bt.bhCurve, color: "var(--muted)", width: 1.5 }, { data: bt.curve, color: "#22c55e" }], { w: 1100, h: 260, pad: 70, yFmt: (v) => nf2.format((v - 1) * 100) + " %" })}<div class="lab-kv"><div><span>Strategie</span><b class="${cls(bt.ret)}">${pct(bt.ret)}</b></div><div><span>Kaufen & Halten</span><b class="${cls(bt.buyHold)}">${pct(bt.buyHold)}</b></div><div><span>Trades / Treffer</span><b>${bt.trades} / ${bt.winRate == null ? "–" : Math.round(bt.winRate * 100) + " %"}</b></div><div><span>Max. Rückgang</span><b class="down">${pct(bt.maxDD)}</b></div></div>`, true),
+    card("montecarlo", "🎲 Monte-Carlo-Depot", "500 Szenarien · 1 Jahr", `${mcSvg}<div class="lab-kv"><div><span>Median</span><b>${eur(mc.p50)}</b></div><div><span>Schlecht (5 %)</span><b class="down">${eur(mc.p5)}</b></div><div><span>Gut (95 %)</span><b class="up">${eur(mc.p95)}</b></div><div><span>Verlust-Wahrsch.</span><b>${Math.round(mc.lossProb * 100)} %</b></div></div>`),
+    card("risk", "🛡️ Risiko-Kennzahlen", "Historische Simulation", `<div class="lab-kv big"><div><span>VaR 95 % (1 Tag)</span><b class="down">−${eur(vr.var95)}</b></div><div><span>VaR 99 % (1 Tag)</span><b class="down">−${eur(vr.var99)}</b></div><div><span>Expected Shortfall</span><b class="down">−${eur(vr.es95)}</b></div><div><span>Drawdown vom Hoch</span><b class="${ddw.dd < 0 ? "down" : ""}">${pct(ddw.dd)}</b></div></div>`),
+    card("corr", "🧩 Korrelations-Matrix", corrSyms.length ? corrSyms.join(" · ") : "–", `<div class="corr" style="--n:${corrSyms.length}"><span></span>${corrSyms.map((s) => `<span class="ch">${s}</span>`).join("")}${cm.m.map((row, i) => `<span class="ch">${corrSyms[i]}</span>${row.map((c) => `<span class="cc" style="background:${c >= 0 ? `rgba(239,68,68,${c * 0.8})` : `rgba(79,140,255,${-c * 0.8})`}" title="${nf2.format(c)}">${c.toFixed(1).replace(".", ",")}</span>`).join("")}`).join("")}</div><p class="muted small">Rot = laufen zusammen (Klumpenrisiko), Blau = gleichen sich aus.</p>`),
+    card("sentiment", "🌡️ AKTEX Sentiment-Index", si.label, `<div class="si">${gaugeSmall(si.value, si.label)}</div><div class="lab-kv"><div><span>Marktbreite</span><b>${Math.round(si.parts.breadth * 100)} %</b></div><div><span>Momentum 5T</span><b class="${cls(si.parts.mom)}">${pct(si.parts.mom)}</b></div><div><span>Ø RSI</span><b>${nf2.format(si.parts.rsi)}</b></div><div><span>Community ${sym}</span><b>${cs.n ? Math.round(cs.bull * 100) + " % bullisch" : "–"}</b></div></div>`),
+    card("sectors", "🔄 Sektor-Rotation", "5 Tage", bars(rot.map((x) => ({ label: `${x.name} · ${x.phase}`, v: x.d5 * 100 })), { fmt: (v) => (v > 0 ? "+" : "") + nf2.format(v) + " %" })),
+    card("anomalies", "📡 Anomalie-Radar", "Ungewöhnliche Bewegungen", `<ul class="lab-list">${an.map((x) => `<li><button class="sym-chip" data-open-sym="${x.sym}">${x.sym}</button> ${pct(x.chg)} · ${nf2.format(x.z)} σ · Volumen ${nf2.format(x.volX)}×</li>`).join("") || "<li class='muted'>Alles ruhig.</li>"}</ul>`),
+    card("similar", "🧬 Ähnliche Setups & Relative Stärke", sym, `<ul class="lab-list">${sim.map((x) => `<li><button class="sym-chip" data-lab-sym="${x.sym}">${x.sym}</button> ${Math.round(x.similarity * 100)} % ähnlich</li>`).join("")}</ul><div class="lab-kv"><div><span>20T ${sym}</span><b class="${cls(rs.own)}">${pct(rs.own)}</b></div><div><span>20T Markt</span><b class="${cls(rs.market)}">${pct(rs.market)}</b></div><div><span>Rang</span><b>${rs.rank} / ${rs.of}</b></div></div>`),
+    card("sizing", "📐 Positionsgröße & Treffer-Chance", `${sym} · 1 % Risiko`, `<div class="lab-kv"><div><span>Einstieg</span><b>${eur(v.price)}</b></div><div><span>Stop (1,5 × ATR)</span><b class="down">${eur(v.h.setup.sl)}</b></div><div><span>Ziel (3 × ATR)</span><b class="up">${eur(v.h.setup.tp)}</b></div><div><span>Stückzahl</span><b>${sz.qty}</b></div><div><span>Positionswert</span><b>${eur(sz.value)}</b></div><div><span>Ziel vor Stop</span><b>${hit == null ? "–" : Math.round(hit * 100) + " %"}</b></div></div>${sz.qty ? `<button class="btn primary small" data-lab-buy="${sym}" data-qty="${sz.qty}">${sz.qty} ${sym} mit Stop & Ziel kaufen</button>` : ""}`),
+    card("rebalance", "⚖️ Rebalancing", "Gleichgewichtet · 10 % Cash", rb.targets.length ? `${bars(rb.targets.map((x) => ({ label: x.sym, v: (x.target - x.cur) * 100 })), { fmt: (v) => (v > 0 ? "+" : "") + nf2.format(v) + " Pp" })}${rb.trades.length ? `<button class="btn primary small" data-lab-rebal>Rebalancing ausführen (${rb.trades.length} Trades)</button>` : "<p class='muted'>Bereits ausgewogen.</p>"}` : "<p class='muted'>Noch keine Positionen.</p>"),
+    card("journal", "📓 Trade-Journal der AI", `${aiEngine.state.journal.length} Einträge`, j.length ? `<div class="table-scroll"><table class="grid mini-table"><thead><tr><th>Zeit</th><th>Trade</th><th>Rating</th><th class="num">RSI</th><th class="num">Konf.</th></tr></thead><tbody>${j.map((x) => `<tr><td>${clock(x.ts)}</td><td><span class="tag ${x.side}">${x.side === "buy" ? "K" : "V"}</span> ${x.qty} ${x.sym}</td><td>${x.rating}</td><td class="num">${x.rsi ?? "–"}</td><td class="num">${x.conf ?? "–"}</td></tr>`).join("")}</tbody></table></div>` : "<p class='muted'>Noch keine AI-Trades.</p>", true),
+    card("perf", "🏁 Autopilot-Performance", STRATEGIES[aiEngine.state.config.strategy]?.label || "", `<div class="lab-kv"><div><span>Realisiert</span><b class="${cls(aiEngine.state.aiPnl)}">${sEur(aiEngine.state.aiPnl)}</b></div><div><span>Verkäufe / Gewinner</span><b>${sells.n} / ${sells.wins}</b></div><div><span>Trefferquote</span><b>${sells.n ? Math.round((sells.wins / sells.n) * 100) + " %" : "–"}</b></div><div><span>Schattenmodus</span><b class="${cls(aiEngine.state.shadow.pnl)}">${sEur(aiEngine.state.shadow.pnl)}</b></div></div><p class="muted small">Schattenmodus: Der Autopilot entscheidet, handelt aber nicht – so testest du Strategien risikofrei.</p>`),
+    card("tax", "🧾 Steuer-Tipps", "Sparerpauschbetrag & Verluste", `<ul class="lab-list">${lab.taxHints(broker, market).map((h) => `<li>${h}</li>`).join("")}</ul>`),
+  ].join("");
+  if (labFocus) {
+    const el = $("#lab-" + labFocus);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    labFocus = null;
+  }
+}
+
+// Zeitplan
+function renderPlanPane() {
+  const sel = $("#sc-sym");
+  if (!sel.options.length) {
+    sel.innerHTML = STOCKS.map((s) => `<option value="${s.s}">${s.s}</option>`).join("");
+    $("#sc-cond").innerHTML = Object.entries(CONDITIONS).map(([k, c]) => `<option value="${k}">${c.label}</option>`).join("");
+    const d = new Date(Date.now() + 5 * 60000);
+    d.setSeconds(0, 0);
+    $("#sc-at").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  }
+  sel.value = sel.value || settings.symbol;
+  renderSchedPreview();
+  renderSchedList();
+  renderApHours();
+}
+function schedFromForm() {
+  const action = { side: $("#sc-side").value, sym: $("#sc-sym").value, mode: $("#sc-mode").value, value: +$("#sc-val").value, limit: parseFloat($("#sc-limit").value) || null };
+  if (schedType === "once") return { type: "once", action, at: new Date($("#sc-at").value).getTime() };
+  if (schedType === "recurring") return { type: "recurring", action, every: $("#sc-every").value, weekday: +$("#sc-wd").value, monthday: +$("#sc-wd").value, time: $("#sc-time").value };
+  return { type: "rule", action, cond: { kind: $("#sc-cond").value, value: +$("#sc-cval").value }, window: { from: $("#sc-from").value, to: $("#sc-to").value }, once: $("#sc-once").checked, cooldownMin: 60 };
+}
+function renderSchedPreview() {
+  try {
+    const t = schedFromForm();
+    $("#sched-preview").innerHTML = `⏱ ${esc(scheduler.describe({ ...t, at: t.at || Date.now() }))}`;
+  } catch (_) {
+    $("#sched-preview").textContent = "";
+  }
+}
+const fmtCountdown = (ms) => {
+  if (ms <= 0) return "jetzt";
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return d ? `${d} T ${h} Std.` : h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+};
+function renderSchedList() {
+  const tasks = scheduler.state.tasks;
+  $("#sched-count").textContent = `${tasks.filter((t) => t.enabled).length} aktiv`;
+  $("#sched-list").innerHTML = tasks.length
+    ? tasks
+        .map((t) => {
+          const due = t.type === "once" ? t.at : t.type === "recurring" ? t.next : null;
+          const total = t.type === "once" ? t.at - t.created : t.type === "recurring" ? (t.every === "hourly" ? 3600000 : t.every === "monthly" ? 30 * 86400000 : t.every === "weekly" ? 7 * 86400000 : 86400000) : 1;
+          const left = due ? due - Date.now() : 0;
+          const prog = due ? Math.max(0, Math.min(1, 1 - left / total)) : 0;
+          const C = 2 * Math.PI * 18;
+          return `<div class="sched-item ${t.enabled ? "" : "off"} ${t.type}">
+            <div class="cd-ring"><svg viewBox="0 0 44 44"><circle cx="22" cy="22" r="18" class="ring-bg"/><circle cx="22" cy="22" r="18" class="ring-fg" stroke="${t.type === "rule" ? "#a78bfa" : t.action.side === "buy" ? "#22c55e" : "#ef4444"}" stroke-dasharray="${(t.type === "rule" ? 1 : prog) * C} ${C}" transform="rotate(-90 22 22)"/></svg><span>${t.type === "rule" ? "⚡" : t.type === "recurring" ? "🔁" : "⏱"}</span></div>
+            <div class="si-body"><b>${esc(scheduler.describe(t))}</b><small class="muted">${t.done ? "erledigt" : !t.enabled ? "pausiert" : t.type === "rule" ? `überwacht live · ${t.runs.length}× ausgelöst` : `in <span class="cd" data-due="${due}">${fmtCountdown(left)}</span>`}${t.runs[0] ? ` · zuletzt: ${esc(t.runs[0].msg)}` : ""}</small></div>
+            <div class="si-actions"><button class="mini-btn" data-sched-run="${t.id}" title="Jetzt ausführen">▶</button><button class="switch ${t.enabled ? "on" : ""}" data-sched-toggle="${t.id}"><i></i></button><button class="mini-btn" data-sched-del="${t.id}" title="Löschen">✕</button></div>
+          </div>`;
+        })
+        .join("")
+    : `<div class="empty-state small"><div class="orb tiny spin"><i></i><i></i><i></i></div><p class="muted">Noch keine Aufträge. Lege links einen an – oder sag im Chat z. B. „Kaufe 10 SAP um 15:30“.</p></div>`;
+}
+function renderApHours() {
+  const c = aiEngine.state.config;
+  const tog = (k, label, desc) => `<div class="set-row"><div><b>${label}</b><small class="muted">${desc}</small></div><button class="switch ${c[k] ? "on" : ""}" data-apbool="${k}"><i></i></button></div>`;
+  $("#ap-hours").innerHTML = `
+    ${tog("hoursOn", "Handelszeiten festlegen", "Der Autopilot handelt nur im gewählten Zeitfenster")}
+    <div class="row3 ${c.hoursOn ? "" : "dim"}"><label class="field"><span>Von</span><input type="time" data-apstr="from" value="${c.from}" /></label><label class="field"><span>Bis</span><input type="time" data-apstr="to" value="${c.to}" /></label><div class="field"><span>Tage</span><div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<button class="${c.days.includes(d) ? "on" : ""}" data-apday="${d}">${WEEKDAYS[d]}</button>`).join("")}</div></div></div>
+    <label class="slider"><span>Notbremse: Pause bei Tagesverlust<b id="apv-maxDailyLoss">−${c.maxDailyLoss} %</b></span><input type="range" data-ap="maxDailyLoss" min="1" max="15" step="0.5" value="${c.maxDailyLoss}" /></label>
+    <label class="slider"><span>Mindest-Konfidenz für Käufe<b id="apv-minConf">${c.minConf} %</b></span><input type="range" data-ap="minConf" min="30" max="90" step="5" value="${c.minConf}" /></label>
+    ${tog("atrStops", "Smart-Stops (ATR)", "Stop und Ziel passen sich der Schwankungsbreite jeder Aktie an")}
+    ${tog("shadow", "Schattenmodus", "Autopilot entscheidet, handelt aber nicht – risikofrei testen")}
+    <p class="muted small">${aiEngine.inHours() ? "🟢 Aktuell im Handelsfenster" : "🌙 Aktuell außerhalb des Handelsfensters"}</p>`;
+}
+function tickCountdowns() {
+  const sc = $("#spot-cd");
+  if (sc && settings.view === "shop") sc.textContent = fmtCountdown(shop.spotlightEndsIn());
+  if (settings.view !== "ai" || aiTab !== "plan") return;
+  for (const el of $$("#sched-list .cd")) el.textContent = fmtCountdown(+el.dataset.due - Date.now());
+}
+setInterval(() => {
+  if (aiMode()) scheduler.tick();
+  tickCountdowns();
+}, 1000);
+scheduler.on((e) => {
+  if (e.kind === "run") {
+    toast(e.run.msg, e.run.ok ? "success" : "error", "⏱ Zeitplan");
+    beep(e.run.ok ? 1180 : 300, 0.1);
+    notify("AKTEX Zeitplan", e.run.msg);
+  }
+  if (settings.view === "ai" && aiTab === "plan") renderSchedList();
+});
+
+function bindAiTabs() {
+  $("#ai-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-aitab]");
+    if (b) setAiTab(b.dataset.aitab);
+  });
+  $("#sched-type").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-st]");
+    if (!b) return;
+    schedType = b.dataset.st;
+    $$("#sched-type button").forEach((x) => x.classList.toggle("active", x === b));
+    $$(".st-pane").forEach((p) => (p.hidden = p.dataset.stp !== schedType));
+    if (schedType === "rule" && !$("#sc-cval").value) $("#sc-cval").value = roundTo(market.get($("#sc-sym").value).price * 0.97, 0.01).toFixed(2);
+    renderSchedPreview();
+  });
+  $("#sched-form").addEventListener("input", renderSchedPreview);
+  $("#sched-form").addEventListener("change", (e) => {
+    if (e.target.id === "sc-sym" && schedType === "rule") $("#sc-cval").value = roundTo(market.get(e.target.value).price * 0.97, 0.01).toFixed(2);
+    renderSchedPreview();
+  });
+  $("#sched-form").addEventListener("click", (e) => {
+    const q = e.target.closest("[data-qt]");
+    if (!q) return;
+    let d;
+    if (q.dataset.qt === "open") {
+      d = new Date();
+      d.setDate(d.getDate() + 1);
+      d.setHours(9, 0, 0, 0);
+    } else d = new Date(Date.now() + +q.dataset.qt * 60000);
+    $("#sc-at").value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    renderSchedPreview();
+  });
+  $("#sched-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!aiMode()) return openPlans("Zeitpläne und Regeln sind Teil von AKTEX AI.");
+    const t = schedFromForm();
+    if (!(t.action.value > 0)) return shake($("#sc-val"));
+    if (t.type === "once" && !(t.at > Date.now())) return toast("Bitte einen Zeitpunkt in der Zukunft wählen.", "error");
+    if (t.type === "rule" && CONDITIONS[t.cond.kind].unit != null && !(t.cond.value > 0)) return shake($("#sc-cval"));
+    scheduler.add(t);
+    haptic(12);
+    toast(scheduler.describe(scheduler.state.tasks[0]), "success", "⏱ Auftrag angelegt");
+    renderSchedList();
+  });
+  $("#sched-list").addEventListener("click", (e) => {
+    const r = e.target.closest("[data-sched-run]");
+    if (r) {
+      const t = scheduler.state.tasks.find((x) => x.id === r.dataset.schedRun);
+      if (t) scheduler.execute(t, "manuell gestartet");
+      return renderSchedList();
+    }
+    const tg = e.target.closest("[data-sched-toggle]");
+    if (tg) return scheduler.toggle(tg.dataset.schedToggle);
+    const d = e.target.closest("[data-sched-del]");
+    if (d) return scheduler.remove(d.dataset.schedDel);
+  });
+  $("#ap-hours").addEventListener("click", (e) => {
+    const c = aiEngine.state.config;
+    const b = e.target.closest("[data-apbool]");
+    if (b) {
+      c[b.dataset.apbool] = !c[b.dataset.apbool];
+      aiEngine.save();
+      haptic(6);
+      return renderApHours();
+    }
+    const d = e.target.closest("[data-apday]");
+    if (d) {
+      const day = +d.dataset.apday;
+      c.days = c.days.includes(day) ? c.days.filter((x) => x !== day) : [...c.days, day];
+      aiEngine.save();
+      return renderApHours();
+    }
+  });
+  $("#ap-hours").addEventListener("change", (e) => {
+    const k = e.target.dataset.apstr;
+    if (!k) return;
+    aiEngine.state.config[k] = e.target.value;
+    aiEngine.save();
+  });
+  $("#lab-sym").addEventListener("change", (e) => {
+    labSym = e.target.value;
+    renderLab();
+  });
+  $("#lab-grid").addEventListener("click", (e) => {
+    const bt = e.target.closest("[data-bt]");
+    if (bt) {
+      labBt = bt.dataset.bt;
+      labFocus = "backtest";
+      return renderLab();
+    }
+    const ls = e.target.closest("[data-lab-sym]");
+    if (ls) {
+      labSym = ls.dataset.labSym;
+      return renderLab();
+    }
+    const lb = e.target.closest("[data-lab-buy]");
+    if (lb) {
+      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKTEX AI.");
+      const v = aiEngine.scan(lb.dataset.labBuy);
+      const step = tickStep(v.price);
+      const r = broker.placeOrder({ symbol: lb.dataset.labBuy, side: "buy", type: "market", qty: +lb.dataset.qty, sl: roundTo(v.h.setup.sl, step), tp: roundTo(v.h.setup.tp, step) });
+      if (!r.ok) toast(r.msg, "error");
+      return;
+    }
+    if (e.target.closest("[data-lab-rebal]")) {
+      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKTEX AI.");
+      const rb = lab.rebalance(broker, market, "equal");
+      let ok = 0;
+      for (const t of rb.trades) if (broker.placeOrder({ symbol: t.sym, side: t.side, type: "market", qty: t.qty }).ok) ok++;
+      toast(`${ok} von ${rb.trades.length} Trades ausgeführt.`, "success", "Rebalancing");
+      return renderLab();
+    }
+  });
+  $("#feat-grid").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-feat]");
+    if (!b) return;
+    FEATURES[+b.dataset.feat][3]();
+  });
+}
+
+// Die 50 neuen AKTEX-AI-Funktionen
+const ask = (q) => () => {
+  setAiTab("cockpit");
+  setTimeout(() => sendChat(q), 250);
+};
+const labGo = (tool) => () => {
+  labFocus = tool;
+  labSym = settings.symbol;
+  setAiTab("lab");
+};
+const planGo = () => setAiTab("plan");
+const FEATURES = [
+  ["🧭", "Multi-Timeframe-Konsens", "15m, 1H, 4H und 1T in einem Urteil", labGo("mtf")],
+  ["🎯", "Signal-Konfidenz", "Wie einig sind sich Indikatoren und Zeitebenen?", labGo("mtf")],
+  ["🔍", "Score-Erklärung", "Welche Indikatoren das Rating treiben", labGo("explain")],
+  ["🕯️", "Kerzenmuster-Erkennung", "Hammer, Engulfing, Morning Star & Co.", labGo("patterns")],
+  ["↘️", "RSI-Divergenzen", "Versteckte Trendwenden früh erkennen", labGo("patterns")],
+  ["🟡", "Bollinger-Squeeze", "Ruhe vor dem Sturm erkennen", labGo("patterns")],
+  ["🚀", "Ausbruchs-Erkennung", "20-Tage-Hoch oder -Tief gebrochen", labGo("patterns")],
+  ["💪", "Trendstärke (ADX)", "Trend oder Seitwärtsphase?", labGo("patterns")],
+  ["🧱", "Unterstützungs-/Widerstandszonen", "Aus echten Umkehrpunkten geclustert", labGo("patterns")],
+  ["🏎️", "Relative Stärke", "Aktie vs. Gesamtmarkt mit Rang", labGo("similar")],
+  ["🔄", "Sektor-Rotation", "Führende und schwächelnde Branchen", labGo("sectors")],
+  ["🌡️", "Sentiment-Index", "Angst & Gier des Marktes (0–100)", labGo("sentiment")],
+  ["🌪️", "Volatilitäts-Regime", "Ruhig, normal oder stürmisch", labGo("mtf")],
+  ["📡", "Anomalie-Radar", "Ungewöhnliche Kurs- und Volumensprünge", labGo("anomalies")],
+  ["📈", "Prognose-Korridor", "Wahrscheinliche Kursspanne für 20 Tage", labGo("forecast")],
+  ["🤔", "Was-wäre-wenn-Simulator", "Szenarien für eine Investition", ask("Was wäre, wenn ich 5000 € in NVDA investiere?")],
+  ["🎲", "Monte-Carlo-Depot", "500 Zukunftsszenarien für dein Depot", labGo("montecarlo")],
+  ["🛡️", "Value at Risk", "Möglicher Verlust an einem schlechten Tag", labGo("risk")],
+  ["🧩", "Korrelations-Matrix", "Klumpenrisiko sichtbar machen", labGo("corr")],
+  ["⏪", "Strategie-Backtest", "3 Strategien gegen Kaufen & Halten", labGo("backtest")],
+  ["🧬", "Ähnliche Setups", "Aktien mit gleichem technischem Bild", labGo("similar")],
+  ["⚔️", "Aktienvergleich", "Zwei Aktien Seite an Seite", ask("Vergleiche SAP und MSFT")],
+  ["📋", "Themen-Watchlists", "Dividende, Wachstum, Value, Tech …", ask("Baue mir eine Watchlist für Dividende")],
+  ["📐", "Positionsgrößen-Rechner", "Stückzahl nach Risiko in %", labGo("sizing")],
+  ["⚖️", "Rebalancing-Assistent", "Depot auf Zielgewichte bringen", labGo("rebalance")],
+  ["🧾", "Steuer-Tipps", "Pauschbetrag & Verlustverrechnung", labGo("tax")],
+  ["👥", "Community-Stimmung", "Long/Short-Verhältnis der Ideen", labGo("sentiment")],
+  ["✍️", "Ideen-Entwurf per AI", "Die AI schreibt deine nächste Idee", ask("Schreib eine Idee zu SAP")],
+  ["🧠", "Chat-Gedächtnis", "„Und davon 5 kaufen?“ – versteht Bezüge", ask("Was hältst du von ASML?")],
+  ["⌨️", "Slash-Befehle", "/prognose, /backtest, /risiko, /plan …", ask("/hilfe")],
+  ["🔊", "Vorlesen", "Antworten per Sprachausgabe anhören", ask("Wie ist die Marktlage heute?")],
+  ["💬", "Limit-Orders per Chat", "„Kaufe 10 SAP limit 230“", ask("Kaufe 10 SAP limit 230")],
+  ["🔔", "Alarme per Chat", "„Alarm wenn TSLA über 260“", ask("Alarm wenn TSLA über 260")],
+  ["⏱", "Zeitgesteuerte Orders", "Kaufen oder verkaufen zur Wunschzeit", planGo],
+  ["🔁", "Sparpläne", "Täglich, wöchentlich, monatlich investieren", ask("Sparplan 200 € ASML monatlich")],
+  ["⚡", "Wenn-Dann-Regeln", "Kurs, RSI, Rating oder Tagesänderung als Auslöser", ask("Kaufe NVDA wenn RSI unter 30")],
+  ["⏳", "Live-Countdowns", "Jeder Auftrag mit Countdown und Verlauf", planGo],
+  ["🕘", "Autopilot-Handelszeiten", "Nur zu deinen Zeiten und Tagen handeln", planGo],
+  ["🛑", "Tagesverlust-Notbremse", "Pausiert den Autopiloten automatisch", planGo],
+  ["🎛️", "5 Strategie-Presets", "Defensiv, AI-Mix, Offensiv, Momentum, Rebound", () => setAiTab("cockpit")],
+  ["🎚️", "Konfidenz-Schwelle", "Autopilot kauft nur bei hoher Sicherheit", planGo],
+  ["📏", "Smart-Stops (ATR)", "Stops passend zur Schwankung jeder Aktie", planGo],
+  ["👻", "Schattenmodus", "Strategien risikofrei mitlaufen lassen", planGo],
+  ["🏁", "Autopilot-Performance", "Trefferquote und Gewinn der AI-Trades", labGo("perf")],
+  ["📓", "Automatisches Trade-Journal", "Jeder Trade mit Rating, RSI und Konfidenz", labGo("journal")],
+  ["☀️", "Briefing & Rückblick", "Morgens planen, abends auswerten", ask("/rückblick")],
+  ["🪪", "Persönliches Anlageprofil", "Risiko und Ziel aus dem Onboarding fließen ein", () => (account.signedIn ? ((acctTab = "profile"), setView("account")) : openOnboarding())],
+  ["🎯", "Ziel-Wahrscheinlichkeit", "Chance, das Ziel vor dem Stop zu erreichen", labGo("sizing")],
+  ["📉", "Drawdown-Wächter", "Abstand deines Depots zum Höchststand", labGo("risk")],
+  ["🗓️", "KI-Tagesplan", "Die 3–6 wichtigsten Schritte für heute", ask("/plan")],
+];
+function renderFeatures() {
+  $("#feat-grid").innerHTML = FEATURES.map(([ic, name, desc], i) => `<button class="feat" data-feat="${i}" style="--k:${i}"><span class="feat-n">${String(i + 1).padStart(2, "0")}</span><span class="feat-ic">${ic}</span><b>${name}</b><small>${desc}</small></button>`).join("");
+}
+
+// Vorlesen
+function speak(text) {
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "de-DE";
+    u.rate = 1.03;
+    speechSynthesis.speak(u);
+  } catch (_) {
+    toast("Sprachausgabe wird von diesem Browser nicht unterstützt.", "info");
+  }
+}
+
+// ---------- AKTEX Store ----------
+let shopCat = "all";
+const basketAmt = {};
+const MERCH_SVG = {
+  hoodie: `<path d="M60 38 L84 26 Q100 40 116 26 L140 38 L162 70 L146 82 L140 74 L140 150 L60 150 L60 74 L54 82 L38 70 Z" fill="rgba(255,255,255,.1)" stroke="rgba(255,255,255,.35)" stroke-width="2"/><path d="M88 30 Q100 52 112 30" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="2"/><path d="M90 108 L100 88 L110 108" fill="none" stroke="#ffcf6e" stroke-width="3.5"/>`,
+  cap: `<path d="M50 110 Q52 58 100 54 Q148 58 150 110 Z" fill="rgba(255,255,255,.12)" stroke="rgba(255,255,255,.35)" stroke-width="2"/><path d="M50 110 Q100 100 172 118 Q150 128 100 122 Q60 120 50 110" fill="rgba(255,255,255,.2)"/><path d="M90 98 L100 78 L110 98" fill="none" stroke="#ffcf6e" stroke-width="3.5"/>`,
+  mug: `<rect x="62" y="56" width="68" height="84" rx="10" fill="rgba(255,255,255,.14)" stroke="rgba(255,255,255,.35)" stroke-width="2"/><path d="M130 76 Q156 76 156 98 Q156 120 130 120" fill="none" stroke="rgba(255,255,255,.35)" stroke-width="7"/><path d="M86 108 L96 88 L106 108" fill="none" stroke="#ffcf6e" stroke-width="3.5"/>`,
+  note: `<rect x="64" y="40" width="80" height="110" rx="8" fill="rgba(255,255,255,.14)" stroke="rgba(255,255,255,.35)" stroke-width="2"/><rect x="64" y="40" width="12" height="110" rx="4" fill="rgba(255,255,255,.2)"/><path d="M96 102 L106 82 L116 102" fill="none" stroke="#ffcf6e" stroke-width="3.5"/>`,
+};
+function productArt(p) {
+  const id = "pg" + p.id;
+  const merch = MERCH_SVG[p.icon];
+  return `<svg viewBox="0 0 200 170" class="p-art"><defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${p.grad[0]}"/><stop offset="1" stop-color="${p.grad[1]}"/></linearGradient><radialGradient id="${id}r" cx=".3" cy=".2" r=".8"><stop offset="0" stop-color="#fff" stop-opacity=".25"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient></defs><rect width="200" height="170" fill="url(#${id})"/><rect width="200" height="170" fill="url(#${id}r)"/>${[...Array(14)].map((_, i) => `<circle cx="${(i * 53) % 200}" cy="${(i * 37) % 170}" r="${(i % 3) * 0.6 + 0.6}" fill="#fff" opacity=".5"/>`).join("")}${merch || `<text x="100" y="104" text-anchor="middle" font-size="58">${p.icon}</text>`}</svg>`;
+}
+function renderShop() {
+  if (settings.view !== "shop") return;
+  const bs = shop.baskets();
+  const top = bs[0];
+  const amt = (b) => basketAmt[b.id] || 1000;
+  const bsSpark = (b, w = 320, h = 90) => spark(b.series, w, h, b.d20 >= 0 ? "#22c55e" : "#ef4444");
+  $("#spot").innerHTML = `
+    <div class="spot-main">
+      <div class="spot-glow"></div>
+      <span class="spot-badge">🔥 Im Spotlight · wechselt in <b id="spot-cd">${fmtCountdown(shop.spotlightEndsIn())}</b></span>
+      <div class="spot-grid">
+        <div>
+          <div class="spot-ic">${top.icon}</div>
+          <h1>${top.name}</h1>
+          <p class="muted">${top.desc} · ${top.syms.length} Aktien, gleich gewichtet</p>
+          <div class="spot-perf"><div><span>Heute</span><b class="${cls(top.d1)}">${pct(top.d1)}</b></div><div><span>5 Tage</span><b class="${cls(top.d5)}">${pct(top.d5)}</b></div><div><span>20 Tage</span><b class="${cls(top.d20)}">${pct(top.d20)}</b></div></div>
+          <div class="spot-members">${top.syms.map((x) => `<button class="sym-chip" data-open-sym="${x}">${x}</button>`).join("")}</div>
+          <div class="amt-row">${[500, 1000, 2500, 5000].map((a) => `<button class="${amt(top) === a ? "on" : ""}" data-bamt="${top.id}" data-v="${a}">${a.toLocaleString("de-DE")} €</button>`).join("")}</div>
+          <button class="btn primary big" data-binvest="${top.id}">Paket für ${eur(amt(top))} investieren</button>
+          <p class="muted small">Kauf per Market-Order aus deinem Depot-Guthaben. Ordergebühren laut Tarif (${eur(plan().fee)} je Aktie im Tarif ${plan().name}).</p>
+        </div>
+        <div class="spot-chart">${bsSpark(top, 420, 200)}<span class="muted small">Paket-Index · 30 Tage</span></div>
+      </div>
+    </div>
+    <div class="spot-side">${bs.slice(1, 3).map((b) => `<button class="spot-mini" data-shopcat="basket"><span class="spot-ic sm">${b.icon}</span><div><b>${b.name}</b><small class="${cls(b.d5)}">${pct(b.d5)} in 5 Tagen</small></div>${spark(b.series, 120, 40, b.d5 >= 0 ? "#22c55e" : "#ef4444")}</button>`).join("")}
+      <button class="spot-mini gold" data-shop-add="r-picks"><span class="spot-ic sm">📑</span><div><b>Top 10 AI-Picks von heute</b><small>Report · ${eur(4.99)}</small></div></button></div>`;
+  $("#shop-cats").innerHTML = Object.entries(CATS).map(([k, l]) => `<button class="${shopCat === k ? "active" : ""}" data-shopcat="${k}">${l}</button>`).join("");
+  const basketCard = (b, i) => `<article class="p-card basket" style="--k:${i}"><div class="b-head"><span class="spot-ic sm">${b.icon}</span><div><b>${b.name}</b><small class="muted">${b.syms.join(" · ")}</small></div>${i === 0 ? '<span class="hot">🔥 #1</span>' : ""}</div>${bsSpark(b, 300, 70)}<div class="spot-perf sm"><div><span>5T</span><b class="${cls(b.d5)}">${pct(b.d5)}</b></div><div><span>20T</span><b class="${cls(b.d20)}">${pct(b.d20)}</b></div></div><div class="amt-row sm">${[500, 1000, 2500].map((a) => `<button class="${amt(b) === a ? "on" : ""}" data-bamt="${b.id}" data-v="${a}">${a.toLocaleString("de-DE")} €</button>`).join("")}</div><button class="btn primary" data-binvest="${b.id}">Investieren</button></article>`;
+  const prodCard = (p, i) => {
+    const owned = shop.owns(p.id);
+    const inCart = shop.state.cart.some((c) => c.id === p.id);
+    const cta = owned ? `<button class="btn" data-shop-open="${p.id}">${p.cat === "strategy" ? "Aktivieren" : "Öffnen"}</button>` : `<button class="btn primary" data-shop-add="${p.id}">${inCart && !p.physical && !p.gift ? "✓ Im Warenkorb" : "In den Warenkorb"}</button>`;
+    return `<article class="p-card" style="--k:${i}">${productArt(p)}<div class="p-body"><span class="p-cat">${CATS[p.cat]}</span><b>${esc(p.name)}</b><small>${esc(p.desc)}</small><div class="p-foot"><b class="p-price">${eur(p.price)}</b>${owned ? '<span class="incl">gekauft</span>' : ""}${cta}</div></div></article>`;
+  };
+  let html = "";
+  if (shopCat === "basket") html = bs.map(basketCard).join("");
+  else if (shopCat === "all") html = bs.slice(0, 3).map(basketCard).join("") + PRODUCTS.map(prodCard).join("");
+  else html = PRODUCTS.filter((p) => p.cat === shopCat).map(prodCard).join("");
+  $("#shop-grid").innerHTML = html;
+}
+function syncCart() {
+  const n = shop.count();
+  $("#cart-badge").hidden = !n;
+  $("#cart-badge").textContent = n;
+}
+function openCart() {
+  renderCart();
+  const d = $("#cart-drawer");
+  d.hidden = false;
+  requestAnimationFrame(() => d.classList.add("open"));
+}
+function closeCart() {
+  const d = $("#cart-drawer");
+  d.classList.remove("open");
+  setTimeout(() => (d.hidden = true), 380);
+}
+function renderCart() {
+  const items = shop.cartItems();
+  const sub = items.reduce((s, i) => s + i.price * i.qty, 0);
+  const physical = items.some((i) => i.physical);
+  $("#cart-body").innerHTML = items.length
+    ? `<ul class="cart-list">${items.map((i) => `<li><div class="cart-art">${productArt(i)}</div><div><b>${esc(i.name)}</b><small class="muted">${eur(i.price)}</small>${i.physical || i.gift ? `<div class="qty-step"><button data-cart-q="${i.id}" data-d="-1">−</button><span>${i.qty}</span><button data-cart-q="${i.id}" data-d="1">+</button></div>` : ""}</div><div class="cart-r"><b>${eur(i.price * i.qty)}</b><button class="link-btn" data-cart-rm="${i.id}">Entfernen</button></div></li>`).join("")}</ul>
+      <div class="co-sum"><div><span>Zwischensumme</span><b>${eur(sub)}</b></div>${physical ? `<div><span>Versand</span><b>${sub >= 50 ? "kostenlos" : eur(4.9)}</b></div>` : ""}<div class="co-total"><span>Gesamt</span><b>${eur(sub + (physical && sub < 50 ? 4.9 : 0))}</b></div><div class="muted small"><span>inkl. 19 % MwSt.</span></div></div>
+      <button class="hold-pay static" data-cart-checkout><span class="hp-label">Zur Kasse mit ΛKTEX Pay</span></button>`
+    : `<div class="empty-state"><div class="spot-ic">🛍️</div><h3>Dein Warenkorb ist leer</h3><p class="muted">Entdecke Strategien, Kurse und Merch im Store.</p><button class="btn primary" data-goto="shop" data-close-drawer>Zum Store</button></div>`;
+}
+// Wird von AKTEX Pay nach erfolgreicher (Test-)Zahlung aufgerufen
+function shopComplete(items, T, method, address) {
+  const order = shop.complete(items, T.due, method, address);
+  account.addInvoice({ date: Date.now(), lines: T.lines.concat(T.discount ? [{ label: `Gutschein ${pay.promo}`, amount: -T.discount }] : []), total: T.due, note: `Bestellung ${order.no}${order.codes.length ? " · Geschenkcodes: " + order.codes.map((c) => c.code).join(", ") : ""}` });
+  account.save();
+  syncCart();
+  if (settings.view === "shop") renderShop();
+  if (order.codes.length) setTimeout(() => toast(order.codes.map((c) => `${c.code} (${eur(c.value)})`).join(" · "), "success", "🎁 Deine Geschenkcodes"), 1200);
+  return order;
+}
+function investBasket(id) {
+  const b = BASKETS.find((x) => x.id === id);
+  const amount = basketAmt[id] || 1000;
+  const per = amount / b.syms.length;
+  let ok = 0;
+  const fails = [];
+  for (const sym of b.syms) {
+    const q = market.quote(sym);
+    const qty = Math.floor(per / q.ask);
+    if (qty < 1) {
+      fails.push(sym);
+      continue;
+    }
+    const r = broker.placeOrder({ symbol: sym, side: "buy", type: "market", qty });
+    if (r.ok) ok++;
+    else fails.push(sym);
+  }
+  if (ok) {
+    confetti();
+    toast(`${ok} von ${b.syms.length} Aktien gekauft${fails.length ? ` (${fails.join(", ")}: Betrag zu klein oder Kaufkraft fehlt)` : ""}.`, "success", `${b.icon} ${b.name} im Depot`);
+  } else toast("Betrag zu klein oder nicht genug Kaufkraft.", "error");
+}
+const LESSON_TEXT = {
+  "Was ist eine Aktie?": "Eine Aktie ist ein Anteil an einem Unternehmen. Steigt der Wert des Unternehmens oder schüttet es Gewinne aus, profitierst du anteilig – sinkt er, verlierst du.",
+  "Orderarten: Market, Limit, Stopp": "Market kauft sofort zum aktuellen Kurs. Limit kauft nur zu deinem Wunschpreis oder besser. Stopp wird zur Market-Order, sobald eine Schwelle erreicht ist – ideal zum Absichern.",
+  "Kosten verstehen: Spread & Gebühren": "Der Spread ist die Differenz zwischen Kauf- und Verkaufskurs. Dazu kommen Ordergebühren. AKTEX zeigt dir vor jeder Order alle Kosten.",
+  "Risiko begrenzen mit Stop-Loss": "Lege vor dem Kauf fest, wie viel du maximal verlieren willst – etwa 1 % des Depots pro Trade – und setze den Stop entsprechend.",
+  "Diversifikation richtig": "Verteile dein Geld auf mehrere Aktien und Branchen. Mehr als 20 % in einer Aktie erhöht das Klumpenrisiko deutlich.",
+  "Sparpläne und Zinseszins": "Regelmäßig kleine Beträge investieren glättet Einstiegskurse. Über Jahre wirkt der Zinseszins – Gewinne erzeugen weitere Gewinne.",
+  "Dein erster Plan": "Ziel festlegen, Risiko definieren, 3–5 Aktien aus verschiedenen Branchen wählen, Stops setzen, Sparplan einrichten, monatlich prüfen.",
+};
+function openContent(p) {
+  let html = "";
+  if (p.lessons) html = `<ol class="lessons">${p.lessons.map((l, i) => `<li><details ${i === 0 ? "open" : ""}><summary><span>${i + 1}</span>${esc(l)}</summary><p>${esc(LESSON_TEXT[l] || "In dieser Lektion lernst du die Grundlagen zu „" + l + "“ Schritt für Schritt – mit Beispielen aus dem AKTEX-Chart und einer kurzen Übung im Demo-Depot.")}</p></details></li>`).join("")}</ol>`;
+  else if (p.report === "picks") {
+    const top = aiEngine.scanAll(STOCKS.map((s) => s.s)).slice(0, 10);
+    html = `<p class="muted small">Stand ${new Date().toLocaleString("de-DE")} · automatisch von AKTEX AI berechnet · keine Anlageberatung</p><ol class="report-list">${top.map((v) => `<li><div><b>${v.sym}</b> <span class="muted">${esc(v.name)}</span></div><div class="up">${v.rating.label} · Konfidenz ${lab.confidence(market, v.sym)} %</div><small>${esc(v.reason)} · Ziel ${num(v.h.setup.tp)} · Stop ${num(v.h.setup.sl)}</small></li>`).join("")}</ol>`;
+  } else if (p.report === "outlook") {
+    const si = lab.sentimentIndex(market);
+    const rot = lab.sectorRotation(market);
+    const an = lab.anomalies(market);
+    html = `<p class="muted small">Stand ${new Date().toLocaleString("de-DE")}</p><h4>Stimmung: ${si.value}/100 – ${si.label}</h4>${gaugeSmall(si.value, si.label)}<h4>Sektoren</h4>${bars(rot.map((x) => ({ label: x.name, v: x.d20 * 100 })), { fmt: (v) => (v > 0 ? "+" : "") + nf2.format(v) + " %" })}<h4>Auffällig</h4><p>${an.map((x) => `<b>${x.sym}</b> ${pct(x.chg)}`).join(" · ") || "Keine Anomalien."}</p><h4>Szenario</h4><p>${si.value > 55 ? "Die Stimmung ist optimistisch – Gewinne laufen lassen, aber Stops nachziehen." : si.value < 45 ? "Vorsicht dominiert – Qualitätswerte mit Rabatt beobachten, Positionen klein halten." : "Neutraler Markt – selektiv nach relativer Stärke vorgehen."}</p>`;
+  }
+  $("#content-title").textContent = p.name;
+  $("#content-body").innerHTML = html;
+  openModal("#content-modal");
+}
+function bindShop() {
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const sc = t.closest("[data-shopcat]");
+    if (sc) {
+      shopCat = sc.dataset.shopcat;
+      if (settings.view !== "shop") setView("shop");
+      return renderShop();
+    }
+    const ba = t.closest("[data-bamt]");
+    if (ba) {
+      basketAmt[ba.dataset.bamt] = +ba.dataset.v;
+      return renderShop();
+    }
+    const bi = t.closest("[data-binvest]");
+    if (bi) return investBasket(bi.dataset.binvest);
+    const add = t.closest("[data-shop-add]");
+    if (add) {
+      const ok = shop.add(add.dataset.shopAdd);
+      haptic(8);
+      syncCart();
+      if (ok === false) return openCart();
+      toast(shop.product(add.dataset.shopAdd).name, "success", "🛍️ Im Warenkorb");
+      const badge = $("#cart-btn");
+      badge.classList.remove("bump");
+      void badge.offsetWidth;
+      badge.classList.add("bump");
+      if (settings.view === "shop") renderShop();
+      return;
+    }
+    const op = t.closest("[data-shop-open]");
+    if (op) {
+      const p = shop.product(op.dataset.shopOpen);
+      if (p.unlock) {
+        Object.assign(aiEngine.state.config, p.unlock);
+        aiEngine.save();
+        return toast(`Autopilot nutzt jetzt „${p.name}“.`, "success", "Strategie aktiviert");
+      }
+      return openContent(p);
+    }
+    if (t.closest("#cart-btn")) return openCart();
+    if (t.closest("[data-close-drawer]") || t.id === "cart-drawer") return closeCart();
+    const q = t.closest("[data-cart-q]");
+    if (q) {
+      const c = shop.state.cart.find((x) => x.id === q.dataset.cartQ);
+      shop.setQty(q.dataset.cartQ, (c?.qty || 0) + +q.dataset.d);
+      syncCart();
+      return renderCart();
+    }
+    const rm = t.closest("[data-cart-rm]");
+    if (rm) {
+      shop.setQty(rm.dataset.cartRm, 0);
+      syncCart();
+      renderCart();
+      if (settings.view === "shop") renderShop();
+      return;
+    }
+    if (t.closest("[data-cart-checkout]")) {
+      closeCart();
+      return openPay({ kind: "shop", items: shop.cartItems() });
+    }
+  });
+  syncCart();
+}
+
+// ---------- AKTEX Clips ----------
+const CLIPS_KEY = "aktex-v2-clips";
+const clipsState = (() => {
+  try {
+    return { liked: [], comments: {}, reported: [], myGen: [], ...JSON.parse(localStorage.getItem(CLIPS_KEY) || "{}") };
+  } catch (_) {
+    return { liked: [], comments: {}, reported: [], myGen: [] };
+  }
+})();
+const saveClips = () => {
+  try {
+    localStorage.setItem(CLIPS_KEY, JSON.stringify(clipsState));
+  } catch (_) {
+    /* ignorieren */
+  }
+};
+let clipFilter = "foryou";
+let clipList = [];
+let clipUrls = [];
+let activeClip = null;
+let clipRaf = 0;
+let clipT0 = 0;
+let clipPausedAt = null;
+let clipObserver = null;
+let pendingFile = null;
+const seededComments = ["Starke Analyse 🔥", "Genau mein Level!", "Bin auch Long 🚀", "Stop ist mir zu eng", "Danke fürs Teilen!", "Wie siehst du den RSI?"];
+async function loadClips() {
+  const demo = demoClips(market, community.traders);
+  const mine = await idbAll();
+  clipUrls.forEach((u) => URL.revokeObjectURL(u));
+  clipUrls = [];
+  const user = mine.map((c) => {
+    const url = URL.createObjectURL(c.blob);
+    clipUrls.push(url);
+    return { ...c, url };
+  });
+  return [...user, ...clipsState.myGen, ...demo].filter((c) => !clipsState.reported.includes(c.id)).sort((a, b) => b.created - a.created);
+}
+function clipAuthor(c) {
+  if (c.author === "me") return { handle: account.state.profile?.name?.replace(/\s+/g, "").toLowerCase() || "du", style: "Dein Clip", color: "#6ea2f2", me: true };
+  return community.trader(c.author) || { handle: "trader", style: "", color: "#64748b" };
+}
+async function renderClips() {
+  if (settings.view !== "clips") return;
+  clipList = await loadClips();
+  const list = clipList.filter((c) => (clipFilter === "mine" ? c.author === "me" : clipFilter === "following" ? community.isFollowing(c.author) : true));
+  const feed = $("#clips-feed");
+  feed.innerHTML = list.length
+    ? list
+        .map((c) => {
+          const a = clipAuthor(c);
+          const liked = clipsState.liked.includes(c.id);
+          const q = market.quote(c.sym);
+          const nCom = (c.comments || 0) + (clipsState.comments[c.id]?.length || 0);
+          return `<article class="clip" data-clip="${c.id}">
+            <div class="clip-stage" data-clip-stage="${c.id}">${c.kind === "video" ? `<video src="${c.url}" playsinline muted loop preload="metadata"></video>` : `<canvas></canvas>`}<div class="clip-paused">▶</div><div class="heart-burst">♥</div></div>
+            <div class="clip-prog"><i></i></div>
+            <div class="clip-info">
+              <div class="ci-author">${avatar(a)}<b>@${esc(a.handle)}</b>${a.me ? "" : `<button class="follow-btn sm ${community.isFollowing(c.author) ? "on" : ""}" data-follow="${c.author}">${community.isFollowing(c.author) ? "Gefolgt" : "Folgen"}</button>`}</div>
+              <p>${esc(c.title || c.caption || "")}</p>
+              <div class="ci-tags">${(c.tags || []).map((t) => `<span>${esc(t)}</span>`).join("")}</div>
+              <button class="ci-sym" data-open-sym="${c.sym}"><b>${c.sym}</b> ${num(q.price)} € <span class="${cls(q.change)}">${pct(q.changePct)}</span></button>
+            </div>
+            <div class="clip-rail">
+              <button class="${liked ? "on" : ""}" data-clip-like="${c.id}"><span>♥</span><small>${compact((c.likes || 0) + (liked ? 1 : 0))}</small></button>
+              <button data-clip-cmt="${c.id}"><span>💬</span><small>${nCom}</small></button>
+              <button data-clip-share="${c.id}"><span>↗</span><small>Teilen</small></button>
+              <button class="trade" data-clip-trade="${c.sym}"><span>📈</span><small>Handeln</small></button>
+              ${c.author === "me" ? `<button data-clip-del="${c.id}"><span>🗑</span><small>Löschen</small></button>` : `<button data-clip-report="${c.id}"><span>⚑</span><small>Melden</small></button>`}
+            </div>
+          </article>`;
+        })
+        .join("")
+    : `<div class="empty-state clips-empty"><div class="spot-ic">🎬</div><h3>${clipFilter === "mine" ? "Noch keine eigenen Clips" : "Noch nichts hier"}</h3><p class="muted">${clipFilter === "mine" ? "Lade ein Video hoch oder nimm einen Chart-Clip auf." : "Folge Tradern, um ihre Clips hier zu sehen."}</p></div>`;
+  clipObserver?.disconnect();
+  clipObserver = new IntersectionObserver(
+    (es) => {
+      for (const e of es) if (e.isIntersecting && e.intersectionRatio > 0.6) playClip(e.target.dataset.clip);
+    },
+    { root: feed, threshold: [0.6] }
+  );
+  $$("#clips-feed .clip").forEach((el) => clipObserver.observe(el));
+}
+function playClip(id) {
+  if (activeClip === id && !clipPausedAt) return;
+  pauseClips();
+  activeClip = id;
+  const el = $(`#clips-feed [data-clip="${id}"]`);
+  const c = clipList.find((x) => x.id === id);
+  if (!el || !c) return;
+  el.classList.remove("paused");
+  const bar = el.querySelector(".clip-prog i");
+  if (c.kind === "video") {
+    const v = el.querySelector("video");
+    v.play().catch(() => {});
+    const loop = () => {
+      if (v.duration) bar.style.width = (v.currentTime / v.duration) * 100 + "%";
+      clipRaf = requestAnimationFrame(loop);
+    };
+    loop();
+    return;
+  }
+  const cv = el.querySelector("canvas");
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  cv.width = cv.clientWidth * dpr;
+  cv.height = cv.clientHeight * dpr;
+  const ctx = cv.getContext("2d");
+  const label = "@" + clipAuthor(c).handle;
+  clipT0 = performance.now() - (clipPausedAt || 0);
+  clipPausedAt = null;
+  const loop = () => {
+    const t = (performance.now() - clipT0) % CLIP_MS;
+    drawClip(ctx, cv.width, cv.height, c, market, t, label);
+    bar.style.width = (t / CLIP_MS) * 100 + "%";
+    clipRaf = requestAnimationFrame(loop);
+  };
+  loop();
+}
+function pauseClips(keepPos = false) {
+  cancelAnimationFrame(clipRaf);
+  $$("#clips-feed video").forEach((v) => v.pause());
+  clipPausedAt = keepPos ? (performance.now() - clipT0) % CLIP_MS : null;
+  if (!keepPos) activeClip = null;
+}
+function likeClip(id, burst = false) {
+  const i = clipsState.liked.indexOf(id);
+  if (i >= 0 && !burst) clipsState.liked.splice(i, 1);
+  else if (i < 0) clipsState.liked.push(id);
+  saveClips();
+  haptic(10);
+  const el = $(`#clips-feed [data-clip="${id}"]`);
+  const btn = el?.querySelector("[data-clip-like]");
+  const c = clipList.find((x) => x.id === id);
+  if (btn && c) {
+    const on = clipsState.liked.includes(id);
+    btn.classList.toggle("on", on);
+    btn.querySelector("small").textContent = compact((c.likes || 0) + (on ? 1 : 0));
+  }
+  if (burst && el) {
+    const h = el.querySelector(".heart-burst");
+    h.classList.remove("go");
+    void h.offsetWidth;
+    h.classList.add("go");
+  }
+}
+let cmtClip = null;
+function openComments(id) {
+  cmtClip = id;
+  const base = clipList.find((x) => x.id === id);
+  const seed = base && base.kind === "gen" && base.author !== "me" ? seededComments.slice(id.length % 3, (id.length % 3) + 3).map((t, k) => ({ who: ["anna_trades", "KaiCharts", "LinaLongs"][k], text: t, ts: base.created + (k + 1) * 600000, demo: true })) : [];
+  const list = [...seed, ...(clipsState.comments[id] || [])];
+  $("#comments-list").innerHTML = list.length ? list.map((c) => `<div class="cmt"><b>@${esc(c.who)}</b>${c.demo ? '<span class="demo-note small"> Demo</span>' : ""}<p>${esc(c.text)}</p><small class="muted">${ago(c.ts)}</small></div>`).join("") : `<p class="muted">Noch keine Kommentare. Sei der Erste!</p>`;
+  openModal("#comments-modal");
+}
+async function recordChartClip() {
+  const sym = settings.symbol;
+  const a = analyze(aggregate(market.get(sym).m1.slice(-60 * 24 * 7), "1h"));
+  const caps = [`${sym}: mein Blick auf den Chart`, `${a.rating.label} laut AKTEX AI`, `Ziel ${num(a.setup.tp)} · Stop ${num(a.setup.sl)}`];
+  const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#aktex"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
+  toast("Aufnahme läuft (8 Sekunden) …", "info", "🎬 Chart-Clip");
+  try {
+    const blob = await recordClip(clip, market, "@" + clipAuthor(clip).handle);
+    await idbPut({ id: clip.id, kind: "video", blob, author: "me", sym, title: caps[0], caption: caps[0], tags: clip.tags, likes: 0, comments: 0, created: Date.now() });
+    toast("Dein Chart-Clip ist als Video gespeichert.", "success", "🎬 Clip veröffentlicht");
+  } catch (_) {
+    clipsState.myGen.unshift(clip);
+    saveClips();
+    toast("Dein Chart-Clip ist veröffentlicht (Live-Render).", "success", "🎬 Clip veröffentlicht");
+  }
+  clipFilter = "mine";
+  $$("#clips-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.cf === "mine"));
+  if (settings.view !== "clips") setView("clips");
+  else renderClips();
+}
+function setClipFile(f) {
+  if (!f) return;
+  if (!/^video\/(mp4|webm|quicktime)$/.test(f.type)) return toast("Bitte ein MP4-, WebM- oder MOV-Video wählen.", "error");
+  if (f.size > 60 * 1024 * 1024) return toast("Das Video ist größer als 60 MB.", "error");
+  pendingFile = f;
+  $("#clip-drop-inner").innerHTML = `<video src="${URL.createObjectURL(f)}" muted playsinline autoplay loop></video><span class="muted small">${esc(f.name)} · ${nf2.format(f.size / 1048576)} MB</span>`;
+}
+function bindClips() {
+  $("#clips-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-cf]");
+    if (!b) return;
+    clipFilter = b.dataset.cf;
+    $$("#clips-tabs button").forEach((x) => x.classList.toggle("active", x === b));
+    renderClips();
+  });
+  $("#clip-record-btn").addEventListener("click", recordChartClip);
+  $("#clip-upload-btn").addEventListener("click", () => {
+    pendingFile = null;
+    $("#clip-drop-inner").innerHTML = `<b>Video auswählen</b><span class="muted small">MP4, WebM oder MOV · max. 60 MB · Hochformat empfohlen</span>`;
+    $("#clip-caption").value = "";
+    $("#clip-sym").innerHTML = STOCKS.map((s) => `<option value="${s.s}" ${s.s === settings.symbol ? "selected" : ""}>${s.s} – ${esc(s.n)}</option>`).join("");
+    openModal("#clip-modal");
+  });
+  const drop = $("#clip-drop");
+  drop.addEventListener("click", () => $("#clip-file").click());
+  $("#clip-file").addEventListener("change", (e) => setClipFile(e.target.files[0]));
+  drop.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    drop.classList.add("over");
+  });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    drop.classList.remove("over");
+    setClipFile(e.dataTransfer.files[0]);
+  });
+  $("#clip-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!pendingFile) return shake($("#clip-drop"));
+    const cap = $("#clip-caption").value.trim();
+    const tags = cap.match(/#[\wäöüß]+/gi) || [];
+    try {
+      await idbPut({ id: "u" + Date.now(), kind: "video", blob: pendingFile, author: "me", sym: $("#clip-sym").value, title: cap.replace(/#[\wäöüß]+/gi, "").trim(), caption: cap, tags, likes: 0, comments: 0, created: Date.now() });
+      closeModals();
+      confetti();
+      toast("Dein Clip ist im Feed.", "success", "🎬 Veröffentlicht");
+      clipFilter = "mine";
+      $$("#clips-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.cf === "mine"));
+      renderClips();
+    } catch (_) {
+      toast("Speichern nicht möglich (Browser-Speicher voll oder gesperrt).", "error");
+    }
+  });
+  $("#comment-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("#comment-input").value.trim();
+    if (!v || !cmtClip) return;
+    (clipsState.comments[cmtClip] ||= []).push({ who: clipAuthor({ author: "me" }).handle, text: v, ts: Date.now() });
+    saveClips();
+    $("#comment-input").value = "";
+    openComments(cmtClip);
+    const b = $(`#clips-feed [data-clip-cmt="${cmtClip}"] small`);
+    if (b) b.textContent = +b.textContent + 1;
+  });
+  let lastTap = 0;
+  $("#clips-feed").addEventListener("click", async (e) => {
+    const t = e.target;
+    const st = t.closest("[data-clip-stage]");
+    if (st) {
+      const id = st.dataset.clipStage;
+      const now = Date.now();
+      if (now - lastTap < 300) {
+        likeClip(id, true);
+        lastTap = 0;
+        return;
+      }
+      lastTap = now;
+      setTimeout(() => {
+        if (lastTap !== now) return;
+        const el = st.closest(".clip");
+        if (el.classList.contains("paused")) {
+          el.classList.remove("paused");
+          activeClip = null;
+          playClip(id);
+        } else {
+          el.classList.add("paused");
+          pauseClips(true);
+          activeClip = id;
+        }
+      }, 300);
+      return;
+    }
+    const lk = t.closest("[data-clip-like]");
+    if (lk) return likeClip(lk.dataset.clipLike);
+    const cm = t.closest("[data-clip-cmt]");
+    if (cm) return openComments(cm.dataset.clipCmt);
+    if (t.closest("[data-clip-share]")) return share();
+    const tr = t.closest("[data-clip-trade]");
+    if (tr) {
+      pauseClips();
+      setSymbol(tr.dataset.clipTrade);
+      return flashEl($("#ticket"));
+    }
+    const rp = t.closest("[data-clip-report]");
+    if (rp) {
+      clipsState.reported.push(rp.dataset.clipReport);
+      saveClips();
+      toast("Danke für deine Meldung. Der Clip wird geprüft und ist für dich ausgeblendet.", "info", "⚑ Gemeldet");
+      return renderClips();
+    }
+    const dl = t.closest("[data-clip-del]");
+    if (dl) {
+      const id = dl.dataset.clipDel;
+      await idbDel(id).catch(() => {});
+      clipsState.myGen = clipsState.myGen.filter((x) => x.id !== id);
+      saveClips();
+      return renderClips();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (settings.view !== "clips" || e.target.matches("input, textarea, select")) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      $("#clips-feed").scrollBy({ top: (e.key === "ArrowDown" ? 1 : -1) * $("#clips-feed").clientHeight, behavior: "smooth" });
+    }
+  });
+}
+
+// ---------- Weltraum: Sternenfeld mit Parallaxe und Sternschnuppen ----------
+function spaceField() {
+  const cv = $("#space");
+  if (!cv) return;
+  const ctx = cv.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const dpr = Math.min(2, devicePixelRatio || 1);
+  let W = 0;
+  let H = 0;
+  let stars = [];
+  let shoot = null;
+  let mx = 0;
+  let my = 0;
+  let last = 0;
+  const hues = [220, 250, 275, 45, 200];
+  const init = () => {
+    W = cv.width = innerWidth * dpr;
+    H = cv.height = innerHeight * dpr;
+    const n = Math.min(900, Math.round((innerWidth * innerHeight) / 2300));
+    stars = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, z: Math.random() ** 2, tw: Math.random() * 6.28, h: hues[Math.floor(Math.random() * hues.length)] }));
+  };
+  init();
+  addEventListener("resize", init);
+  addEventListener("pointermove", (e) => {
+    mx = (e.clientX / innerWidth - 0.5) * 2;
+    my = (e.clientY / innerHeight - 0.5) * 2;
+  });
+  const frame = (t) => {
+    requestAnimationFrame(frame);
+    const hidden = document.hidden || settings.view === "chart" || document.documentElement.dataset.theme !== "dark";
+    if (hidden || t - last < 33) return; // ~30 fps reicht und schont den Akku
+    last = t;
+    ctx.clearRect(0, 0, W, H);
+    for (const s of stars) {
+      if (!reduce) {
+        s.x -= (0.03 + s.z * 0.18) * dpr;
+        if (s.x < 0) s.x += W;
+      }
+      const x = s.x + mx * s.z * 14 * dpr;
+      const y = s.y + my * s.z * 10 * dpr;
+      const a = 0.25 + 0.75 * s.z * (0.65 + 0.35 * Math.sin(t / 700 + s.tw));
+      const r = (0.35 + s.z * 1.35) * dpr;
+      ctx.fillStyle = `hsla(${s.h}, 90%, ${s.h === 45 ? 80 : 88}%, ${a})`;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 6.283);
+      ctx.fill();
+      if (s.z > 0.85) {
+        ctx.fillStyle = `hsla(${s.h}, 100%, 85%, ${a * 0.12})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r * 4, 0, 6.283);
+        ctx.fill();
+      }
+    }
+    if (!reduce && !shoot && Math.random() < 0.004) shoot = { x: Math.random() * W * 0.8 + W * 0.2, y: Math.random() * H * 0.4, vx: -(8 + Math.random() * 6) * dpr, vy: (3 + Math.random() * 3) * dpr, life: 1 };
+    if (shoot) {
+      const g = ctx.createLinearGradient(shoot.x, shoot.y, shoot.x - shoot.vx * 12, shoot.y - shoot.vy * 12);
+      g.addColorStop(0, `rgba(255,255,255,${shoot.life})`);
+      g.addColorStop(1, "rgba(124,156,255,0)");
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 2 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(shoot.x, shoot.y);
+      ctx.lineTo(shoot.x - shoot.vx * 12, shoot.y - shoot.vy * 12);
+      ctx.stroke();
+      shoot.x += shoot.vx;
+      shoot.y += shoot.vy;
+      shoot.life -= 0.02;
+      if (shoot.life <= 0) shoot = null;
+    }
+  };
+  requestAnimationFrame(frame);
+}
+
 // ---------- Bewegung: Splash, Segmente, Ripple, Haptik ----------
 function haptic(pattern) {
   try {
@@ -3435,6 +4682,7 @@ community.ready.then(() => {
   if (settings.view === "ideas") renderIdeas();
 });
 runSplash();
+spaceField();
 buildToolbar();
 buildTicker();
 initSegments();
@@ -3451,6 +4699,9 @@ $("#brand").addEventListener("click", () => {
 $("#brand").addEventListener("dblclick", () => runSplash(true));
 bindGrowth();
 bindAI();
+bindAiTabs();
+bindShop();
+bindClips();
 bindCheckout();
 bindCancel();
 bindOnboarding();

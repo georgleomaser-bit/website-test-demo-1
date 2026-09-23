@@ -33,7 +33,7 @@ const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 const FIB_COLORS = ["#8a97ab", "#ef4444", "#f59e0b", "#22c55e", "#06b6d4", "#4f8cff", "#8a97ab"];
 
 const THEMES = {
-  dark: { bg: "#0f141d", text: "#aab4c3", grid: "rgba(138,151,171,0.08)", border: "#1f2937", up: "#22c55e", down: "#ef4444", cross: "#6b7280" },
+  dark: { bg: "#060812", text: "#aab3d4", grid: "rgba(140,160,255,0.06)", border: "rgba(140,160,255,0.14)", up: "#22c55e", down: "#ef4444", cross: "#6b75a0" },
   light: { bg: "#ffffff", text: "#434b58", grid: "rgba(40,50,70,0.07)", border: "#e3e7ee", up: "#089981", down: "#f23645", cross: "#9aa3b2" },
 };
 
