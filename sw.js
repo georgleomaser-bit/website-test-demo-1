@@ -1,5 +1,5 @@
 // Service Worker: macht AKTEX offline nutzbar und installierbar.
-const VERSION = "aktex-v2.2.0";
+const VERSION = "aktex-v2.3.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -15,6 +15,7 @@ const ASSETS = [
   "./js/plans.js",
   "./js/community.js",
   "./js/ai.js",
+  "./js/payments.js",
   "./js/vendor/lightweight-charts.standalone.production.js",
   "./icons/icon.svg",
   "./icons/logo.svg",

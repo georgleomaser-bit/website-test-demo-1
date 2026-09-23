@@ -7,6 +7,7 @@ import { analyze } from "./analysis.js";
 import { PLANS, ADDONS, planById, planPrice } from "./plans.js";
 import { Community } from "./community.js";
 import { AktexAI, STRATEGIES } from "./ai.js";
+import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
 
 // ---------- Hilfsfunktionen ----------
 const $ = (s, root = document) => root.querySelector(s);
@@ -42,7 +43,7 @@ function saveSettings() {
 }
 
 // ---------- Zustand ----------
-const VIEWS = ["home", "chart", "markets", "ideas", "ai", "portfolio", "business"];
+const VIEWS = ["home", "chart", "markets", "ideas", "ai", "portfolio", "business", "account", "legal"];
 const market = new Market();
 const broker = new Broker(market);
 const firstVisit = (() => {
@@ -118,7 +119,13 @@ const chart = new ChartView({
 });
 
 // ---------- Toasts, Ton, Benachrichtigungen ----------
+const notifs = [];
+let notifUnread = 0;
 function toast(msg, type = "info", title = "") {
+  notifs.unshift({ ts: Date.now(), msg, type, title });
+  notifs.length = Math.min(notifs.length, 40);
+  notifUnread++;
+  syncNotifBadge();
   const el = document.createElement("div");
   el.className = `toast ${type}`;
   el.innerHTML = `${title ? `<b>${esc(title)}</b>` : ""}<span>${esc(msg)}</span>`;
@@ -251,6 +258,8 @@ function applyView(view, animate = true) {
   if (view === "ideas") renderIdeas();
   if (view === "business") renderBusiness(true);
   if (view === "ai") renderAIView(true);
+  if (view === "account") renderAccount();
+  if (view === "legal") renderLegal();
   heroAnim(view === "home");
 }
 
@@ -315,7 +324,7 @@ function updateQuoteCard() {
   const pe = $("#qc-price");
   if (!pe) return;
   flash(pe, q.price, q.prev);
-  pe.textContent = num(q.price);
+  odometer(pe, num(q.price));
   const c = $("#qc-chg");
   c.textContent = `${sNum(q.change)} (${pct(q.changePct)})`;
   c.className = cls(q.change);
@@ -1067,7 +1076,7 @@ market.onTick(() => {
       renderRightPanel();
       renderTicket();
       renderAccountBar();
-      if (ui.btab === "positions" || ui.btab === "orders") renderBottom();
+      if ((ui.btab === "positions" || ui.btab === "orders") && slowTick % 2 === 0) renderBottom();
     }
     renderTicker();
     syncTitle();
@@ -1247,11 +1256,12 @@ function openPlans(reason) {
   renderPlans($("#modal-plans"));
   openModal("#plans-modal");
 }
-function setPlan(id) {
+function setPlan(id, quiet = false) {
   const p = planById(id);
   settings.plan = p.id;
   saveSettings();
   refreshMonetization();
+  if (quiet) return;
   closeModals();
   if (p.monthly) {
     confetti();
@@ -1615,7 +1625,7 @@ function bindGrowth() {
     const t = e.target;
     if (t.closest("[data-open-plans]")) return openPlans();
     const pc = t.closest(".plan-choose");
-    if (pc) return setPlan(pc.dataset.plan);
+    if (pc) return choosePlan(pc.dataset.plan);
     const go = t.closest("[data-goto]");
     if (go) return setView(go.dataset.goto);
     const hs = t.closest("[data-home-sym]");
@@ -2482,6 +2492,809 @@ setInterval(() => {
   }
 }, 25000);
 
+// ---------- Bezahlsystem: Checkout ----------
+const account = new AccountStore();
+let co = null;
+function choosePlan(id) {
+  const p = planById(id);
+  if (!p.monthly) {
+    if (account.state.sub && account.state.sub.status !== "canceled") return openCancel();
+    return setPlan("free");
+  }
+  openCheckout(id);
+}
+function openCheckout(planId, startStep = 0) {
+  const link = stripeLinkFor(planId, settings.billing);
+  if (link && PAYMENT_CONFIG.mode === "live") {
+    location.href = link;
+    return;
+  }
+  co = { step: startStep, planId, billing: settings.billing, addons: settings.addons.slice(), promo: null, method: "card", methodOnly: startStep === 2 };
+  closeModals();
+  setTimeout(() => {
+    renderCheckout();
+    openModal("#checkout-modal");
+  }, 330);
+}
+function coQuote() {
+  return quote({ planId: co.planId, billing: co.billing, addons: co.addons, promo: co.promo });
+}
+function stepper(el, i) {
+  $$(el + " span").forEach((s, k) => {
+    s.classList.toggle("on", k <= i);
+    s.classList.toggle("cur", k === i);
+  });
+}
+function summaryBox(q) {
+  const trialEnd = new Date(Date.now() + PAYMENT_CONFIG.trialDays * 86400000).toLocaleDateString("de-DE");
+  return `<div class="co-sum">
+    ${q.lines.map((l) => `<div><span>${esc(l.label)}</span><b>${eur(l.amount)}</b></div>`).join("")}
+    ${q.discount ? `<div class="up"><span>Gutschein ${q.promo.code} – ${esc(q.promo.label)}</span><b>−${eur(q.discount)}</b></div>` : ""}
+    <div class="muted small"><span>enthaltene MwSt. (19 %)</span><span>${eur(q.vat)}</span></div>
+    <div class="co-total"><span>Heute fällig</span><b>0,00 €</b></div>
+    <p class="muted small">${PAYMENT_CONFIG.trialDays} Tage kostenlos testen. Danach ${eur(q.total)} ${q.billing === "yearly" ? "pro Jahr" : "pro Monat"} ab ${trialEnd} (≈ ${eur(q.perMonth)}/Monat), jederzeit zum Ende der Laufzeit kündbar.</p>
+  </div>`;
+}
+function renderCheckout(dir = 1) {
+  const st = $("#co-stage");
+  stepper("#co-steps", co.step);
+  const q = coQuote();
+  let html = "";
+  if (co.step === 0) {
+    const paid = PLANS.filter((p) => p.monthly);
+    html = `<div class="co-grid"><div>
+      <h3>Tarif wählen</h3>
+      <div class="co-plans">${paid.map((p) => `<button class="co-plan ${p.id === co.planId ? "on" : ""} ${p.group ? "ai" : ""}" data-co-plan="${p.id}"><b>${p.name}</b><span>${eur(planPrice(p, co.billing))}<small>/Monat</small></span></button>`).join("")}</div>
+      <div class="seg co-bill"><button class="${co.billing === "monthly" ? "active" : ""}" data-co-bill="monthly">Monatlich</button><button class="${co.billing === "yearly" ? "active" : ""}" data-co-bill="yearly">Jährlich <span class="save-chip">spare bis 23 %</span></button></div>
+      <h4>Add-ons</h4>
+      <div class="co-addons">${ADDONS.map((a) => {
+        const incl = a.includedIn.includes(co.planId);
+        return `<label class="co-addon ${incl ? "incl-row" : ""}"><input type="checkbox" data-co-addon="${a.id}" ${incl || co.addons.includes(a.id) ? "checked" : ""} ${incl ? "disabled" : ""}/><span>${a.icon} ${a.name}</span><b>${incl ? "inklusive" : eur(a.price) + "/Monat"}</b></label>`;
+      }).join("")}</div>
+      <div class="promo"><input type="text" id="co-promo" placeholder="Gutscheincode (z. B. AKTEX20)" value="${co.promo || ""}" /><button class="btn" data-co-promo>Einlösen</button></div>
+    </div><div>${summaryBox(q)}<button class="btn primary big full" data-co-next>Weiter</button></div></div>`;
+  } else if (co.step === 1) {
+    const pr = account.state.profile;
+    html = `<div class="co-narrow"><h3>${pr ? "Angemeldet" : "Konto anlegen"}</h3>
+      ${pr ? `<div class="co-profile">${avatarFor(pr.name)}<div><b>${esc(pr.name)}</b><small class="muted">${esc(pr.email || "keine E-Mail hinterlegt")}</small></div></div>` : `
+      <label class="field"><span>Name</span><input type="text" id="co-name" required maxlength="60" autocomplete="name" /></label>
+      <label class="field"><span>E-Mail (optional)</span><input type="email" id="co-email" maxlength="120" autocomplete="email" /></label>
+      <p class="muted small">Dein Konto wird in dieser Demo nur in diesem Browser gespeichert.</p>`}
+      <div class="co-actions"><button class="btn" data-co-back>Zurück</button><button class="btn primary" data-co-next>Weiter zur Zahlung</button></div></div>`;
+  } else if (co.step === 2) {
+    const m = co.method;
+    const tabs = [
+      ["card", "💳 Karte"],
+      ["paypal", "PayPal"],
+      ["apple", "Apple Pay"],
+      ["google", "Google Pay"],
+      ["sepa", "🏦 SEPA"],
+      ["klarna", "Klarna"],
+    ];
+    let form = "";
+    if (m === "card")
+      form = `<div class="card-visual" id="card-visual"><div class="cv-chip"></div><div class="cv-brand" id="cv-brand"></div><div class="cv-num" id="cv-num">•••• •••• •••• ••••</div><div class="cv-row"><span id="cv-name">KARTENINHABER</span><span id="cv-exp">MM/JJ</span></div></div>
+        <label class="field"><span>Kartennummer</span><input type="text" id="cc-num" inputmode="numeric" autocomplete="off" placeholder="4242 4242 4242 4242" /></label>
+        <div class="row3"><label class="field"><span>Gültig bis</span><input type="text" id="cc-exp" inputmode="numeric" autocomplete="off" placeholder="MM/JJ" /></label><label class="field"><span>Prüfnummer</span><input type="text" id="cc-cvc" inputmode="numeric" autocomplete="off" placeholder="123" maxlength="4" /></label><label class="field"><span>Name</span><input type="text" id="cc-name" autocomplete="off" placeholder="Max Muster" /></label></div>
+        <div class="testcards"><span class="muted small">Testkarten:</span><button class="mini-btn" data-tc="4242424242424242">Erfolg</button><button class="mini-btn" data-tc="4000002500003155">3-D Secure</button><button class="mini-btn" data-tc="4000000000000002">Abgelehnt</button></div>`;
+    else if (m === "sepa")
+      form = `<label class="field"><span>Kontoinhaber</span><input type="text" id="sepa-name" autocomplete="off" placeholder="Max Muster" /></label><label class="field"><span>IBAN</span><input type="text" id="sepa-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" /></label>
+        <div class="testcards"><span class="muted small">Test-IBAN:</span><button class="mini-btn" data-tiban>DE89 3704 … 3000 einsetzen</button></div>
+        <p class="muted small">Ich ermächtige AKTEX, Zahlungen von meinem Konto mittels Lastschrift einzuziehen (SEPA-Lastschriftmandat, Testmodus).</p>`;
+    else form = `<div class="wallet-pane"><div class="wallet-logo ${m}">${{ paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna." }[m]}</div><p class="muted">Du bestätigst die Zahlung im nächsten Schritt im ${{ paypal: "PayPal-Fenster", apple: "Apple-Pay-Dialog", google: "Google-Pay-Dialog", klarna: "Klarna-Fenster" }[m]} (simuliert).</p></div>`;
+    html = `<div class="co-grid"><div>
+      <h3>${co.methodOnly ? "Zahlungsmethode ändern" : "Zahlung"}</h3>
+      <div class="pay-tabs">${tabs.map(([k, l]) => `<button class="${m === k ? "on" : ""}" data-co-method="${k}">${l}</button>`).join("")}</div>
+      <div class="pay-form" id="pay-form">${form}</div>
+      <p class="co-err" id="co-err" hidden></p>
+    </div><div>${co.methodOnly ? "" : summaryBox(q)}
+      ${co.methodOnly ? "" : `<label class="chk legal-chk"><input type="checkbox" id="co-legal" /> Ich akzeptiere die <a href="#" data-legal-open="terms">AGB</a> und habe die <a href="#" data-legal-open="withdrawal">Widerrufsbelehrung</a> und die <a href="#" data-legal-open="risk">Risikohinweise</a> gelesen.</label>`}
+      <button class="btn primary big full" data-co-pay>${co.methodOnly ? "Zahlungsmethode speichern" : "Zahlungspflichtig abonnieren"}</button>
+      ${co.methodOnly ? "" : `<p class="muted small center">Heute 0,00 € · danach ${eur(q.total)} ${q.billing === "yearly" ? "jährlich" : "monatlich"}</p>`}
+      <div class="co-actions"><button class="btn ghost" data-co-back>Zurück</button></div>
+    </div></div>`;
+  } else if (co.step === 3) {
+    const sub = account.state.sub;
+    html = `<div class="co-done"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg>
+      <h2>${co.methodOnly ? "Zahlungsmethode gespeichert" : `Willkommen bei AKTEX ${planById(co.planId).name}!`}</h2>
+      <p class="muted">${co.methodOnly ? esc(account.state.method?.label || "") : `Deine Testphase läuft bis ${new Date(sub.trialEnds).toLocaleDateString("de-DE")}. Alle Funktionen sind sofort freigeschaltet.`}</p>
+      <div class="co-done-actions">${co.methodOnly ? "" : `<button class="btn" data-invoice="0">Beleg ansehen</button>`}<button class="btn primary" data-co-finish>Los geht's</button></div></div>`;
+  }
+  st.innerHTML = `<div class="co-slide ${dir > 0 ? "fwd" : "back"}">${html}</div>`;
+  if (co.step === 2 && co.method === "card") bindCardInputs();
+}
+function bindCardInputs() {
+  const num = $("#cc-num");
+  const upd = () => {
+    const v = num.value.replace(/\D/g, "");
+    $("#cv-num").textContent = (formatCard(v) || "").padEnd(19, "•").replace(/(.{4})(?=.)/g, "$1") || "•••• •••• •••• ••••";
+    const b = cardBrand(v);
+    $("#cv-brand").textContent = { visa: "VISA", mastercard: "mastercard", amex: "AMEX" }[b] || "";
+    $("#card-visual").dataset.brand = b;
+  };
+  num.addEventListener("input", () => {
+    num.value = formatCard(num.value);
+    upd();
+  });
+  $("#cc-exp").addEventListener("input", (e) => {
+    let v = e.target.value.replace(/\D/g, "").slice(0, 4);
+    if (v.length > 2) v = v.slice(0, 2) + "/" + v.slice(2);
+    e.target.value = v;
+    $("#cv-exp").textContent = v || "MM/JJ";
+  });
+  $("#cc-name").addEventListener("input", (e) => ($("#cv-name").textContent = e.target.value.toUpperCase() || "KARTENINHABER"));
+  $("#cc-cvc").addEventListener("focus", () => $("#card-visual").classList.add("flip"));
+  $("#cc-cvc").addEventListener("blur", () => $("#card-visual").classList.remove("flip"));
+}
+function coError(msg) {
+  const e = $("#co-err");
+  e.textContent = msg;
+  e.hidden = false;
+  shake($("#pay-form"));
+  haptic([30, 40, 30]);
+}
+async function coPay() {
+  const m = co.method;
+  let method;
+  if (!co.methodOnly && !$("#co-legal").checked) return coError("Bitte AGB, Widerrufsbelehrung und Risikohinweise bestätigen.");
+  let needs3ds = false;
+  if (m === "card") {
+    const n = $("#cc-num").value.replace(/\D/g, "");
+    const exp = $("#cc-exp").value.match(/^(\d{2})\/(\d{2})$/);
+    if (!luhn(n)) return coError("Die Kartennummer ist ungültig.");
+    const tc = TEST_CARDS[n];
+    if (!tc) return coError("Testmodus: Bitte nur Testkarten verwenden (z. B. 4242 4242 4242 4242). Echte Karten werden nicht angenommen.");
+    if (!exp || +exp[1] < 1 || +exp[1] > 12 || new Date(2000 + +exp[2], +exp[1]) < new Date()) return coError("Das Ablaufdatum ist ungültig oder abgelaufen.");
+    if (!/^\d{3,4}$/.test($("#cc-cvc").value)) return coError("Bitte die Prüfnummer (CVC) eingeben.");
+    if (tc.result === "declined") return coProcess(() => coError("Die Bank hat die Zahlung abgelehnt (Testkarte „abgelehnt“). Bitte eine andere Karte verwenden."));
+    if (tc.result === "funds") return coProcess(() => coError("Nicht genügend Deckung (Testkarte). Bitte eine andere Karte verwenden."));
+    needs3ds = tc.result === "3ds";
+    method = { type: "card", brand: tc.brand, last4: n.slice(-4), label: `${{ visa: "Visa", mastercard: "Mastercard", amex: "American Express" }[tc.brand]} •••• ${n.slice(-4)}` };
+  } else if (m === "sepa") {
+    const iban = $("#sepa-iban").value.replace(/\s/g, "").toUpperCase();
+    if (!$("#sepa-name").value.trim()) return coError("Bitte den Kontoinhaber angeben.");
+    if (iban !== TEST_IBAN) return coError("Testmodus: Bitte die Test-IBAN DE89 3704 0044 0532 0130 00 verwenden.");
+    method = { type: "sepa", label: `SEPA-Lastschrift •••• ${iban.slice(-4)}` };
+  } else method = { type: m, label: { paypal: "PayPal (Testkonto)", apple: "Apple Pay (Test)", google: "Google Pay (Test)", klarna: "Klarna (Test)" }[m] };
+  coProcess(async () => {
+    if (needs3ds || m !== "card") {
+      const ok = await secureDialog(m, needs3ds);
+      if (!ok) return coError("Die Bestätigung wurde abgebrochen.");
+    }
+    coComplete(method);
+  });
+}
+function coProcess(then) {
+  const st = $("#co-stage");
+  const ov = document.createElement("div");
+  ov.className = "co-processing";
+  ov.innerHTML = `<div class="spinner"></div><b>Zahlung wird geprüft …</b><span class="muted small">Sichere Verbindung (Testmodus)</span>`;
+  st.appendChild(ov);
+  setTimeout(() => {
+    ov.remove();
+    then();
+  }, 1300);
+}
+function secureDialog(m, is3ds) {
+  return new Promise((resolve) => {
+    const d = document.createElement("div");
+    d.className = "secure-sheet";
+    const title = is3ds ? "3-D Secure" : { paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna" }[m];
+    d.innerHTML = `<div class="ss-box"><div class="ss-logo ${m}">${title}</div>
+      <p>${is3ds ? "Deine Bank bittet um Bestätigung. Öffne deine Banking-App (simuliert) oder bestätige hier." : "Bestätige das Abo über " + title + " (simuliert)."}</p>
+      <div class="ss-face" ${m === "apple" ? "" : "hidden"}><span></span></div>
+      <div class="ss-actions"><button class="btn ghost" data-ss="0">Abbrechen</button><button class="btn primary" data-ss="1">${m === "apple" ? "Mit Face ID bestätigen" : "Bestätigen"}</button></div></div>`;
+    $("#checkout-modal .modal-box").appendChild(d);
+    requestAnimationFrame(() => d.classList.add("open"));
+    d.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-ss]");
+      if (!b) return;
+      const ok = b.dataset.ss === "1";
+      const finish = () => {
+        d.classList.remove("open");
+        setTimeout(() => d.remove(), 350);
+        resolve(ok);
+      };
+      if (ok && m === "apple") {
+        d.querySelector(".ss-face").classList.add("scan");
+        setTimeout(finish, 1100);
+      } else finish();
+    });
+  });
+}
+function coComplete(method) {
+  if (!account.signedIn && co.profile) account.setProfile(co.profile);
+  if (co.methodOnly) {
+    account.state.method = method;
+    account.save();
+  } else {
+    const q = coQuote();
+    account.subscribe(q, method);
+    settings.billing = co.billing;
+    settings.addons = co.addons.slice();
+    saveSettings();
+    setPlan(co.planId, true);
+    confetti();
+  }
+  haptic([10, 40, 20]);
+  co.step = 3;
+  renderCheckout();
+  syncAccountUI();
+}
+function bindCheckout() {
+  $("#checkout-modal").addEventListener("click", (e) => {
+    const t = e.target;
+    const pl = t.closest("[data-co-plan]");
+    if (pl) {
+      co.planId = pl.dataset.coPlan;
+      return renderCheckout(0);
+    }
+    const bl = t.closest("[data-co-bill]");
+    if (bl) {
+      co.billing = bl.dataset.coBill;
+      return renderCheckout(0);
+    }
+    if (t.closest("[data-co-promo]")) {
+      const code = $("#co-promo").value.trim().toUpperCase();
+      if (!PAYMENT_CONFIG.promos[code]) {
+        shake($(".promo"));
+        return toast(`Der Code „${code}“ ist ungültig. Probier AKTEX20, START oder FOUNDER.`, "error", "Gutschein");
+      }
+      co.promo = code;
+      toast(PAYMENT_CONFIG.promos[code].label, "success", `Gutschein ${code} eingelöst`);
+      return renderCheckout(0);
+    }
+    if (t.closest("[data-co-next]")) {
+      if (co.step === 1 && !account.signedIn) {
+        const name = $("#co-name").value.trim();
+        if (!name) return shake($("#co-name"));
+        co.profile = { name, email: $("#co-email").value.trim() };
+      }
+      co.step++;
+      return renderCheckout(1);
+    }
+    if (t.closest("[data-co-back]")) {
+      if (co.methodOnly) return closeModals();
+      co.step = Math.max(0, co.step - 1);
+      return renderCheckout(-1);
+    }
+    const me = t.closest("[data-co-method]");
+    if (me) {
+      co.method = me.dataset.coMethod;
+      return renderCheckout(0);
+    }
+    const tc = t.closest("[data-tc]");
+    if (tc) {
+      $("#co-err").hidden = true;
+      $("#cc-num").value = formatCard(tc.dataset.tc);
+      $("#cc-exp").value = "12/" + String((new Date().getFullYear() + 3) % 100).padStart(2, "0");
+      $("#cc-cvc").value = "123";
+      $("#cc-name").value = account.state.profile?.name || co.profile?.name || "Max Muster";
+      ["#cc-num", "#cc-exp", "#cc-name"].forEach((s) => $(s).dispatchEvent(new Event("input")));
+      return;
+    }
+    if (t.closest("[data-tiban]")) {
+      $("#sepa-iban").value = "DE89 3704 0044 0532 0130 00";
+      $("#sepa-name").value = account.state.profile?.name || co.profile?.name || "Max Muster";
+      return;
+    }
+    if (t.closest("[data-co-pay]")) return coPay();
+    if (t.closest("[data-co-finish]")) {
+      closeModals();
+      if (settings.view === "home") setView("chart");
+      return;
+    }
+  });
+  $("#checkout-modal").addEventListener("change", (e) => {
+    const a = e.target.dataset?.coAddon;
+    if (!a) return;
+    co.addons = e.target.checked ? [...new Set([...co.addons, a])] : co.addons.filter((x) => x !== a);
+    renderCheckout(0);
+  });
+}
+
+// ---------- Rechnungen & Kündigung ----------
+function openInvoice(i) {
+  const inv = account.state.invoices[i];
+  if (!inv) return;
+  const pr = account.state.profile;
+  $("#invoice").innerHTML = `
+    <div class="inv-head"><div><img src="icons/icon.svg" alt="" width="36" height="36"/><b>ΛKTEX</b><small>[Firmenname] · [Straße Nr.] · [PLZ Ort]<br>USt-IdNr. [DE…]</small></div>
+      <div class="inv-meta"><b>Rechnung ${inv.no}</b><span>Datum: ${new Date(inv.date).toLocaleDateString("de-DE")}</span><span>Kunde: ${esc(pr?.name || "–")}</span></div></div>
+    <table class="grid inv-table"><thead><tr><th>Leistung</th><th class="num">Betrag</th></tr></thead><tbody>
+      ${inv.lines.map((l) => `<tr><td>${esc(l.label)}</td><td class="num">${eur(l.amount)}</td></tr>`).join("")}
+    </tbody></table>
+    <div class="inv-sum"><div><span>Nettobetrag</span><b>${eur(inv.net)}</b></div><div><span>zzgl. 19 % MwSt.</span><b>${eur(inv.vat)}</b></div><div class="co-total"><span>Gesamt</span><b>${eur(inv.total)}</b></div></div>
+    <p class="muted small">${esc(inv.note || "")}</p>
+    <p class="test-banner">Testbeleg aus dem Demo-Checkout – es wurde keine Zahlung ausgeführt.</p>`;
+  openModal("#invoice-modal");
+}
+function openCancel() {
+  const sub = account.state.sub;
+  const body = $("#cancel-body");
+  if (!sub || sub.status === "canceled") {
+    body.innerHTML = sub
+      ? `<p>Dein Abo <b>AKTEX ${planById(sub.plan).name}</b> ist bereits gekündigt und endet am <b>${new Date(sub.cancelAt).toLocaleDateString("de-DE")}</b>.</p><button class="btn" data-resume>Kündigung zurücknehmen</button>`
+      : `<p>Du hast aktuell kein kostenpflichtiges Abo. Es gibt nichts zu kündigen.</p>`;
+  } else {
+    body.innerHTML = `<p>Vertrag: <b>AKTEX ${planById(sub.plan).name}</b> (${sub.billing === "yearly" ? "jährlich" : "monatlich"}), ${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"}.</p>
+      <p>Die Kündigung wird zum <b>${new Date(sub.renews).toLocaleDateString("de-DE")}</b> wirksam. Bis dahin nutzt du alle Funktionen weiter.</p>
+      <label class="field"><span>Grund (optional)</span><select id="cancel-reason"><option value="">Keine Angabe</option><option>Zu teuer</option><option>Nutze es zu selten</option><option>Funktion fehlt</option><option>Wechsel zu anderem Anbieter</option></select></label>
+      <button class="btn danger-solid" data-cancel-now>Jetzt kündigen</button>
+      <p class="muted small">Du erhältst eine Kündigungsbestätigung mit Datum und Uhrzeit.</p>`;
+  }
+  closeModals();
+  setTimeout(() => openModal("#cancel-modal"), 330);
+}
+function bindCancel() {
+  $("#cancel-body").addEventListener("click", (e) => {
+    if (e.target.closest("[data-cancel-now]")) {
+      const sub = account.cancel($("#cancel-reason").value);
+      $("#cancel-body").innerHTML = `<div class="co-done small"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg>
+        <h3>Kündigung bestätigt</h3><p>Eingegangen am ${new Date().toLocaleString("de-DE")}. Dein Tarif <b>AKTEX ${planById(sub.plan).name}</b> endet am <b>${new Date(sub.cancelAt).toLocaleDateString("de-DE")}</b>. Danach wechselst du automatisch zu Free.</p></div>`;
+      syncAccountUI();
+      toast(`Dein Abo endet am ${new Date(sub.cancelAt).toLocaleDateString("de-DE")}.`, "info", "Kündigung bestätigt");
+    }
+    if (e.target.closest("[data-resume]")) {
+      account.resume();
+      closeModals();
+      syncAccountUI();
+      toast("Schön, dass du bleibst! Dein Abo läuft weiter.", "success", "Kündigung zurückgenommen");
+    }
+  });
+}
+function checkSubscription() {
+  const sub = account.state.sub;
+  if (!sub) return;
+  if (sub.status === "canceled" && Date.now() >= sub.cancelAt) {
+    account.state.sub = null;
+    account.save();
+    setPlan("free", true);
+    return;
+  }
+  if (sub.status === "trial" && Date.now() >= sub.trialEnds) {
+    // erste (Test-)Abbuchung nach der Testphase
+    sub.status = "active";
+    account.addInvoice({ date: sub.trialEnds, lines: [{ label: `AKTEX ${planById(sub.plan).name} (${sub.billing === "yearly" ? "jährlich" : "monatlich"})`, amount: sub.total }], total: sub.total, note: "Abbuchung nach der Testphase (Testmodus)" });
+    sub.renews = sub.trialEnds + (sub.billing === "yearly" ? 365 : 30) * 86400000;
+    account.save();
+  }
+}
+
+// ---------- Onboarding ----------
+let ob = null;
+function openOnboarding() {
+  ob = { step: 0, name: account.state.profile?.name || "", email: account.state.profile?.email || "", exp: null, goal: null, risk: 4 };
+  renderOnboarding();
+  openModal("#onboard-modal");
+}
+function renderOnboarding(dir = 1) {
+  stepper("#ob-steps", Math.min(ob.step, 3));
+  const opt = (key, val, icon, title, text) => `<button class="ob-opt ${ob[key] === val ? "on" : ""}" data-ob="${key}" data-val="${val}"><span>${icon}</span><b>${title}</b><small>${text}</small></button>`;
+  let html = "";
+  if (ob.step === 0)
+    html = `<div class="co-narrow"><div class="ob-hero"><img src="icons/logo.svg" alt="" width="96" height="96"/><h2>Willkommen bei ΛKTEX</h2><p class="muted">In 30 Sekunden richten wir die App auf dich ein.</p></div>
+      <label class="field"><span>Wie heißt du?</span><input type="text" id="ob-name" maxlength="60" value="${esc(ob.name)}" autocomplete="given-name" /></label>
+      <label class="field"><span>E-Mail (optional)</span><input type="email" id="ob-email" maxlength="120" value="${esc(ob.email)}" autocomplete="email" /></label>
+      <p class="muted small">Wird nur in diesem Browser gespeichert.</p>
+      <div class="co-actions"><button class="btn ghost" data-ob-skip>Überspringen</button><button class="btn primary" data-ob-next>Weiter</button></div></div>`;
+  else if (ob.step === 1)
+    html = `<div class="co-narrow"><h3>Wie viel Börsenerfahrung hast du?</h3><div class="ob-opts">${opt("exp", "new", "🌱", "Einsteiger", "Ich fange gerade an")}${opt("exp", "some", "📈", "Fortgeschritten", "Ich habe schon Aktien gekauft")}${opt("exp", "pro", "🏆", "Profi", "Ich trade regelmäßig")}</div><div class="co-actions"><button class="btn ghost" data-ob-back>Zurück</button><button class="btn primary" data-ob-next ${ob.exp ? "" : "disabled"}>Weiter</button></div></div>`;
+  else if (ob.step === 2)
+    html = `<div class="co-narrow"><h3>Was ist dein Ziel?</h3><div class="ob-opts">${opt("goal", "wealth", "🏡", "Vermögen aufbauen", "Langfristig investieren")}${opt("goal", "trade", "⚡", "Aktiv traden", "Chancen schnell nutzen")}${opt("goal", "income", "💶", "Dividenden", "Regelmäßige Erträge")}</div><div class="co-actions"><button class="btn ghost" data-ob-back>Zurück</button><button class="btn primary" data-ob-next ${ob.goal ? "" : "disabled"}>Weiter</button></div></div>`;
+  else if (ob.step === 3) {
+    const lbl = ["", "Sehr vorsichtig", "Vorsichtig", "Eher vorsichtig", "Ausgewogen", "Eher mutig", "Mutig", "Sehr mutig"][ob.risk];
+    html = `<div class="co-narrow"><h3>Wie viel Schwankung hältst du aus?</h3><div class="risk-big"><b id="ob-risk-l">${lbl}</b><span id="ob-risk-v">${ob.risk} / 7</span></div>
+      <input type="range" id="ob-risk" min="1" max="7" step="1" value="${ob.risk}" />
+      <div class="risk-scale"><span>Sicherheit</span><span>Rendite</span></div>
+      <div class="co-actions"><button class="btn ghost" data-ob-back>Zurück</button><button class="btn primary" data-ob-next>Fertig</button></div></div>`;
+  } else {
+    const rec = ob.goal === "trade" && ob.risk >= 5 ? "aiprem" : ob.exp === "pro" ? "pro" : ob.goal === "wealth" && ob.exp === "new" ? "ai" : ob.exp === "new" ? "plus" : "pro";
+    const p = planById(rec);
+    html = `<div class="co-done"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg>
+      <h2>Alles bereit, ${esc(ob.name || "Trader")}!</h2><p class="muted">Dein Profil: ${{ new: "Einsteiger", some: "Fortgeschritten", pro: "Profi" }[ob.exp]} · ${{ wealth: "Vermögensaufbau", trade: "Aktiv traden", income: "Dividenden" }[ob.goal]} · Risiko ${ob.risk}/7. Den Autopiloten habe ich auf „${STRATEGIES[ob.risk <= 3 ? "conservative" : ob.risk >= 6 ? "aggressive" : "balanced"].label}“ eingestellt.</p>
+      <div class="rec-card"><span class="usp-eyebrow">Unsere Empfehlung</span><h3>AKTEX ${p.name}</h3><p class="muted">${p.tagline} · ${eur(planPrice(p, settings.billing))}/Monat, ${PAYMENT_CONFIG.trialDays} Tage gratis</p></div>
+      <div class="co-done-actions"><button class="btn" data-ob-free>Kostenlos starten</button><button class="btn primary" data-ob-rec="${p.id}">${p.name} gratis testen</button></div></div>`;
+  }
+  $("#ob-stage").innerHTML = `<div class="co-slide ${dir > 0 ? "fwd" : "back"}">${html}</div>`;
+}
+function finishOnboarding() {
+  account.setProfile({ name: ob.name || "Trader", email: ob.email || "" });
+  account.state.onboarding = { exp: ob.exp, goal: ob.goal, risk: ob.risk, at: Date.now() };
+  account.save();
+  aiEngine.state.config.strategy = ob.risk <= 3 ? "conservative" : ob.risk >= 6 ? "aggressive" : "balanced";
+  aiEngine.save();
+  syncAccountUI();
+}
+function bindOnboarding() {
+  $("#ob-stage").addEventListener("click", (e) => {
+    const t = e.target;
+    const o = t.closest("[data-ob]");
+    if (o) {
+      ob[o.dataset.ob] = o.dataset.val;
+      haptic(6);
+      return renderOnboarding(0);
+    }
+    if (t.closest("[data-ob-next]")) {
+      if (ob.step === 0) {
+        ob.name = $("#ob-name").value.trim();
+        ob.email = $("#ob-email").value.trim();
+        if (!ob.name) return shake($("#ob-name"));
+      }
+      ob.step++;
+      if (ob.step === 4) finishOnboarding();
+      return renderOnboarding(1);
+    }
+    if (t.closest("[data-ob-back]")) {
+      ob.step--;
+      return renderOnboarding(-1);
+    }
+    if (t.closest("[data-ob-skip]")) {
+      closeModals();
+      return setView("chart");
+    }
+    if (t.closest("[data-ob-free]")) {
+      closeModals();
+      return setView("chart");
+    }
+    const r = t.closest("[data-ob-rec]");
+    if (r) return openCheckout(r.dataset.obRec);
+  });
+  $("#ob-stage").addEventListener("input", (e) => {
+    if (e.target.id !== "ob-risk") return;
+    ob.risk = +e.target.value;
+    $("#ob-risk-l").textContent = ["", "Sehr vorsichtig", "Vorsichtig", "Eher vorsichtig", "Ausgewogen", "Eher mutig", "Mutig", "Sehr mutig"][ob.risk];
+    $("#ob-risk-v").textContent = ob.risk + " / 7";
+  });
+}
+
+// ---------- Konto-Ansicht ----------
+let acctTab = "profile";
+function avatarFor(name) {
+  const ini = (name || "?").split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return `<span class="avatar" style="--c:#6ea2f2">${esc(ini)}</span>`;
+}
+function syncAccountUI() {
+  const pr = account.state.profile;
+  $("#acct-av").textContent = pr ? pr.name.split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() : "?";
+  $("#acct-btn").classList.toggle("in", !!pr);
+  if (settings.view === "account") renderAccount();
+}
+function renderAcctMenu() {
+  const pr = account.state.profile;
+  const sub = account.state.sub;
+  $("#acct-menu").innerHTML = pr
+    ? `<div class="menu-head">${avatarFor(pr.name)}<div><b>${esc(pr.name)}</b><small class="muted">AKTEX ${plan().name}${sub ? " · " + { trial: "Testphase", active: "aktiv", canceled: "gekündigt" }[sub.status] : ""}</small></div></div>
+      <button data-goto="account" data-acct-tab="profile">👤 Profil & Konto</button><button data-goto="account" data-acct-tab="billing">💳 Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">🧾 Rechnungen</button><button data-open-plans>✦ Tarife</button><button data-goto="legal">⚖️ Rechtliches</button><button data-signout>Abmelden</button>`
+    : `<div class="menu-head"><span class="avatar" style="--c:#64748b">?</span><div><b>Nicht angemeldet</b><small class="muted">Demo-Depot aktiv</small></div></div><button data-onboard>✨ Konto erstellen</button><button data-open-plans>✦ Tarife</button><button data-goto="legal">⚖️ Rechtliches</button>`;
+}
+function renderAccount() {
+  if (settings.view !== "account") return;
+  $$("#acct-nav button").forEach((b) => b.classList.toggle("active", b.dataset.acct === acctTab));
+  const pr = account.state.profile;
+  const sub = account.state.sub;
+  const el = $("#acct-body");
+  const tog = (k, label, desc) => `<div class="set-row"><div><b>${label}</b><small class="muted">${desc}</small></div><button class="switch ${account.state.prefs[k] ? "on" : ""}" data-pref="${k}" aria-pressed="${account.state.prefs[k]}"><i></i></button></div>`;
+  let html = "";
+  if (acctTab === "profile") {
+    html = pr
+      ? `<div class="profile-top">${avatarFor(pr.name).replace('class="avatar"', 'class="avatar xl"')}<div><h2>${esc(pr.name)}</h2><p class="muted">Mitglied seit ${new Date(pr.since).toLocaleDateString("de-DE")} · AKTEX ${plan().name}</p></div></div>
+        <form class="form narrow" id="profile-form"><label class="field"><span>Name</span><input type="text" id="pf-name" value="${esc(pr.name)}" maxlength="60" /></label><label class="field"><span>E-Mail</span><input type="email" id="pf-email" value="${esc(pr.email || "")}" maxlength="120" /></label><button class="btn primary">Speichern</button></form>
+        ${account.state.onboarding ? `<div class="kv"><div><span>Erfahrung</span><b>${{ new: "Einsteiger", some: "Fortgeschritten", pro: "Profi" }[account.state.onboarding.exp] || "–"}</b></div><div><span>Ziel</span><b>${{ wealth: "Vermögensaufbau", trade: "Aktiv traden", income: "Dividenden" }[account.state.onboarding.goal] || "–"}</b></div><div><span>Risiko</span><b>${account.state.onboarding.risk}/7</b></div></div><button class="link-btn" data-onboard>Anlageprofil neu einrichten</button>` : `<button class="btn" data-onboard>Anlageprofil einrichten</button>`}`
+      : `<div class="empty-state"><div class="orb small"><i></i><i></i><i></i></div><h3>Noch kein Konto</h3><p class="muted">Erstelle ein kostenloses Profil – in 30 Sekunden.</p><button class="btn primary" data-onboard>Konto erstellen</button></div>`;
+  } else if (acctTab === "billing") {
+    const p = plan();
+    html = `<div class="bill-card ${p.group ? "ai" : ""}"><div><span class="usp-eyebrow">Dein Tarif</span><h2>AKTEX ${p.name}</h2><p class="muted">${sub ? `${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"} · ${sub.billing === "yearly" ? "jährlich" : "monatlich"}` : p.monthly ? "Direkt aktiviert (ohne Checkout)" : "Kostenlos"}</p></div>
+        ${sub ? `<span class="status-pill ${sub.status}">${{ trial: "Testphase", active: "Aktiv", canceled: "Gekündigt" }[sub.status]}</span>` : ""}</div>
+      ${sub ? `<div class="kv"><div><span>${sub.status === "trial" ? "Testphase bis" : sub.status === "canceled" ? "Endet am" : "Nächste Abbuchung"}</span><b>${new Date(sub.status === "canceled" ? sub.cancelAt : sub.status === "trial" ? sub.trialEnds : sub.renews).toLocaleDateString("de-DE")}</b></div><div><span>Zahlungsmethode</span><b>${esc(account.state.method?.label || "–")}</b></div><div><span>Gutschein</span><b>${sub.promo || "–"}</b></div></div>` : ""}
+      <div class="btn-row"><button class="btn primary" data-open-plans>Tarif wechseln</button>${sub ? `<button class="btn" data-change-method>Zahlungsmethode ändern</button>` : ""}${PAYMENT_CONFIG.stripePortal ? `<a class="btn" href="${PAYMENT_CONFIG.stripePortal}" target="_blank" rel="noopener">Kundenportal</a>` : ""}</div>
+      <div class="cancel-zone"><div><b>Kündigen</b><small class="muted">Jederzeit zum Ende der Laufzeit – ohne Umwege.</small></div><button class="btn danger" data-cancel-open>Verträge hier kündigen</button></div>`;
+  } else if (acctTab === "invoices") {
+    const inv = account.state.invoices;
+    html = inv.length
+      ? `<div class="table-scroll"><table class="grid"><thead><tr><th>Nr.</th><th>Datum</th><th class="num">Betrag</th><th>Status</th><th></th></tr></thead><tbody>${inv.map((x, i) => `<tr><td>${x.no}</td><td>${new Date(x.date).toLocaleDateString("de-DE")}</td><td class="num">${eur(x.total)}</td><td><span class="status ok">${esc(x.status)}</span></td><td class="num"><button class="mini-btn" data-invoice="${i}">Ansehen</button></td></tr>`).join("")}</tbody></table></div>`
+      : `<div class="empty">Noch keine Rechnungen. Sie erscheinen hier nach dem ersten Checkout.</div>`;
+  } else if (acctTab === "notify") {
+    html = `${tog("push", "Push-Benachrichtigungen", "Order-Ausführungen und Alarme als System-Mitteilung")}${tog("fills", "Order-Bestätigungen", "Meldung bei jeder Ausführung")}${tog("ai", "AKTEX AI-Meldungen", "Signalwechsel, Risiken, Autopilot-Entscheidungen")}${tog("email", "Wochenreport per E-Mail", "Zusammenfassung deines Depots (im Echtbetrieb)")}
+      <button class="btn" data-perm>Browser-Benachrichtigungen erlauben</button>`;
+  } else if (acctTab === "security") {
+    html = `${tog("twofa", "Zwei-Faktor-Anmeldung", "Zusätzlicher Code bei jeder Anmeldung")}${tog("passkey", "Passkey", "Anmelden mit Face ID, Touch ID oder Windows Hello")}
+      <h4 class="ap-h">Aktive Sitzungen</h4><div class="set-row"><div><b>Dieses Gerät</b><small class="muted">${esc(navigator.platform || "Browser")} · jetzt aktiv</small></div><span class="status ok">aktuell</span></div>
+      <p class="muted small">In der Demo sind Sicherheits-Einstellungen Vorschau-Schalter; im Echtbetrieb übernimmt das der Login-Server.</p>`;
+  } else if (acctTab === "data") {
+    html = `<div class="set-row"><div><b>Daten exportieren</b><small class="muted">Konto, Depot, Ideen und Einstellungen als JSON (DSGVO Art. 20)</small></div><button class="btn" data-export>Export</button></div>
+      <div class="set-row"><div><b>Demo-Depot zurücksetzen</b><small class="muted">Positionen, Orders und Alarme löschen, 100.000 € Startguthaben</small></div><button class="btn" data-goto="portfolio">Zum Depot</button></div>
+      <div class="set-row"><div><b>Abmelden</b><small class="muted">Profil von diesem Gerät entfernen</small></div><button class="btn danger" data-signout>Abmelden</button></div>`;
+  }
+  el.innerHTML = `<div class="co-slide fwd">${html}</div>`;
+}
+function bindAccount() {
+  $("#acct-nav").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-acct]");
+    if (!b) return;
+    acctTab = b.dataset.acct;
+    renderAccount();
+  });
+  document.addEventListener("submit", (e) => {
+    if (e.target.id !== "profile-form") return;
+    e.preventDefault();
+    account.setProfile({ name: $("#pf-name").value.trim() || account.state.profile.name, email: $("#pf-email").value.trim() });
+    syncAccountUI();
+    toast("Profil gespeichert.", "success");
+  });
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    const tabBtn = t.closest("[data-acct-tab]");
+    if (tabBtn) {
+      acctTab = tabBtn.dataset.acctTab;
+      if (settings.view === "account") renderAccount();
+    }
+    const pref = t.closest("[data-pref]");
+    if (pref) {
+      const k = pref.dataset.pref;
+      account.state.prefs[k] = !account.state.prefs[k];
+      account.save();
+      haptic(6);
+      pref.classList.toggle("on", account.state.prefs[k]);
+      return;
+    }
+    if (t.closest("[data-onboard]")) {
+      closePopovers();
+      return openOnboarding();
+    }
+    if (t.closest("[data-signout]")) {
+      account.signOut();
+      closePopovers();
+      syncAccountUI();
+      return toast("Du wurdest abgemeldet. Dein Demo-Depot bleibt erhalten.", "info", "Abgemeldet");
+    }
+    const inv = t.closest("[data-invoice]");
+    if (inv) return openInvoice(+inv.dataset.invoice);
+    if (t.closest("[data-cancel-open]")) return openCancel();
+    if (t.closest("[data-change-method]")) return openCheckout(settings.plan, 2);
+    if (t.closest("[data-perm]")) {
+      if ("Notification" in window) Notification.requestPermission().then((r) => toast(r === "granted" ? "Benachrichtigungen sind erlaubt." : "Benachrichtigungen wurden nicht erlaubt.", r === "granted" ? "success" : "info")).catch(() => {});
+      return;
+    }
+    if (t.closest("[data-export]")) {
+      const data = { exportiert: new Date().toISOString(), konto: account.state, depot: broker.state, einstellungen: settings, ideen: community.state, ai: aiEngine.state };
+      $("#json-out").value = JSON.stringify(data, null, 2);
+      return openModal("#json-modal");
+    }
+    const lo = t.closest("[data-legal-open]");
+    if (lo) {
+      e.preventDefault();
+      legalTab = lo.dataset.legalOpen;
+      closeModals();
+      closePopovers();
+      return setView("legal");
+    }
+  });
+  $("#json-copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText($("#json-out").value);
+      toast("Daten in die Zwischenablage kopiert.", "success");
+    } catch (_) {
+      $("#json-out").select();
+      toast("Bitte mit Strg/⌘ + C kopieren.", "info");
+    }
+  });
+}
+
+// ---------- Rechtliches (Vorlagen) ----------
+let legalTab = "impressum";
+const PH = (t) => `<mark class="ph">[${t}]</mark>`;
+const LEGAL = {
+  impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${PH("Firmenname und Rechtsform")}<br>${PH("Straße Hausnummer")}<br>${PH("PLZ Ort")}</p><p><b>Vertreten durch:</b> ${PH("Geschäftsführung")}<br><b>Kontakt:</b> ${PH("E-Mail")} · ${PH("Telefon")}<br><b>Registereintrag:</b> ${PH("Registergericht, HRB-Nummer")}<br><b>USt-IdNr.:</b> ${PH("DE…")}</p><p><b>Aufsicht:</b> Im Echtbetrieb ${PH("Bundesanstalt für Finanzdienstleistungsaufsicht (BaFin) bzw. lizenzierter Partner")}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${PH("Name, Anschrift")}</p>`,
+  privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung für diese Demo</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li><li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li><li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${PH("Name, Anschrift, Kontakt")} · Datenschutzbeauftragter: ${PH("Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
+  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKTEX von ${PH("Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
+  withdrawal: () => `<h2>Widerrufsbelehrung (Vorlage)</h2><p><b>Widerrufsrecht:</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${PH("Name, Anschrift, E-Mail")}) mittels einer eindeutigen Erklärung über deinen Entschluss informieren.</p><p><b>Folgen des Widerrufs:</b> Wir erstatten alle Zahlungen unverzüglich, spätestens binnen vierzehn Tagen. ${PH("Regelung bei vorzeitigem Leistungsbeginn anwaltlich prüfen")}</p>`,
+  risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
+};
+function renderLegal() {
+  $$("#legal-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.legal === legalTab));
+  $("#legal-body").innerHTML = `<div class="co-slide fwd">${LEGAL[legalTab]()}</div>`;
+}
+
+// ---------- Mitteilungen, Konto-Menü, Befehlspalette ----------
+function syncNotifBadge() {
+  const b = $("#notif-badge");
+  if (!b) return;
+  b.hidden = !notifUnread;
+  b.textContent = notifUnread > 9 ? "9+" : notifUnread;
+}
+function renderNotifs() {
+  $("#notif-list").innerHTML = notifs.length
+    ? notifs.map((n) => `<div class="notif ${n.type}"><i></i><div>${n.title ? `<b>${esc(n.title)}</b>` : ""}<p>${esc(n.msg)}</p><small class="muted">${ago(n.ts)}</small></div></div>`).join("")
+    : `<div class="muted empty">Keine Mitteilungen.</div>`;
+}
+function closePopovers() {
+  $$(".popover").forEach((p) => {
+    p.classList.remove("open");
+    setTimeout(() => {
+      if (!p.classList.contains("open")) p.hidden = true;
+    }, 250);
+  });
+}
+function togglePopover(id, render) {
+  const p = $(id);
+  const open = p.hidden || !p.classList.contains("open");
+  closePopovers();
+  if (!open) return;
+  render();
+  p.hidden = false;
+  requestAnimationFrame(() => p.classList.add("open"));
+}
+let cmdIdx = 0;
+function cmdItems(q) {
+  const items = [
+    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["ai", "AKTEX AI"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
+    { icon: "✦", label: "Tarife ansehen", run: () => openPlans() },
+    { icon: "💳", label: "Pro abonnieren (Checkout)", run: () => openCheckout("pro") },
+    { icon: "🤖", label: "AI Premium abonnieren (Checkout)", run: () => openCheckout("aiprem") },
+    { icon: "💡", label: "Idee teilen", run: () => openIdeaModal() },
+    { icon: "⏰", label: "Alarm erstellen", run: () => openAlertModal(settings.symbol, market.get(settings.symbol).price) },
+    { icon: "◐", label: "Hell/Dunkel umschalten", run: () => $("#theme-btn").click() },
+    { icon: "🔗", label: "Link teilen", run: () => share() },
+    { icon: "⏻", label: `Autopilot ${aiEngine.state.config.enabled ? "ausschalten" : "einschalten"}`, run: () => (setView("ai"), setTimeout(() => $("#ap-toggle")?.click(), 400)) },
+    { icon: "🧾", label: "Rechnungen", run: () => ((acctTab = "invoices"), setView("account")) },
+    { icon: "✕", label: "Verträge hier kündigen", run: () => openCancel() },
+    ...STOCKS.map((s) => ({ icon: "📈", label: `${s.s} – ${s.n}`, sub: `${num(market.get(s.s).price)} €`, run: () => setSymbol(s.s) })),
+  ];
+  const t = q.trim().toLowerCase();
+  let res = t ? items.filter((i) => i.label.toLowerCase().includes(t)) : items.slice(0, 14);
+  if (t.length > 2) res.push({ icon: "✦", label: `AKTEX AI fragen: „${q.trim()}“`, run: () => (setView("ai"), setTimeout(() => sendChat(q.trim()), 350)) });
+  return res.slice(0, 14);
+}
+function renderCmd() {
+  const res = cmdItems($("#cmdk-input").value);
+  cmdIdx = Math.min(cmdIdx, res.length - 1);
+  $("#cmdk-list").innerHTML = res.map((r, i) => `<li class="${i === cmdIdx ? "hl" : ""}" data-cmd="${i}"><span class="ci">${r.icon}</span><span>${esc(r.label)}</span>${r.sub ? `<small class="muted">${r.sub}</small>` : ""}</li>`).join("");
+  $("#cmdk-list").onclick = (e) => {
+    const li = e.target.closest("[data-cmd]");
+    if (!li) return;
+    closeModals();
+    res[+li.dataset.cmd].run();
+  };
+  return res;
+}
+function openCmd() {
+  cmdIdx = 0;
+  $("#cmdk-input").value = "";
+  renderCmd();
+  openModal("#cmdk-modal");
+  $("#cmdk-input").focus();
+}
+function bindShell() {
+  $("#cmdk-btn").addEventListener("click", openCmd);
+  $("#cmdk-input").addEventListener("input", () => {
+    cmdIdx = 0;
+    renderCmd();
+  });
+  $("#cmdk-input").addEventListener("keydown", (e) => {
+    const res = cmdItems($("#cmdk-input").value);
+    if (e.key === "ArrowDown") cmdIdx = Math.min(res.length - 1, cmdIdx + 1);
+    else if (e.key === "ArrowUp") cmdIdx = Math.max(0, cmdIdx - 1);
+    else if (e.key === "Enter" && res[cmdIdx]) {
+      closeModals();
+      return res[cmdIdx].run();
+    } else return;
+    e.preventDefault();
+    renderCmd();
+    $("#cmdk-list .hl")?.scrollIntoView({ block: "nearest" });
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      openCmd();
+    }
+  }, true);
+  $("#notif-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    notifUnread = 0;
+    syncNotifBadge();
+    togglePopover("#notif-panel", renderNotifs);
+  });
+  $("#notif-clear").addEventListener("click", () => {
+    notifs.length = 0;
+    renderNotifs();
+  });
+  $("#acct-btn").addEventListener("click", (e) => {
+    e.stopPropagation();
+    togglePopover("#acct-menu", renderAcctMenu);
+  });
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".pop-wrap")) closePopovers();
+    else if (e.target.closest(".popover button")) closePopovers();
+  });
+  $("#legal-tabs").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-legal]");
+    if (!b) return;
+    legalTab = b.dataset.legal;
+    renderLegal();
+  });
+  $("#hero-start").addEventListener("click", () => (account.signedIn ? setView("chart") : openOnboarding()));
+}
+
+// Globale Fußzeile auf allen Seiten
+function injectFooters() {
+  const foot = `<footer class="site-foot">
+    <div class="sf-brand"><img src="icons/icon.svg" alt="" width="30" height="30"/><div><b>ΛKTEX</b><small>Markets move. Ideas stay.</small></div></div>
+    <div class="sf-cols">
+      <div><b>Produkt</b><button data-goto="chart">Chart</button><button data-goto="ideas">Ideen-Börse</button><button data-goto="ai">AKTEX AI</button><button data-open-plans>Preise</button></div>
+      <div><b>Konto</b><button data-goto="account" data-acct-tab="billing">Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">Rechnungen</button><button data-cancel-open class="sf-cancel">Verträge hier kündigen</button></div>
+      <div><b>Rechtliches</b><button data-legal-open="impressum">Impressum</button><button data-legal-open="privacy">Datenschutz</button><button data-legal-open="terms">AGB</button><button data-legal-open="risk">Risikohinweise</button></div>
+    </div>
+    <small class="sf-note">Demo-Anwendung: Kurse, Community-Profile und Zahlungen sind simuliert. Keine Anlageberatung. Kein echtes Geld. © ${new Date().getFullYear()} ${PH("Firmenname")}</small>
+  </footer>`;
+  $$(".site-foot-slot").forEach((s) => (s.outerHTML = foot));
+  for (const v of ["markets", "ideas", "ai", "portfolio", "business", "account", "legal"]) {
+    const inner = $(`#view-${v} .page-inner`);
+    if (inner && !inner.querySelector(".site-foot")) inner.insertAdjacentHTML("beforeend", foot);
+  }
+}
+
+// ---------- Feinschliff: 3D-Neigung, Spotlight, Live-Aktivität, Rollziffern ----------
+function bindDepth() {
+  if (!matchMedia("(hover: hover) and (pointer: fine)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  let cur = null;
+  let raf = 0;
+  document.addEventListener("pointermove", (e) => {
+    const el = e.target.closest(".plan, .feature, .opp, .usp-step, .kpi, .is-tile, .bill-card");
+    if (cur && cur !== el) {
+      cur.style.transform = "";
+      cur.classList.remove("tilting");
+    }
+    cur = el;
+    if (!el) return;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => {
+      const r = el.getBoundingClientRect();
+      const x = (e.clientX - r.left) / r.width;
+      const y = (e.clientY - r.top) / r.height;
+      el.classList.add("tilting");
+      el.style.setProperty("--mx", x * 100 + "%");
+      el.style.setProperty("--my", y * 100 + "%");
+      el.style.transform = `perspective(900px) rotateX(${(0.5 - y) * 5}deg) rotateY(${(x - 0.5) * 7}deg) translateY(-4px)`;
+    });
+  });
+  document.addEventListener("pointerleave", () => cur && (cur.style.transform = ""));
+}
+const ACT_NAMES = ["anna_trades", "LukasInvest", "bullenbaer", "fintech_fritz", "Marie.K", "depot_dave", "sparfuchs93", "KaiCharts", "LinaLongs", "TomTrader", "EllaETF", "pivot_paul"];
+function liveActivity() {
+  const el = $("#live-activity");
+  if (!el || settings.view !== "home") return;
+  const s = STOCKS[Math.floor(Math.random() * STOCKS.length)];
+  const kinds = [
+    () => `<b>@${ACT_NAMES[Math.floor(Math.random() * ACT_NAMES.length)]}</b> kaufte ${1 + Math.floor(Math.random() * 40)} ${s.s}`,
+    () => `<b>@${ACT_NAMES[Math.floor(Math.random() * ACT_NAMES.length)]}</b> teilte eine Idee zu ${s.s}`,
+    () => `🤖 Ein Autopilot sicherte Gewinne bei ${s.s}`,
+    () => `<b>@${ACT_NAMES[Math.floor(Math.random() * ACT_NAMES.length)]}</b> handelt eine Idee von @${community.traders[Math.floor(Math.random() * community.traders.length)].handle}`,
+  ];
+  const pill = document.createElement("div");
+  pill.className = "act-pill";
+  pill.innerHTML = `<i></i>${kinds[Math.floor(Math.random() * kinds.length)]()} <small>· gerade eben · Demo</small>`;
+  el.prepend(pill);
+  requestAnimationFrame(() => pill.classList.add("in"));
+  while (el.children.length > 3) el.lastElementChild.remove();
+}
+setInterval(liveActivity, 2600);
+
+// Rollziffern für den großen Kurs in der Kurskarte
+function odometer(el, text) {
+  if (!el) return;
+  if (el.dataset.txt === text) return;
+  const prev = el.dataset.txt || "";
+  el.dataset.txt = text;
+  if (prev.length !== text.length || !el.querySelector(".od")) {
+    el.innerHTML = [...text].map((ch) => (/\d/.test(ch) ? `<span class="od"><span class="od-col" style="transform:translateY(-${+ch * 10}%)">${"0123456789".split("").map((d) => `<i>${d}</i>`).join("")}</span></span>` : `<span class="od-s">${ch}</span>`)).join("");
+    return;
+  }
+  const cols = el.querySelectorAll(".od-col");
+  let k = 0;
+  for (const ch of text) if (/\d/.test(ch)) cols[k++].style.transform = `translateY(-${+ch * 10}%)`;
+}
+
 // ---------- Bewegung: Splash, Segmente, Ripple, Haptik ----------
 function haptic(pattern) {
   try {
@@ -2638,6 +3451,15 @@ $("#brand").addEventListener("click", () => {
 $("#brand").addEventListener("dblclick", () => runSplash(true));
 bindGrowth();
 bindAI();
+bindCheckout();
+bindCancel();
+bindOnboarding();
+bindAccount();
+bindShell();
+bindDepth();
+injectFooters();
+checkSubscription();
+syncAccountUI();
 bindTicket();
 bindTables();
 bindDrawbar();

@@ -38,10 +38,18 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 - **Business-Dashboard:** Umsatz- und Bewertungsmodell mit Reglern, Umsatz nach Quelle, 5-Jahres-Pfad, Funnel
 - Geschäftsplan: siehe [`BUSINESS.md`](BUSINESS.md)
 
+**Konto & Bezahlsystem**
+- Onboarding (Profil, Erfahrung, Ziel, Risiko) mit Tarif-Empfehlung
+- Checkout im Testmodus: Tarif, Laufzeit, Add-ons, Gutscheine, MwSt., Karte mit 3-D Secure, PayPal, Apple/Google Pay, SEPA, Klarna – nur Testdaten
+- Konto-Bereich: Profil, Abo & Zahlung, Rechnungen, Benachrichtigungen, Sicherheit, Datenexport (DSGVO)
+- „Verträge hier kündigen“, Rechtliches (Impressum, Datenschutz, AGB, Widerruf, Risikohinweise als Vorlagen)
+- Anschluss an echte Zahlungen über Stripe: siehe [`PAYMENTS.md`](PAYMENTS.md)
+
 **App & Design**
 - Installierbar als App auf PC, Mac, Android und iPhone („App installieren“-Button)
 - Animierter Startbildschirm mit dem AKTEX-Logo, Federanimationen, Bottom-Sheets, Dynamic-Island-Meldungen
-- Hell/Dunkel-Modus, Tastenkürzel (Alt+T/H/F Zeichnen, Strg+Z, Esc)
+- Hell/Dunkel-Modus, Befehlspalette (Strg/⌘ + K), Mitteilungszentrale, Tastenkürzel (Alt+T/H/F Zeichnen, Strg+Z, Esc)
+- 3D-Neigung und Spotlight auf Karten, Rollziffern beim Kurs, Live-Aktivität auf der Startseite
 - **Teilen per Link:** Der Teilen-Button erzeugt einen Link wie `…/?symbol=SAP&tf=1h`, der genau diese Ansicht öffnet
 
 ## Starten (lokal)
@@ -73,6 +81,7 @@ Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch
 | `js/community.js` | Community: Trader, Ideen, Rangliste |
 | `js/plans.js` | Tarife, Add-ons & Limits |
 | `js/ai.js` | AKTEX AI: Scan, Depot-Doktor, Berater, Meldungen, Autopilot |
+| `js/payments.js` | Checkout, Testkarten, Abo, Rechnungen, Stripe-Anbindung |
 | `js/chart.js` | Chart, Indikatoren, Zeichenwerkzeuge |
 | `js/app.js` | UI-Logik, Views, Teilen, Installation |
 | `manifest.webmanifest`, `sw.js` | App-Installation & Offline-Modus |
