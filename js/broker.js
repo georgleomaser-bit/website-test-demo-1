@@ -15,6 +15,7 @@ function fresh() {
     fills: [],
     alerts: [],
     realized: 0,
+    fees: 0,
     equityCurve: [],
     created: Date.now(),
   };
@@ -24,6 +25,7 @@ export class Broker {
   constructor(market) {
     this.market = market;
     this.listeners = new Map();
+    this.feeFn = () => 0; // Ordergebühr je nach Tarif
     this.state = this.load();
     market.onTick(() => this.onTick());
   }
@@ -124,7 +126,7 @@ export class Broker {
 
     if (side === "buy") {
       const px = type === "limit" ? limitPrice : type === "stop" ? stopPrice : q.ask;
-      if (qty * px > this.buyingPower() + 1e-6) return { ok: false, msg: "Nicht genügend Kaufkraft." };
+      if (qty * px + this.feeFn() > this.buyingPower() + 1e-6) return { ok: false, msg: "Nicht genügend Kaufkraft (inkl. Ordergebühr)." };
       if (sl != null && !(sl < px)) return { ok: false, msg: "Stop-Loss muss unter dem Einstiegskurs liegen." };
       if (tp != null && !(tp > px)) return { ok: false, msg: "Take-Profit muss über dem Einstiegskurs liegen." };
       if (type === "stop" && stopPrice <= q.price) return { ok: false, msg: "Kauf-Stopp muss über dem aktuellen Kurs liegen." };
@@ -194,15 +196,17 @@ export class Broker {
     const s = this.state;
     const sym = order.symbol;
     let pnl = null;
+    const fee = this.feeFn();
     if (order.side === "buy") {
       const cost = order.qty * price;
-      if (cost > s.cash + 1e-6) {
+      if (cost + fee > s.cash + 1e-6) {
         this.reject(order, "abgelehnt: Guthaben");
         return;
       }
-      s.cash -= cost;
+      s.cash -= cost + fee;
       const p = s.positions[sym] || { qty: 0, avg: 0, realized: 0, opened: Date.now() };
-      p.avg = (p.avg * p.qty + cost) / (p.qty + order.qty);
+      // Einstandskurs inklusive Gebühr
+      p.avg = (p.avg * p.qty + cost + fee) / (p.qty + order.qty);
       p.qty += order.qty;
       s.positions[sym] = p;
     } else {
@@ -211,15 +215,16 @@ export class Broker {
         this.reject(order, "abgelehnt: Bestand");
         return;
       }
-      s.cash += order.qty * price;
-      pnl = (price - p.avg) * order.qty;
+      s.cash += order.qty * price - fee;
+      pnl = (price - p.avg) * order.qty - fee;
       p.realized += pnl;
       s.realized += pnl;
       p.qty -= order.qty;
       if (p.qty === 0) delete s.positions[sym];
     }
 
-    const fill = { id: uid(), orderId: order.id, symbol: sym, side: order.side, type: order.type, qty: order.qty, price, pnl, ts: Date.now(), time: nowSec() };
+    s.fees = (s.fees || 0) + fee;
+    const fill = { id: uid(), orderId: order.id, symbol: sym, side: order.side, type: order.type, qty: order.qty, price, fee, pnl, ts: Date.now(), time: nowSec() };
     s.fills.unshift(fill);
     s.fills.length = Math.min(s.fills.length, 500);
     order.status = "ausgeführt";

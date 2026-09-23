@@ -4,7 +4,7 @@
 
 Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar als App (PWA), offline nutzbar, mit flüssigen iOS-artigen Animationen.
 
-> **Hinweis:** Alle Kurse sind **simuliert** – keine echten Marktdaten, kein echtes Geld. Demo-Konto mit 100.000 € Startkapital.
+> **Hinweis:** Alle Kurse und Community-Profile sind **simuliert** – keine echten Marktdaten, kein echtes Geld, keine Anlageberatung. Demo-Konto mit 100.000 € Startkapital.
 
 ## Funktionen
 
@@ -25,6 +25,14 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 - 40 Aktien (USA, DAX, Europa), Watchlist, Symbolsuche (Taste `/`), Laufband
 - Heatmap nach Sektoren (1T/1W/1M/1J) und sortierbarer Screener
 - Depotseite mit Kennzahlen, Depotentwicklung und Aufteilung
+
+**Geschäftsmodell & Community**
+- Startseite (Landingpage) mit Live-Kursen, Features, Preisen und FAQ – ideal für geteilte Links
+- Tarife Free / Pro / Elite mit Ordergebühren (1 € im Free-Tarif, 0 € im Abo) und Funktionslimits
+- **AKTEX AI:** technische Bewertung jeder Aktie (Tachometer, 16 Signale, Marken, Trade-Setup mit 1 %-Risiko)
+- **Ideen:** Community-Feed mit Trading-Ideen (eigene Ideen inkl. Chart-Screenshot teilen), Likes, Folgen
+- **Rangliste & Copy-Trading:** Top-Trader-Ranking (inkl. eigenem Depot), Portfolios mit einem Klick kopieren
+- Geschäftsplan: siehe [`BUSINESS.md`](BUSINESS.md)
 
 **App & Design**
 - Installierbar als App auf PC, Mac, Android und iPhone („App installieren“-Button)
@@ -56,7 +64,10 @@ Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch
 | `css/app.css` | Design, Themes, Animationen |
 | `js/market.js` | Marktsimulation (Historie + Live-Ticks, Orderbuch) |
 | `js/indicators.js` | Technische Indikatoren |
-| `js/broker.js` | Demo-Broker: Orders, Positionen, Alarme |
+| `js/broker.js` | Demo-Broker: Orders, Positionen, Gebühren, Alarme |
+| `js/analysis.js` | AKTEX AI – technische Analyse |
+| `js/community.js` | Community: Trader, Ideen, Rangliste |
+| `js/plans.js` | Tarife & Limits |
 | `js/chart.js` | Chart, Indikatoren, Zeichenwerkzeuge |
 | `js/app.js` | UI-Logik, Views, Teilen, Installation |
 | `manifest.webmanifest`, `sw.js` | App-Installation & Offline-Modus |

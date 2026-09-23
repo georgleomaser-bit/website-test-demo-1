@@ -48,7 +48,7 @@
   </div>
   <!-- Kopfzeile -->
   <header class="topbar">
-    <button class="brand" id="brand" aria-label="Aktex – Logo-Animation abspielen">
+    <button class="brand" id="brand" aria-label="AKTEX Startseite">
       <svg class="mark" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
         <defs><radialGradient id="mk-g" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="#10284f"/><stop offset="1" stop-color="#050b18"/></radialGradient></defs>
         <circle cx="32" cy="32" r="31" fill="url(#mk-g)"/>
@@ -58,6 +58,7 @@
       </svg>
       <span class="name">ΛKTEX</span>
     </button>
+    <span class="demo-chip" title="Alle Kurse sind simuliert. Kein echtes Geld, keine Anlageberatung.">DEMO</span>
 
     <button class="sym-btn" id="sym-btn" title="Symbol suchen (/)">
       <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
@@ -84,8 +85,10 @@
     <div class="spacer"></div>
 
     <nav class="views" role="tablist">
+      <button class="view-btn" data-view="home">Start</button>
       <button class="view-btn active" data-view="chart">Chart</button>
       <button class="view-btn" data-view="markets">Märkte</button>
+      <button class="view-btn" data-view="ideas">Ideen</button>
       <button class="view-btn" data-view="portfolio">Depot</button>
     </nav>
 
@@ -95,6 +98,7 @@
     <button class="icon-btn" id="theme-btn" title="Hell/Dunkel umschalten">
       <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36A5.5 5.5 0 0 1 13.36 3.1 9.3 9.3 0 0 0 12 3Z"/></svg>
     </button>
+    <button class="plan-btn" id="plan-btn" title="Tarif wählen"><span class="plan-dot"></span><span id="plan-label">Free</span><span class="plan-up">Upgrade</span></button>
     <button class="install-btn" id="install-btn" hidden>
       <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 3h2v9.17l3.59-3.58L18 10l-6 6-6-6 1.41-1.41L11 12.17V3ZM5 18h14v2H5v-2Z"/></svg>
       <span class="lbl">App installieren</span>
@@ -103,6 +107,84 @@
 
   <!-- Laufband -->
   <div class="ticker" aria-hidden="true"><div class="ticker-track" id="ticker"></div></div>
+
+  <!-- ================= STARTSEITE ================= -->
+  <main class="view page home" id="view-home" hidden>
+    <section class="hero">
+      <div class="hero-glow"></div>
+      <div class="hero-inner">
+        <div class="hero-copy reveal">
+          <span class="eyebrow"><i></i> Live-Märkte · 40 Aktien · Echtzeit</span>
+          <h1>Markets move.<br /><span class="grad">Ideas stay.</span></h1>
+          <p class="lead">Profi-Charts wie bei den Großen, KI-Analyse für jede Aktie, eine Community voller Trading-Ideen – und Orders ab 0 €. Alles in einer App, auf jedem Gerät.</p>
+          <div class="hero-cta">
+            <button class="btn primary big" data-goto="chart">Jetzt kostenlos starten</button>
+            <button class="btn ghost big" id="hero-install">App installieren</button>
+          </div>
+          <div class="trust">
+            <span>✓ Kostenloses Demo-Depot mit 100.000 €</span>
+            <span>✓ Keine Anmeldung nötig</span>
+            <span>✓ Läuft offline</span>
+          </div>
+        </div>
+        <div class="hero-visual reveal">
+          <img class="hero-logo" src="icons/logo.svg" alt="AKTEX Logo" width="440" height="440" />
+          <div class="float-card fc1" id="fc1"></div>
+          <div class="float-card fc2" id="fc2"></div>
+          <div class="float-card fc3" id="fc3"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="band reveal">
+      <div><b>40+</b><span>Aktien aus USA &amp; Europa</span></div>
+      <div><b>12</b><span>Profi-Indikatoren</span></div>
+      <div><b>0 €</b><span>Ordergebühr mit Pro</span></div>
+      <div><b>24/7</b><span>Live-Kurse (simuliert)</span></div>
+    </section>
+
+    <section class="home-sec">
+      <h2 class="reveal">Alles, was Trader brauchen.</h2>
+      <p class="sec-lead reveal">Gebaut für Einsteiger und Profis – schnell, schön und bis ins Detail durchdacht.</p>
+      <div class="features">
+        <article class="feature reveal"><div class="fi">📈</div><h3>Profi-Charts</h3><p>7 Zeiteinheiten, 7 Chart-Typen, 12 Indikatoren, Trendlinien und Fibonacci – direkt im Browser.</p></article>
+        <article class="feature reveal"><div class="fi">🤖</div><h3>AKTEX AI</h3><p>Technische Bewertung jeder Aktie in Echtzeit – mit Unterstützungen, Widerständen und fertigen Trade-Setups.</p></article>
+        <article class="feature reveal"><div class="fi">💡</div><h3>Community-Ideen</h3><p>Teile Analysen, folge den besten Tradern und kopiere ihre Portfolios mit einem Klick.</p></article>
+        <article class="feature reveal"><div class="fi">⚡</div><h3>Blitzschneller Handel</h3><p>Market-, Limit- und Stopp-Orders, Stop-Loss &amp; Take-Profit, Orderbuch und Umsätze in Echtzeit.</p></article>
+        <article class="feature reveal"><div class="fi">🔔</div><h3>Smarte Alarme</h3><p>Preisalarme direkt aus dem Chart – mit Push-Benachrichtigung, auch wenn die App im Hintergrund läuft.</p></article>
+        <article class="feature reveal"><div class="fi">📱</div><h3>Überall zu Hause</h3><p>Als App installierbar auf iPhone, Android, Mac und PC. Funktioniert sogar offline.</p></article>
+      </div>
+    </section>
+
+    <section class="home-sec preview-sec">
+      <div class="preview-copy reveal">
+        <h2>Echtzeit. Wirklich.</h2>
+        <p class="sec-lead">Jede Sekunde neue Kurse, Kerzen und Signale. Tippe auf eine Aktie und leg los.</p>
+        <div class="mini-list" id="mini-list"></div>
+      </div>
+      <div class="preview-chart reveal"><div id="home-chart"></div></div>
+    </section>
+
+    <section class="home-sec" id="pricing">
+      <h2 class="reveal">Einfache Preise. Keine Überraschungen.</h2>
+      <p class="sec-lead reveal">Starte kostenlos. Wechsle jederzeit – monatlich kündbar.</p>
+      <div class="plans reveal" id="home-plans"></div>
+    </section>
+
+    <section class="home-sec faq reveal">
+      <h2>Häufige Fragen</h2>
+      <details><summary>Ist das echtes Geld?</summary><p>Nein. AKTEX ist aktuell eine Demo: Alle Kurse sind simuliert und das Depot ist virtuell. So kannst du risikolos alle Funktionen ausprobieren.</p></details>
+      <details><summary>Wie installiere ich die App?</summary><p>Tippe auf „App installieren“. Auf dem iPhone: Teilen → „Zum Home-Bildschirm“. Danach startet AKTEX wie eine normale App mit eigenem Symbol.</p></details>
+      <details><summary>Was kostet ein Trade?</summary><p>Im Free-Tarif 1 € pro Order, mit Pro und Elite 0 €. Keine Depotgebühren.</p></details>
+      <details><summary>Kann ich Charts mit Freunden teilen?</summary><p>Ja – der Teilen-Button erzeugt einen Link, der genau deine Aktie und Zeiteinheit öffnet.</p></details>
+    </section>
+
+    <footer class="home-foot">
+      <img src="icons/icon.svg" alt="" width="28" height="28" />
+      <span>ΛKTEX · Markets move. Ideas stay.</span>
+      <small>Demo-Anwendung. Alle Kurse und Community-Profile sind simuliert. Keine Anlageberatung. Kein echtes Geld.</small>
+    </footer>
+  </main>
 
   <!-- ================= CHART-ANSICHT ================= -->
   <main class="view chart-view" id="view-chart">
@@ -149,6 +231,7 @@
 
       <div class="rtabs" role="tablist">
         <button class="rtab active" data-rtab="watch">Watchlist</button>
+        <button class="rtab" data-rtab="ai">AI-Analyse</button>
         <button class="rtab" data-rtab="book">Orderbuch</button>
         <button class="rtab" data-rtab="tape">Umsätze</button>
       </div>
@@ -158,6 +241,9 @@
           <tbody id="watch-body"></tbody>
         </table>
         <button class="link-btn" id="wl-add">+ Symbol hinzufügen</button>
+      </div>
+      <div class="rpanel" id="rpanel-ai" hidden>
+        <div class="ai" id="ai"></div>
       </div>
       <div class="rpanel" id="rpanel-book" hidden>
         <div class="book" id="book"></div>
@@ -212,6 +298,7 @@
         <dl class="osum">
           <div><dt>Ordervolumen</dt><dd id="o-total">–</dd></div>
           <div><dt>Kaufkraft</dt><dd id="o-bp">–</dd></div>
+          <div><dt>Ordergebühr</dt><dd id="o-fee">–</dd></div>
           <div id="o-risk-row" hidden><dt>Risiko / Chance</dt><dd id="o-risk">–</dd></div>
         </dl>
         <button type="submit" class="submit buy" id="o-submit">Kaufen</button>
@@ -286,6 +373,35 @@
   </main>
 
   <!-- ================= DEPOT ================= -->
+  <!-- ================= IDEEN ================= -->
+  <main class="view page" id="view-ideas" hidden>
+    <div class="page-inner">
+      <div class="page-head">
+        <div>
+          <h1>Ideen</h1>
+          <p class="muted sub">Trading-Ideen der Community · <span class="demo-note">Demo-Profile</span></p>
+        </div>
+        <div class="head-actions">
+          <div class="seg" id="idea-filter">
+            <button class="active" data-f="all">Alle</button>
+            <button data-f="long">Long</button>
+            <button data-f="short">Short</button>
+            <button data-f="following">Gefolgt</button>
+            <button data-f="mine">Meine</button>
+          </div>
+          <button class="btn primary" id="publish-btn">+ Idee teilen</button>
+        </div>
+      </div>
+      <div class="ideas-layout">
+        <div class="ideas-grid" id="ideas-grid"></div>
+        <aside class="card leaderboard">
+          <div class="card-head"><h2>🏆 Top-Trader</h2><span class="muted">Rendite 1 J.</span></div>
+          <div id="leaderboard"></div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
   <main class="view page" id="view-portfolio" hidden>
     <div class="page-inner">
       <div class="page-head">
@@ -345,6 +461,44 @@
     <div class="modal-box small" role="dialog" aria-label="App installieren">
       <div class="modal-head"><h3>Aktex als App installieren</h3><button class="icon-btn" data-close>✕</button></div>
       <div class="install-help" id="install-help"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="plans-modal" hidden>
+    <div class="modal-box wide" role="dialog" aria-label="Tarife">
+      <div class="modal-head"><h3>Wähle deinen Tarif</h3><button class="icon-btn" data-close>✕</button></div>
+      <p class="muted plans-note" id="plans-note">Demo: Es findet keine Zahlung statt – Tarife lassen sich frei ausprobieren.</p>
+      <div class="plans" id="modal-plans"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="idea-modal" hidden>
+    <div class="modal-box" role="dialog" aria-label="Idee teilen">
+      <div class="modal-head"><h3>Idee teilen</h3><button class="icon-btn" data-close>✕</button></div>
+      <form id="idea-form" class="form">
+        <img class="idea-shot" id="idea-shot" alt="Chart-Vorschau" />
+        <div class="row2">
+          <label class="field"><span>Symbol</span><select id="idea-sym"></select></label>
+          <div class="field"><span>Richtung</span>
+            <div class="seg dir-seg" id="idea-dir"><button type="button" class="active" data-d="long">▲ Long</button><button type="button" data-d="short">▼ Short</button></div>
+          </div>
+        </div>
+        <label class="field"><span>Titel</span><input type="text" id="idea-title" maxlength="80" required placeholder="z. B. SAP vor dem Ausbruch" /></label>
+        <label class="field"><span>Deine Analyse</span><textarea id="idea-body" rows="4" maxlength="600" required placeholder="Warum? Einstieg, Ziel, Stop …"></textarea></label>
+        <button type="submit" class="btn primary">Veröffentlichen</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="copy-modal" hidden>
+    <div class="modal-box small" role="dialog" aria-label="Portfolio kopieren">
+      <div class="modal-head"><h3 id="copy-title">Portfolio kopieren</h3><button class="icon-btn" data-close>✕</button></div>
+      <form id="copy-form" class="form">
+        <div id="copy-alloc"></div>
+        <label class="field"><span>Betrag</span><input type="number" id="copy-amount" min="500" step="100" value="5000" /></label>
+        <p class="muted" id="copy-hint"></p>
+        <button type="submit" class="btn primary">Jetzt kopieren</button>
+      </form>
     </div>
   </div>
 

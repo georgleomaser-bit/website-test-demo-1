@@ -3,6 +3,9 @@ import { STOCKS, DEFAULT_WATCHLIST } from "./data.js";
 import { Market, TIMEFRAMES, tickStep } from "./market.js";
 import { Broker, START_CASH } from "./broker.js";
 import { ChartView, CHART_TYPES, INDICATORS } from "./chart.js";
+import { analyze } from "./analysis.js";
+import { PLANS, planById } from "./plans.js";
+import { Community } from "./community.js";
 
 // ---------- Hilfsfunktionen ----------
 const $ = (s, root = document) => root.querySelector(s);
@@ -38,8 +41,16 @@ function saveSettings() {
 }
 
 // ---------- Zustand ----------
+const VIEWS = ["home", "chart", "markets", "ideas", "portfolio"];
 const market = new Market();
 const broker = new Broker(market);
+const firstVisit = (() => {
+  try {
+    return !localStorage.getItem(SETTINGS_KEY);
+  } catch (_) {
+    return true;
+  }
+})();
 const saved = loadSettings();
 const params = new URLSearchParams(location.search);
 const settings = {
@@ -49,10 +60,15 @@ const settings = {
   indicators: Array.isArray(saved.indicators) ? saved.indicators : ["vol", "sma20", "sma50"],
   theme: saved.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"),
   watchlist: (Array.isArray(saved.watchlist) ? saved.watchlist : DEFAULT_WATCHLIST).filter((s) => market.has(s)),
-  view: ["chart", "markets", "portfolio"].includes(params.get("view")) ? params.get("view") : "chart",
+  view: VIEWS.includes(params.get("view")) ? params.get("view") : params.has("symbol") ? "chart" : firstVisit ? "home" : "chart",
+  plan: PLANS.some((p) => p.id === saved.plan) ? saved.plan : "free",
 };
 
-const ui = { side: "buy", otype: "market", rtab: "watch", btab: "positions", hmPeriod: 1, sort: { key: "cap", dir: -1 } };
+const community = new Community(market);
+broker.feeFn = () => planById(settings.plan).fee;
+const plan = () => planById(settings.plan);
+
+const ui = { ideaFilter: "all", ideaDir: "long", copyTrader: null, side: "buy", otype: "market", rtab: "watch", btab: "positions", hmPeriod: 1, sort: { key: "cap", dir: -1 } };
 
 document.documentElement.dataset.theme = settings.theme;
 
@@ -188,9 +204,8 @@ function applyView(view, animate = true) {
   settings.view = view;
   saveSettings();
   $$(".view-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === view));
-  $("#view-chart").hidden = view !== "chart";
-  $("#view-markets").hidden = view !== "markets";
-  $("#view-portfolio").hidden = view !== "portfolio";
+  for (const v of VIEWS) $("#view-" + v).hidden = v !== view;
+  window.scrollTo({ top: 0 });
   document.body.dataset.view = view;
   const el = $("#view-" + view);
   if (animate) {
@@ -201,6 +216,8 @@ function applyView(view, animate = true) {
   }
   if (view === "markets") renderMarkets(true);
   if (view === "portfolio") renderPortfolio(true);
+  if (view === "home") renderHome(true);
+  if (view === "ideas") renderIdeas();
 }
 
 // ---------- Laufband ----------
@@ -329,6 +346,7 @@ function toggleWatch(sym) {
 function renderRightPanel() {
   if (ui.rtab === "book") renderBook();
   if (ui.rtab === "tape") renderTape();
+  if (ui.rtab === "ai") renderAI();
 }
 function renderBook() {
   const ob = market.orderBook(settings.symbol, 12);
@@ -385,6 +403,8 @@ function renderTicket() {
   if (ui.side === "buy") $("#o-bp").textContent = eur(broker.buyingPower());
   else $("#o-bp").textContent = `${Math.max(0, (pos?.qty || 0) - broker.reservedQty(settings.symbol))} Stk. frei`;
   $("#o-bp").previousElementSibling.textContent = ui.side === "buy" ? "Kaufkraft" : "Bestand";
+  const fee = plan().fee;
+  $("#o-fee").innerHTML = fee ? `${eur(fee)} <button type="button" class="fee-up" data-open-plans>0 € mit Pro</button>` : `<span class="up">0,00 € · ${plan().name}</span>`;
 
   const slOn = $("#sl-on").checked && ui.side === "buy";
   const tpOn = $("#tp-on").checked && ui.side === "buy";
@@ -535,7 +555,7 @@ function renderBottom() {
   }
   if (ui.btab === "history") {
     el.innerHTML = s.orderHistory.length
-      ? `<table class="grid"><thead><tr><th>Zeit</th><th>Symbol</th><th>Seite</th><th>Typ</th><th class="num">Stück</th><th class="num">Preis</th><th class="num">G/V</th><th>Status</th></tr></thead><tbody>
+      ? `<table class="grid"><thead><tr><th>Zeit</th><th>Symbol</th><th>Seite</th><th>Typ</th><th class="num">Stück</th><th class="num">Preis</th><th class="num">Gebühr</th><th class="num">G/V</th><th>Status</th></tr></thead><tbody>
         ${s.orderHistory
           .slice(0, 100)
           .map((o) => {
@@ -544,6 +564,7 @@ function renderBottom() {
             <td><span class="tag ${o.side}">${o.side === "buy" ? "Kauf" : "Verkauf"}</span></td>
             <td>${o.tag ? o.tag + " · " : ""}${{ market: "Market", limit: "Limit", stop: "Stopp" }[o.type]}</td>
             <td class="num">${o.qty}</td><td class="num">${o.fillPrice ? num(o.fillPrice) : num(o.limitPrice ?? o.stopPrice ?? 0)}</td>
+            <td class="num">${f ? eur(f.fee || 0) : "–"}</td>
             <td class="num ${f?.pnl != null ? cls(f.pnl) : ""}">${f?.pnl != null ? sEur(f.pnl) : "–"}</td>
             <td><span class="status ${o.status === "ausgeführt" ? "ok" : "no"}">${esc(o.status)}</span></td></tr>`;
           })
@@ -610,6 +631,7 @@ function bindTables() {
       $("#rpanel-watch").hidden = ui.rtab !== "watch";
       $("#rpanel-book").hidden = ui.rtab !== "book";
       $("#rpanel-tape").hidden = ui.rtab !== "tape";
+      $("#rpanel-ai").hidden = ui.rtab !== "ai";
       renderRightPanel();
     })
   );
@@ -741,7 +763,14 @@ function openIndicators() {
   openModal("#ind-modal");
 }
 function bindIndicators() {
-  $("#ind-list").addEventListener("change", () => {
+  $("#ind-list").addEventListener("change", (e) => {
+    const max = plan().limits.indicators;
+    if ($$("#ind-list input:checked").length > max) {
+      e.target.checked = false;
+      closeModals();
+      setTimeout(() => openPlans(`Im Tarif ${plan().name} kannst du ${max} Indikatoren gleichzeitig nutzen. Mit Pro bis zu 8, mit Elite unbegrenzt.`), 330);
+      return;
+    }
     settings.indicators = $$("#ind-list input:checked").map((i) => i.value);
     saveSettings();
     chart.configure({ indicators: new Set(settings.indicators) });
@@ -772,6 +801,12 @@ function bindAlerts() {
     const sym = $("#al-sym").value;
     const px = parseFloat($("#al-px").value);
     if (!(px > 0)) return;
+    const max = plan().limits.alerts;
+    if (broker.state.alerts.filter((a) => a.active).length >= max) {
+      closeModals();
+      setTimeout(() => openPlans(`Im Tarif ${plan().name} sind ${max} aktive Alarme möglich. Upgrade für mehr.`), 330);
+      return;
+    }
     broker.addAlert(sym, px, $("#al-note").value.trim());
     closeModals();
     toast(`Alarm für ${sym} bei ${num(px)} erstellt.`, "success");
@@ -922,6 +957,8 @@ function renderPortfolio(full = false) {
     ["Realisiert", sEur(broker.state.realized), cls(broker.state.realized)],
     ["Trades", `${st.trades}`, ""],
     ["Trefferquote", st.winRate == null ? "–" : nf2.format(st.winRate * 100) + " %", ""],
+    ["Gebühren gezahlt", eur(broker.state.fees || 0), ""],
+    ["Tarif", `AKTEX ${plan().name}`, "plan-kpi"],
   ]
     .map(([k, v, c]) => `<div class="kpi"><span>${k}</span><b class="${c}">${v}</b></div>`)
     .join("");
@@ -985,7 +1022,10 @@ market.onTick(() => {
     }
     renderTicker();
     syncTitle();
+    if (settings.view === "home") renderHomeLive();
     if (++slowTick % 5 === 0) {
+      if (settings.view === "chart" && ui.rtab === "ai") renderAI();
+      if (settings.view === "ideas") renderLeaderboard();
       renderMarkets();
       renderPortfolio();
     }
@@ -1077,6 +1117,443 @@ function setupInstall() {
   }
 }
 
+// ---------- Tarife ----------
+function renderPlans(el) {
+  el.innerHTML = PLANS.map((p) => {
+    const cur = p.id === settings.plan;
+    return `<div class="plan ${p.popular ? "popular" : ""} ${cur ? "current" : ""}">
+      ${p.popular ? '<span class="plan-badge">Beliebt</span>' : ""}
+      <h4>${p.name}</h4><p class="muted">${p.tagline}</p>
+      <div class="price"><b>${p.price ? nf2.format(p.price) + " €" : "0 €"}</b><span>/ Monat</span></div>
+      <ul>${p.features.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>
+      <button class="btn ${p.popular ? "primary" : ""} plan-choose" data-plan="${p.id}" ${cur ? "disabled" : ""}>${cur ? "Aktueller Tarif" : p.price ? `${p.name} 14 Tage gratis` : "Kostenlos nutzen"}</button>
+    </div>`;
+  }).join("");
+}
+function openPlans(reason) {
+  $("#plans-note").textContent = (reason ? reason + " " : "") + "Demo: Es findet keine Zahlung statt – Tarife lassen sich frei ausprobieren.";
+  renderPlans($("#modal-plans"));
+  openModal("#plans-modal");
+}
+function setPlan(id) {
+  const p = planById(id);
+  settings.plan = p.id;
+  saveSettings();
+  syncPlan();
+  closeModals();
+  renderPlans($("#home-plans"));
+  renderTicket();
+  renderPortfolio();
+  if (p.price) {
+    confetti();
+    toast(`Alle ${p.name}-Funktionen sind freigeschaltet. Ordergebühr: ${eur(p.fee)}.`, "success", `Willkommen bei AKTEX ${p.name} 🎉`);
+  } else toast("Du nutzt jetzt den Free-Tarif.", "info");
+  if (ui.rtab === "ai") renderAI(true);
+}
+function syncPlan() {
+  $("#plan-label").textContent = plan().name;
+  $("#plan-btn").dataset.plan = plan().id;
+}
+function confetti() {
+  const colors = ["#4f8cff", "#6ea2f2", "#22c55e", "#eab308", "#e056fd", "#ffffff"];
+  for (let i = 0; i < 60; i++) {
+    const d = document.createElement("i");
+    d.className = "confetti";
+    d.style.background = colors[i % colors.length];
+    d.style.left = 50 + (Math.random() - 0.5) * 20 + "vw";
+    document.body.appendChild(d);
+    const x = (Math.random() - 0.5) * 900;
+    const y = -(300 + Math.random() * 400);
+    d.animate(
+      [
+        { transform: "translate(0,0) rotate(0)", opacity: 1 },
+        { transform: `translate(${x * 0.6}px, ${y}px) rotate(${Math.random() * 540}deg)`, opacity: 1, offset: 0.45 },
+        { transform: `translate(${x}px, ${y + 700}px) rotate(${Math.random() * 1080}deg)`, opacity: 0 },
+      ],
+      { duration: 1600 + Math.random() * 900, easing: "cubic-bezier(.2,.7,.3,1)" }
+    ).onfinish = () => d.remove();
+  }
+}
+
+// ---------- AKTEX AI ----------
+let aiLast = 0;
+function gaugeSvg() {
+  const seg = (i, color) => {
+    const a0 = Math.PI - (i * Math.PI) / 5 - 0.02;
+    const a1 = Math.PI - ((i + 1) * Math.PI) / 5 + 0.02;
+    const p = (a) => `${100 + 78 * Math.cos(a)} ${100 - 78 * Math.sin(a)}`;
+    return `<path d="M${p(a0)} A78 78 0 0 1 ${p(a1)}" stroke="${color}" stroke-width="12" fill="none" stroke-linecap="round"/>`;
+  };
+  return `<svg viewBox="0 0 200 118" class="gauge-svg">
+    ${["#ef4444", "#f97316", "#94a3b8", "#84cc16", "#22c55e"].map((c, i) => seg(i, c)).join("")}
+    <g class="needle" id="ai-needle"><path d="M100 100 L96 98 L100 34 L104 98 Z" fill="var(--text)"/></g>
+    <circle cx="100" cy="100" r="7" fill="var(--text)"/><circle cx="100" cy="100" r="3" fill="var(--bg-2)"/>
+    <text x="16" y="116" class="g-lbl">Verkaufen</text><text x="184" y="116" class="g-lbl" text-anchor="end">Kaufen</text>
+  </svg>`;
+}
+function renderAI(force = false) {
+  if (ui.rtab !== "ai") return;
+  if (!force && Date.now() - aiLast < 1500) return;
+  aiLast = Date.now();
+  const el = $("#ai");
+  if (!el.dataset.ready) {
+    el.innerHTML = `<div class="ai-head"><b>AKTEX AI</b><span class="ai-badge">Echtzeit</span></div><div class="gauge">${gaugeSvg()}</div><div id="ai-body"></div>`;
+    el.dataset.ready = "1";
+  }
+  const a = analyze(chart.raw);
+  $("#ai-needle").style.transform = `rotate(${Math.max(-1, Math.min(1, a.score * 1.6)) * 90}deg)`;
+  const tfl = TIMEFRAMES.find((t) => t.id === settings.tf).label;
+  const pro = plan().limits.aiDetails;
+  const c = { buy: a.oscillators.counts.buy + a.movingAverages.counts.buy, sell: a.oscillators.counts.sell + a.movingAverages.counts.sell, neutral: a.oscillators.counts.neutral + a.movingAverages.counts.neutral };
+  const sigRow = (s) => `<tr><td>${s.name}</td><td class="num">${s.value == null ? "–" : num(s.value)}</td><td class="num ${s.action > 0 ? "up" : s.action < 0 ? "down" : "muted"}">${s.action > 0 ? "Kaufen" : s.action < 0 ? "Verkaufen" : "Neutral"}</td></tr>`;
+  const st = a.setup;
+  const crv = Math.abs(st.tp - st.entry) / Math.abs(st.entry - st.sl);
+  const details = `
+    <ul class="ai-text">${a.text.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+    <div class="ai-levels">
+      <div><span>Widerstand</span><b>${num(a.levels.resistance)}</b></div>
+      <div><span>Pivot</span><b>${num(a.levels.pivot)}</b></div>
+      <div><span>Unterstützung</span><b>${num(a.levels.support)}</b></div>
+    </div>
+    <div class="ai-setup ${st.side}">
+      <div class="ai-setup-h"><b>${st.side === "buy" ? "▲ Long-Setup" : "▼ Bärisches Setup"}</b><span>CRV ${nf2.format(crv)} : 1</span></div>
+      <div class="ai-setup-g"><span>Einstieg <b>${num(st.entry)}</b></span><span>Ziel <b class="up">${num(st.tp)}</b></span><span>Stop <b class="down">${num(st.sl)}</b></span></div>
+      <button class="btn primary small" id="ai-apply">${st.side === "buy" ? "Setup ins Order-Ticket übernehmen" : "Position mit Stop absichern"}</button>
+    </div>
+    <details class="ai-all"><summary>Alle ${a.oscillators.list.length + a.movingAverages.list.length} Signale</summary>
+      <table class="grid"><thead><tr><th>Oszillator</th><th class="num">Wert</th><th class="num">Signal</th></tr></thead><tbody>${a.oscillators.list.map(sigRow).join("")}</tbody></table>
+      <table class="grid"><thead><tr><th>Durchschnitt</th><th class="num">Wert</th><th class="num">Signal</th></tr></thead><tbody>${a.movingAverages.list.map(sigRow).join("")}</tbody></table>
+    </details>`;
+  const locked = `
+    <ul class="ai-text">${a.text.slice(0, 1).map((t) => `<li>${esc(t)}</li>`).join("")}</ul>
+    <div class="ai-lock">
+      <div class="ai-lock-blur"><div class="ai-levels"><div><span>Widerstand</span><b>000,00</b></div><div><span>Pivot</span><b>000,00</b></div><div><span>Unterstützung</span><b>000,00</b></div></div><div class="ai-setup"><b>Long-Setup · CRV 2 : 1</b><br>Einstieg 000,00 · Ziel 000,00 · Stop 000,00</div></div>
+      <div class="ai-lock-cta"><b>🔒 Detail-Analyse mit Pro</b><span>Marken, Trade-Setups und alle 16 Signale</span><button class="btn primary small" data-open-plans>Pro 14 Tage gratis</button></div>
+    </div>`;
+  const openDetails = $("#ai-body details")?.open;
+  $("#ai-body").innerHTML = `
+    <div class="ai-rating ${a.rating.key}">${a.rating.label}</div>
+    <div class="ai-sub muted">${settings.symbol} · ${tfl} · ${c.buy + c.sell + c.neutral} Signale</div>
+    <div class="ai-counts"><span class="down"><b>${c.sell}</b>Verkaufen</span><span><b>${c.neutral}</b>Neutral</span><span class="up"><b>${c.buy}</b>Kaufen</span></div>
+    <div class="ai-groups">
+      <div><span>Oszillatoren</span><b class="${a.oscillators.rating.key}">${a.oscillators.rating.label}</b></div>
+      <div><span>Durchschnitte</span><b class="${a.movingAverages.rating.key}">${a.movingAverages.rating.label}</b></div>
+    </div>
+    ${pro ? details : locked}
+    <p class="ai-disc">Automatisch berechnet aus technischen Indikatoren. Keine Anlageberatung.</p>`;
+  if (openDetails) $("#ai-body details").open = true;
+  $("#ai-apply")?.addEventListener("click", () => applySetup(a));
+}
+function applySetup(a) {
+  const st = a.setup;
+  const step = tickStep(st.entry);
+  if (st.side === "buy") {
+    ui.side = "buy";
+    ui.otype = "market";
+    const qty = Math.max(1, Math.floor((broker.equity() * 0.01) / Math.max(0.01, st.entry - st.sl)));
+    $("#qty").value = Math.min(qty, Math.floor(broker.buyingPower() / st.entry));
+    $("#sl-on").checked = true;
+    $("#tp-on").checked = true;
+    $("#sl").value = roundTo(st.sl, step).toFixed(2);
+    $("#tp").value = roundTo(st.tp, step).toFixed(2);
+    renderTicket();
+    toast("Stückzahl so gewählt, dass der Stop maximal 1 % deines Depots riskiert.", "info", "Setup übernommen");
+  } else {
+    const pos = broker.position(settings.symbol);
+    if (!pos) {
+      toast("Leerverkäufe sind im Demo-Depot nicht möglich. Kein Bestand zum Absichern.", "warn", "Bärisches Signal");
+      return;
+    }
+    ui.side = "sell";
+    ui.otype = "stop";
+    $("#qty").value = Math.max(0, pos.qty - broker.reservedQty(settings.symbol));
+    $("#px").value = roundTo(a.last - 1.5 * a.atr, step).toFixed(2);
+    renderTicket();
+    toast("Verkaufs-Stopp vorbereitet – prüfen und absenden.", "info", "Absicherung");
+  }
+  $("#ticket").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  flashEl($("#ticket"));
+}
+function flashEl(el) {
+  el.animate([{ boxShadow: "0 0 0 0 rgba(79,140,255,.6)" }, { boxShadow: "0 0 0 12px rgba(79,140,255,0)" }], { duration: 900, easing: "ease-out" });
+}
+
+// ---------- Startseite ----------
+let homeChart = null;
+let homeSeries = null;
+let homeSym = "NVDA";
+function spark(values, w, h, color) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const pts = values.map((v, i) => `${((i / (values.length - 1)) * w).toFixed(1)},${(h - 2 - ((v - min) / (max - min || 1)) * (h - 4)).toFixed(1)}`);
+  const id = "sg" + Math.random().toString(36).slice(2, 7);
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="spark"><defs><linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".35"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs><polygon points="0,${h} ${pts.join(" ")} ${w},${h}" fill="url(#${id})"/><polyline points="${pts.join(" ")}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function renderHome(full = false) {
+  renderPlans($("#home-plans"));
+  if (full || !homeChart) buildHomeChart();
+  renderHomeLive(true);
+  if (!renderHome.observer) {
+    renderHome.observer = new IntersectionObserver(
+      (es) => es.forEach((e) => e.isIntersecting && (e.target.classList.add("in"), renderHome.observer.unobserve(e.target))),
+      { threshold: 0.12 }
+    );
+  }
+  $$("#view-home .reveal:not(.in)").forEach((el) => renderHome.observer.observe(el));
+}
+let homeLiveTick = 0;
+function renderHomeLive(force = false) {
+  if (!force && ++homeLiveTick % 2) return;
+  [["#fc1", "NVDA"], ["#fc2", "SAP"], ["#fc3", "RHM"]].forEach(([sel, sym]) => {
+    const q = market.quote(sym);
+    const st = market.get(sym);
+    const closes = st.m1.slice(-90).map((b) => b.close);
+    $(sel).innerHTML = `<div class="fc-top"><b>${sym}</b><span class="${cls(q.change)}">${pct(q.changePct)}</span></div><div class="fc-px">${num(q.price)} €</div>${spark(closes, 160, 44, q.change >= 0 ? "#22c55e" : "#ef4444")}`;
+  });
+  $("#mini-list").innerHTML = ["NVDA", "AAPL", "SAP", "TSLA", "RHM", "ASML"]
+    .map((sym) => {
+      const q = market.quote(sym);
+      return `<button class="mini-row ${sym === homeSym ? "active" : ""}" data-home-sym="${sym}"><b>${sym}</b><span class="muted">${esc(q.name)}</span><span class="num">${num(q.price)}</span><span class="num ${cls(q.change)}">${pct(q.changePct)}</span></button>`;
+    })
+    .join("");
+  if (homeSeries) {
+    const d = market.get(homeSym).days;
+    const l = d[d.length - 1];
+    homeSeries.update({ time: l.time, value: l.close });
+  }
+}
+function buildHomeChart() {
+  const el = $("#home-chart");
+  if (homeChart) homeChart.remove();
+  const dark = settings.theme === "dark";
+  homeChart = window.LightweightCharts.createChart(el, {
+    autoSize: true,
+    layout: { background: { type: "solid", color: "transparent" }, textColor: dark ? "#aab4c3" : "#434b58", attributionLogo: false },
+    grid: { vertLines: { visible: false }, horzLines: { color: dark ? "rgba(138,151,171,0.08)" : "rgba(40,50,70,0.07)" } },
+    rightPriceScale: { borderVisible: false },
+    timeScale: { borderVisible: false },
+    handleScroll: false,
+    handleScale: false,
+    localization: { locale: "de-DE", priceFormatter: (p) => num(p) },
+  });
+  homeSeries = homeChart.addSeries(window.LightweightCharts.AreaSeries, { lineColor: "#6ea2f2", topColor: "rgba(79,140,255,0.4)", bottomColor: "rgba(79,140,255,0)", lineWidth: 2 });
+  homeSeries.setData(market.get(homeSym).days.slice(-365).map((b) => ({ time: b.time, value: b.close })));
+  homeChart.timeScale().fitContent();
+}
+
+// ---------- Ideen ----------
+const ago = (ms) => {
+  const m = Math.max(1, Math.round((Date.now() - ms) / 60000));
+  if (m < 60) return `vor ${m} Min.`;
+  const h = Math.round(m / 60);
+  if (h < 24) return `vor ${h} Std.`;
+  const d = Math.round(h / 24);
+  return `vor ${d} ${d === 1 ? "Tag" : "Tagen"}`;
+};
+function authorOf(idea) {
+  if (idea.author === "me") return { handle: "du", name: "Du", style: "Mein Profil", color: "#6ea2f2", me: true };
+  return community.trader(idea.author);
+}
+function avatar(t) {
+  const txt = t.me ? "DU" : t.handle.replace(/[^A-Za-z]/g, "").slice(0, 2).toUpperCase();
+  return `<span class="avatar" style="--c:${t.color}">${txt}</span>`;
+}
+function renderIdeas() {
+  if (settings.view !== "ideas") return;
+  const f = ui.ideaFilter;
+  const ideas = community.allIdeas().filter((i) => (f === "all" ? true : f === "mine" ? i.author === "me" : f === "following" ? community.isFollowing(i.author) : i.dir === f));
+  $("#ideas-grid").innerHTML = ideas.length
+    ? ideas
+        .map((i, k) => {
+          const t = authorOf(i);
+          const liked = community.isLiked(i.id);
+          const st = market.get(i.symbol);
+          const vis = i.img ? `<img src="${i.img}" alt="Chart ${i.symbol}" loading="lazy" />` : spark(st.days.slice(-90).map((b) => b.close), 300, 110, i.dir === "long" ? "#22c55e" : "#ef4444");
+          return `<article class="idea-card" style="--k:${Math.min(k, 12)}" data-idea="${i.id}">
+            <header>${avatar(t)}<div class="who"><b>@${esc(t.handle)}</b><small>${esc(t.style)} · ${ago(i.created)}</small></div>
+              ${t.me ? `<button class="mini-btn" data-del-idea="${i.id}">Löschen</button>` : `<button class="follow-btn ${community.isFollowing(i.author) ? "on" : ""}" data-follow="${i.author}">${community.isFollowing(i.author) ? "Gefolgt" : "Folgen"}</button>`}
+            </header>
+            <div class="idea-vis" data-open-sym="${i.symbol}" data-open-tf="${i.tf}">${vis}<span class="dir ${i.dir}">${i.dir === "long" ? "▲ Long" : "▼ Short"}</span></div>
+            <div class="idea-meta"><button class="sym-chip" data-open-sym="${i.symbol}" data-open-tf="${i.tf}">${i.symbol}</button><span class="muted">${TIMEFRAMES.find((x) => x.id === i.tf)?.label || i.tf}</span><span class="muted">${num(st.price)} €</span></div>
+            <h3>${esc(i.title)}</h3>
+            <p>${esc(i.body)}</p>
+            <footer>
+              <button class="like ${liked ? "on" : ""}" data-like="${i.id}"><span class="heart">♥</span> ${i.likes + (liked ? 1 : 0)}</button>
+              <span class="muted">💬 ${i.comments}</span>
+              <span class="spacer"></span>
+              <button class="mini-btn" data-idea-trade="${i.id}">Handeln</button>
+            </footer>
+          </article>`;
+        })
+        .join("")
+    : `<div class="empty card">Noch keine Ideen in diesem Filter. ${f === "mine" ? "Teile deine erste Idee über „+ Idee teilen“." : ""}</div>`;
+  renderLeaderboard();
+}
+function renderLeaderboard() {
+  if (settings.view !== "ideas") return;
+  const me = { id: "me", handle: "du", style: "Dein Demo-Depot", color: "#6ea2f2", me: true, ret1y: broker.equity() / START_CASH - 1, winRate: broker.stats().winRate ?? 0, followers: 0 };
+  const rows = [...community.traders, me].sort((a, b) => b.ret1y - a.ret1y);
+  const medal = ["🥇", "🥈", "🥉"];
+  $("#leaderboard").innerHTML = rows
+    .map((t, i) => `<div class="lb-row ${t.me ? "me" : ""}">
+      <span class="rank">${medal[i] || i + 1}</span>${avatar(t)}
+      <div class="who"><b>@${esc(t.handle)}</b><small>${esc(t.style)}${t.me ? "" : ` · ${compact(t.followers)} Follower`}</small></div>
+      <b class="num ${cls(t.ret1y)}">${pct(t.ret1y)}</b>
+      ${t.me ? "<span></span>" : `<button class="mini-btn" data-copy="${t.id}">Kopieren</button>`}
+    </div>`)
+    .join("");
+}
+function openCopy(id) {
+  const t = community.trader(id);
+  ui.copyTrader = id;
+  $("#copy-title").textContent = `Portfolio von @${t.handle} kopieren`;
+  $("#copy-alloc").innerHTML = `<div class="copy-head">${avatar(t)}<div><b>@${esc(t.handle)}</b><small class="muted">${esc(t.style)} · Rendite 1 J. <span class="${cls(t.ret1y)}">${pct(t.ret1y)}</span> · Risiko ${t.risk}/7</small></div></div>
+    <div class="alloc-bar">${t.favs.map((s, i) => `<i style="flex-grow:${t.weights[i]};background:hsl(${210 + i * 40} 80% 60%)"></i>`).join("")}</div>
+    <ul class="alloc-list">${t.favs.map((s, i) => `<li><i style="background:hsl(${210 + i * 40} 80% 60%)"></i><b>${s}</b><span>${esc(market.get(s).n)}</span><span class="muted">${nf2.format(t.weights[i] * 100)} %</span></li>`).join("")}</ul>`;
+  updateCopyHint();
+  openModal("#copy-modal");
+}
+function updateCopyHint() {
+  const amt = parseFloat($("#copy-amount").value) || 0;
+  const n = community.trader(ui.copyTrader).favs.length;
+  $("#copy-hint").innerHTML = plan().limits.copy
+    ? `${n} Market-Orders über insgesamt ca. ${eur(amt)} (Gebühren: ${eur(plan().fee * n)}).`
+    : `🔒 Copy-Trading ist Teil von <b>AKTEX Elite</b>.`;
+}
+function bindGrowth() {
+  syncPlan();
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (t.closest("[data-open-plans]")) return openPlans();
+    const pc = t.closest(".plan-choose");
+    if (pc) return setPlan(pc.dataset.plan);
+    const go = t.closest("[data-goto]");
+    if (go) return setView(go.dataset.goto);
+    const hs = t.closest("[data-home-sym]");
+    if (hs) {
+      homeSym = hs.dataset.homeSym;
+      buildHomeChart();
+      renderHomeLive(true);
+      return;
+    }
+    const os = t.closest("[data-open-sym]");
+    if (os) {
+      if (os.dataset.openTf && os.dataset.openTf !== settings.tf) setTimeframe(os.dataset.openTf);
+      return setSymbol(os.dataset.openSym);
+    }
+    const lk = t.closest("[data-like]");
+    if (lk) {
+      const on = community.toggleLike(lk.dataset.like);
+      haptic(8);
+      lk.classList.toggle("on", on);
+      const n = parseInt(lk.textContent.replace(/\D/g, ""), 10) + (on ? 1 : -1);
+      lk.innerHTML = `<span class="heart">♥</span> ${n}`;
+      return;
+    }
+    const fl = t.closest("[data-follow]");
+    if (fl) {
+      const on = community.toggleFollow(fl.dataset.follow);
+      haptic(8);
+      toast(on ? `Du folgst jetzt @${community.trader(fl.dataset.follow).handle}.` : "Nicht mehr gefolgt.", on ? "success" : "info");
+      return renderIdeas();
+    }
+    const del = t.closest("[data-del-idea]");
+    if (del) {
+      community.removeIdea(del.dataset.delIdea);
+      return renderIdeas();
+    }
+    const tr = t.closest("[data-idea-trade]");
+    if (tr) {
+      const idea = community.allIdeas().find((i) => i.id === tr.dataset.ideaTrade);
+      if (idea) {
+        setSymbol(idea.symbol);
+        ui.side = idea.dir === "long" ? "buy" : "sell";
+        renderTicket();
+        flashEl($("#ticket"));
+      }
+      return;
+    }
+    const cp = t.closest("[data-copy]");
+    if (cp) return openCopy(cp.dataset.copy);
+    const flt = t.closest("#idea-filter [data-f]");
+    if (flt) {
+      ui.ideaFilter = flt.dataset.f;
+      $$("#idea-filter button").forEach((b) => b.classList.toggle("active", b === flt));
+      return renderIdeas();
+    }
+    const dir = t.closest("#idea-dir [data-d]");
+    if (dir) {
+      ui.ideaDir = dir.dataset.d;
+      $$("#idea-dir button").forEach((b) => b.classList.toggle("active", b === dir));
+    }
+  });
+  $("#plan-btn").addEventListener("click", () => openPlans());
+  $("#hero-install").addEventListener("click", () => $("#install-btn").click());
+  $("#copy-amount").addEventListener("input", updateCopyHint);
+  $("#copy-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (!plan().limits.copy) {
+      closeModals();
+      setTimeout(() => openPlans("Copy-Trading ist Teil von AKTEX Elite."), 330);
+      return;
+    }
+    const t = community.trader(ui.copyTrader);
+    const amt = parseFloat($("#copy-amount").value) || 0;
+    let ok = 0;
+    t.favs.forEach((sym, i) => {
+      const q = market.quote(sym);
+      const qty = Math.floor((amt * t.weights[i]) / q.ask);
+      if (qty > 0 && broker.placeOrder({ symbol: sym, side: "buy", type: "market", qty }).ok) ok++;
+    });
+    closeModals();
+    if (ok) {
+      confetti();
+      toast(`${ok} Positionen von @${t.handle} ins Depot übernommen.`, "success", "Portfolio kopiert");
+    } else toast("Betrag zu klein oder nicht genug Kaufkraft.", "error");
+  });
+  $("#publish-btn").addEventListener("click", openIdeaModal);
+  $("#idea-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    community.addIdea({
+      symbol: $("#idea-sym").value,
+      tf: settings.tf,
+      dir: ui.ideaDir,
+      title: $("#idea-title").value.trim(),
+      body: $("#idea-body").value.trim(),
+      img: $("#idea-sym").value === settings.symbol ? ui.ideaShot : null,
+    });
+    closeModals();
+    confetti();
+    toast("Deine Idee ist jetzt in der Community sichtbar.", "success", "Idee veröffentlicht");
+    ui.ideaFilter = "all";
+    $$("#idea-filter button").forEach((b) => b.classList.toggle("active", b.dataset.f === "all"));
+    if (settings.view !== "ideas") setView("ideas");
+    else renderIdeas();
+  });
+}
+function openIdeaModal() {
+  $("#idea-sym").innerHTML = STOCKS.map((s) => `<option value="${s.s}" ${s.s === settings.symbol ? "selected" : ""}>${s.s} – ${esc(s.n)}</option>`).join("");
+  $("#idea-title").value = "";
+  $("#idea-body").value = "";
+  ui.ideaShot = null;
+  try {
+    const src = chart.screenshot();
+    if (!src.width || !src.height) throw new Error("Chart nicht sichtbar");
+    const w = 560;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = Math.round((src.height / src.width) * w) || 300;
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+    ui.ideaShot = c.toDataURL("image/jpeg", 0.72);
+    $("#idea-shot").src = ui.ideaShot;
+    $("#idea-shot").hidden = false;
+  } catch (_) {
+    $("#idea-shot").hidden = true;
+  }
+  openModal("#idea-modal");
+  setTimeout(() => $("#idea-title").focus(), 50);
+}
+
 // ---------- Bewegung: Splash, Segmente, Ripple, Haptik ----------
 function haptic(pattern) {
   try {
@@ -1112,6 +1589,8 @@ const SEGMENTS = [
   [".views", "pill-ind"],
   [".otype", "pill-ind"],
   ["#hm-period", "pill-ind"],
+  ["#idea-filter", "pill-ind"],
+  ["#idea-dir", "pill-ind"],
   [".rtabs", "line-ind"],
   [".btab-list", "line-ind"],
 ];
@@ -1206,8 +1685,14 @@ bindRipple();
 $("#share-btn").addEventListener("click", share);
 $("#brand").addEventListener("click", () => {
   haptic(8);
-  runSplash(true);
+  const b = $("#brand");
+  b.classList.remove("play");
+  void b.offsetWidth;
+  b.classList.add("play");
+  setView("home");
 });
+$("#brand").addEventListener("dblclick", () => runSplash(true));
+bindGrowth();
 bindTicket();
 bindTables();
 bindDrawbar();
