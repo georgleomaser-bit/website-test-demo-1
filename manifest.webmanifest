@@ -1,0 +1,26 @@
+{
+  "id": "./",
+  "name": "AKTEX – Trading-Plattform",
+  "short_name": "AKTEX",
+  "description": "Aktien in Echtzeit analysieren und handeln. Markets move. Ideas stay.",
+  "lang": "de",
+  "start_url": "./?source=pwa",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#050b16",
+  "theme_color": "#050b16",
+  "categories": ["finance", "business"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "shortcuts": [
+    { "name": "Chart", "url": "./?view=chart", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Märkte", "url": "./?view=markets", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Depot", "url": "./?view=portfolio", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

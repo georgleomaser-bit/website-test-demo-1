@@ -1,113 +1,356 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="de" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Aktex – Aktien in Echtzeit handeln</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Aktex – Trading-Plattform</title>
+  <meta name="description" content="Aktex – Aktien in Echtzeit analysieren und handeln (Demo)." />
+  <meta name="theme-color" content="#050b16" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icons/favicon-64.png" type="image/png" sizes="64x64" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta property="og:title" content="AKTEX – Markets move. Ideas stay." />
+  <meta property="og:description" content="Aktien in Echtzeit analysieren und handeln – Demo-Trading-Plattform." />
+  <meta property="og:image" content="icons/icon-512.png" />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Aktex" />
+  <link rel="stylesheet" href="css/app.css" />
 </head>
 <body>
+  <!-- Animierter Startbildschirm -->
+  <div class="splash" id="splash" aria-hidden="true">
+    <svg class="splash-logo" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><defs>
+  <radialGradient id="bg" cx="50%" cy="45%" r="75%"><stop offset="0" stop-color="#0d2345"/><stop offset=".55" stop-color="#081630"/><stop offset="1" stop-color="#040a16"/></radialGradient>
+  <radialGradient id="inner" cx="50%" cy="50%" r="50%"><stop offset=".78" stop-color="#1c4c96" stop-opacity="0"/><stop offset="1" stop-color="#2f6fd6" stop-opacity=".22"/></radialGradient>
+  <filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="2.2" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  <clipPath id="clip"><rect width="512" height="512"/></clipPath>
+</defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <g clip-path="url(#clip)">
+    <g class="candles" stroke="#3f74c4" fill="#3f74c4" stroke-width="1.2"><g class="c" style="--i:0;--o:0.10" opacity="0.10"><line x1="58.0" y1="362.4" x2="58.0" y2="409.2"/><rect x="55.0" y="383.0" width="6" height="17.0" rx="1"/></g><g class="c" style="--i:1;--o:0.11" opacity="0.11"><line x1="67.2" y1="365.9" x2="67.2" y2="397.3"/><rect x="64.2" y="383.0" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:2;--o:0.11" opacity="0.11"><line x1="76.3" y1="363.8" x2="76.3" y2="401.3"/><rect x="73.3" y="381.3" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:3;--o:0.12" opacity="0.12"><line x1="85.5" y1="365.0" x2="85.5" y2="397.6"/><rect x="82.5" y="381.3" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:4;--o:0.13" opacity="0.13"><line x1="94.6" y1="373.8" x2="94.6" y2="395.7"/><rect x="91.6" y="382.1" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:5;--o:0.14" opacity="0.14"><line x1="103.8" y1="358.3" x2="103.8" y2="390.0"/><rect x="100.8" y="374.8" width="6" height="10.1" rx="1"/></g><g class="c" style="--i:6;--o:0.14" opacity="0.14"><line x1="112.9" y1="355.2" x2="112.9" y2="395.4"/><rect x="109.9" y="367.6" width="6" height="7.3" rx="1"/></g><g class="c" style="--i:7;--o:0.15" opacity="0.15"><line x1="122.1" y1="359.1" x2="122.1" y2="380.8"/><rect x="119.1" y="365.3" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:8;--o:0.16" opacity="0.16"><line x1="131.2" y1="346.4" x2="131.2" y2="380.9"/><rect x="128.2" y="362.8" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:9;--o:0.17" opacity="0.17"><line x1="140.4" y1="324.2" x2="140.4" y2="383.2"/><rect x="137.4" y="344.6" width="6" height="18.2" rx="1"/></g><g class="c" style="--i:10;--o:0.17" opacity="0.17"><line x1="149.6" y1="321.2" x2="149.6" y2="363.7"/><rect x="146.6" y="331.2" width="6" height="13.4" rx="1"/></g><g class="c" style="--i:11;--o:0.18" opacity="0.18"><line x1="158.7" y1="316.7" x2="158.7" y2="340.6"/><rect x="155.7" y="323.4" width="6" height="7.8" rx="1"/></g><g class="c" style="--i:12;--o:0.19" opacity="0.19"><line x1="167.9" y1="310.9" x2="167.9" y2="344.3"/><rect x="164.9" y="320.2" width="6" height="3.2" rx="1"/></g><g class="c" style="--i:13;--o:0.20" opacity="0.20"><line x1="177.0" y1="301.0" x2="177.0" y2="340.0"/><rect x="174.0" y="318.2" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:14;--o:0.20" opacity="0.20"><line x1="186.2" y1="285.8" x2="186.2" y2="332.3"/><rect x="183.2" y="294.8" width="6" height="23.4" rx="1"/></g><g class="c" style="--i:15;--o:0.21" opacity="0.21"><line x1="195.3" y1="283.2" x2="195.3" y2="311.1"/><rect x="192.3" y="294.8" width="6" height="8.9" rx="1"/></g><g class="c" style="--i:16;--o:0.22" opacity="0.22"><line x1="204.5" y1="298.6" x2="204.5" y2="321.4"/><rect x="201.5" y="303.6" width="6" height="7.2" rx="1"/></g><g class="c" style="--i:17;--o:0.23" opacity="0.23"><line x1="213.6" y1="269.2" x2="213.6" y2="331.4"/><rect x="210.6" y="285.1" width="6" height="25.6" rx="1"/></g><g class="c" style="--i:18;--o:0.23" opacity="0.23"><line x1="222.8" y1="277.5" x2="222.8" y2="296.4"/><rect x="219.8" y="284.5" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:19;--o:0.24" opacity="0.24"><line x1="232.0" y1="259.6" x2="232.0" y2="296.1"/><rect x="229.0" y="270.2" width="6" height="14.3" rx="1"/></g><g class="c" style="--i:20;--o:0.25" opacity="0.25"><line x1="241.1" y1="251.8" x2="241.1" y2="285.3"/><rect x="238.1" y="265.4" width="6" height="4.8" rx="1"/></g><g class="c" style="--i:21;--o:0.26" opacity="0.26"><line x1="250.3" y1="235.3" x2="250.3" y2="277.7"/><rect x="247.3" y="255.6" width="6" height="9.8" rx="1"/></g><g class="c" style="--i:22;--o:0.26" opacity="0.26"><line x1="259.4" y1="240.2" x2="259.4" y2="286.0"/><rect x="256.4" y="255.6" width="6" height="15.0" rx="1"/></g><g class="c" style="--i:23;--o:0.27" opacity="0.27"><line x1="268.6" y1="239.2" x2="268.6" y2="287.0"/><rect x="265.6" y="252.3" width="6" height="18.2" rx="1"/></g><g class="c" style="--i:24;--o:0.28" opacity="0.28"><line x1="277.7" y1="241.2" x2="277.7" y2="277.0"/><rect x="274.7" y="252.3" width="6" height="7.9" rx="1"/></g><g class="c" style="--i:25;--o:0.28" opacity="0.28"><line x1="286.9" y1="215.9" x2="286.9" y2="270.6"/><rect x="283.9" y="230.4" width="6" height="29.9" rx="1"/></g><g class="c" style="--i:26;--o:0.29" opacity="0.29"><line x1="296.0" y1="215.6" x2="296.0" y2="248.7"/><rect x="293.0" y="226.7" width="6" height="3.7" rx="1"/></g><g class="c" style="--i:27;--o:0.30" opacity="0.30"><line x1="305.2" y1="220.7" x2="305.2" y2="257.6"/><rect x="302.2" y="226.7" width="6" height="12.2" rx="1"/></g><g class="c" style="--i:28;--o:0.31" opacity="0.31"><line x1="314.4" y1="193.9" x2="314.4" y2="245.6"/><rect x="311.4" y="205.2" width="6" height="33.6" rx="1"/></g><g class="c" style="--i:29;--o:0.31" opacity="0.31"><line x1="323.5" y1="176.8" x2="323.5" y2="213.2"/><rect x="320.5" y="198.8" width="6" height="6.4" rx="1"/></g><g class="c" style="--i:30;--o:0.32" opacity="0.32"><line x1="332.7" y1="192.2" x2="332.7" y2="223.4"/><rect x="329.7" y="198.8" width="6" height="12.4" rx="1"/></g><g class="c" style="--i:31;--o:0.33" opacity="0.33"><line x1="341.8" y1="196.9" x2="341.8" y2="231.8"/><rect x="338.8" y="203.4" width="6" height="7.8" rx="1"/></g><g class="c" style="--i:32;--o:0.34" opacity="0.34"><line x1="351.0" y1="183.4" x2="351.0" y2="226.8"/><rect x="348.0" y="203.4" width="6" height="3.5" rx="1"/></g><g class="c" style="--i:33;--o:0.34" opacity="0.34"><line x1="360.1" y1="183.5" x2="360.1" y2="215.8"/><rect x="357.1" y="201.2" width="6" height="5.7" rx="1"/></g><g class="c" style="--i:34;--o:0.35" opacity="0.35"><line x1="369.3" y1="155.8" x2="369.3" y2="206.6"/><rect x="366.3" y="164.2" width="6" height="37.0" rx="1"/></g><g class="c" style="--i:35;--o:0.36" opacity="0.36"><line x1="378.4" y1="142.4" x2="378.4" y2="172.4"/><rect x="375.4" y="157.5" width="6" height="6.7" rx="1"/></g><g class="c" style="--i:36;--o:0.37" opacity="0.37"><line x1="387.6" y1="144.7" x2="387.6" y2="192.6"/><rect x="384.6" y="157.5" width="6" height="18.7" rx="1"/></g><g class="c" style="--i:37;--o:0.37" opacity="0.37"><line x1="396.8" y1="132.8" x2="396.8" y2="184.4"/><rect x="393.8" y="152.6" width="6" height="23.5" rx="1"/></g><g class="c" style="--i:38;--o:0.38" opacity="0.38"><line x1="405.9" y1="130.7" x2="405.9" y2="158.8"/><rect x="402.9" y="150.8" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:39;--o:0.39" opacity="0.39"><line x1="415.1" y1="144.2" x2="415.1" y2="171.3"/><rect x="412.1" y="148.3" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:40;--o:0.40" opacity="0.40"><line x1="424.2" y1="126.3" x2="424.2" y2="152.7"/><rect x="421.2" y="146.9" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:41;--o:0.40" opacity="0.40"><line x1="433.4" y1="139.5" x2="433.4" y2="170.8"/><rect x="430.4" y="146.9" width="6" height="3.0" rx="1"/></g><g class="c" style="--i:42;--o:0.41" opacity="0.41"><line x1="442.5" y1="115.3" x2="442.5" y2="158.2"/><rect x="439.5" y="131.6" width="6" height="17.8" rx="1"/></g><g class="c" style="--i:43;--o:0.42" opacity="0.42"><line x1="451.7" y1="105.7" x2="451.7" y2="145.7"/><rect x="448.7" y="113.5" width="6" height="18.1" rx="1"/></g><g class="c" style="--i:44;--o:0.43" opacity="0.43"><line x1="460.8" y1="83.4" x2="460.8" y2="130.1"/><rect x="457.8" y="101.2" width="6" height="12.2" rx="1"/></g><g class="c" style="--i:45;--o:0.43" opacity="0.43"><line x1="470.0" y1="88.3" x2="470.0" y2="121.9"/><rect x="467.0" y="101.2" width="6" height="16.1" rx="1"/></g></g>
+    <path class="ma" pathLength="1" d="M58.0 409.0 L67.2 409.4 L76.3 408.7 L85.5 408.5 L94.6 409.0 L103.8 407.7 L112.9 405.7 L122.1 403.9 L131.2 401.3 L140.4 396.5 L149.6 390.2 L158.7 382.9 L167.9 374.8 L177.0 367.7 L186.2 358.6 L195.3 350.9 L204.5 344.4 L213.6 336.9 L222.8 331.1 L232.0 324.4 L241.1 317.6 L250.3 309.8 L259.4 306.7 L268.6 300.3 L277.7 294.0 L286.9 287.2 L296.0 279.9 L305.2 276.0 L314.4 268.5 L323.5 261.4 L332.7 254.0 L341.8 247.8 L351.0 241.2 L360.1 237.5 L369.3 229.7 L378.4 219.5 L387.6 215.9 L396.8 210.1 L405.9 202.6 L415.1 195.7 L424.2 188.2 L433.4 181.7 L442.5 177.7 L451.7 172.2 L460.8 162.8 L470.0 158.4" fill="none" stroke="#4f86dc" stroke-width="1.4" opacity=".45"/>
+  </g>
+  <circle cx="256" cy="256" r="228" fill="url(#inner)"/>
+  <circle class="ring" cx="256" cy="256" r="228" fill="none" stroke="#6ea2f2" stroke-width="2.6" filter="url(#glow)" pathLength="1"/>
+  <g class="tag" fill="#5c7fb8" font-family="Helvetica Neue, Arial, sans-serif" font-size="11.5" letter-spacing="6.5" opacity=".7">
+    <text x="118" y="146">MARKETS</text><text x="118" y="166">MOVE</text><text x="118" y="186">IDEAS</text><text x="118" y="206">STAY</text>
+  </g>
+  <g class="tag tag2" fill="#5c7fb8" font-family="Helvetica Neue, Arial, sans-serif" font-size="11.5" letter-spacing="6.5" opacity=".7">
+    <text x="330" y="386">CAPITAL</text><text x="330" y="406">BUILDS</text><text x="330" y="426">TOMORROW</text>
+  </g>
+  <g class="word" fill="none" stroke="#eaf1ff" stroke-width="4.6" stroke-linejoin="miter" filter="url(#soft)"><path class="l" pathLength="1" style="--i:0" d="M71 285 L96 227 L121 285"/><path class="l" pathLength="1" style="--i:1" d="M154 227 V285 M199 227 L156 258 M168 248 L201 285"/><path class="l" pathLength="1" style="--i:2" d="M231 230 H281 M256 230 V285"/><path class="l" pathLength="1" style="--i:3" d="M357 230 H314 V282 H357 M314 256 H351"/><path class="l" pathLength="1" style="--i:4" d="M391 227 L441 285 M441 227 L391 285"/></g></svg>
+  </div>
+  <!-- Kopfzeile -->
   <header class="topbar">
-    <div class="brand">
-      <span class="logo">▲</span>
-      <span class="name">aktex</span>
-      <span class="demo-badge">DEMO</span>
+    <button class="brand" id="brand" aria-label="Aktex – Logo-Animation abspielen">
+      <svg class="mark" viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
+        <defs><radialGradient id="mk-g" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="#10284f"/><stop offset="1" stop-color="#050b18"/></radialGradient></defs>
+        <circle cx="32" cy="32" r="31" fill="url(#mk-g)"/>
+        <path class="mk-line" pathLength="1" d="M10 46 L18 40 L24 43 L32 33 L39 36 L47 24 L54 20" fill="none" stroke="#3f74c4" stroke-width="1.6" opacity=".7"/>
+        <circle class="mk-ring" pathLength="1" cx="32" cy="32" r="28" fill="none" stroke="#6ea2f2" stroke-width="2"/>
+        <path class="mk-a" pathLength="1" d="M21 42 L32 20 L43 42" fill="none" stroke="#eaf1ff" stroke-width="3.6"/>
+      </svg>
+      <span class="name">ΛKTEX</span>
+    </button>
+
+    <button class="sym-btn" id="sym-btn" title="Symbol suchen (/)">
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
+      <span id="sym-label">AAPL</span>
+    </button>
+
+    <div class="tb-group chart-only" id="tf-group" role="group" aria-label="Zeiteinheit"></div>
+
+    <div class="tb-group chart-only">
+      <select id="chart-type" aria-label="Chart-Typ"></select>
     </div>
-    <div class="account">
-      <div class="stat">
-        <span class="label">Guthaben</span>
-        <span class="value" id="cash">–</span>
-      </div>
-      <div class="stat">
-        <span class="label">Depotwert</span>
-        <span class="value" id="portfolio-value">–</span>
-      </div>
-      <div class="stat">
-        <span class="label">Gesamt G/V</span>
-        <span class="value" id="total-pl">–</span>
-      </div>
-      <button class="btn ghost" id="reset-btn" title="Demo-Konto zurücksetzen">Zurücksetzen</button>
+
+    <div class="tb-group chart-only">
+      <button class="tb-btn" id="ind-btn"><span class="fx">ƒx</span> <span class="lbl">Indikatoren</span></button>
+      <button class="tb-btn" id="alert-btn" title="Alarm erstellen">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3a1.5 1.5 0 0 0-3 0v1.16A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg>
+        <span class="lbl">Alarm</span>
+      </button>
+      <button class="tb-btn" id="shot-btn" title="Chart als Bild speichern">
+        <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M9 3 7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.17L15 3H9Zm3 5a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/></svg>
+      </button>
     </div>
+
+    <div class="spacer"></div>
+
+    <nav class="views" role="tablist">
+      <button class="view-btn active" data-view="chart">Chart</button>
+      <button class="view-btn" data-view="markets">Märkte</button>
+      <button class="view-btn" data-view="portfolio">Depot</button>
+    </nav>
+
+    <button class="icon-btn" id="share-btn" title="Link teilen">
+      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 2 7.5 6.5l1.41 1.41L11 5.83V15h2V5.83l2.09 2.08L16.5 6.5 12 2ZM5 10v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V10h-3v2h1v8H7v-8h1v-2H5Z"/></svg>
+    </button>
+    <button class="icon-btn" id="theme-btn" title="Hell/Dunkel umschalten">
+      <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36A5.5 5.5 0 0 1 13.36 3.1 9.3 9.3 0 0 0 12 3Z"/></svg>
+    </button>
+    <button class="install-btn" id="install-btn" hidden>
+      <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M11 3h2v9.17l3.59-3.58L18 10l-6 6-6-6 1.41-1.41L11 12.17V3ZM5 18h14v2H5v-2Z"/></svg>
+      <span class="lbl">App installieren</span>
+    </button>
   </header>
 
-  <main class="layout">
-    <!-- Marktübersicht -->
-    <section class="panel market">
-      <div class="panel-head">
-        <h2>Markt <span class="live-dot"></span><span class="live-text">LIVE</span></h2>
-        <input type="search" id="search" placeholder="Aktie suchen…" autocomplete="off" />
+  <!-- Laufband -->
+  <div class="ticker" aria-hidden="true"><div class="ticker-track" id="ticker"></div></div>
+
+  <!-- ================= CHART-ANSICHT ================= -->
+  <main class="view chart-view" id="view-chart">
+    <aside class="drawbar" id="drawbar" aria-label="Zeichenwerkzeuge">
+      <button class="tool active" data-tool="cursor" title="Zeiger (Esc)">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M5 3l14 7-6 2-2 6L5 3Z"/></svg>
+      </button>
+      <button class="tool" data-tool="trend" title="Trendlinie (Alt+T)">
+        <svg viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" d="M4 19 20 5"/><circle cx="4" cy="19" r="2" fill="currentColor"/><circle cx="20" cy="5" r="2" fill="currentColor"/></svg>
+      </button>
+      <button class="tool" data-tool="hline" title="Horizontale Linie (Alt+H)">
+        <svg viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="2" d="M2 12h20"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>
+      </button>
+      <button class="tool" data-tool="fib" title="Fibonacci-Retracement (Alt+F)">
+        <svg viewBox="0 0 24 24"><path stroke="currentColor" stroke-width="1.6" d="M3 4h18M3 9h18M3 13h18M3 20h18"/><path stroke="currentColor" stroke-dasharray="2 2" d="M5 20 19 4"/></svg>
+      </button>
+      <button class="tool" data-tool="alert" title="Alarm im Chart setzen">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-6V11a7 7 0 0 0-5.5-6.84V3a1.5 1.5 0 0 0-3 0v1.16A7 7 0 0 0 5 11v5l-2 2v1h18v-1l-2-2Z"/></svg>
+      </button>
+      <div class="sep"></div>
+      <button class="tool toggle active" id="magnet-btn" title="Magnet: an Kerzenwerte einrasten">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 3h5v9a3 3 0 0 0 6 0V3h5v9a8 8 0 0 1-16 0V3Zm2 2v3h1V5H6Zm11 0v3h1V5h-1Z"/></svg>
+      </button>
+      <button class="tool" id="undo-btn" title="Letzte Zeichnung entfernen (Strg+Z)">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12.5 8c-2.65 0-5.05 1-6.9 2.6L2 7v9h9l-3.62-3.62A7.95 7.95 0 0 1 20.1 16l2.37-.78A10.5 10.5 0 0 0 12.5 8Z"/></svg>
+      </button>
+      <button class="tool" id="clear-btn" title="Alle Zeichnungen löschen">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-3 6h12l-1 12H7L6 9Z"/></svg>
+      </button>
+      <button class="tool" id="fit-btn" title="Ansicht zurücksetzen">
+        <svg viewBox="0 0 24 24"><path fill="currentColor" d="M4 4h6v2H6v4H4V4Zm10 0h6v6h-2V6h-4V4ZM4 14h2v4h4v2H4v-6Zm14 0h2v6h-6v-2h4v-4Z"/></svg>
+      </button>
+    </aside>
+
+    <section class="chart-area">
+      <div class="legend" id="legend"></div>
+      <div class="chart" id="chart"></div>
+      <div class="draw-hint" id="draw-hint" hidden></div>
+    </section>
+
+    <aside class="rightbar">
+      <!-- Symbol-Details -->
+      <div class="quote-card" id="quote-card"></div>
+
+      <div class="rtabs" role="tablist">
+        <button class="rtab active" data-rtab="watch">Watchlist</button>
+        <button class="rtab" data-rtab="book">Orderbuch</button>
+        <button class="rtab" data-rtab="tape">Umsätze</button>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Aktie</th>
-              <th class="num">Kurs</th>
-              <th class="num">Änderung</th>
-            </tr>
-          </thead>
-          <tbody id="market-body"></tbody>
+      <div class="rpanel" id="rpanel-watch">
+        <table class="wl">
+          <thead><tr><th>Symbol</th><th class="num">Kurs</th><th class="num">Änd.</th><th class="num">%</th></tr></thead>
+          <tbody id="watch-body"></tbody>
+        </table>
+        <button class="link-btn" id="wl-add">+ Symbol hinzufügen</button>
+      </div>
+      <div class="rpanel" id="rpanel-book" hidden>
+        <div class="book" id="book"></div>
+      </div>
+      <div class="rpanel" id="rpanel-tape" hidden>
+        <table class="tape">
+          <thead><tr><th>Zeit</th><th class="num">Kurs</th><th class="num">Stück</th></tr></thead>
+          <tbody id="tape-body"></tbody>
         </table>
       </div>
-    </section>
 
-    <!-- Detail + Handel -->
-    <section class="panel detail">
-      <div class="detail-head">
-        <div>
-          <h2 id="detail-name">–</h2>
-          <span class="muted" id="detail-symbol"></span>
+      <!-- Order-Ticket -->
+      <form class="ticket" id="ticket" autocomplete="off">
+        <div class="side-switch">
+          <button type="button" class="side sell" data-side="sell"><span>Verkaufen</span><b id="bid-px">–</b></button>
+          <div class="spread" id="spread">–</div>
+          <button type="button" class="side buy active" data-side="buy"><span>Kaufen</span><b id="ask-px">–</b></button>
         </div>
-        <div class="detail-price">
-          <span id="detail-price">–</span>
-          <span id="detail-change" class="change"></span>
+        <div class="otype" role="group">
+          <button type="button" class="ot active" data-type="market">Market</button>
+          <button type="button" class="ot" data-type="limit">Limit</button>
+          <button type="button" class="ot" data-type="stop">Stopp</button>
         </div>
-      </div>
-      <canvas id="chart" height="260"></canvas>
-      <div class="detail-stats">
-        <div><span class="muted">Eröffnung</span><span id="stat-open">–</span></div>
-        <div><span class="muted">Tageshoch</span><span id="stat-high">–</span></div>
-        <div><span class="muted">Tagestief</span><span id="stat-low">–</span></div>
-        <div><span class="muted">Im Depot</span><span id="stat-owned">–</span></div>
-      </div>
-
-      <form class="trade" id="trade-form">
-        <div class="tabs">
-          <button type="button" class="tab active" data-side="buy">Kaufen</button>
-          <button type="button" class="tab" data-side="sell">Verkaufen</button>
-        </div>
-        <label>
-          Anzahl
-          <div class="qty">
-            <button type="button" class="btn ghost" id="qty-minus">−</button>
-            <input type="number" id="qty" min="1" step="1" value="1" />
-            <button type="button" class="btn ghost" id="qty-plus">+</button>
-            <button type="button" class="btn ghost" id="qty-max">Max</button>
+        <label class="field" id="px-field" hidden>
+          <span id="px-label">Limitpreis</span>
+          <div class="stepper">
+            <button type="button" data-step="-1">−</button>
+            <input type="number" id="px" step="0.01" min="0" inputmode="decimal" />
+            <button type="button" data-step="1">+</button>
           </div>
         </label>
-        <div class="summary">
-          <span class="muted">Geschätzter Betrag</span>
-          <strong id="order-total">–</strong>
+        <label class="field">
+          <span>Stück</span>
+          <div class="stepper">
+            <button type="button" data-qstep="-1">−</button>
+            <input type="number" id="qty" step="1" min="1" value="10" inputmode="numeric" />
+            <button type="button" data-qstep="1">+</button>
+          </div>
+        </label>
+        <div class="pct-row">
+          <button type="button" data-pct="0.1">10 %</button>
+          <button type="button" data-pct="0.25">25 %</button>
+          <button type="button" data-pct="0.5">50 %</button>
+          <button type="button" data-pct="1">Max</button>
         </div>
-        <button type="submit" class="btn primary" id="trade-submit">Kaufen</button>
+        <div class="bracket" id="bracket">
+          <label class="chk"><input type="checkbox" id="sl-on" /> Stop-Loss</label>
+          <input type="number" id="sl" step="0.01" inputmode="decimal" disabled />
+          <label class="chk"><input type="checkbox" id="tp-on" /> Take-Profit</label>
+          <input type="number" id="tp" step="0.01" inputmode="decimal" disabled />
+        </div>
+        <dl class="osum">
+          <div><dt>Ordervolumen</dt><dd id="o-total">–</dd></div>
+          <div><dt>Kaufkraft</dt><dd id="o-bp">–</dd></div>
+          <div id="o-risk-row" hidden><dt>Risiko / Chance</dt><dd id="o-risk">–</dd></div>
+        </dl>
+        <button type="submit" class="submit buy" id="o-submit">Kaufen</button>
       </form>
-    </section>
+    </aside>
 
-    <!-- Depot + Verlauf -->
-    <section class="panel side">
-      <h2>Mein Depot</h2>
-      <div id="holdings" class="holdings"></div>
-      <h2 class="mt">Transaktionen</h2>
-      <ul id="history" class="history"></ul>
+    <!-- Unteres Panel -->
+    <section class="bottom">
+      <div class="btabs">
+        <div class="btab-list" role="tablist">
+          <button class="btab active" data-btab="positions">Positionen <span class="cnt" id="cnt-pos">0</span></button>
+          <button class="btab" data-btab="orders">Orders <span class="cnt" id="cnt-ord">0</span></button>
+          <button class="btab" data-btab="history">Historie</button>
+          <button class="btab" data-btab="alerts">Alarme <span class="cnt" id="cnt-al">0</span></button>
+        </div>
+        <div class="acct" id="acct"></div>
+      </div>
+      <div class="bpanel" id="bpanel"></div>
     </section>
   </main>
 
-  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <!-- ================= MÄRKTE ================= -->
+  <main class="view page" id="view-markets" hidden>
+    <div class="page-inner">
+      <div class="page-head">
+        <h1>Marktübersicht</h1>
+        <div class="movers" id="movers"></div>
+      </div>
+      <section class="card">
+        <div class="card-head">
+          <h2>Heatmap</h2>
+          <div class="seg" id="hm-period">
+            <button class="active" data-p="1">1 Tag</button>
+            <button data-p="5">1 Woche</button>
+            <button data-p="30">1 Monat</button>
+            <button data-p="365">1 Jahr</button>
+          </div>
+        </div>
+        <div class="heatmap" id="heatmap"></div>
+      </section>
+      <section class="card">
+        <div class="card-head">
+          <h2>Screener</h2>
+          <div class="filters">
+            <input type="search" id="sc-search" placeholder="Filtern…" />
+            <select id="sc-sector"><option value="">Alle Sektoren</option></select>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table class="screener">
+            <thead>
+              <tr>
+                <th data-sort="s">Symbol</th>
+                <th data-sort="n">Name</th>
+                <th data-sort="sec">Sektor</th>
+                <th class="num" data-sort="price">Kurs</th>
+                <th class="num" data-sort="chg">Änd. %</th>
+                <th class="num" data-sort="w">1 W</th>
+                <th class="num" data-sort="y">1 J</th>
+                <th class="num" data-sort="vol">Volumen</th>
+                <th class="num" data-sort="cap">Marktkap.</th>
+                <th class="num" data-sort="pe">KGV</th>
+                <th class="num" data-sort="dy">Div. %</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="sc-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
 
-  <footer class="footer">
-    Demo-Anwendung · Kurse sind simuliert und keine echten Marktdaten · Kein echtes Geld
-  </footer>
+  <!-- ================= DEPOT ================= -->
+  <main class="view page" id="view-portfolio" hidden>
+    <div class="page-inner">
+      <div class="page-head">
+        <h1>Mein Depot</h1>
+        <button class="btn ghost" id="reset-btn">Demo-Konto zurücksetzen</button>
+      </div>
+      <div class="kpis" id="kpis"></div>
+      <div class="grid-2">
+        <section class="card">
+          <div class="card-head"><h2>Depotentwicklung</h2></div>
+          <div class="equity-chart" id="equity-chart"></div>
+        </section>
+        <section class="card">
+          <div class="card-head"><h2>Aufteilung</h2></div>
+          <div class="alloc" id="alloc"></div>
+        </section>
+      </div>
+      <section class="card">
+        <div class="card-head"><h2>Positionen</h2></div>
+        <div class="table-scroll" id="pf-positions"></div>
+      </section>
+    </div>
+  </main>
 
-  <script src="app.js"></script>
+  <!-- ================= Dialoge ================= -->
+  <div class="modal" id="search-modal" hidden>
+    <div class="modal-box search-box" role="dialog" aria-label="Symbolsuche">
+      <div class="modal-head">
+        <input type="search" id="search-input" placeholder="Symbol oder Name suchen…" autocomplete="off" />
+        <button class="icon-btn" data-close>✕</button>
+      </div>
+      <ul class="search-list" id="search-list"></ul>
+    </div>
+  </div>
+
+  <div class="modal" id="ind-modal" hidden>
+    <div class="modal-box" role="dialog" aria-label="Indikatoren">
+      <div class="modal-head"><h3>Indikatoren</h3><button class="icon-btn" data-close>✕</button></div>
+      <div class="ind-list" id="ind-list"></div>
+    </div>
+  </div>
+
+  <div class="modal" id="alert-modal" hidden>
+    <div class="modal-box small" role="dialog" aria-label="Alarm erstellen">
+      <div class="modal-head"><h3>Alarm erstellen</h3><button class="icon-btn" data-close>✕</button></div>
+      <form id="alert-form" class="form">
+        <label class="field"><span>Symbol</span><select id="al-sym"></select></label>
+        <label class="field"><span>Preis (EUR)</span><input type="number" id="al-px" step="0.01" required /></label>
+        <p class="muted" id="al-hint"></p>
+        <label class="field"><span>Notiz (optional)</span><input type="text" id="al-note" maxlength="80" /></label>
+        <button type="submit" class="btn primary">Alarm erstellen</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal" id="install-modal" hidden>
+    <div class="modal-box small" role="dialog" aria-label="App installieren">
+      <div class="modal-head"><h3>Aktex als App installieren</h3><button class="icon-btn" data-close>✕</button></div>
+      <div class="install-help" id="install-help"></div>
+    </div>
+  </div>
+
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script src="js/vendor/lightweight-charts.standalone.production.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
