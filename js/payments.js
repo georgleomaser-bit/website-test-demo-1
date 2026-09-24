@@ -13,6 +13,7 @@ export const PAYMENT_CONFIG = {
   stripeLinks: CONFIG.stripe.links,
   stripePortal: CONFIG.stripe.portal,
   promos: {
+    AKYTEXLEO: { pct: 0.5, label: "50 % Rabatt dauerhaft" },
     AKYTEX20: { pct: 0.2, label: "20 % Rabatt im ersten Jahr" },
     START: { freeMonths: 1, label: "1 zusätzlicher Monat gratis" },
     FOUNDER: { pct: 0.5, label: "50 % Gründer-Rabatt (Demo)" },

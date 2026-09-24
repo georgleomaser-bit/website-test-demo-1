@@ -1887,3 +1887,47 @@ html.modal-open, html.modal-open body { overflow: hidden; }
 .live-login small { color: var(--muted); }
 .test-chip.live { color: var(--up); background: var(--up-bg); border-color: rgba(34, 197, 94, 0.4); }
 .cancel-steps { margin: 4px 0 14px; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; color: var(--text-2); }
+.plans-promo { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 12px; }
+.plans-promo input { flex: 0 1 220px; min-width: 0; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel-2); text-transform: uppercase; }
+.plans-promo small { font-weight: 700; }
+.legal-ol { display: flex; flex-direction: column; gap: 8px; padding-left: 20px; }
+.legal-form { padding: 14px 16px; border-radius: 12px; border: 1px dashed var(--border); background: var(--panel-2); font-size: 13px; line-height: 1.6; }
+
+/* ---------- AKYTEX AI als Assistent: Λ-Knopf, Panel, Vorschläge ---------- */
+.ki-badge { display: inline-block; vertical-align: 2px; margin-left: 4px; padding: 1px 6px; border-radius: 6px; font: 800 9.5px/1.4 var(--font-body); letter-spacing: 0.06em; color: #a9c8ff; background: rgba(110, 162, 242, 0.14); border: 1px solid rgba(110, 162, 242, 0.35); }
+.chat-head-acts { display: flex; align-items: center; gap: 4px; }
+.jp-only { display: none; }
+.jarvis-panel .jp-only { display: inline-grid; }
+.mic-btn { font-size: 16px; }
+.mic-btn.rec { color: #fff; background: #ef4444; animation: micPulse 1.2s ease-in-out infinite; }
+@keyframes micPulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.55); } 50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); } }
+.jarvis-fab { position: fixed; right: 18px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 46; width: 58px; height: 58px; padding: 0; border: 0; border-radius: 50%; background: none; display: grid; place-items: center; cursor: pointer; filter: drop-shadow(0 10px 24px rgba(59, 91, 219, 0.45)); transition: transform 0.5s var(--spring), opacity 0.3s; }
+.jarvis-fab .orb { --os: 58px; --t: 2px; }
+.jarvis-fab:hover { transform: scale(1.06); }
+.jarvis-fab:active { transform: scale(0.92); }
+body[data-view="ai"] .jarvis-fab, body.jarvis-on .jarvis-fab { opacity: 0; pointer-events: none; transform: scale(0.6); }
+.jarvis-panel { position: fixed; right: 16px; bottom: 16px; top: 76px; z-index: 48; width: min(440px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 6px; opacity: 0; transform: translate3d(0, 18px, 0) scale(0.97); transform-origin: bottom right; transition: transform 0.5s var(--spring), opacity 0.25s ease; }
+.jarvis-panel.open { opacity: 1; transform: none; }
+.jp-body { flex: 1; min-height: 0; display: flex; }
+.jarvis-panel .ai-chat { flex: 1; height: auto; margin: 0; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(110, 162, 242, 0.25); backdrop-filter: blur(18px) saturate(150%); -webkit-backdrop-filter: blur(18px) saturate(150%); }
+.jp-proactive { align-self: flex-end; display: flex; gap: 6px; align-items: center; font-size: 11.5px; color: var(--muted); padding: 3px 10px; border-radius: 999px; background: var(--panel); border: 1px solid var(--border); box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25); }
+.jarvis-hint { position: fixed; right: 18px; bottom: calc(88px + env(safe-area-inset-bottom)); z-index: 47; width: min(360px, calc(100vw - 36px)); display: flex; gap: 10px; align-items: flex-start; padding: 12px 12px 12px 14px; border-radius: 18px; background: color-mix(in srgb, var(--panel) 94%, transparent); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border: 1px solid rgba(110, 162, 242, 0.35); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4); opacity: 0; transform: translate3d(0, 12px, 0) scale(0.96); transform-origin: bottom right; transition: transform 0.5s var(--spring), opacity 0.25s ease; }
+.jarvis-hint.show { opacity: 1; transform: none; }
+body[data-view="ai"] .jarvis-hint { bottom: calc(18px + env(safe-area-inset-bottom)); }
+.jarvis-hint .orb { --os: 30px; --t: 1.4px; margin-top: 2px; }
+.jh-body { flex: 1; min-width: 0; }
+.jh-body small { color: var(--muted); font-size: 11px; letter-spacing: 0.04em; }
+.jh-body p { margin: 3px 0 8px; font-size: 13px; line-height: 1.45; }
+.jh-acts { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.jh-never { border: 0; background: none; color: var(--muted); font-size: 11px; text-decoration: underline; padding: 4px; }
+.jh-x { border: 0; background: none; color: var(--muted); font-size: 13px; padding: 2px 4px; }
+.post-draft { margin: 6px 0; padding: 10px 12px; border-left: 3px solid var(--ak-ring); border-radius: 8px; background: rgba(110, 162, 242, 0.08); font-size: 13px; }
+@media (max-width: 760px) {
+  .jarvis-panel { left: 0; right: 0; bottom: 0; top: auto; width: 100%; height: min(78dvh, 640px); transform: translate3d(0, 100%, 0); transition: transform 0.5s var(--ease-ios); }
+  .jarvis-panel.open { transform: none; }
+  .jarvis-panel .ai-chat { border-radius: 22px 22px 0 0; padding-bottom: env(safe-area-inset-bottom); }
+  .jp-proactive { position: absolute; top: -30px; right: 10px; }
+  .jarvis-fab { bottom: calc(76px + env(safe-area-inset-bottom)); }
+  .jarvis-hint { bottom: calc(142px + env(safe-area-inset-bottom)); }
+}
+@media (prefers-reduced-motion: reduce) { .mic-btn.rec { animation: none; } }

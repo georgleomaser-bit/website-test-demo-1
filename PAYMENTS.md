@@ -45,3 +45,10 @@ Wie bei Neobrokern kann man Geld aufs Depot einzahlen und wieder auszahlen (Depo
 - Ein- und Auszahlungen zählen **nicht** zur Rendite: Die Performance wird auf das eingesetzte Kapital gerechnet
 
 Das ist **Demo-Geld**: Es werden nur Testkarten und die Test-IBAN angenommen, und die angezeigte Depot-IBAN ist absichtlich ungültig. Echte Kundengelder anzunehmen, ist ein erlaubnispflichtiges Geschäft. Dafür braucht es eine Partnerbank bzw. ein Wertpapierinstitut mit BaFin-Erlaubnis, das Konten und Depots führt (Banking-/Brokerage-as-a-Service). Die Oberfläche ist so gebaut, dass dessen Schnittstellen die simulierten Schritte ersetzen können.
+
+## Stand Live-Betrieb (Stripe-Konto „akytex“)
+- 5 Produkte, 10 Preise (inkl. MwSt.), 10 Payment Links mit 14 Tagen Testphase und Gutscheinfeld, Kundenportal – eingetragen in `js/config.js`
+- Gutschein **AKYTEXLEO**: 50 % dauerhaft. In der App im Tarif-Fenster eingeben oder per Link `…/?code=AKYTEXLEO` teilen – der Code wird bei Stripe vorausgefüllt.
+- **Wichtig:** Solange das Stripe-Konto nicht aktiviert ist (Dashboard → Konto aktivieren: Identität, Unternehmen, Bankkonto), meldet Stripe alle Zahlungsarten als nicht verfügbar – dann kann niemand bezahlen. Nach der Aktivierung unter Einstellungen → Zahlungsmethoden Karte, SEPA-Lastschrift, PayPal, Apple Pay, Google Pay und Klarna einschalten; danach kann die feste Beschränkung der Links auf Karte entfernt werden.
+- Store-Käufe (Merch, Kurse, Reports, Geschenkkarten) sind im Live-Betrieb geschlossen, bis Versand, Verpackungsregister (LUCID) und Einlösung von Geschenkkarten geklärt sind.
+- Einschränkung ohne eigenen Server: Die App schaltet den Tarif nach der Rückkehr von Stripe im Browser frei. Eine fälschungssichere Prüfung braucht einen kleinen Server mit Stripe-Webhook.

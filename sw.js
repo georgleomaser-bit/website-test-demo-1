@@ -1,10 +1,20 @@
 // Service Worker: macht AKYTEX offline nutzbar und installierbar.
-const VERSION = "akytex-v3.3.0";
+const VERSION = "akytex-v3.5.0";
 const ASSETS = [
   "./",
   "./index.html",
   "./manifest.webmanifest",
   "./css/app.css",
+  "./css/fonts.css",
+  "./fonts/manrope-latin-400-normal.woff2",
+  "./fonts/manrope-latin-500-normal.woff2",
+  "./fonts/manrope-latin-600-normal.woff2",
+  "./fonts/manrope-latin-700-normal.woff2",
+  "./fonts/manrope-latin-800-normal.woff2",
+  "./fonts/unbounded-latin-300-normal.woff2",
+  "./fonts/unbounded-latin-500-normal.woff2",
+  "./fonts/unbounded-latin-600-normal.woff2",
+  "./fonts/unbounded-latin-700-normal.woff2",
   "./js/app.js",
   "./js/data.js",
   "./js/market.js",
