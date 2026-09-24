@@ -1,6 +1,5 @@
 // AKYTEX Clips: Kurzvideo-Feed für Trader.
-// Community-Clips werden live aus Kursdaten gerendert (Canvas), eigene Videos liegen in IndexedDB.
-import { analyze } from "./analysis.js";
+// Nur Clips echter Nutzer: hochgeladene Videos und selbst aufgenommene Chart-Clips (IndexedDB).
 import { aggregate } from "./market.js";
 
 const f2 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -45,37 +44,6 @@ export async function idbDel(id) {
   });
 }
 
-// ---------- Demo-Clips aus Marktdaten ----------
-const TEMPLATES = [
-  (s, a) => [`${s}: Was jetzt passiert 👀`, `RSI ${f2(a.rsi ?? 50)} – ${a.rsi > 65 ? "heiß gelaufen" : a.rsi < 35 ? "ausverkauft" : "neutral"}`, `Mein Ziel: ${f2(a.setup.tp)} 🎯`],
-  (s, a) => [`${s} in 12 Sekunden erklärt`, a.trendUp ? "Über dem 50er-Durchschnitt ✅" : "Unter dem 50er-Durchschnitt ⚠️", `Stop: ${f2(a.setup.sl)} – Risiko klein halten`],
-  (s, a) => [`Das Level bei ${s}, das alle beobachten`, `Widerstand ${f2(a.levels.resistance)}`, `Unterstützung ${f2(a.levels.support)}`],
-  (s, a) => [`${s}: Ausbruch oder Fake? 🤔`, `Volumen ${f2(a.volRatio)}× Durchschnitt`, a.score > 0 ? "Ich bin Long 🟢" : "Ich warte ab 🔴"],
-];
-export function demoClips(market, traders) {
-  const out = [];
-  const syms = ["NVDA", "TSLA", "SAP", "RHM", "AAPL", "META", "ASML", "PLTR", "AMZN", "ALV", "NFLX", "MSFT"];
-  syms.forEach((sym, i) => {
-    const t = traders[i % traders.length];
-    const a = analyze(aggregate(market.get(sym).m1.slice(-60 * 24 * 7), "1h"));
-    const caps = TEMPLATES[i % TEMPLATES.length](sym, a);
-    out.push({
-      id: "gc" + i,
-      kind: "gen",
-      author: t.id,
-      sym,
-      title: caps[0],
-      captions: caps,
-      tags: ["#" + sym.toLowerCase(), i % 2 ? "#trading" : "#aktien", i % 3 ? "#charttechnik" : "#akytex"],
-      likes: Math.round(300 + ((i * 7919) % 9000)),
-      comments: 12 + ((i * 131) % 180),
-      created: Date.now() - (i + 1) * 47 * 60000,
-      hue: [220, 265, 200, 30, 285, 330, 190, 150, 240, 45, 0, 210][i],
-    });
-  });
-  return out;
-}
-
 const barCache = new Map();
 
 // ---------- Canvas-Renderer (9:16) ----------
@@ -114,8 +82,8 @@ export function drawClip(ctx, W, H, clip, market, t, authorLabel) {
   const hi = Math.max(...closes);
   const cx0 = W * 0.08;
   const cw = W * 0.84;
-  const cy0 = H * 0.3;
-  const ch = H * 0.36;
+  const cy0 = H * 0.29;
+  const ch = H * 0.27;
   const X = (i) => cx0 + (i / (closes.length - 1)) * cw;
   const Y = (v) => cy0 + (1 - (v - lo) / (hi - lo || 1)) * ch;
   const up = vis[vis.length - 1] >= vis[0];
@@ -165,38 +133,78 @@ export function drawClip(ctx, W, H, clip, market, t, authorLabel) {
   ctx.font = `700 ${W * 0.042}px system-ui, sans-serif`;
   ctx.fillText(`${chg >= 0 ? "▲ +" : "▼ "}${f2(chg * 100)} %`, cx0, H * 0.245);
 
-  // Untertitel nacheinander einblenden
+  // Untertitel wie auf TikTok: Wort für Wort, das aktuelle Wort farbig hervorgehoben
   const caps = clip.captions || [clip.title];
   const seg = CLIP_MS / caps.length;
   const ci = Math.min(caps.length - 1, Math.floor(t / seg));
   const local = (t - ci * seg) / seg;
-  const alpha = Math.min(1, local * 5) * Math.min(1, (1 - local) * 6 + (ci === caps.length - 1 ? 1 : 0));
-  ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
-  const text = caps[ci];
-  ctx.font = `800 ${W * 0.058}px system-ui, sans-serif`;
-  const words = text.split(" ");
-  const lines = [];
-  let line = "";
-  for (const w of words) {
-    const test = line ? line + " " + w : w;
-    if (ctx.measureText(test).width > W * 0.8) {
-      lines.push(line);
-      line = w;
-    } else line = test;
+  const fade = ci === caps.length - 1 ? 1 : Math.min(1, (1 - local) * 8);
+  const EMOJI = /\p{Extended_Pictographic}/u;
+  const words = caps[ci].split(" ").filter(Boolean);
+  const plain = words.filter((w) => !EMOJI.test(w));
+  const sticker = words.find((w) => EMOJI.test(w));
+  const shownN = Math.min(plain.length, Math.floor((local / 0.55) * plain.length) + 1);
+  const fs = W * 0.062;
+  ctx.font = `900 ${fs}px system-ui, sans-serif`;
+  const space = ctx.measureText(" ").width;
+  const lines = [[]];
+  let lw = 0;
+  for (const w of plain) {
+    const ww = ctx.measureText(w).width;
+    if (lw && lw + space + ww > W * 0.82) {
+      lines.push([]);
+      lw = 0;
+    }
+    lines[lines.length - 1].push({ w, ww });
+    lw += (lw ? space : 0) + ww;
   }
-  lines.push(line);
-  const by = H * 0.69;
-  lines.forEach((l, k) => {
-    const tw = ctx.measureText(l).width;
-    const yy = by + k * W * 0.08;
-    ctx.fillStyle = "rgba(0,0,0,.55)";
-    ctx.beginPath();
-    ctx.roundRect ? ctx.roundRect(W / 2 - tw / 2 - W * 0.03, yy - W * 0.058, tw + W * 0.06, W * 0.076, W * 0.02) : ctx.rect(W / 2 - tw / 2 - W * 0.03, yy - W * 0.058, tw + W * 0.06, W * 0.076);
-    ctx.fill();
-    ctx.fillStyle = "#fff";
-    ctx.textAlign = "center";
-    ctx.fillText(l, W / 2, yy);
+  const lh = fs * 1.3;
+  let idx = 0;
+  ctx.globalAlpha = Math.max(0, fade);
+  ctx.textAlign = "left";
+  ctx.lineJoin = "round";
+  lines.forEach((ln, k) => {
+    const total = ln.reduce((a, b) => a + b.ww, 0) + space * (ln.length - 1);
+    let x = W / 2 - total / 2;
+    const y = H * 0.635 + k * lh;
+    for (const { w, ww } of ln) {
+      if (idx < shownN) {
+        const cur = idx === shownN - 1 && local < 0.6;
+        const age = (local - (idx / plain.length) * 0.55) * 20;
+        const sc = cur ? 1 + 0.18 * Math.max(0, 1 - age) : 1;
+        ctx.save();
+        ctx.translate(x + ww / 2, y - fs * 0.35);
+        ctx.scale(sc, sc);
+        if (cur) {
+          ctx.fillStyle = `hsl(${(hue + 120) % 360} 95% 62%)`;
+          ctx.beginPath();
+          const r = fs * 0.22;
+          ctx.roundRect ? ctx.roundRect(-ww / 2 - fs * 0.16, -fs * 0.62, ww + fs * 0.32, fs * 1.18, r) : ctx.rect(-ww / 2 - fs * 0.16, -fs * 0.62, ww + fs * 0.32, fs * 1.18);
+          ctx.fill();
+        }
+        ctx.lineWidth = fs * 0.16;
+        ctx.strokeStyle = "rgba(0,0,0,.85)";
+        ctx.strokeText(w, -ww / 2, fs * 0.35);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(w, -ww / 2, fs * 0.35);
+        ctx.restore();
+      }
+      x += ww + space;
+      idx++;
+    }
   });
+  // Emoji-Sticker hüpft neben dem Chart
+  if (sticker) {
+    const pop = Math.min(1, local * 6);
+    ctx.save();
+    ctx.translate(W * 0.84, H * 0.25);
+    ctx.rotate(Math.sin(t / 260) * 0.18);
+    ctx.scale(pop * (1 + 0.06 * Math.sin(t / 120)), pop * (1 + 0.06 * Math.sin(t / 120)));
+    ctx.font = `${W * 0.15}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(sticker, 0, W * 0.05);
+    ctx.restore();
+  }
   ctx.globalAlpha = 1;
   ctx.textAlign = "left";
   // Wasserzeichen oben rechts
@@ -208,6 +216,9 @@ export function drawClip(ctx, W, H, clip, market, t, authorLabel) {
     ctx.font = `600 ${W * 0.03}px system-ui, sans-serif`;
     ctx.fillText(authorLabel, W * 0.92, H * 0.105);
   }
+  ctx.font = `600 ${W * 0.026}px system-ui, sans-serif`;
+  ctx.fillStyle = "rgba(255,255,255,.5)";
+  ctx.fillText("Keine Anlageberatung", W * 0.92, H * (authorLabel ? 0.13 : 0.105));
   ctx.textAlign = "left";
 }
 
