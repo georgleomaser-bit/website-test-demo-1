@@ -674,12 +674,13 @@
   <main class="view clips-view" id="view-clips" hidden>
     <div class="clips-shell">
       <aside class="clips-side">
-        <h1>Clips</h1>
-        <p class="muted">Kurze Trading-Videos der Community. Scrollen, liken, direkt handeln.</p>
-        <div class="seg clips-tabs" id="clips-tabs"><button class="active" data-cf="foryou">Für dich</button><button data-cf="following">Gefolgt</button><button data-cf="mine">Meine</button></div>
-        <button class="btn primary big" id="clip-upload-btn">＋ Clip hochladen</button>
-        <button class="btn big" id="clip-record-btn">🎬 Chart-Clip aufnehmen</button>
-        <p class="muted small">Hinweis: Community-Clips sind Beispiele, die live aus Kursdaten generiert werden. Eigene Videos bleiben in diesem Browser.</p>
+        <h1>Clips <span class="clips-live">● LIVE</span></h1>
+        <p class="muted">Swipen, tippen, lernen: Trading in 12 Sekunden.</p>
+        <div class="seg clips-tabs" id="clips-tabs"><button class="active" data-cf="foryou">Für dich</button><button data-cf="following">Gefolgt</button><button data-cf="saved">Gemerkt</button><button data-cf="mine">Meine</button></div>
+        <div class="clips-create"><button class="btn primary big" id="clip-upload-btn" aria-label="Clip hochladen">＋ <span>Clip hochladen</span></button><button class="btn big" id="clip-record-btn" aria-label="Chart-Clip aufnehmen">🎬 <span>Chart-Clip in 8 s</span></button></div>
+        <div class="tip-card" id="tip-card"></div>
+        <div class="clip-trends-wrap"><b class="ct-title">🔥 Trends</b><div class="clip-trends" id="clip-trends"></div></div>
+        <p class="muted small clips-note">Hier laufen nur Videos echter Nutzer: keine Bots, keine KI-Clips, keine gekauften Likes. Keine Anlageberatung. Eigene Videos bleiben in diesem Browser.</p>
       </aside>
       <div class="clips-feed" id="clips-feed"></div>
     </div>

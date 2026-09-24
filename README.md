@@ -4,7 +4,7 @@
 
 Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar als App (PWA), offline nutzbar, mit flüssigen iOS-artigen Animationen.
 
-> **Hinweis:** Alle Kurse und Community-Profile sind **simuliert** – keine echten Marktdaten, kein echtes Geld, keine Anlageberatung. Demo-Konto mit 100.000 € Startkapital.
+> **Hinweis:** Alle Kurse sind **simuliert**, in der Community gibt es keine Bots – keine echten Marktdaten, kein echtes Geld, keine Anlageberatung. Demo-Konto mit 100.000 € Startkapital.
 
 ## Funktionen
 

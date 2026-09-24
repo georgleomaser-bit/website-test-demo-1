@@ -1,5 +1,7 @@
 // AKYTEX Ideen-Börse: versiegelte Trading-Ideen mit automatisch gemessener Performance,
-// handelbar mit einem Klick, Autoren erhalten Royalties. (Demo mit fiktiven Profilen)
+// handelbar mit einem Klick, Autoren erhalten Royalties.
+// Keine Bots: Es gibt nur echte Inhalte der Nutzerinnen und Nutzer, keine erfundenen Profile, Ideen oder Käufe.
+export const BOTS = false;
 import { analyze } from "./analysis.js";
 import { toLocalSec } from "./market.js";
 
@@ -49,7 +51,7 @@ export class Community {
     this.state = this.load();
     const day = Math.floor(Date.now() / 86400000);
     const r = rng(day * 7919);
-    this.traders = TRADERS.map((t) => ({
+    this.traders = (BOTS ? TRADERS : []).map((t) => ({
       ...t,
       ret1y: -0.05 + r() * 0.75,
       winRate: 0.48 + r() * 0.24,
@@ -61,7 +63,7 @@ export class Community {
       const s = t.weights.reduce((a, v) => a + v, 0);
       t.weights = t.weights.map((v) => v / s);
     });
-    this.generated = this.generateIdeas(r);
+    this.generated = BOTS ? this.generateIdeas(r) : [];
     this.ready = this.sealGenerated();
   }
 
@@ -71,6 +73,13 @@ export class Community {
       const s = { ...base, ...JSON.parse(localStorage.getItem(KEY) || "{}") };
       // Ideen aus älteren Versionen ohne Kursmarken ergänzen
       s.ideas = s.ideas.filter((i) => this.market.has(i.symbol)).map((i) => this.normalize(i));
+      // Reste früherer Bot-Simulationen entfernen: erfundene Käufer, Royalties und Bot-Profile
+      if (!BOTS) {
+        s.royaltyLog = [];
+        s.royaltyTotal = 0;
+        s.ideas.forEach((i) => ((i.copies = 0), (i.royalty = 0)));
+        s.following = s.following.filter((id) => !/^t\d+$/.test(id));
+      }
       return s;
     } catch (_) {
       return base;
@@ -242,6 +251,7 @@ export class Community {
   // Simuliert andere Nutzer, die deine offenen Ideen handeln → Royalties für dich
   simulateCopies(creatorShare) {
     const events = [];
+    if (!BOTS) return events;
     for (const i of this.state.ideas) {
       this.evaluate(i);
       if (i.status !== "open") continue;

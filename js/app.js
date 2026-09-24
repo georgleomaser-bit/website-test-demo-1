@@ -10,7 +10,7 @@ import { AkytexAI, STRATEGIES } from "./ai.js";
 import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
-import { demoClips, drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
+import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
 import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, FUNDING, ibanValid, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
@@ -1672,7 +1672,7 @@ function renderLeaderboard() {
       ${t.me ? "<span></span>" : `<button class="mini-btn" data-copy="${t.id}">Kopieren</button>`}
     </div>`;
     })
-    .join("");
+    .join("") + (community.traders.length ? "" : `<p class="muted small lb-empty">Hier erscheinen echte Trader, sobald sie Ideen teilen. Keine Bots, keine erfundenen Profile.</p>`);
 }
 function openCopy(id) {
   const t = community.trader(id);
@@ -1725,7 +1725,11 @@ function bindGrowth() {
     if (fl) {
       const on = community.toggleFollow(fl.dataset.follow);
       haptic(8);
-      toast(on ? `Du folgst jetzt @${community.trader(fl.dataset.follow).handle}.` : "Nicht mehr gefolgt.", on ? "success" : "info");
+      toast(on ? `Du folgst jetzt @${community.trader(fl.dataset.follow)?.handle || "trader"}.` : "Nicht mehr gefolgt.", on ? "success" : "info");
+      $$(`#clips-feed [data-follow="${fl.dataset.follow}"]`).forEach((x) => {
+        x.classList.toggle("on", on);
+        x.textContent = on ? "✓" : "+";
+      });
       return renderIdeas();
     }
     const tr = t.closest("[data-idea-trade]");
@@ -2039,7 +2043,10 @@ function renderUspDemo() {
   const el = $("#usp-demo");
   if (!el) return;
   const best = community.allIdeas().filter((i) => i.dir === "long").sort((a, b) => b.perf - a.perf)[0];
-  if (!best) return;
+  if (!best) {
+    el.innerHTML = `<div class="card usp-empty"><div class="spot-ic">🔒</div><h3>Hier steht bald die erste echte Idee.</h3><p class="muted">Keine Bots, keine erfundenen Trefferquoten: Die Ideen-Börse zeigt nur, was echte Nutzer versiegelt teilen.</p><button class="btn primary" data-goto="ideas">Erste Idee teilen</button></div>`;
+    return;
+  }
   const royalty = (best.copies || 0) * 3000 * 0.002 * 0.5;
   el.innerHTML = `${ideaCard(best)}<div class="usp-earn"><span>@${esc(authorOf(best).handle)} hat mit dieser Idee verdient</span><b>${eur(royalty)}</b><small>${best.copies} Trades × Ø 3.000 € × 0,20 % × 50 % Creator-Anteil (Beispiel)</small></div>`;
 }
@@ -4231,7 +4238,7 @@ function injectFooters() {
       <div><b>Konto</b><button data-goto="account" data-acct-tab="billing">Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">Rechnungen</button><button data-cancel-open class="sf-cancel">Verträge hier kündigen</button></div>
       <div><b>Rechtliches</b><button data-legal-open="impressum">Impressum</button><button data-legal-open="privacy">Datenschutz</button><button data-legal-open="terms">AGB</button><button data-legal-open="risk">Risikohinweise</button></div>
     </div>
-    <small class="sf-note">${PAYMENT_CONFIG.mode === "live" ? "Trading-Simulator: Kurse, Depot und Community-Beispielprofile sind simuliert, gehandelt wird mit virtuellem Geld. Abos werden über Stripe echt abgerechnet. Keine Anlageberatung." : "Trading-Simulator: Kurse, Community-Profile und Zahlungen sind simuliert. Keine Anlageberatung. Kein echtes Geld."} © ${new Date().getFullYear()} ${PH("Firmenname")}</small>
+    <small class="sf-note">${PAYMENT_CONFIG.mode === "live" ? "Trading-Simulator: Kurse und Depot sind simuliert, gehandelt wird mit virtuellem Geld. Keine Bots: Community-Inhalte stammen nur von echten Nutzern, Clips kommen nur von echten Nutzern. Abos werden über Stripe echt abgerechnet. Keine Anlageberatung." : "Trading-Simulator: Kurse und Zahlungen sind simuliert. Keine Bots in der Community. Keine Anlageberatung. Kein echtes Geld."} © ${new Date().getFullYear()} ${PH("Firmenname")}</small>
   </footer>`;
   $$(".site-foot-slot").forEach((s) => (s.outerHTML = foot));
   for (const v of ["markets", "ideas", "ai", "portfolio", "business", "account", "legal"]) {
@@ -4266,26 +4273,7 @@ function bindDepth() {
   });
   document.addEventListener("pointerleave", () => cur && (cur.style.transform = ""));
 }
-const ACT_NAMES = ["anna_trades", "LukasInvest", "bullenbaer", "fintech_fritz", "Marie.K", "depot_dave", "sparfuchs93", "KaiCharts", "LinaLongs", "TomTrader", "EllaETF", "pivot_paul"];
-function liveActivity() {
-  const el = $("#live-activity");
-  // Mit echten Zahlungen keine erfundenen „gerade gekauft“-Meldungen (wäre irreführende Werbung)
-  if (!el || settings.view !== "home" || PAYMENT_CONFIG.mode === "live") return;
-  const s = STOCKS[Math.floor(Math.random() * STOCKS.length)];
-  const kinds = [
-    () => `<b>@${ACT_NAMES[Math.floor(Math.random() * ACT_NAMES.length)]}</b> kaufte ${1 + Math.floor(Math.random() * 40)} ${s.s}`,
-    () => `<b>@${ACT_NAMES[Math.floor(Math.random() * ACT_NAMES.length)]}</b> teilte eine Idee zu ${s.s}`,
-    () => `🤖 Ein Autopilot sicherte Gewinne bei ${s.s}`,
-    () => `<b>@${ACT_NAMES[Math.floor(Math.random() * ACT_NAMES.length)]}</b> handelt eine Idee von @${community.traders[Math.floor(Math.random() * community.traders.length)].handle}`,
-  ];
-  const pill = document.createElement("div");
-  pill.className = "act-pill";
-  pill.innerHTML = `<i></i>${kinds[Math.floor(Math.random() * kinds.length)]()} <small>· gerade eben · Beispiel</small>`;
-  el.prepend(pill);
-  requestAnimationFrame(() => pill.classList.add("in"));
-  while (el.children.length > 3) el.lastElementChild.remove();
-}
-setInterval(liveActivity, 2600);
+// Keine erfundenen „gerade gekauft“-Meldungen mehr: Die Aktivitätsanzeige ist abgeschaltet (keine Bots).
 
 // Rollziffern für den großen Kurs in der Kurskarte
 function odometer(el, text) {
@@ -4935,9 +4923,9 @@ function bindShop() {
 const CLIPS_KEY = "akytex-v2-clips";
 const clipsState = (() => {
   try {
-    return { liked: [], comments: {}, reported: [], myGen: [], ...JSON.parse(localStorage.getItem(CLIPS_KEY) || "{}") };
+    return { liked: [], saved: [], tips: {}, comments: {}, reported: [], myGen: [], ...JSON.parse(localStorage.getItem(CLIPS_KEY) || "{}") };
   } catch (_) {
-    return { liked: [], comments: {}, reported: [], myGen: [] };
+    return { liked: [], saved: [], tips: {}, comments: {}, reported: [], myGen: [] };
   }
 })();
 const saveClips = () => {
@@ -4948,6 +4936,7 @@ const saveClips = () => {
   }
 };
 let clipFilter = "foryou";
+let clipTag = null;
 let clipList = [];
 let clipUrls = [];
 let activeClip = null;
@@ -4956,9 +4945,115 @@ let clipT0 = 0;
 let clipPausedAt = null;
 let clipObserver = null;
 let pendingFile = null;
-const seededComments = ["Starke Analyse 🔥", "Genau mein Level!", "Bin auch Long 🚀", "Stop ist mir zu eng", "Danke fürs Teilen!", "Wie siehst du den RSI?"];
+// Zahlen wie in Social-Apps: 1,2K, 3,4M
+const kfmt = (v) => (v >= 1e6 ? nf1(v / 1e6) + "M" : v >= 1e3 ? nf1(v / 1e3) + "K" : String(Math.round(v)));
+const nf1 = (v) => v.toLocaleString("de-DE", { maximumFractionDigits: v < 10 ? 1 : 0 });
+
+// ---------- Tipp-Spiel: hoch oder runter? (nur zum Spaß, kein Geld) ----------
+const TIP_MS = 15 * 60000;
+const TIP_LEVELS = [
+  [0, "Rookie 🐣"],
+  [60, "Chart-Checker 👀"],
+  [180, "Trend-Scout 🧭"],
+  [400, "Markt-Profi 😎"],
+  [800, "Legende 👑"],
+];
+function tipStats() {
+  const all = Object.values(clipsState.tips).sort((a, b) => a.ts - b.ts);
+  const done = all.filter((x) => x.result);
+  const hits = done.filter((x) => x.result === "hit").length;
+  let streak = 0;
+  for (let i = done.length - 1; i >= 0 && done[i].result === "hit"; i--) streak++;
+  const xp = all.length * 10 + hits * 25;
+  let li = 0;
+  TIP_LEVELS.forEach(([min], i) => xp >= min && (li = i));
+  const next = TIP_LEVELS[li + 1];
+  return { total: all.length, open: all.length - done.length, hits, done: done.length, streak, xp, level: TIP_LEVELS[li][1], lvl: li + 1, prog: next ? (xp - TIP_LEVELS[li][0]) / (next[0] - TIP_LEVELS[li][0]) : 1, toNext: next ? next[0] - xp : 0 };
+}
+function resolveTips(silent = false) {
+  const now = Date.now();
+  let changed = false;
+  for (const [id, tip] of Object.entries(clipsState.tips)) {
+    if (tip.result || now - tip.ts < TIP_MS) continue;
+    const p = market.quote(tip.sym).price;
+    const move = p / tip.price - 1;
+    tip.result = (tip.dir === "up" ? move > 0 : move < 0) ? "hit" : "miss";
+    tip.move = move;
+    changed = true;
+    if (!silent) {
+      const st = tipStats();
+      toast(tip.result === "hit" ? `Dein ${tip.sym}-Tipp war richtig (${pct(move * 100)}). +35 XP${st.streak > 1 ? ` · 🔥 Serie ${st.streak}` : ""}` : `Dein ${tip.sym}-Tipp lag daneben (${pct(move * 100)}). Nächstes Mal! +10 XP`, tip.result === "hit" ? "success" : "info", tip.result === "hit" ? "✅ Treffer" : "❌ Knapp daneben");
+    }
+    updateVote(id);
+  }
+  if (changed) {
+    saveClips();
+    renderTipCard();
+  }
+}
+function voteHtml(c) {
+  const tip = clipsState.tips[c.id];
+  if (!tip) return `<div class="clip-vote" data-vote="${c.id}"><span>Hoch oder runter? <small>15 Min</small></span><button data-dir="up">📈 Hoch</button><button data-dir="down">📉 Runter</button></div>`;
+  if (tip.result) return `<div class="clip-vote done ${tip.result}" data-vote="${c.id}"><span>${tip.result === "hit" ? "✅ Treffer" : "❌ Daneben"} · ${tip.dir === "up" ? "📈" : "📉"} ${esc(tip.sym)} ${pct(tip.move * 100)}</span></div>`;
+  const left = Math.max(1, Math.ceil((TIP_MS - (Date.now() - tip.ts)) / 60000));
+  return `<div class="clip-vote done" data-vote="${c.id}"><span>Dein Tipp: ${tip.dir === "up" ? "📈 Hoch" : "📉 Runter"} ab ${num(tip.price)} € · Auflösung in ${left} Min ⏳</span></div>`;
+}
+function updateVote(id) {
+  const el = $(`#clips-feed [data-vote="${id}"]`);
+  const c = clipList.find((x) => x.id === id);
+  if (el && c) el.outerHTML = voteHtml(c);
+}
+function renderTipCard() {
+  const el = $("#tip-card");
+  if (!el) return;
+  const st = tipStats();
+  el.innerHTML = `<div class="tc-top"><b>${st.level}</b><span>Level ${st.lvl} · ${st.xp} XP</span></div>
+    <div class="tc-bar"><i style="transform:scaleX(${st.prog})"></i></div>
+    <div class="tc-stats"><span>🔥 <b>${st.streak}</b> Serie</span><span>🎯 <b>${st.done ? Math.round((st.hits / st.done) * 100) : 0} %</b> Treffer</span><span>⏳ <b>${st.open}</b> offen</span></div>
+    <small class="muted">${st.total ? (st.toNext ? `Noch ${st.toNext} XP bis zum nächsten Level.` : "Höchstes Level erreicht 👑") : "Tippe bei jedem Clip, ob der Kurs in 15 Minuten höher oder tiefer steht."} Nur zum Spaß, ohne Geld.</small>`;
+}
+function renderTrends() {
+  const el = $("#clip-trends");
+  if (!el) return;
+  const n = {};
+  for (const c of clipList) for (const t of c.tags || []) n[t.toLowerCase()] = (n[t.toLowerCase()] || 0) + 1 + (c.likes || 0) / 1000;
+  const top = Object.entries(n)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([t]) => t);
+  el.parentElement.hidden = !top.length && !clipTag;
+  el.innerHTML = (clipTag ? `<button class="on" data-clip-tag="">✕ ${esc(clipTag)}</button>` : "") + top.filter((t) => t !== clipTag).map((t) => `<button data-clip-tag="${esc(t)}">${esc(t)}</button>`).join("");
+}
+function floatHeart(stage, x, y) {
+  const r = stage.getBoundingClientRect();
+  const h = document.createElement("i");
+  h.className = "float-heart";
+  h.textContent = "♥";
+  h.style.left = (x ? x - r.left : r.width / 2) + "px";
+  h.style.top = (y ? y - r.top : r.height * 0.45) + "px";
+  h.style.setProperty("--rot", Math.round(Math.random() * 40 - 20) + "deg");
+  stage.appendChild(h);
+  setTimeout(() => h.remove(), 950);
+}
+async function shareClip(c) {
+  const url = shareUrl();
+  const text = `${c.title || c.caption || c.sym} 👀 ${c.sym} auf AKYTEX`;
+  haptic(10);
+  if (navigator.share && !embedded) {
+    try {
+      return await navigator.share({ title: "AKYTEX Clips", text, url });
+    } catch (e) {
+      if (e && e.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    toast("Link kopiert. Ab in den Gruppenchat damit 🚀", "success", "↗ Teilen");
+  } catch (_) {
+    toast(url, "info", "Link zum Teilen (bitte kopieren)");
+  }
+}
 async function loadClips() {
-  const demo = demoClips(market, community.traders);
   const mine = await idbAll();
   clipUrls.forEach((u) => URL.revokeObjectURL(u));
   clipUrls = [];
@@ -4967,7 +5062,8 @@ async function loadClips() {
     clipUrls.push(url);
     return { ...c, url };
   });
-  return [...user, ...clipsState.myGen, ...demo].filter((c) => !clipsState.reported.includes(c.id)).sort((a, b) => b.created - a.created);
+  // Nur Clips echter Nutzer – keine KI- oder Bot-Clips im Feed
+  return [...user, ...clipsState.myGen].filter((c) => !clipsState.reported.includes(c.id)).sort((a, b) => b.created - a.created);
 }
 function clipAuthor(c) {
   if (c.author === "me") return { handle: account.state.profile?.name?.replace(/\s+/g, "").toLowerCase() || "du", style: "Dein Clip", color: "#6ea2f2", me: true };
@@ -4976,7 +5072,14 @@ function clipAuthor(c) {
 async function renderClips() {
   if (settings.view !== "clips") return;
   clipList = await loadClips();
-  const list = clipList.filter((c) => (clipFilter === "mine" ? c.author === "me" : clipFilter === "following" ? community.isFollowing(c.author) : true));
+  resolveTips(true);
+  const top = $("#view-clips").getBoundingClientRect().top + scrollY;
+  $("#view-clips").style.setProperty("--clips-top", Math.round(top) + "px");
+  renderTipCard();
+  renderTrends();
+  const list = clipList
+    .filter((c) => (clipFilter === "mine" ? c.author === "me" : clipFilter === "following" ? community.isFollowing(c.author) : clipFilter === "saved" ? clipsState.saved.includes(c.id) : true))
+    .filter((c) => !clipTag || (c.tags || []).some((t) => t.toLowerCase() === clipTag));
   const feed = $("#clips-feed");
   feed.innerHTML = list.length
     ? list
@@ -4985,26 +5088,31 @@ async function renderClips() {
           const liked = clipsState.liked.includes(c.id);
           const q = market.quote(c.sym);
           const nCom = (c.comments || 0) + (clipsState.comments[c.id]?.length || 0);
+          const saved = clipsState.saved.includes(c.id);
+          const fol = !a.me && community.isFollowing(c.author);
           return `<article class="clip" data-clip="${c.id}">
-            <div class="clip-stage" data-clip-stage="${c.id}">${c.kind === "video" ? `<video src="${c.url}" playsinline muted loop preload="metadata"></video>` : `<canvas></canvas>`}<div class="clip-paused">▶</div><div class="heart-burst">♥</div></div>
+            <div class="clip-stage" data-clip-stage="${c.id}">${c.kind === "video" ? `<video src="${c.url}" playsinline muted loop preload="metadata"></video>` : `<canvas></canvas>`}<div class="clip-paused">▶</div></div>
             <div class="clip-prog"><i></i></div>
             <div class="clip-info">
-              <div class="ci-author">${avatar(a)}<b>@${esc(a.handle)}</b>${a.me ? "" : `<button class="follow-btn sm ${community.isFollowing(c.author) ? "on" : ""}" data-follow="${c.author}">${community.isFollowing(c.author) ? "Gefolgt" : "Folgen"}</button>`}</div>
+              <div class="ci-author"><b>@${esc(a.handle)}</b>${a.style ? `<small>${esc(a.style)}</small>` : ""}${a.me ? `<button class="ci-more" data-clip-del="${c.id}" title="Löschen" aria-label="Clip löschen">🗑</button>` : `<button class="ci-more" data-clip-report="${c.id}" title="Melden" aria-label="Clip melden">⚑</button>`}</div>
               <p>${esc(c.title || c.caption || "")}</p>
-              <div class="ci-tags">${(c.tags || []).map((t) => `<span>${esc(t)}</span>`).join("")}</div>
+              <div class="ci-tags">${(c.tags || []).map((t) => `<button data-clip-tag="${esc(t.toLowerCase())}">${esc(t)}</button>`).join("")}</div>
+              ${voteHtml(c)}
               <button class="ci-sym" data-open-sym="${c.sym}"><b>${c.sym}</b> ${num(q.price)} € <span class="${cls(q.change)}">${pct(q.changePct)}</span></button>
             </div>
             <div class="clip-rail">
-              <button class="${liked ? "on" : ""}" data-clip-like="${c.id}"><span>♥</span><small>${compact((c.likes || 0) + (liked ? 1 : 0))}</small></button>
-              <button data-clip-cmt="${c.id}"><span>💬</span><small>${nCom}</small></button>
-              <button data-clip-share="${c.id}"><span>↗</span><small>Teilen</small></button>
-              <button class="trade" data-clip-trade="${c.sym}"><span>📈</span><small>Handeln</small></button>
-              ${c.author === "me" ? `<button data-clip-del="${c.id}"><span>🗑</span><small>Löschen</small></button>` : `<button data-clip-report="${c.id}"><span>⚑</span><small>Melden</small></button>`}
+              <div class="rail-av">${avatar(a)}${a.me ? "" : `<button class="rail-follow ${fol ? "on" : ""}" data-follow="${c.author}" aria-label="${fol ? "Gefolgt" : "Folgen"}">${fol ? "✓" : "+"}</button>`}</div>
+              <button class="${liked ? "on" : ""}" data-clip-like="${c.id}" aria-label="Gefällt mir"><span>♥</span><small>${kfmt((c.likes || 0) + (liked ? 1 : 0))}</small></button>
+              <button data-clip-cmt="${c.id}" aria-label="Kommentare"><span>💬</span><small>${kfmt(nCom)}</small></button>
+              <button class="${saved ? "on save" : "save"}" data-clip-save="${c.id}" aria-label="Merken"><span>🔖</span><small>${saved ? "Gemerkt" : "Merken"}</small></button>
+              <button data-clip-share="${c.id}" aria-label="Teilen"><span>↗</span><small>Teilen</small></button>
+              <button data-clip-explain="${c.sym}" aria-label="Erklären lassen"><span>🧠</span><small>Erklär's</small></button>
+              <button class="trade" data-clip-trade="${c.sym}" aria-label="${c.sym} handeln"><span class="disc">${c.sym.slice(0, 4)}</span><small>Handeln</small></button>
             </div>
           </article>`;
         })
         .join("")
-    : `<div class="empty-state clips-empty"><div class="spot-ic">🎬</div><h3>${clipFilter === "mine" ? "Noch keine eigenen Clips" : "Noch nichts hier"}</h3><p class="muted">${clipFilter === "mine" ? "Lade ein Video hoch oder nimm einen Chart-Clip auf." : "Folge Tradern, um ihre Clips hier zu sehen."}</p></div>`;
+    : `<div class="empty-state clips-empty"><div class="spot-ic">${clipFilter === "saved" ? "🔖" : "🎬"}</div><h3>${clipTag ? `Nichts zu ${esc(clipTag)}` : clipFilter === "mine" ? "Noch keine eigenen Clips" : clipFilter === "saved" ? "Noch nichts gemerkt" : clipFilter === "following" ? "Noch nichts hier" : "Hier läuft bald dein Clip 🎬"}</h3><p class="muted">${clipTag ? "Wähle einen anderen Trend oder entferne den Filter." : clipFilter === "mine" ? "Lade ein Video hoch oder nimm in 8 Sekunden einen Chart-Clip auf." : clipFilter === "saved" ? "Tippe bei einem Clip auf 🔖, um ihn hier zu speichern." : clipFilter === "following" ? "Folge Tradern mit ＋ am Profilbild, um ihre Clips hier zu sehen." : "Im Feed laufen nur Videos von echten Nutzern, keine Bots. Lade dein erstes Video hoch oder nimm in 8 Sekunden einen Chart-Clip auf."}</p>${clipFilter === "foryou" && !clipTag ? `<div class="clips-empty-cta"><button class="btn primary" data-clip-new="upload">＋ Video hochladen</button><button class="btn" data-clip-new="record">🎬 Chart-Clip aufnehmen</button></div>` : ""}</div>`;
   clipObserver?.disconnect();
   clipObserver = new IntersectionObserver(
     (es) => {
@@ -5058,7 +5166,7 @@ function pauseClips(keepPos = false) {
   clipPausedAt = keepPos ? (performance.now() - clipT0) % CLIP_MS : null;
   if (!keepPos) activeClip = null;
 }
-function likeClip(id, burst = false) {
+function likeClip(id, burst = false, x = 0, y = 0) {
   const i = clipsState.liked.indexOf(id);
   if (i >= 0 && !burst) clipsState.liked.splice(i, 1);
   else if (i < 0) clipsState.liked.push(id);
@@ -5070,29 +5178,27 @@ function likeClip(id, burst = false) {
   if (btn && c) {
     const on = clipsState.liked.includes(id);
     btn.classList.toggle("on", on);
-    btn.querySelector("small").textContent = compact((c.likes || 0) + (on ? 1 : 0));
+    btn.querySelector("small").textContent = kfmt((c.likes || 0) + (on ? 1 : 0));
+    if (on) {
+      btn.classList.remove("on");
+      void btn.offsetWidth;
+      btn.classList.add("on");
+    }
   }
-  if (burst && el) {
-    const h = el.querySelector(".heart-burst");
-    h.classList.remove("go");
-    void h.offsetWidth;
-    h.classList.add("go");
-  }
+  if (burst && el) floatHeart(el.querySelector(".clip-stage"), x, y);
 }
 let cmtClip = null;
 function openComments(id) {
   cmtClip = id;
-  const base = clipList.find((x) => x.id === id);
-  const seed = base && base.kind === "gen" && base.author !== "me" ? seededComments.slice(id.length % 3, (id.length % 3) + 3).map((t, k) => ({ who: ["anna_trades", "KaiCharts", "LinaLongs"][k], text: t, ts: base.created + (k + 1) * 600000, demo: true })) : [];
-  const list = [...seed, ...(clipsState.comments[id] || [])];
-  $("#comments-list").innerHTML = list.length ? list.map((c) => `<div class="cmt"><b>@${esc(c.who)}</b>${c.demo ? '<span class="demo-note small"> Beispiel</span>' : ""}<p>${esc(c.text)}</p><small class="muted">${ago(c.ts)}</small></div>`).join("") : `<p class="muted">Noch keine Kommentare. Sei der Erste!</p>`;
+  const list = clipsState.comments[id] || [];
+  $("#comments-list").innerHTML = list.length ? list.map((c) => `<div class="cmt"><b>@${esc(c.who)}</b><p>${esc(c.text)}</p><small class="muted">${ago(c.ts)}</small></div>`).join("") : `<p class="muted">Noch keine Kommentare. Schreib den ersten! ✍️</p>`;
   openModal("#comments-modal");
 }
 async function recordChartClip() {
   const sym = settings.symbol;
   const a = analyze(aggregate(market.get(sym).m1.slice(-60 * 24 * 7), "1h"));
-  const caps = [`${sym}: mein Blick auf den Chart`, `${a.rating.label} laut AKYTEX AI`, `Ziel ${num(a.setup.tp)} · Stop ${num(a.setup.sl)}`];
-  const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#akytex"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
+  const caps = [`Mein Chart-Check zu ${sym} 👀`, `AKYTEX AI sagt: ${a.rating.label} 🤖`, `Level ${num(a.setup.tp)} · Stop ${num(a.setup.sl)} 🎯`];
+  const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#akytex", "#chartcheck"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
   toast("Aufnahme läuft (8 Sekunden) …", "info", "🎬 Chart-Clip");
   try {
     const blob = await recordClip(clip, market, "@" + clipAuthor(clip).handle);
@@ -5180,7 +5286,7 @@ function bindClips() {
       const id = st.dataset.clipStage;
       const now = Date.now();
       if (now - lastTap < 300) {
-        likeClip(id, true);
+        likeClip(id, true, e.clientX, e.clientY);
         lastTap = 0;
         return;
       }
@@ -5202,9 +5308,55 @@ function bindClips() {
     }
     const lk = t.closest("[data-clip-like]");
     if (lk) return likeClip(lk.dataset.clipLike);
+    const vb = t.closest("[data-vote] [data-dir]");
+    if (vb) {
+      const id = vb.closest("[data-vote]").dataset.vote;
+      const c = clipList.find((x) => x.id === id);
+      if (!c || clipsState.tips[id]) return;
+      clipsState.tips[id] = { sym: c.sym, dir: vb.dataset.dir, price: market.quote(c.sym).price, ts: Date.now() };
+      saveClips();
+      haptic([8, 40, 8]);
+      updateVote(id);
+      renderTipCard();
+      const st = tipStats();
+      toast(`${vb.dataset.dir === "up" ? "📈 Hoch" : "📉 Runter"} bei ${c.sym} getippt. In 15 Minuten siehst du, ob du richtig lagst. +10 XP`, "success", st.total === 1 ? "🎮 Erster Tipp!" : `🎮 Tipp ${st.total}`);
+      if (st.total === 1) confetti();
+      return;
+    }
+    const tg = t.closest("[data-clip-tag]");
+    if (tg) {
+      clipTag = tg.dataset.clipTag || null;
+      $("#clips-feed").scrollTop = 0;
+      return renderClips();
+    }
+    const nw = t.closest("[data-clip-new]");
+    if (nw) return $(nw.dataset.clipNew === "upload" ? "#clip-upload-btn" : "#clip-record-btn").click();
+    const sv = t.closest("[data-clip-save]");
+    if (sv) {
+      const id = sv.dataset.clipSave;
+      const i = clipsState.saved.indexOf(id);
+      if (i >= 0) clipsState.saved.splice(i, 1);
+      else clipsState.saved.push(id);
+      saveClips();
+      haptic(8);
+      const on = i < 0;
+      sv.classList.toggle("on", on);
+      sv.querySelector("small").textContent = on ? "Gemerkt" : "Merken";
+      if (on) toast("Unter „Gemerkt“ findest du den Clip wieder.", "success", "🔖 Gespeichert");
+      return;
+    }
+    const ex = t.closest("[data-clip-explain]");
+    if (ex) {
+      pauseClips();
+      openAssistant(false);
+      setTimeout(() => sendChat(`Erklär mir den ${ex.dataset.clipExplain}-Chart ganz einfach, wie für Anfänger`), 250);
+      return;
+    }
+
     const cm = t.closest("[data-clip-cmt]");
     if (cm) return openComments(cm.dataset.clipCmt);
-    if (t.closest("[data-clip-share]")) return share();
+    const sh = t.closest("[data-clip-share]");
+    if (sh) return shareClip(clipList.find((x) => x.id === sh.dataset.clipShare) || { sym: settings.symbol });
     const tr = t.closest("[data-clip-trade]");
     if (tr) {
       pauseClips();
@@ -5227,6 +5379,11 @@ function bindClips() {
       return renderClips();
     }
   });
+  setInterval(() => {
+    resolveTips();
+    if (settings.view !== "clips") return;
+    for (const id of Object.keys(clipsState.tips)) if (!clipsState.tips[id].result) updateVote(id);
+  }, 30000);
   document.addEventListener("keydown", (e) => {
     if (settings.view !== "clips" || e.target.matches("input, textarea, select")) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
