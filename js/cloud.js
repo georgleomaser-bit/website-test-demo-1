@@ -4,6 +4,7 @@
 const TOKEN_KEY = "akytex-cloud-token";
 const base = new URL("api/", document.baseURI).href;
 let available = null;
+let info = {};
 let me = null;
 
 function token() {
@@ -31,13 +32,60 @@ export async function cloudReady() {
   if (/\.(github\.io|netlify\.app|vercel\.app)$/.test(location.hostname)) return (available = false);
   try {
     const r = await fetch(base + "health", { cache: "no-store" });
-    available = r.ok && (await r.json()).service === "akytex";
+    info = r.ok ? await r.json() : {};
+    available = info.service === "akytex";
   } catch (_) {
     available = false;
   }
   return available;
 }
 export const cloudOn = () => available === true;
+export const aiOnServer = () => available === true && info.ai === true;
+
+// Sprachmodell über den eigenen Server – gleiche Schnittstelle wie die Claude-Umgebung:
+// llm(turns, { tools, signal, onText }) → { text }. Die Werkzeuge laufen hier im Browser.
+export async function serverLLM(turns, { tools = [], signal, onText } = {}) {
+  const defs = tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema || { type: "object", properties: {} } }));
+  const messages = turns.map((t) => ({ role: t.role, content: t.content }));
+  const stop = () => {
+    if (signal?.aborted) throw Object.assign(new Error("Abgebrochen"), { code: "cancelled" });
+  };
+  let text = "";
+  for (let step = 0; step < 8; step++) {
+    stop();
+    let r;
+    try {
+      r = await call("POST", "ai/chat", { messages, tools: defs });
+    } catch (e) {
+      throw Object.assign(e, { code: e.status === 429 ? "rate_limited" : e.status === 503 ? "not_granted" : "server" });
+    }
+    stop();
+    const content = r.content || [];
+    const said = content.filter((b) => b.type === "text" && b.text).map((b) => b.text).join("\n");
+    if (said) {
+      text = text ? `${text}\n\n${said}` : said;
+      onText?.({ text });
+    }
+    if (r.stop_reason !== "tool_use") return { text };
+    // Antwort unverändert zurückgeben (inkl. Denk-Blöcken) und die Werkzeuge ausführen
+    messages.push({ role: "assistant", content });
+    const results = await Promise.all(
+      content
+        .filter((b) => b.type === "tool_use")
+        .map(async (b) => {
+          const tool = tools.find((t) => t.name === b.name);
+          try {
+            const out = tool ? await tool.execute(b.input || {}) : { error: "Unbekanntes Werkzeug" };
+            return { type: "tool_result", tool_use_id: b.id, content: JSON.stringify(out ?? null).slice(0, 12000) };
+          } catch (e) {
+            return { type: "tool_result", tool_use_id: b.id, content: String(e?.message || e), is_error: true };
+          }
+        })
+    );
+    messages.push({ role: "user", content: results });
+  }
+  return { text: text || "Da bin ich gerade nicht weitergekommen." };
+}
 export const cloudMe = () => me;
 export const videoUrl = (id) => base + "videos/" + encodeURIComponent(id);
 

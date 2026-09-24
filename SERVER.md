@@ -75,6 +75,23 @@ docker run -d --restart=always -p 8080:8080 -v akytex-data:/data -e ADMIN_TOKEN=
 ```
 Davor einen Reverse-Proxy mit HTTPS setzen, z. B. Caddy mit der Zeile `akytex.org { reverse_proxy localhost:8080 }`, oder wieder den Cloudflare Tunnel nutzen.
 
+## KI wie ChatGPT: echtes Sprachmodell (Claude) für Jarvis
+Ohne weitere Einrichtung antwortet AKYTEX AI mit der lokalen Engine (feste Regeln). Wenn der Server einen Anthropic-API-Schlüssel hat, antwortet ein **echtes Sprachmodell**:
+- versteht beliebige Fragen,
+- steuert die App über Werkzeuge,
+- führt mehrere Schritte aus,
+- antwortet ausführlich.
+
+1. Auf https://console.anthropic.com ein Konto anlegen, Guthaben aufladen und unter „API Keys“ einen Schlüssel erstellen.
+2. Den Schlüssel in die Datei **`data/anthropic-key.txt`** legen (nur der Schlüssel, eine Zeile). Alternativ als Umgebungsvariable `ANTHROPIC_API_KEY` setzen.
+3. AKYTEX starten (Doppelklick). Das Skript installiert die KI-Anbindung beim ersten Mal selbst (`npm install`). Im Fenster steht dann „KI aktiv“, und in der App erscheint „antwortet mit Claude“.
+
+**Kosten:** Jede Frage kostet ein paar Cent, je nach Länge. Eine Bremse ist eingebaut:
+- höchstens **400 KI-Anfragen pro Tag** für alle zusammen (`AI_DAILY_LIMIT` ändern)
+- höchstens **60 pro 10 Minuten** und Gerät
+
+Das Modell ist standardmäßig `claude-opus-5` (änderbar mit `AI_MODEL`), der Denk-Aufwand `medium` (`AI_EFFORT`: low, medium oder high). Der Schlüssel bleibt immer auf dem Server und ist nie in der App sichtbar.
+
 ## 3. Moderieren
 Ihr seid für die Inhalte auf eurem Server mitverantwortlich. Meldungen müsst ihr zügig prüfen (Digital Services Act).
 ```bash

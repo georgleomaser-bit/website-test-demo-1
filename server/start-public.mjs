@@ -72,6 +72,18 @@ function openBrowser(url) {
   }
 }
 
+// 2b) KI: Schlüssel aus data/anthropic-key.txt übernehmen und das Anthropic-SDK bei Bedarf einmalig installieren
+const keyFile = path.join(DATA, "anthropic-key.txt");
+if (!process.env.ANTHROPIC_API_KEY && fs.existsSync(keyFile)) process.env.ANTHROPIC_API_KEY = fs.readFileSync(keyFile, "utf8").trim();
+if (process.env.ANTHROPIC_API_KEY && !fs.existsSync(path.join(ROOT, "node_modules", "@anthropic-ai", "sdk"))) {
+  say("📦 Installiere die KI-Anbindung (einmalig) …");
+  try {
+    execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["install", "--omit=dev", "--no-audit", "--no-fund"], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
+  } catch (_) {
+    say("⚠️  Installation fehlgeschlagen – AKYTEX läuft ohne Sprachmodell weiter.");
+  }
+}
+
 // 3) Server starten (im selben Prozess)
 await import("./akytex-server.mjs");
 

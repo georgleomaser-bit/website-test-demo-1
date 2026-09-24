@@ -3,10 +3,15 @@
   "private": true,
   "type": "module",
   "description": "AKYTEX – Website und eigener Server für den Clip-Feed",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server/akytex-server.mjs",
     "public": "node server/start-public.mjs",
     "admin": "node server/admin.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0"
   }
 }

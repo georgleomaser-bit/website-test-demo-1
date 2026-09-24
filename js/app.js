@@ -11,7 +11,7 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
-import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft } from "./jarvis.js";
+import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle } from "./jarvis.js";
 import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
@@ -35,7 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "4.3"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "4.4"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2502,7 +2502,7 @@ async function sendChatCore(text) {
   voiceTurn = false;
   if (chat.some((m) => m.pending || m.streaming)) return toast("Einen Moment – AKYTEX AI antwortet noch.", "info");
   // App-Befehle („öffne den Shop“, „dunkles Design“, „SAP auf die Watchlist“) sofort ausführen – auch ohne AI-Tarif
-  const cmd = appCommand(text);
+  const cmd = multiCommand(text.toLowerCase()) || appCommand(text);
   if (cmd || !aiMode()) {
     chat.push({ role: "user", text });
     const reply = cmd
@@ -2567,7 +2567,7 @@ async function sendChatCore(text) {
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt. Du bist zugleich der persönliche Assistent der App: Mit app_control öffnest du Ansichten, Aktien, Tarife oder Einzahlungen, wenn der Nutzer das möchte. Geld bewegst du nie selbst – Käufe, Einzahlungen und Abos bestätigt immer der Nutzer. Denke voraus: Schlage passende nächste Schritte vor (Alarm, Stop, Watchlist), ohne aufdringlich zu sein.
+  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich, konkret und durchdacht: bei einfachen Fragen kurz, bei Analysen gründlich mit Begründung, Zahlen und Alternativen (bis etwa 250 Wörter). Beginne immer mit der Kernaussage – die ersten Sätze werden vorgelesen. Sprich den Nutzer mit „${jarvisTitle()}“ an. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt. Du bist zugleich der persönliche Assistent der App: Mit app_control öffnest du Ansichten, Aktien, Tarife oder Einzahlungen, wenn der Nutzer das möchte. Geld bewegst du nie selbst – Käufe, Einzahlungen und Abos bestätigt immer der Nutzer. Denke voraus: Schlage passende nächste Schritte vor (Alarm, Stop, Watchlist), ohne aufdringlich zu sein.
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -5788,6 +5788,11 @@ async function share() {
 // ---------- Start ----------
 cloud.cloudReady().then(async (on) => {
   if (!on) return;
+  // Läuft AKYTEX über den eigenen Server mit KI-Schlüssel, antwortet ein echtes Sprachmodell (Claude)
+  if (cloud.aiOnServer() && !llm) {
+    llm = cloud.serverLLM;
+    renderAIHeader();
+  }
   await cloud.loadMe();
   const n = $(".clips-note");
   if (n) n.textContent = "Hier laufen nur Videos echter Nutzer, gespeichert auf dem AKYTEX-Server: keine Bots, keine KI-Clips, keine gekauften Likes. Unangemessenes bitte mit ⚑ melden. Keine Anlageberatung.";
@@ -6123,13 +6128,96 @@ function jarvisBrief() {
   const hi = h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
   const mood = up > qs.length * 0.6 ? "freundlich" : up < qs.length * 0.4 ? "schwach" : "gemischt";
   return {
-    html: `<p>${hi}${name ? " " + esc(name) : ""}! Hier ist dein Lagebericht.</p>
+    html: `<p>${hi}, ${esc(jarvisTitle() || name || "")}! Hier ist dein Lagebericht.</p>
       <p>Der Markt ist heute <b>${mood}</b>: ${up} von ${qs.length} Aktien im Plus. Stärkster Wert: <b>${top.s}</b> ${pct(top.changePct)}, schwächster: <b>${flop.s}</b> ${pct(flop.changePct)}.</p>
       <p>Dein Depot: <b>${eur(equity)}</b>, insgesamt <b class="${total >= 0 ? "up" : "down"}">${pct(total)}</b>${pos.length ? ` bei ${pos.length} ${pos.length === 1 ? "Position" : "Positionen"}` : ""}.</p>
       <p><b>Deine nächsten Schritte:</b></p><ul>${steps.slice(0, 3).map((s) => `<li>${s}</li>`).join("")}</ul>
       <p class="muted">Keine Anlageberatung – das Depot ist virtuell, die Kurse sind simuliert.</p>`,
     actions: actions.slice(0, 3),
   };
+}
+// Smalltalk, Fachbegriffe und kleine Helfer – damit Jarvis sich wie ein echter Assistent anfühlt
+const GLOSSARY = [
+  [/\brsi\b/, "Der <b>RSI</b> (Relative-Stärke-Index) misst von 0 bis 100, wie stark eine Aktie zuletzt gestiegen oder gefallen ist. Über 70 gilt sie als heiß gelaufen, unter 30 als ausverkauft – beides sind Hinweise, keine Garantien."],
+  [/\bmacd\b/, "Der <b>MACD</b> vergleicht zwei gleitende Durchschnitte. Kreuzt die MACD-Linie ihre Signallinie nach oben, nimmt der Schwung nach oben zu – nach unten entsprechend umgekehrt."],
+  [/stop.?loss/, "Ein <b>Stop-Loss</b> ist eine automatische Verkaufsorder: Fällt der Kurs auf deinen Stop, wird verkauft. So begrenzt du den Verlust, falls du falschliegst."],
+  [/take.?profit/, "Ein <b>Take-Profit</b> verkauft automatisch, sobald dein Kursziel erreicht ist – so sicherst du Gewinne, ohne ständig auf den Chart zu schauen."],
+  [/trailing.?stop/, "Ein <b>Trailing-Stop</b> wandert mit steigendem Kurs nach oben mit und bleibt stehen, wenn der Kurs fällt. So sicherst du Gewinne und lässt trotzdem Luft nach oben."],
+  [/limit.?order/, "Mit einer <b>Limit-Order</b> legst du den Preis fest: Kaufen nur bis zu deinem Limit, verkaufen nur ab deinem Limit. Dafür wird sie eventuell nicht sofort ausgeführt."],
+  [/\betfs?\b/, "Ein <b>ETF</b> ist ein börsengehandelter Fonds, der einen ganzen Index nachbildet – z. B. die 1.500 größten Firmen der Welt. Ein Kauf, breite Streuung, meist niedrige Kosten."],
+  [/dividende/, "Eine <b>Dividende</b> ist der Teil des Gewinns, den eine Firma an ihre Aktionäre ausschüttet – meist einmal im Jahr, manche auch quartalsweise."],
+  [/\bkgv\b|kurs.?gewinn/, "Das <b>KGV</b> (Kurs-Gewinn-Verhältnis) sagt, wie viele Jahresgewinne du für eine Aktie bezahlst. Ein KGV von 20 heißt: Der Kurs entspricht 20 Jahresgewinnen. Niedrig kann günstig sein – oder ein Warnsignal."],
+  [/volatilit/, "<b>Volatilität</b> beschreibt, wie stark ein Kurs schwankt. Hohe Volatilität heißt größere Chancen, aber auch größere Verluste."],
+  [/\bshort\b|leerverkauf/, "<b>Short</b> bedeutet, auf fallende Kurse zu setzen. Das Risiko ist theoretisch unbegrenzt, weil ein Kurs beliebig steigen kann – eher etwas für Profis."],
+  [/\blong\b/, "<b>Long</b> heißt einfach: Du kaufst und setzt auf steigende Kurse. Der mögliche Verlust ist auf deinen Einsatz begrenzt."],
+  [/marktkapital|börsenwert/, "Die <b>Marktkapitalisierung</b> ist der Börsenwert einer Firma: Aktienkurs mal Anzahl aller Aktien."],
+  [/bollinger/, "<b>Bollinger-Bänder</b> legen einen Korridor um den Durchschnittskurs, der mit der Schwankung breiter oder enger wird. Ein enges Band deutet oft auf eine bevorstehende größere Bewegung hin."],
+  [/gleitende?n? durchschnitt|\bsma\b|\bema\b/, "Ein <b>gleitender Durchschnitt</b> glättet den Kurs über z. B. 50 oder 200 Tage. Liegt der Kurs darüber, gilt der Trend als intakt – darunter als angeschlagen."],
+  [/\bspread\b/, "Der <b>Spread</b> ist die Differenz zwischen Kauf- und Verkaufskurs – quasi die versteckte Gebühr bei jedem Trade."],
+  [/diversifi|streuung/, "<b>Diversifikation</b> heißt, dein Geld auf viele Aktien, Branchen und Länder zu verteilen. Geht eine Firma pleite, trifft es dich dann nur ein bisschen."],
+  [/zinseszins/, "Beim <b>Zinseszins</b> bringen auch deine Gewinne wieder Gewinne. Über viele Jahre ist das der stärkste Effekt beim Vermögensaufbau – Zeit schlägt Timing."],
+];
+const JOKES = ["Warum gehen Trader nie ins Kino? Sie sehen schon den ganzen Tag Kerzen, die hoch und runter gehen.", "Mein Depot und ich haben etwas gemeinsam: Wir sind beide langfristig optimistisch – und kurzfristig nervös.", "Was ist der Unterschied zwischen einem Trader und einer Pizza? Die Pizza kann eine Familie ernähren."];
+function jarvisSmalltalk(t, syms = []) {
+  const title = jarvisTitle();
+  const name = account.state.profile?.name?.split(" ")[0];
+  if (/^(hallo|hi|hey|servus|moin|yo|guten (morgen|tag|abend))( jarvis)?$/.test(t)) return { html: `<p>Hey ${esc(title)}! Schön, dass du da bist. Soll ich dir sagen, was heute an der Börse los ist?</p>`, follow: ["Was soll ich heute tun?", "Wie steht mein Depot?"] };
+  if (/^wie geht('| e)?s( dir)?|^alles (gut|klar)( bei dir)?$/.test(t)) return { html: `<p>Mir geht's bestens, ${esc(title)} – ich habe alle ${STOCKS.length} Aktien im Blick und bin bereit. Und bei dir?</p>` };
+  if (/(wer bist du|was bist du|wie heißt du|stell dich vor)/.test(t)) return { html: `<p>Ich bin <b>Jarvis</b>, der KI-Assistent von AKYTEX. Ich kenne dein Depot, analysiere Aktien, erkläre dir die Börse und steuere die ganze App für dich – per Text oder Stimme.</p>` };
+  if (/(was kannst du|wobei hilfst du|was kann ich dich fragen|hilfe$|^hilfe)/.test(t)) return { html: `<p>Eine Menge, ${esc(title)}:</p><ul><li>„Was soll ich heute tun?“ – dein Lagebericht</li><li>„Öffne Nvidia auf 4 Stunden und setz sie auf die Watchlist“ – mehrere Schritte auf einmal</li><li>„Sag Bescheid, wenn Tesla über 250 steigt“ – Preisalarm</li><li>„Analysiere SAP“ oder „Prognose für Apple“</li><li>„Erklär mir den RSI“ – Börsenwissen einfach erklärt</li></ul>` };
+  if (/(wie spät|uhrzeit|wieviel uhr|wie viel uhr)/.test(t)) return { html: `<p>Es ist ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr.</p>` };
+  if (/(welcher tag|welches datum|den wievielten|was ist heute für ein tag)/.test(t)) return { html: `<p>Heute ist ${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.</p>` };
+  if (/^(danke|dankeschön|vielen dank|thx|merci)/.test(t)) return { html: `<p>Immer gern, ${esc(title)}!</p>` };
+  if (/witz/.test(t)) return { html: `<p>${JOKES[Math.floor(Math.random() * JOKES.length)]} 😄</p>` };
+  if (/(werde ich reich|reich werden|schnell reich|millionär)/.test(t)) return { html: `<p>Ehrlich, ${esc(title)}: Schnell reich wird man an der Börse fast nie – wer das verspricht, will meist dein Geld. Was wirklich funktioniert, ist langweilig: breit streuen, regelmäßig investieren, Kosten niedrig halten und Zeit arbeiten lassen. Im Übungsdepot kannst du das risikolos ausprobieren.</p>`, follow: ["Was ist Diversifikation?", "Was ist Zinseszins?", "Wie steht mein Depot?"] };
+  if (!syms.length && /(was (ist|sind|bedeutet|heißt|heisst)|erklär|erkläre|wie funktioniert)/.test(t)) {
+    const g = GLOSSARY.find(([re]) => re.test(t));
+    if (g) return { html: `<p>${g[1]}</p>`, follow: ["Erklär mir den Stop-Loss", "Was ist ein ETF?", "Was soll ich heute tun?"] };
+  }
+  return null;
+}
+// Mehrere Befehle in einem Satz: „Öffne Nvidia, stell auf 4 Stunden und setz sie auf die Watchlist“
+function multiCommand(text) {
+  const parts = text
+    .split(/\s*(?:,|;|\bund dann\b|\bdanach\b|\banschließend\b|\bdann\b|\bund\b)\s*/i)
+    .map((p) => p.trim())
+    .filter((p) => p.length > 2);
+  if (parts.length < 2 || parts.length > 5) return null;
+  // Bezüge auf die zuletzt genannte Aktie („setz sie auf die Watchlist“) auflösen
+  let last = null;
+  const cmds = [];
+  for (let p of parts) {
+    // „sie“, „die Aktie“ usw. meinen die zuletzt genannte Aktie
+    if (last && /\b(sie|es|ihn|die aktie|den chart|diese)\b/i.test(p) && !aiEngine.findSymbols(p).length) p = p.replace(/\b(sie|es|ihn|die aktie|den chart|diese)\b/i, last);
+    const s = aiEngine.findSymbols(p)[0];
+    if (s) last = s;
+    const c = appCommand(p);
+    if (!c?.run) return null;
+    cmds.push(c);
+  }
+  return {
+    html: `<p>Mache ich, ${esc(jarvisTitle())} – ${cmds.length} Schritte:</p><ol>${cmds.map((c) => `<li>${c.html.replace(/<\/?p>/g, "")}</li>`).join("")}</ol>`,
+    run: async () => {
+      for (const c of cmds) {
+        c.run();
+        await wait(650);
+      }
+    },
+    follow: null,
+    actions: [],
+  };
+}
+// Bewertet Erkennungs-Varianten: Welche kann die App am besten ausführen?
+function jarvisScore(text) {
+  const t = text.toLowerCase();
+  return (appCommand(t) ? 5 : 0) + (multiCommand(t) ? 6 : 0) + aiEngine.findSymbols(text).length * 2 + (/\d/.test(t) ? 0.5 : 0);
+}
+// Kurzer Satz zur Lage für Jarvis' Begrüßung
+function jarvisQuickStatus() {
+  const pos = Object.keys(broker.state.positions || {}).length;
+  const total = broker.equity() / broker.invested() - 1;
+  if (!pos) return "Dein Übungsdepot ist startklar.";
+  return `Dein Depot steht bei ${pct(total).replace("+", "plus ").replace("-", "minus ")}.`;
 }
 // Jarvis fragt über den normalen Chat – so landet alles auch im Verlauf
 async function jarvisAsk(text) {
@@ -6145,6 +6233,19 @@ function appCommand(text) {
   const done = (html, run, follow, actions = []) => ({ html, run, follow, actions });
   const undo = (label, fn) => ({ label: "Rückgängig", run: fn });
 
+  // Smalltalk und Fachbegriffe – funktioniert in jedem Tarif
+  const talk = jarvisSmalltalk(t, syms);
+  if (talk) return done(talk.html, talk.run || null, talk.follow || null);
+  // Preisalarm: „Sag Bescheid, wenn Tesla über 250 steigt“, „Alarm für SAP bei 230“
+  const alarm = /(alarm|bescheid|benachrichtig|meld dich|erinner)/.test(t) && syms.length && t.match(/(\d+(?:[.,]\d+)?)\s*(€|euro)?/);
+  if (alarm) {
+    const price = parseFloat(alarm[1].replace(",", "."));
+    const now = market.get(syms[0]).price;
+    return done(`<p>🔔 Alarm für <b>${syms[0]}</b> bei <b>${num(price)} €</b> ist aktiv (aktuell ${num(now)} €). Ich melde mich, sobald der Kurs ${price >= now ? "darüber steigt" : "darunter fällt"}.</p>`, () => {
+      broker.addAlert(syms[0], price);
+      renderRightPanel();
+    });
+  }
   // Jarvis-Sprachmodus per Text starten
   if (/^(jarvis|hey jarvis|sprachmodus|sprich mit mir)$/.test(t)) return done(`<p>✦ Jarvis hört zu – sprich einfach los.</p>`, () => startJarvis());
   // Lagebericht: Was soll ich tun?
@@ -6161,9 +6262,11 @@ function appCommand(text) {
   // Zeitrahmen
   const tfHit = TF_WORDS.find(([re]) => re.test(t));
   if (tfHit && /(zeitraum|zeitrahmen|zeitebene|timeframe|intervall|kerzen|chart|stell|wechsel|auf)/.test(t) && !/(kauf|verkauf|sparplan|alarm|um \d)/.test(t)) {
-    if (syms[0]) setSymbol(syms[0]);
     const label = TIMEFRAMES.find((x) => x.id === tfHit[1]).label;
-    return done(`<p>Chart${syms[0] ? " " + syms[0] : ""} steht jetzt auf <b>${label}</b>.</p>`, () => runAppControl("set_timeframe", tfHit[1]), syms[0] ? [`Warum bewertest du ${syms[0]} so?`] : null);
+    return done(`<p>Chart${syms[0] ? " " + syms[0] : ""} steht jetzt auf <b>${label}</b>.</p>`, () => {
+      if (syms[0]) setSymbol(syms[0]);
+      runAppControl("set_timeframe", tfHit[1]);
+    }, syms[0] ? [`Warum bewertest du ${syms[0]} so?`] : null);
   }
   // Watchlist
   if (/(watchlist|beobachtungsliste|merkliste)/.test(t) && syms.length && !/(generier|erstell|thema|themen)/.test(t)) {
@@ -6348,6 +6451,8 @@ function initAssistant() {
     name: () => account.state.profile?.name?.split(" ")[0] || "",
     openChat: () => openAssistant(false),
     upsell: () => openPlans("Jarvis, der Sprachmodus, ist Teil von AKYTEX Ultra."),
+    score: jarvisScore,
+    quickStatus: jarvisQuickStatus,
   });
   $("#jv-start").hidden = !jarvisSupported();
   $("#jv-start").addEventListener("click", () => startJarvis());
