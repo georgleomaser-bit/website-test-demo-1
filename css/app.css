@@ -1857,3 +1857,13 @@ html[data-theme="light"] .think-label { background-image: linear-gradient(90deg,
   .orbit, .orb i, .msg-av::after, .live-dot { animation: none !important; }
   .msg-body .w { opacity: 1; animation: none; }
 }
+
+/* Bezahl-Sheets scrollbar halten: Der Inhalt füllt genau den sichtbaren Rest der Box
+   (dvh berücksichtigt die Adressleiste auf dem Handy), statt mit eigener Höhe unten abgeschnitten zu werden. */
+.modal-box.pay-box { max-height: 92vh; max-height: 92dvh; }
+.pay-sheet { flex: 1 1 auto; min-height: 0; max-height: none; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+.pay-sheet > * { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .modal-box.pay-box { max-height: 94vh; max-height: calc(100dvh - 12px); }
+  .pay-sheet { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+}
