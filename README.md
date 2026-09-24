@@ -6,6 +6,8 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 > **Hinweis:** Alle Kurse sind **simuliert**, in der Community gibt es keine Bots – keine echten Marktdaten, kein echtes Geld, keine Anlageberatung. Demo-Konto mit 100.000 € Startkapital.
 
+> **Zweites Business: NOVA** – ein KI-Assistent zum Sprechen und Schreiben (wie Claude) im Weltraum-Design, komplett getrennt von AKYTEX: [`nova/NOVA.md`](nova/NOVA.md) · Vorschau: `…/website-test-demo-1/nova/`
+
 ## Funktionen
 
 **Charts (TradingView Lightweight Charts)**
