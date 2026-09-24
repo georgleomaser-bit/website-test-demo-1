@@ -2,7 +2,9 @@
 (() => {
   const KINDS = [
     [/fris|salon|barber|haar|kosmetik|nagel|beauty/i, 'friseur'],
-    [/caf|bäck|baeck|konditor|bistro|imbiss|restaurant|pizz|döner|doener|eis/i, 'cafe'],
+    [/schneid|änderung|aenderung|reinigung|nähe|naehe/i, 'schneiderei'],
+    [/imbiss|imbiß|grill|döner|doener|pizz|restaurant|gyros|burger/i, 'imbiss'],
+    [/caf|bäck|baeck|konditor|bistro|eis/i, 'cafe'],
     [/maler|elektr|sanit|tischler|schreiner|dach|bau|handwerk|fliesen|garten|kfz|werkstatt/i, 'handwerk'],
     [/physio|praxis|massage|yoga|fitness|studio|therap|tattoo/i, 'praxis']
   ];

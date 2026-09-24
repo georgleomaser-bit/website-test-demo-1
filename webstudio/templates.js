@@ -25,6 +25,18 @@ window.WS = (() => {
       services: 'Krankengymnastik | Kasse\nManuelle Therapie | Kasse\nMassage 30 Min. | 35 €\nRückenkurs 8×  | 96 €',
       hours: 'Mo–Do 8–19 Uhr\nFr 8–15 Uhr'
     },
+    schneiderei: {
+      label: 'Schneiderei / Reinigung', name: 'Änderungsschneiderei Nadel & Faden', claim: 'Passt nicht? Passt gleich.', color: '#2f5d8a', style: 'modern',
+      about: 'Kürzen, enger machen, Reißverschlüsse tauschen: Wir ändern Hosen, Kleider, Jacken und Anzüge schnell und sauber.',
+      services: 'Hose kürzen | ab 12 €\nReißverschluss tauschen | ab 15 €\nKleid ändern | nach Absprache\nExpress-Service | auf Anfrage',
+      hours: 'Mo–Fr 9–18 Uhr\nSa 10–14 Uhr'
+    },
+    imbiss: {
+      label: 'Imbiss / Restaurant', name: 'Grill-Imbiss Sonne', claim: 'Frisch vom Grill. Jeden Tag.', color: '#c92a2a', style: 'bold',
+      about: 'Hausgemachte Gerichte, großzügige Portionen und faire Preise – zum Mitnehmen oder vor Ort.',
+      services: 'Gyros-Teller | ab 11 €\nSouvlaki | ab 9 €\nSalat | ab 7 €\nLieferung | auf Anfrage',
+      hours: 'Mo–Fr 11–21 Uhr\nSa–So 16–21 Uhr'
+    },
     laden: {
       label: 'Laden / Kiosk', name: 'Blumen Lenz', claim: 'Blumen für jeden Anlass.', color: '#d6336c', style: 'warm',
       about: 'Sträuße, Pflanzen und Trauerfloristik. Lieferung im Stadtgebiet am selben Tag.',
