@@ -1470,7 +1470,7 @@ function applySetup(a) {
   } else {
     const pos = broker.position(settings.symbol);
     if (!pos) {
-      toast("Leerverkäufe sind im Demo-Depot nicht möglich. Kein Bestand zum Absichern.", "warn", "Bärisches Signal");
+      toast("Leerverkäufe sind im Übungsdepot nicht möglich. Kein Bestand zum Absichern.", "warn", "Bärisches Signal");
       return;
     }
     ui.side = "sell";
@@ -1659,7 +1659,7 @@ function renderIdeas() {
 }
 function renderLeaderboard() {
   if (settings.view !== "ideas") return;
-  const me = { id: "me", handle: "du", style: "Dein Demo-Depot", color: "#6ea2f2", me: true, ret1y: broker.equity() / broker.invested() - 1, winRate: broker.stats().winRate ?? 0, followers: 0 };
+  const me = { id: "me", handle: "du", style: "Dein Übungsdepot", color: "#6ea2f2", me: true, ret1y: broker.equity() / broker.invested() - 1, winRate: broker.stats().winRate ?? 0, followers: 0 };
   const rows = [...community.traders, me].sort((a, b) => b.ret1y - a.ret1y);
   const medal = ["🥇", "🥈", "🥉"];
   $("#leaderboard").innerHTML = rows
@@ -1875,7 +1875,7 @@ function openIdeaTrade(id) {
   const i = community.find(id);
   if (!i) return;
   if (i.status !== "open") return toast("Diese Idee ist bereits abgeschlossen.", "info");
-  if (i.dir !== "long") return toast("Short-Ideen lassen sich im Demo-Depot nicht handeln (keine Leerverkäufe).", "warn", "Nur Long-Ideen");
+  if (i.dir !== "long") return toast("Short-Ideen lassen sich im Übungsdepot nicht handeln (keine Leerverkäufe).", "warn", "Nur Long-Ideen");
   ui.tradeIdea = id;
   const t = authorOf(i);
   const q = market.quote(i.symbol);
@@ -2140,7 +2140,7 @@ function renderBusiness(full = false) {
   // Funnel
   const stages = [
     ["Besucher", m.users * 4, "#334155"],
-    ["Demo-Nutzer", m.users, "#4f8cff"],
+    ["Nutzer (Modell)", m.users, "#4f8cff"],
     ["Aktive Trader", m.users * 0.35, "#22c55e"],
     ["Zahlende Abonnenten", m.paid, "#f59e0b"],
     ["Elite- & AI-Kunden", m.paid * 0.18, "#d4af37"],
@@ -3478,11 +3478,11 @@ function validateFund() {
     const n = fund.card.replace(/\D/g, "");
     const tc = TEST_CARDS[n];
     if (!luhn(n)) return "Bitte eine gültige Kartennummer eingeben.";
-    if (!tc) return "Demo: Bitte nur Testkarten verwenden (z. B. 4242 4242 4242 4242).";
+    if (!tc) return "Übungsdepot mit Spielgeld: Bitte nur Testkarten verwenden (z. B. 4242 4242 4242 4242).";
     if (tc.result === "declined") return "Die Bank hat die Zahlung abgelehnt (Testkarte „abgelehnt“).";
     if (tc.result === "funds") return "Nicht genügend Deckung (Testkarte).";
   }
-  if (m.id === "sepa" && fund.iban.replace(/\s/g, "").toUpperCase() !== TEST_IBAN) return "Demo: Bitte die Test-IBAN DE89 3704 0044 0532 0130 00 verwenden.";
+  if (m.id === "sepa" && fund.iban.replace(/\s/g, "").toUpperCase() !== TEST_IBAN) return "Übungsdepot mit Spielgeld: Bitte die Test-IBAN DE89 3704 0044 0532 0130 00 verwenden.";
   return null;
 }
 async function runFund() {
@@ -3532,7 +3532,7 @@ async function runFund() {
     account.save();
     setTimeout(settlePending, 8200);
     title = "Überweisung angekündigt";
-    sub = `Sobald ${eur(v)} eingehen, sind sie handelbar (Demo: in wenigen Sekunden).`;
+    sub = `Sobald ${eur(v)} eingehen, sind sie handelbar (im Übungsdepot: in wenigen Sekunden).`;
   } else {
     broker.deposit(v, { method: m.id });
     if (m.id === "sepa") {
@@ -3932,7 +3932,7 @@ function renderAcctMenu() {
   $("#acct-menu").innerHTML = pr
     ? `<div class="menu-head">${avatarFor(pr.name)}<div><b>${esc(pr.name)}</b><small class="muted">${planTitle(plan())}${sub ? " · " + { trial: "Testphase", active: "aktiv", canceled: "gekündigt" }[sub.status] : ""}</small></div></div>
       <button data-goto="account" data-acct-tab="profile">👤 Profil & Konto</button><button data-goto="account" data-acct-tab="billing">💳 Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">🧾 Rechnungen</button><button data-open-plans>✦ Tarife</button><button data-goto="legal">⚖️ Rechtliches</button><button data-signout>Abmelden</button>`
-    : `<div class="menu-head"><span class="avatar" style="--c:#64748b">?</span><div><b>Nicht angemeldet</b><small class="muted">Demo-Depot aktiv</small></div></div><button data-onboard>✨ Konto erstellen</button><button data-open-plans>✦ Tarife</button><button data-goto="legal">⚖️ Rechtliches</button>`;
+    : `<div class="menu-head"><span class="avatar" style="--c:#64748b">?</span><div><b>Nicht angemeldet</b><small class="muted">Übungsdepot aktiv</small></div></div><button data-onboard>✨ Konto erstellen</button><button data-open-plans>✦ Tarife</button><button data-goto="legal">⚖️ Rechtliches</button>`;
 }
 function renderAccount() {
   if (settings.view !== "account") return;
@@ -3974,7 +3974,7 @@ function renderAccount() {
       <p class="muted small">In der Demo sind Sicherheits-Einstellungen Vorschau-Schalter; im Echtbetrieb übernimmt das der Login-Server.</p>`;
   } else if (acctTab === "data") {
     html = `<div class="set-row"><div><b>Daten exportieren</b><small class="muted">Konto, Depot, Ideen und Einstellungen als JSON (DSGVO Art. 20)</small></div><button class="btn" data-export>Export</button></div>
-      <div class="set-row"><div><b>Demo-Depot zurücksetzen</b><small class="muted">Positionen, Orders und Alarme löschen, 100.000 € Startguthaben</small></div><button class="btn" data-goto="portfolio">Zum Depot</button></div>
+      <div class="set-row"><div><b>Übungsdepot zurücksetzen</b><small class="muted">Positionen, Orders und Alarme löschen, 100.000 € Startguthaben</small></div><button class="btn" data-goto="portfolio">Zum Depot</button></div>
       <div class="set-row"><div><b>Abmelden</b><small class="muted">Profil von diesem Gerät entfernen</small></div><button class="btn danger" data-signout>Abmelden</button></div>`;
   }
   el.innerHTML = `<div class="co-slide fwd">${html}</div>`;
@@ -4017,7 +4017,7 @@ function bindAccount() {
       account.signOut();
       closePopovers();
       syncAccountUI();
-      return toast("Du wurdest abgemeldet. Dein Demo-Depot bleibt erhalten.", "info", "Abgemeldet");
+      return toast("Du wurdest abgemeldet. Dein Übungsdepot bleibt erhalten.", "info", "Abgemeldet");
     }
     const inv = t.closest("[data-invoice]");
     if (inv) return openInvoice(+inv.dataset.invoice);
@@ -4231,7 +4231,7 @@ function injectFooters() {
       <div><b>Konto</b><button data-goto="account" data-acct-tab="billing">Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">Rechnungen</button><button data-cancel-open class="sf-cancel">Verträge hier kündigen</button></div>
       <div><b>Rechtliches</b><button data-legal-open="impressum">Impressum</button><button data-legal-open="privacy">Datenschutz</button><button data-legal-open="terms">AGB</button><button data-legal-open="risk">Risikohinweise</button></div>
     </div>
-    <small class="sf-note">Demo-Anwendung: Kurse, Community-Profile und Zahlungen sind simuliert. Keine Anlageberatung. Kein echtes Geld. © ${new Date().getFullYear()} ${PH("Firmenname")}</small>
+    <small class="sf-note">${PAYMENT_CONFIG.mode === "live" ? "Trading-Simulator: Kurse, Depot und Community-Beispielprofile sind simuliert, gehandelt wird mit virtuellem Geld. Abos werden über Stripe echt abgerechnet. Keine Anlageberatung." : "Trading-Simulator: Kurse, Community-Profile und Zahlungen sind simuliert. Keine Anlageberatung. Kein echtes Geld."} © ${new Date().getFullYear()} ${PH("Firmenname")}</small>
   </footer>`;
   $$(".site-foot-slot").forEach((s) => (s.outerHTML = foot));
   for (const v of ["markets", "ideas", "ai", "portfolio", "business", "account", "legal"]) {
@@ -4269,7 +4269,8 @@ function bindDepth() {
 const ACT_NAMES = ["anna_trades", "LukasInvest", "bullenbaer", "fintech_fritz", "Marie.K", "depot_dave", "sparfuchs93", "KaiCharts", "LinaLongs", "TomTrader", "EllaETF", "pivot_paul"];
 function liveActivity() {
   const el = $("#live-activity");
-  if (!el || settings.view !== "home") return;
+  // Mit echten Zahlungen keine erfundenen „gerade gekauft“-Meldungen (wäre irreführende Werbung)
+  if (!el || settings.view !== "home" || PAYMENT_CONFIG.mode === "live") return;
   const s = STOCKS[Math.floor(Math.random() * STOCKS.length)];
   const kinds = [
     () => `<b>@${ACT_NAMES[Math.floor(Math.random() * ACT_NAMES.length)]}</b> kaufte ${1 + Math.floor(Math.random() * 40)} ${s.s}`,
@@ -4849,7 +4850,7 @@ const LESSON_TEXT = {
 };
 function openContent(p) {
   let html = "";
-  if (p.lessons) html = `<ol class="lessons">${p.lessons.map((l, i) => `<li><details ${i === 0 ? "open" : ""}><summary><span>${i + 1}</span>${esc(l)}</summary><p>${esc(LESSON_TEXT[l] || "In dieser Lektion lernst du die Grundlagen zu „" + l + "“ Schritt für Schritt – mit Beispielen aus dem AKYTEX-Chart und einer kurzen Übung im Demo-Depot.")}</p></details></li>`).join("")}</ol>`;
+  if (p.lessons) html = `<ol class="lessons">${p.lessons.map((l, i) => `<li><details ${i === 0 ? "open" : ""}><summary><span>${i + 1}</span>${esc(l)}</summary><p>${esc(LESSON_TEXT[l] || "In dieser Lektion lernst du die Grundlagen zu „" + l + "“ Schritt für Schritt – mit Beispielen aus dem AKYTEX-Chart und einer kurzen Übung im Übungsdepot.")}</p></details></li>`).join("")}</ol>`;
   else if (p.report === "picks") {
     const top = aiEngine.scanAll(STOCKS.map((s) => s.s)).slice(0, 10);
     html = `<p class="muted small">Stand ${new Date().toLocaleString("de-DE")} · automatisch von AKYTEX AI berechnet · keine Anlageberatung</p><ol class="report-list">${top.map((v) => `<li><div><b>${v.sym}</b> <span class="muted">${esc(v.name)}</span></div><div class="up">${v.rating.label} · Konfidenz ${lab.confidence(market, v.sym)} %</div><small>${esc(v.reason)} · Ziel ${num(v.h.setup.tp)} · Stop ${num(v.h.setup.sl)}</small></li>`).join("")}</ol>`;
@@ -5084,7 +5085,7 @@ function openComments(id) {
   const base = clipList.find((x) => x.id === id);
   const seed = base && base.kind === "gen" && base.author !== "me" ? seededComments.slice(id.length % 3, (id.length % 3) + 3).map((t, k) => ({ who: ["anna_trades", "KaiCharts", "LinaLongs"][k], text: t, ts: base.created + (k + 1) * 600000, demo: true })) : [];
   const list = [...seed, ...(clipsState.comments[id] || [])];
-  $("#comments-list").innerHTML = list.length ? list.map((c) => `<div class="cmt"><b>@${esc(c.who)}</b>${c.demo ? '<span class="demo-note small"> Demo</span>' : ""}<p>${esc(c.text)}</p><small class="muted">${ago(c.ts)}</small></div>`).join("") : `<p class="muted">Noch keine Kommentare. Sei der Erste!</p>`;
+  $("#comments-list").innerHTML = list.length ? list.map((c) => `<div class="cmt"><b>@${esc(c.who)}</b>${c.demo ? '<span class="demo-note small"> Beispiel</span>' : ""}<p>${esc(c.text)}</p><small class="muted">${ago(c.ts)}</small></div>`).join("") : `<p class="muted">Noch keine Kommentare. Sei der Erste!</p>`;
   openModal("#comments-modal");
 }
 async function recordChartClip() {
@@ -5529,14 +5530,14 @@ $("#reset-btn").addEventListener("click", (e) => {
     b.classList.add("danger-armed");
     resetArmed = setTimeout(() => {
       resetArmed = null;
-      b.textContent = "Demo-Konto zurücksetzen";
+      b.textContent = "Übungsdepot zurücksetzen";
       b.classList.remove("danger-armed");
     }, 4000);
     return;
   }
   clearTimeout(resetArmed);
   resetArmed = null;
-  b.textContent = "Demo-Konto zurücksetzen";
+  b.textContent = "Übungsdepot zurücksetzen";
   b.classList.remove("danger-armed");
   broker.reset();
   toast(`Konto zurückgesetzt – ${eur(START_CASH)} Startguthaben.`, "success");
