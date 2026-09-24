@@ -328,7 +328,7 @@ function updateHud() {
   set("voice", ((bestVoice || pickVoice())?.name || "System").split(/[ (]/)[0].toUpperCase());
   set("title", jarvisTitle().toUpperCase());
   const m = jarvisMood();
-  set("mood", (m.auto ? "AUTO · " : "") + m.label.toUpperCase());
+  set("mood", J.tintLabel || (m.auto ? "AUTO · " : "") + m.label.toUpperCase());
 }
 // Auswahl der Emotionen: Grundstimmung (eine) und Reaktionen (beliebig viele)
 function updateMoodBox() {
@@ -575,7 +575,7 @@ let heat = [255, 176, 72]; // aktuelle Farbe (gleitet weich zur Zielfarbe)
 // Helligkeit je Zustand – die Farbe selbst kommt aus der Stimmung
 const TINT = { listen: 1, think: 0.86, speak: 1.12, idle: 0.86, muted: 0.7, upsell: 1, type: 0.92 };
 function targetColor(now) {
-  const base = jarvisMood().rgb;
+  const base = J.tint || jarvisMood().rgb;
   const f = TINT[J.state] ?? 1;
   let c = base.map((v) => Math.min(255, v * f));
   const fl = J.flash;
@@ -830,10 +830,15 @@ export function initJarvis(deps) {
     }
   });
 }
-export async function startJarvis() {
+// opts.say: statt der Begrüßung diesen Text sprechen (z. B. dein Zukunfts-Ich) · opts.free: auch ohne Ultra
+// opts.tint: eigene Farbe · opts.voice: Stimme färben · opts.acts: Knöpfe danach
+export async function startJarvis(opts = {}) {
   const d = J.deps;
-  if (J.on) return stopJarvis();
-  if (!d.allowed() && !trialLeft()) return upsellCard(true);
+  if (J.on && !opts.say) return stopJarvis();
+  if (J.on) stopJarvis();
+  if (!opts.free && !d.allowed() && !trialLeft()) return upsellCard(true);
+  J.tint = opts.tint || null;
+  J.tintLabel = opts.label || "";
   // Töne nur außerhalb von iOS (dort würde Web Audio die Sprachausgabe stumm schalten)
   if (!IOS) {
     try {
@@ -869,6 +874,19 @@ export async function startJarvis() {
     showSay(hint);
     revealTo(1e9);
   };
+  // Eigener Text (Zukunfts-Ich): sprechen, dann Knöpfe – zuhören nur mit Jarvis-Zugang
+  if (opts.say) {
+    typeMode(false);
+    J.voiceMod = opts.voice || null;
+    await speakOut(opts.say);
+    if (!J.on) return;
+    showActions(opts.acts || []);
+    if (d.allowed() || trialLeft()) {
+      if (!SR) return typeMode(true);
+      if (!J.rec) listen();
+    } else idle();
+    return;
+  }
   // Die Begrüßung startet noch im Tipp – so dürfen iPhone und Safari danach sprechen
   typeMode(!SR);
   if (!SR) {
@@ -891,6 +909,8 @@ export async function startJarvis() {
 export function stopJarvis() {
   if (!J.on) return;
   J.on = false;
+  J.tint = null;
+  J.tintLabel = "";
   stopRec();
   J.speakToken = (J.speakToken || 0) + 1;
   speechSynthesis?.cancel();

@@ -195,6 +195,18 @@
       </div>
     </section>
 
+    <section class="home-sec fu-home reveal" id="zukunft">
+      <div class="fu-hero">
+        <span class="usp-eyebrow">Neu · Nur bei AKYTEX</span>
+        <h2>Triff dein Zukunfts-Ich.</h2>
+        <p class="sec-lead">Stell ein, was du im Monat zur Seite legst – und hör dir an, was du mit 40 dazu sagst. Mit Kauf-Rechner: Was kosten dich die Sneaker wirklich?</p>
+        <div class="fu-mini"><label>Ich bin <input type="number" inputmode="numeric" min="10" max="80" data-fu-mini="age" aria-label="Dein Alter"> und lege <input type="number" inputmode="numeric" min="0" step="5" data-fu-mini="monthly" aria-label="Betrag pro Monat"> € im Monat an.</label></div>
+        <p class="fu-mini-out" id="fu-mini-out" aria-live="polite"></p>
+        <div class="jvp-cta"><button class="btn primary big" data-future-open>🔮 Zukunfts-Ich treffen</button></div>
+        <small class="muted">Kostenlos · Szenario-Rechnung, keine Garantie · keine Anlageberatung</small>
+      </div>
+    </section>
+
     <section class="home-sec jvp reveal" id="ultra">
       <div class="jvp-card">
         <span class="plan-badge ultra">✦ Neu · AKYTEX Ultra</span>
@@ -742,6 +754,12 @@
     </div>
   </div>
 
+  <div class="modal" id="future-modal" hidden>
+    <div class="modal-box future-box" role="dialog" aria-label="Dein Zukunfts-Ich">
+      <div class="modal-head"><h3>🔮 Dein Zukunfts-Ich</h3><button class="icon-btn" data-close aria-label="Schließen">✕</button></div>
+      <div class="fu-body" id="fu-body"></div>
+    </div>
+  </div>
   <div class="modal" id="ind-modal" hidden>
     <div class="modal-box" role="dialog" aria-label="Indikatoren">
       <div class="modal-head"><h3>Indikatoren</h3><button class="icon-btn" data-close>✕</button></div>

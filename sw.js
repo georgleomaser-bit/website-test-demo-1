@@ -1,5 +1,5 @@
 // Service Worker: macht AKYTEX offline nutzbar und installierbar.
-const VERSION = "akytex-v5.0.0";
+const VERSION = "akytex-v5.1.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -34,6 +34,7 @@ const ASSETS = [
   "./js/clips.js",
   "./js/cloud.js",
   "./js/jarvis.js",
+  "./js/future.js",
   "./404.html",
   "./icons/og-image.png",
   "./js/vendor/lightweight-charts.standalone.production.js",

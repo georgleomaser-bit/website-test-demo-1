@@ -11,7 +11,8 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
-import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle, jarvisPersona } from "./jarvis.js";
+import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle, jarvisPersona, jarvisMood } from "./jarvis.js";
+import * as future from "./future.js";
 import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
@@ -35,7 +36,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.0"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.1"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2664,6 +2665,20 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
         const mc = lab.monteCarlo(broker, market, 252, 300);
         return { var95: Math.round(v.var95), var99: Math.round(v.var99), es95: Math.round(v.es95), mcP5: Math.round(mc.p5), mcMedian: Math.round(mc.p50), mcP95: Math.round(mc.p95), lossProbability: +mc.lossProb.toFixed(2) };
       } },
+    {
+      name: "future_self",
+      description: "Zukunfts-Ich: rechnet einen Sparplan mit Zinseszins hoch (Szenarien vorsichtig 3 %, ausgewogen 6 %, mutig 8 % pro Jahr) – Endwert, Eingezahltes, Kaufkraft heute, Meilensteine. Ohne Angaben gilt der gespeicherte Plan des Nutzers.",
+      inputSchema: { type: "object", properties: { age: { type: "number" }, until: { type: "number" }, monthly: { type: "number" }, start: { type: "number" }, scenario: { type: "string", enum: ["safe", "balanced", "bold"] } } },
+      execute: (i) => {
+        const plan = future.sanitize({ ...future.loadPlan(), ...Object.fromEntries(Object.entries(i || {}).filter(([, v]) => v != null)) });
+        const out = {};
+        for (const [k, sc] of Object.entries(future.SCENARIOS)) {
+          const pr = future.project(plan, sc.rate);
+          out[k] = { value: Math.round(pr.value), paid: Math.round(pr.paid), realValue: Math.round(pr.real) };
+        }
+        return { plan, scenarios: out, milestones: future.milestones(future.project(plan).series), note: "Szenario-Rechnung, keine Garantie; Kaufkraft bei 2 % Inflation." };
+      },
+    },
     { name: "market_overview", description: "Marktüberblick: AKYTEX Sentiment-Index (Angst & Gier), Sektor-Rotation und Anomalien.", execute: () => ({ sentiment: lab.sentimentIndex(market), sectors: lab.sectorRotation(market).map((x) => ({ name: x.name, d5: +(x.d5 * 100).toFixed(1), d20: +(x.d20 * 100).toFixed(1), phase: x.phase })), anomalies: lab.anomalies(market).map((x) => x.sym) }) },
     {
       name: "propose_schedule",
@@ -2936,6 +2951,7 @@ function bindAI() {
       return sendChat(ask.dataset.ask);
     }
     if (t.closest("[data-jarvis-try]")) return startJarvis();
+    if (t.closest("[data-future-open]")) return openFuture();
     if (t.closest("[data-plan-ultra]")) {
       openPlans("AKYTEX Ultra: alles aus AI Premium plus Jarvis, der Sprachmodus.");
       return setTimeout(() => $("#modal-plans .ai-plan.ultra")?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
@@ -3074,7 +3090,8 @@ function stripeUrl(link, promo) {
     account.state.ref = "akx_" + Math.random().toString(36).slice(2, 12);
     account.save();
   }
-  u.searchParams.set("client_reference_id", account.state.ref);
+  const by = refBy();
+  u.searchParams.set("client_reference_id", account.state.ref + (by ? `-by-${by}` : "")); // wer hat eingeladen → sichtbar in Stripe
   u.searchParams.set("locale", "de");
   if (account.state.profile?.email) u.searchParams.set("prefilled_email", account.state.profile.email);
   if (promo) u.searchParams.set("prefilled_promo_code", promo);
@@ -4257,6 +4274,8 @@ function cmdItems(q) {
     { icon: "🧪", label: "AI-Labor öffnen", run: () => setAiTab("lab") },
     { icon: "🎬", label: "Chart-Clip aufnehmen", run: () => recordChartClip() },
     { icon: "✦", label: "Jarvis-Sprachmodus starten", run: () => startJarvis() },
+    { icon: "🔮", label: "Zukunfts-Ich treffen", run: () => openFuture() },
+    { icon: "🧬", label: "Trader-DNA ansehen", run: () => (openAssistant(false), sendChat("Analysiere mich")) },
     { icon: "✦", label: "AKYTEX Ultra abonnieren (Checkout)", run: () => openCheckout("ultra") },
     { icon: "🛍️", label: "Warenkorb öffnen", run: () => openCart() },
     { icon: "⏰", label: "Alarm erstellen", run: () => openAlertModal(settings.symbol, market.get(settings.symbol).price) },
@@ -5901,7 +5920,15 @@ bindShop();
 bindClips();
 bindCheckout();
 bindFund();
+captureRef();
 stripeReturn = handleStripeReturn();
+paintFutureMini();
+document.addEventListener("input", (e) => {
+  const k = e.target.dataset?.fuMini;
+  if (!k) return;
+  future.savePlan({ ...future.loadPlan(), [k]: e.target.value });
+  paintFutureMini();
+});
 bindCancel();
 bindOnboarding();
 bindAccount();
@@ -6418,6 +6445,190 @@ function dnaReport() {
     <p><b>Mein Plan für dich:</b></p><ul>${li(d.tips)}</ul>
     <p class="muted">Deine DNA lernt mit jedem Trade dazu – sie gehört nur dir und bleibt auf deinem Gerät. Übungsdepot, keine Anlageberatung.</p>`;
 }
+// ---------- Zukunfts-Ich (future.js): Rechner, Gespräch mit dir selbst, Story-Karte ----------
+const moodRgb = () => jarvisMood().rgb.join(",");
+function futureSummary() {
+  const plan = future.loadPlan();
+  const p = future.project(plan);
+  const ms = future.milestones(p.series);
+  return `<p>🔮 <b>Dein Zukunfts-Ich mit ${plan.until}</b>: rund <b class="up">${future.money(p.value)}</b> – mit ${future.money(plan.monthly)} im Monat ab ${plan.age} (${future.SCENARIOS[plan.scenario].label}, ${Math.round(future.SCENARIOS[plan.scenario].rate * 100)} % pro Jahr).</p>
+    <ul><li>Eingezahlt: <b>${future.money(p.paid)}</b> · Zinseszins: <b class="up">+${future.money(p.gain)}</b></li><li>In heutiger Kaufkraft (2 % Inflation): <b>${future.money(p.real)}</b></li>${ms.length ? `<li>${ms.map((m) => `${future.money(m.goal)} mit ${m.age}`).join(" · ")}</li>` : ""}</ul>
+    <p class="muted">Szenario-Rechnung, keine Garantie – echte Märkte schwanken. Keine Anlageberatung.</p>`;
+}
+function buyCost(price) {
+  const plan = future.loadPlan();
+  const to = plan.age < 55 ? 60 : plan.age + 10;
+  const years = to - plan.age;
+  const v = future.futureCost(price, years);
+  return `<p>🛍️ <b>${future.money(price)}</b> heute ausgegeben sind <b class="down">${future.money(v)}</b>, die dir mit ${to} fehlen – so viel würde daraus in ${years} Jahren bei 6 % pro Jahr.</p>
+    <p>Anders gesagt: Jeder Euro, den du heute nicht ausgibst, ist mit ${to} etwa <b>${(v / price).toLocaleString("de-DE", { maximumFractionDigits: 1 })} Euro</b> wert. Kaufen ist okay – bewusst kaufen ist besser.</p>
+    <p class="muted">Szenario-Rechnung, keine Garantie. Keine Anlageberatung.</p>`;
+}
+function talkFuture() {
+  closeModals();
+  const plan = future.loadPlan();
+  startJarvis({
+    say: future.futureMonologue(plan, account.state.profile?.name?.split(" ")[0] || ""),
+    free: true,
+    tint: [200, 228, 255],
+    label: "ZUKUNFTS-ICH",
+    voice: { rate: 0.94, pitch: -0.07 },
+    acts: [
+      { label: "📲 Story-Karte teilen", primary: true, run: () => shareFuture() },
+      { label: "Plan anpassen", run: () => openFuture() },
+    ],
+  });
+}
+// Einladungen: eigener Code im Link, erster Einlader wird gemerkt und beim Kauf an Stripe übergeben
+function myRef() {
+  if (!account.state.ref) {
+    account.state.ref = "akx_" + Math.random().toString(36).slice(2, 12);
+    account.save();
+  }
+  return account.state.ref.slice(4, 12);
+}
+function refBy() {
+  try {
+    return localStorage.getItem("akytex-ref-by") || "";
+  } catch (_) {
+    return "";
+  }
+}
+function captureRef() {
+  const q = new URLSearchParams(location.search);
+  const r = (q.get("ref") || "").toLowerCase();
+  if (!r) return;
+  q.delete("ref");
+  history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
+  if (!/^[a-z0-9]{4,16}$/.test(r) || r === (account.state.ref || "").slice(4, 12) || refBy()) return;
+  try {
+    localStorage.setItem("akytex-ref-by", r);
+  } catch (_) {
+    /* ohne Speicher keine Zuordnung */
+  }
+}
+const inviteUrl = () => `${shareUrl().split("#")[0]}?ref=${myRef()}`;
+async function shareCardBlob(make, name, text) {
+  const url = inviteUrl();
+  toast("Deine Karte wird gestaltet …", "info", "📲 Teilen");
+  try {
+    const blob = await make(url);
+    const r = await future.shareImage(blob, name, text, url);
+    if (r.startsWith("downloaded")) toast(r.endsWith("copied") ? "Bild gespeichert und Link kopiert – ab in deine Story! 🚀" : "Bild gespeichert – ab in deine Story! 🚀", "success", "📲 Karte bereit");
+  } catch (e) {
+    toast("Die Karte konnte gerade nicht erstellt werden.", "error");
+  }
+}
+function shareFuture() {
+  const plan = future.loadPlan();
+  return shareCardBlob((url) => future.futureCard(plan, url, moodRgb()), "akytex-zukunfts-ich.png", `Ich mit ${plan.until}: ${future.money(future.project(plan).value)} 🔮 Triff dein Zukunfts-Ich:`);
+}
+function shareDna() {
+  const d = traderDNA();
+  if (d.n < 3) return toast("Für die DNA-Karte brauchst du mindestens 3 abgeschlossene Trades.", "info", "🧬 Trader-DNA");
+  return shareCardBlob((url) => future.dnaCard(d, url, moodRgb()), "akytex-trader-dna.png", `Mein Trader-Typ: ${d.style} · Disziplin ${d.score}/100 🧬 Und deiner?`);
+}
+// Fenster „Dein Zukunfts-Ich“
+let fuShown = 0;
+function openFuture() {
+  renderFuture();
+  openModal("#future-modal");
+}
+function renderFuture() {
+  const plan = future.loadPlan();
+  const body = $("#fu-body");
+  if (!body.dataset.built) {
+    body.dataset.built = "1";
+    body.innerHTML = `<p class="muted fu-lead">Stell ein, was du zur Seite legst – und sieh (oder hör), wer du dadurch wirst.</p>
+      <div class="fu-form">
+        <label class="field"><span>Dein Alter</span><input type="number" inputmode="numeric" min="10" max="80" data-fu="age"></label>
+        <label class="field"><span>Schon angespart (€)</span><input type="number" inputmode="numeric" min="0" step="50" data-fu="start"></label>
+        <label class="field fu-wide"><span>Pro Monat: <b data-fu-show="monthly"></b></span><input type="range" min="0" max="1000" step="5" data-fu="monthly"></label>
+      </div>
+      <div class="fu-chips" data-fu-group="scenario">${Object.entries(future.SCENARIOS).map(([k, sc]) => `<button class="chip" data-fu-set="scenario" data-v="${k}" title="${sc.desc}">${sc.label} · ${Math.round(sc.rate * 100)} %</button>`).join("")}</div>
+      <div class="fu-chips" data-fu-group="until"><span class="muted small">Ich mit</span>${future.TARGET_AGES.map((a) => `<button class="chip" data-fu-set="until" data-v="${a}">${a}</button>`).join("")}</div>
+      <div class="fu-out" id="fu-out"></div>
+      <div class="fu-buy"><label class="field"><span>🛍️ Kauf-Rechner: Was kostet mich …</span><input type="number" inputmode="decimal" min="1" step="1" value="180" data-fu-buy> </label><p class="fu-buy-out" id="fu-buy-out"></p></div>
+      <div class="btn-row fu-actions"><button class="btn primary big" data-fu-talk>🔊 Mein Zukunfts-Ich sprechen lassen</button><button class="btn big" data-fu-share>📲 Story-Karte teilen</button></div>
+      <p class="muted small">Szenario-Rechnung mit festen Renditen – echte Märkte schwanken, Verluste sind möglich. Kaufkraft bei 2 % Inflation. Keine Anlageberatung.</p>`;
+    body.addEventListener("input", (e) => {
+      const f = e.target.dataset.fu;
+      if (f) {
+        future.savePlan({ ...future.loadPlan(), [f]: e.target.value });
+        paintFuture(false);
+      }
+      if (e.target.hasAttribute("data-fu-buy")) paintBuy();
+    });
+    body.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-fu-set]");
+      if (b) {
+        haptic(8);
+        future.savePlan({ ...future.loadPlan(), [b.dataset.fuSet]: b.dataset.v });
+        return paintFuture(true);
+      }
+      if (e.target.closest("[data-fu-talk]")) return talkFuture();
+      if (e.target.closest("[data-fu-share]")) return shareFuture();
+    });
+  }
+  for (const k of ["age", "start", "monthly"]) body.querySelector(`[data-fu="${k}"]`).value = plan[k];
+  paintFuture(true);
+}
+function paintFuture(syncInputs) {
+  const plan = future.loadPlan();
+  const body = $("#fu-body");
+  if (syncInputs) for (const k of ["age", "start", "monthly"]) if (document.activeElement !== body.querySelector(`[data-fu="${k}"]`)) body.querySelector(`[data-fu="${k}"]`).value = plan[k];
+  body.querySelector('[data-fu-show="monthly"]').textContent = future.money(plan.monthly);
+  body.querySelectorAll("[data-fu-set]").forEach((b) => b.classList.toggle("active", String(plan[b.dataset.fuSet]) === b.dataset.v));
+  const p = future.project(plan);
+  const alt = Object.entries(future.SCENARIOS).map(([k, sc]) => [k, future.project(plan, sc.rate)]);
+  const max = Math.max(...alt.map(([, a]) => a.value), 1);
+  const W = 600;
+  const H = 220;
+  const pts = (series, key) => series.map((pt, i) => `${((W * i) / (series.length - 1)).toFixed(1)},${(H - (H * pt[key]) / max).toFixed(1)}`).join(" ");
+  const ms = future.milestones(p.series);
+  $("#fu-out").innerHTML = `<div class="fu-big"><span>Du mit ${plan.until}</span><b data-count="${Math.round(p.value)}">${future.money(fuShown)}</b><small>Eingezahlt ${future.money(p.paid)} · Zinseszins <em class="up">+${future.money(p.gain)}</em> · Kaufkraft heute ≈ ${future.money(p.real)}</small></div>
+    <svg class="fu-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+      <defs><linearGradient id="fuG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".45"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>
+      ${alt.filter(([k]) => k !== plan.scenario).map(([, a]) => `<polyline class="fu-alt" points="${pts(a.series, "value")}"/>`).join("")}
+      <polygon class="fu-area" points="0,${H} ${pts(p.series, "value")} ${W},${H}"/>
+      <polygon class="fu-paid" points="0,${H} ${pts(p.series, "paid")} ${W},${H}"/>
+      <polyline class="fu-line" points="${pts(p.series, "value")}"/>
+    </svg>
+    <div class="fu-axis"><span>${plan.age}</span><span>${plan.until}</span></div>
+    ${ms.length ? `<div class="fu-ms">${ms.map((m) => `<span>🏁 ${future.money(m.goal)} mit <b>${m.age}</b></span>`).join("")}</div>` : ""}`;
+  countUp($("#fu-out [data-count]"));
+  paintBuy();
+}
+function countUp(el) {
+  const to = +el.dataset.count;
+  const from = fuShown;
+  const t0 = performance.now();
+  const step = (now) => {
+    const k = Math.min(1, (now - t0) / 700);
+    const v = from + (to - from) * (1 - Math.pow(1 - k, 3));
+    el.textContent = future.money(v);
+    fuShown = v;
+    if (k < 1 && el.isConnected) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+function paintBuy() {
+  const plan = future.loadPlan();
+  const price = +$("#fu-body [data-fu-buy]").value || 0;
+  const to = plan.age < 55 ? 60 : plan.age + 10;
+  $("#fu-buy-out").innerHTML = price > 0 ? `= <b class="down">${future.money(future.futureCost(price, to - plan.age))}</b>, die dir mit ${to} fehlen` : "";
+}
+// Startseite: Mini-Rechner als Einstieg
+function paintFutureMini() {
+  const box = $("#fu-mini-out");
+  if (!box) return;
+  const plan = future.loadPlan();
+  const ag = $('[data-fu-mini="age"]');
+  const mo = $('[data-fu-mini="monthly"]');
+  if (document.activeElement !== ag) ag.value = plan.age;
+  if (document.activeElement !== mo) mo.value = plan.monthly;
+  box.innerHTML = `Mit ${plan.until}: <b>≈ ${future.money(future.project(plan).value)}</b>`;
+}
 // Stimmung für Jarvis’ Auto-Modus: Tagesveränderung von Depot und Markt (in %)
 function jarvisMoodHint() {
   const eq = broker.equity() || 1;
@@ -6461,7 +6672,18 @@ function appCommand(text) {
     });
   }
   // Trader-DNA: „Analysiere mich“, „Was mache ich falsch?“, „Meine Trader-DNA“
-  if (/(trader.?dna|meine dna|analysier\w* mich|mein(e)? (trading.?)?(profil|stil)|was mache ich falsch|wie gut bin ich|meine (fehler|schwächen|stärken)|coach mich|bewerte mich)/.test(t)) return done(dnaReport(), null, ["Profit-Modus an", "Wie steht mein Depot?", "Was ist ein Trailing-Stop?"]);
+  if (/((dna|trader).?karte|teil\w* (meine )?dna)/.test(t)) return done(`<p>📲 Deine DNA-Karte wird erstellt …</p>`, () => shareDna());
+  if (/(trader.?dna|meine dna|analysier\w* mich|mein(e)? (trading.?)?(profil|stil)|was mache ich falsch|wie gut bin ich|meine (fehler|schwächen|stärken)|coach mich|bewerte mich)/.test(t))
+    return done(dnaReport(), null, ["Profit-Modus an", "Wie steht mein Depot?", "Triff mein Zukunfts-Ich"], traderDNA().n >= 3 ? [{ label: "📲 DNA-Karte teilen", primary: true, run: () => shareDna() }] : []);
+  // Zukunfts-Ich: „Triff mein Zukunfts-Ich“, „Was habe ich mit 40?“, „Wie reich bin ich mit 60?“
+  const fuAge = t.match(/(?:mit|bis|in meinen) (\d{2})\b/);
+  if (/(zukunfts.?ich|future.?(me|self)|was habe ich mit \d{2}|wie reich bin ich|wie viel (habe|hab) ich mit|zinseszins.?rechner|sparplan.?rechner)/.test(t) || (fuAge && /(ich|mich|mir)\b.*(mit|bis) \d{2}/.test(t) && /(reich|geld|habe|hab|sparen|spar)/.test(t))) {
+    if (fuAge) future.savePlan({ ...future.loadPlan(), until: +fuAge[1] });
+    return done(futureSummary(), () => openFuture(), ["Was kosten mich 180 € Sneaker wirklich?", "Analysiere mich"], [{ label: "🔊 Zukunfts-Ich sprechen lassen", primary: true, run: () => talkFuture() }, { label: "📲 Story-Karte teilen", run: () => shareFuture() }]);
+  }
+  // Kauf-Rechner: „Was kosten mich 180 € Sneaker wirklich?“
+  const buyAmt = t.match(/(\d+(?:[.,]\d+)?)\s*(€|euro)/);
+  if (buyAmt && !syms.length && /(was kostet mich|was kosten mich|wirklich kosten|kostet mich das wirklich|in zukunft wert|später wert|wie viel wär(en|e) (das|die|der)|lohnt sich)/.test(t)) return done(buyCost(parseFloat(buyAmt[1].replace(",", "."))), null, ["Triff mein Zukunfts-Ich", "Was ist ein ETF?"]);
   // Profit-Modus: „Profit-Modus an“, „Mach mir Geld“, „Wie läuft der Profit-Modus?“
   if (/(profit.?modus|getting rich|reich.?werden.?modus|money.?modus|mach (mir |uns )?(mehr )?geld|maximier\w* (meinen |den |meine )?(gewinn|profit|rendite)|geld.?maschine)/.test(t)) {
     if (/(\baus\b|ausschalt|stopp|\bstop\b|beend|deaktiv|pausier)/.test(t)) return done(`<p>Profit-Modus ist aus, ${esc(jarvisTitle())}. Deine Positionen bleiben mit ihren Stops bestehen.</p>`, () => profitMode(false));
