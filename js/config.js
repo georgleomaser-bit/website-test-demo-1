@@ -36,6 +36,12 @@ export const CONFIG = {
       "aiprem-yearly": "https://buy.stripe.com/9B6aEZ6Qr1hAbOp7pm77O09",
     },
     portal: "https://billing.stripe.com/p/login/3cI4gB6Qr1hA6u5gZW77O00", // Stripe-Kundenportal (Zahlungsmethode ändern, kündigen, Rechnungen)
+    // Gründer-Deal: Einmalzahlung für 12 Monate, kein Abo, je 100 Plätze (Limit bei Stripe). Leere Links blenden den Deal aus.
+    founder: {
+      pro: { link: "https://buy.stripe.com/cNidRbeiT1hAaKl10Y77O0a", price: 49 },
+      ai: { link: "https://buy.stripe.com/bJe28t4IjaSacStdNK77O0b", price: 199 },
+      spots: 100,
+    },
   },
 
   // Echter Handel über den Server des lizenzierten Broker-Partners (API siehe GO-LIVE.md).
