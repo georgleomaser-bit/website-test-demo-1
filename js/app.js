@@ -35,7 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "4.4"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "4.5"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2187,7 +2187,8 @@ const CHAT_KEY = "akytex-v2-chat";
 const chat = (() => {
   try {
     const c = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]");
-    return Array.isArray(c) ? c.slice(-40) : [];
+    // Hängengebliebene Antworten aus einer früheren Sitzung nicht wieder aufnehmen – sonst blockieren sie neue Fragen
+    return Array.isArray(c) ? c.filter((m) => !m.pending).map((m) => ({ ...m, streaming: false })).slice(-40) : [];
   } catch (_) {
     return [];
   }
@@ -6221,9 +6222,13 @@ function jarvisQuickStatus() {
 }
 // Jarvis fragt über den normalen Chat – so landet alles auch im Verlauf
 async function jarvisAsk(text) {
-  await sendChat(text);
-  const m = [...chat].reverse().find((x) => x.role === "assistant" && !x.pending);
-  return m ? { html: m.html || (m.plain ? `<p>${esc(m.plain)}</p>` : ""), actions: m.actions || [] } : null;
+  const from = chat.length;
+  // Sicherheitsnetz: nach 25 s ohne Antwort ehrlich Bescheid geben statt zu schweigen
+  const timeout = new Promise((r) => setTimeout(() => r("timeout"), 25000));
+  const res = await Promise.race([sendChat(text).then(() => "ok"), timeout]);
+  const m = chat.slice(from).reverse().find((x) => x.role === "assistant" && !x.pending);
+  if (m) return { html: m.html || (m.plain ? `<p>${esc(m.plain)}</p>` : ""), actions: m.actions || [] };
+  return { html: res === "timeout" ? "<p>Das dauert gerade ungewöhnlich lange. Frag mich gleich nochmal.</p>" : "<p>Ich bin noch mit deiner letzten Frage beschäftigt – einen Moment.</p>" };
 }
 const jarvisAllowed = () => !!plan().limits.voice;
 
@@ -6454,24 +6459,42 @@ function initAssistant() {
     score: jarvisScore,
     quickStatus: jarvisQuickStatus,
   });
-  $("#jv-start").hidden = !jarvisSupported();
   $("#jv-start").addEventListener("click", () => startJarvis());
-  // Λ-Knopf: antippen = Chat, gedrückt halten = Jarvis-Sprachmodus
+  // Λ-Knopf: antippen = Chat, gedrückt halten und loslassen = Jarvis.
+  // Gestartet wird beim Loslassen – nur dann erlauben Safari und installierte Apps Mikrofon und Stimme.
   let press = 0;
-  let longPressed = false;
+  let armed = false;
+  let started = false;
   const fab = $("#jarvis-fab");
   fab.addEventListener("pointerdown", () => {
-    longPressed = false;
+    armed = started = false;
     press = setTimeout(() => {
-      longPressed = true;
+      armed = true;
+      fab.classList.add("holding");
       haptic(20);
-      startJarvis();
-    }, 480);
+    }, 450);
   });
-  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) fab.addEventListener(ev, () => clearTimeout(press));
+  fab.addEventListener("pointerup", (e) => {
+    clearTimeout(press);
+    fab.classList.remove("holding");
+    if (armed && e.pointerType !== "mouse") {
+      started = true;
+      startJarvis();
+    }
+  });
+  for (const ev of ["pointerleave", "pointercancel"])
+    fab.addEventListener(ev, () => {
+      clearTimeout(press);
+      armed = false;
+      fab.classList.remove("holding");
+    });
   fab.addEventListener("contextmenu", (e) => e.preventDefault());
   fab.addEventListener("click", (e) => {
-    if (longPressed) return e.preventDefault();
+    if (started) return e.preventDefault();
+    if (armed) {
+      armed = false;
+      return startJarvis();
+    }
     assistantOpen() ? closeAssistant() : openAssistant();
   });
   if (jarvisSupported())

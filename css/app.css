@@ -2173,3 +2173,52 @@ html[data-theme] input[type="text"], html[data-theme] input[type="number"], html
 .jv.on .jv-edge.jv-wide { opacity: calc(0.12 + 0.2 * var(--lvl)); }
 .jv-shade { height: 38vh; background: linear-gradient(to top, rgba(4, 6, 16, 0.32), transparent); }
 @media (max-width: 700px) { .jv { --jv-r: 42px; } }
+/* Jarvis: Schreib-/Diktierfeld und Halten-Anzeige am Λ */
+.jv-type { flex: 1; min-width: 0; margin: 0; }
+.jv-type[hidden], .jv-txt[hidden] { display: none; }
+.jv-type input { width: 100%; height: 40px; border: 0; border-radius: 999px; padding: 0 14px; background: rgba(255, 255, 255, 0.12); color: #fff; font: inherit; font-size: 15px; outline: none; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.2); }
+.jv-type input::placeholder { color: rgba(255, 255, 255, 0.5); }
+.jv-type input:focus { background: rgba(255, 255, 255, 0.18); }
+@media (max-width: 420px) { .jv-pill .jv-btn { width: 36px; height: 36px; } .jv-pill { gap: 6px; } }
+.jarvis-fab { -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.jarvis-fab.holding { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(179, 107, 255, 0.25), 0 0 40px rgba(179, 107, 255, 0.6); transition: transform 0.35s var(--spring), box-shadow 0.35s; }
+
+/* ---- Liquid Glass, Stufe 2: klarer, mehr Lichtbrechung, kräftiger Glanz ---- */
+[data-theme="light"] {
+  --lg-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.22) 45%, rgba(255, 255, 255, 0.3));
+  --lg-bg-strong: linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.46) 50%, rgba(255, 255, 255, 0.58));
+  --lg-edge: rgba(255, 255, 255, 0.9);
+  --lg-shine: inset 1px 1px 1px rgba(255, 255, 255, 0.95), inset -1px -1px 1px rgba(255, 255, 255, 0.45), inset 0 0 18px rgba(255, 255, 255, 0.35);
+  --lg-blur: blur(26px) saturate(2.1) brightness(1.04);
+}
+html[data-theme="dark"] {
+  --lg-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.03) 45%, rgba(255, 255, 255, 0.06));
+  --lg-bg-strong: linear-gradient(135deg, rgba(40, 46, 80, 0.72), rgba(24, 28, 50, 0.6) 50%, rgba(34, 40, 70, 0.66));
+  --lg-edge: rgba(255, 255, 255, 0.2);
+  --lg-shine: inset 1px 1px 1px rgba(255, 255, 255, 0.28), inset -1px -1px 1px rgba(255, 255, 255, 0.07), inset 0 0 20px rgba(255, 255, 255, 0.04);
+  --lg-blur: blur(28px) saturate(1.9);
+}
+/* mehr Farbe im Hintergrund, damit das Glas sichtbar bricht */
+html[data-theme="light"] body { background: radial-gradient(900px 600px at 6% 4%, rgba(98, 140, 255, 0.34), transparent 62%), radial-gradient(800px 560px at 96% 8%, rgba(190, 120, 255, 0.3), transparent 60%), radial-gradient(900px 700px at 70% 100%, rgba(255, 150, 120, 0.24), transparent 62%), radial-gradient(700px 600px at 0% 100%, rgba(80, 220, 210, 0.2), transparent 60%), #eef1f8; background-attachment: fixed; }
+html[data-theme] .card, html[data-theme] .plan, html[data-theme] .feature, html[data-theme] .idea-card, html[data-theme] .p-card, html[data-theme] .kpi, html[data-theme] .is-tile, html[data-theme] .usp-step, html[data-theme] .feat, html[data-theme] .topbar, html[data-theme] .views, html[data-theme] .seg, html[data-theme] .toast, html[data-theme] .modal-box, html[data-theme] .msg.assistant .bubble { background: var(--lg-bg); border-color: var(--lg-edge); }
+html[data-theme] .modal-box, html[data-theme] .toast, html[data-theme] .view-btn.active, html[data-theme] .seg > button.active { background: var(--lg-bg-strong); }
+html[data-theme] .btn:not(.primary), html[data-theme] .mini-btn, html[data-theme] .icon-btn { background: var(--lg-bg); }
+
+/* Jarvis als klares Glas – hell im hellen Design, dunkel im dunklen */
+.jv-pill, .jv-card { background: linear-gradient(135deg, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.24) 50%, rgba(255, 255, 255, 0.36)); backdrop-filter: blur(30px) saturate(2.2) brightness(1.05); -webkit-backdrop-filter: blur(30px) saturate(2.2) brightness(1.05); border: 1px solid rgba(255, 255, 255, 0.85); box-shadow: inset 1px 1px 1px rgba(255, 255, 255, 0.95), inset -1px -1px 1px rgba(255, 255, 255, 0.4), inset 0 0 22px rgba(255, 255, 255, 0.3), 0 20px 60px rgba(30, 40, 90, 0.22); color: #0d1224; }
+.jv-state { color: rgba(13, 18, 36, 0.55); }
+.jv-you:empty::before { color: rgba(13, 18, 36, 0.38); }
+.jv-btn { background: rgba(255, 255, 255, 0.45); color: #0d1224; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.9), 0 2px 8px rgba(30, 40, 90, 0.12); }
+.jv-btn:hover { background: rgba(255, 255, 255, 0.7); }
+.jv-acts .mini-btn { background: rgba(255, 255, 255, 0.55); color: #0d1224; border-color: rgba(255, 255, 255, 0.9); }
+.jv-type input { background: rgba(255, 255, 255, 0.55); color: #0d1224; box-shadow: inset 0 1px 2px rgba(30, 40, 90, 0.12); }
+.jv-type input::placeholder { color: rgba(13, 18, 36, 0.45); }
+.jv-shade { background: linear-gradient(to top, rgba(120, 130, 200, 0.18), transparent); }
+html[data-theme="dark"] .jv-pill, html[data-theme="dark"] .jv-card { background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.05) 50%, rgba(255, 255, 255, 0.1)); border-color: rgba(255, 255, 255, 0.22); box-shadow: inset 1px 1px 1px rgba(255, 255, 255, 0.3), inset -1px -1px 1px rgba(255, 255, 255, 0.08), 0 20px 60px rgba(0, 0, 0, 0.4); color: #fff; }
+html[data-theme="dark"] .jv-state { color: rgba(255, 255, 255, 0.6); }
+html[data-theme="dark"] .jv-you:empty::before { color: rgba(255, 255, 255, 0.35); }
+html[data-theme="dark"] .jv-btn { background: rgba(255, 255, 255, 0.12); color: #fff; box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.2); }
+html[data-theme="dark"] .jv-acts .mini-btn { background: rgba(255, 255, 255, 0.12); color: #fff; border-color: rgba(255, 255, 255, 0.2); }
+html[data-theme="dark"] .jv-type input { background: rgba(255, 255, 255, 0.12); color: #fff; }
+html[data-theme="dark"] .jv-type input::placeholder { color: rgba(255, 255, 255, 0.5); }
+html[data-theme="dark"] .jv-shade { background: linear-gradient(to top, rgba(4, 6, 16, 0.32), transparent); }
