@@ -7,7 +7,8 @@ export const CONFIG = {
   // Anbieterkennzeichnung (Impressum, AGB, Rechnungen). Pflicht vor dem ersten zahlenden Kunden.
   company: {
     name: "akytex united",
-    representative: "", // Pflicht: vollständiger Name der verantwortlichen Person (Inhaber bzw. Geschäftsführung)
+    representative: "Leo Maser, Paul Jazra", // Pflicht: vollständiger Name der verantwortlichen Person(en)
+    contentResponsible: "Paul Jazra", // Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV
     street: "Alter Wall 56",
     zipCity: "20457 Hamburg",
     country: "Deutschland",
