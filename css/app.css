@@ -1945,3 +1945,6 @@ body[data-view="ai"] .jarvis-hint { bottom: calc(18px + env(safe-area-inset-bott
 .fd-offer small { font-size: 11.5px; color: var(--muted); }
 .fd-offer.ai { background: linear-gradient(135deg, rgba(124, 156, 255, 0.16), rgba(255, 207, 110, 0.08)), var(--panel-2); }
 @media (max-width: 520px) { .fd-offers { grid-template-columns: 1fr; } }
+/* Rechte Chart-Tabs passen ohne Scrollen in die 300-px-Spalte */
+.rtabs { display: flex; gap: 0; }
+.rtabs .rtab { flex: 1 1 auto; padding: 7px 4px; white-space: nowrap; font-size: 12px; }
