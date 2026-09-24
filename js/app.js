@@ -35,7 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "4.5"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "4.6"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2568,7 +2568,7 @@ async function sendChatCore(text) {
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich, konkret und durchdacht: bei einfachen Fragen kurz, bei Analysen gründlich mit Begründung, Zahlen und Alternativen (bis etwa 250 Wörter). Beginne immer mit der Kernaussage – die ersten Sätze werden vorgelesen. Sprich den Nutzer mit „${jarvisTitle()}“ an. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt. Du bist zugleich der persönliche Assistent der App: Mit app_control öffnest du Ansichten, Aktien, Tarife oder Einzahlungen, wenn der Nutzer das möchte. Geld bewegst du nie selbst – Käufe, Einzahlungen und Abos bestätigt immer der Nutzer. Denke voraus: Schlage passende nächste Schritte vor (Alarm, Stop, Watchlist), ohne aufdringlich zu sein.
+  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich, konkret und durchdacht: bei einfachen Fragen kurz, bei Analysen gründlich mit Begründung, Zahlen und Alternativen (bis etwa 250 Wörter). Beginne immer mit der Kernaussage – die ersten Sätze werden vorgelesen. Sprich den Nutzer mit „${jarvisTitle()}“ an. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt. Du bist zugleich der persönliche Assistent der App: Mit app_control öffnest du Ansichten, Aktien, Tarife oder Einzahlungen, wenn der Nutzer das möchte. Geld bewegst du nie selbst – Käufe, Einzahlungen und Abos bestätigt immer der Nutzer. Denke voraus: Schlage passende nächste Schritte vor (Alarm, Stop, Watchlist), ohne aufdringlich zu sein. Dein Ziel ist, das Übungsdepot so profitabel wie möglich zu machen – mit Profi-Disziplin: bestes Chance-Risiko, Positionsgrößen nach Risiko, Stops, Gewinne laufen lassen, Verluste früh begrenzen, Streuung. Den vollautomatischen Profit-Modus (profit_mode) schlägst du vor, wenn jemand „einfach Geld machen“ will.
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -2682,6 +2682,17 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
         if (steps.length) proposals.push({ label: `Plan ausführen (${steps.length} Schritte)`, plan: steps, primary: true });
         return steps.map((x) => x.why);
       } },
+    {
+      name: "profit_mode",
+      description: "Profit-Modus von Jarvis: vollautomatischer Autopilot im virtuellen Übungsdepot mit dem Ziel maximaler, risikobereinigter Rendite (Top-Setups, Stops, Trailing-Stops, Notbremse). action: on | off | status. Nur einschalten, wenn der Nutzer es ausdrücklich möchte.",
+      inputSchema: { type: "object", properties: { action: { type: "string", enum: ["on", "off", "status"] } }, required: ["action"] },
+      execute: (i) => {
+        if (i.action === "status") return profitReport().replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        if (i.action === "on" && aiMode() !== "auto") return "Nicht verfügbar: Der Profit-Modus braucht AI Premium oder Ultra.";
+        profitMode(i.action === "on");
+        return i.action === "on" ? "Profit-Modus ist an." : "Profit-Modus ist aus.";
+      },
+    },
     { name: "get_autopilot", description: "Status und Einstellungen des Autopiloten sowie die letzten Entscheidungen.", execute: () => ({ ...aiEngine.state.config, tier: aiMode(), lastDecisions: aiEngine.state.log.slice(0, 5).map((l) => `${l.side} ${l.qty} ${l.sym}: ${l.why}`) }) },
   ];
   // Sichtbare Denkschritte: jedes Werkzeug meldet, was gerade passiert
@@ -6083,6 +6094,42 @@ function runAppControl(action, value = "") {
 }
 
 // Erkennt App-Befehle in normaler Sprache. Liefert eine Antwort oder null (dann antwortet die KI).
+// ---------- Profit-Modus: Jarvis' Maximal-Modus für das Übungsdepot ----------
+// Vollautomatischer Autopilot mit dem Ziel maximaler, risikobereinigter Rendite – mit harten Risikogrenzen.
+const PROFIT_PRESET = { enabled: true, mode: "auto", strategy: "profit", budgetPct: 90, maxPosPct: 12, stopPct: 5, takePct: 15, maxTrades: 20, universe: "all", manageAll: true, atrStops: true, minConf: 55, maxDailyLoss: 4, shadow: false, hoursOn: false };
+const profitOn = () => !!aiEngine.state.profit?.on && aiEngine.state.config.enabled && aiEngine.state.config.strategy === "profit";
+function profitMode(on) {
+  const c = aiEngine.state.config;
+  if (on) {
+    aiEngine.state.profit = { on: true, since: Date.now(), start: broker.equity(), pnl0: aiEngine.state.aiPnl || 0, prev: aiEngine.state.profit?.on ? aiEngine.state.profit.prev : { ...c } };
+    Object.assign(c, PROFIT_PRESET);
+  } else if (aiEngine.state.profit?.on) {
+    Object.assign(c, aiEngine.state.profit.prev || {}, { enabled: false });
+    aiEngine.state.profit.on = false;
+  }
+  aiEngine.save();
+  renderAIHeader();
+  if (settings.view === "ai") renderAIView(true);
+  if (on) setTimeout(autopilotTick, 600);
+}
+function profitReport() {
+  const p = aiEngine.state.profit;
+  if (!p?.since) return `<p>Der Profit-Modus lief noch nie. Sag „Profit-Modus an“, dann lege ich los.</p>`;
+  const eq = broker.equity();
+  const chg = eq / p.start - 1;
+  const mins = Math.max(1, Math.round((Date.now() - p.since) / 60000));
+  const hrs = Math.round(mins / 60);
+  const since = mins < 60 ? `${mins} ${mins === 1 ? "Minute" : "Minuten"}` : hrs < 48 ? `${hrs} ${hrs === 1 ? "Stunde" : "Stunden"}` : `${Math.round(hrs / 24)} Tagen`;
+  const managed = Object.keys(aiEngine.state.managed || {}).filter((s) => broker.position(s));
+  const sells = aiEngine.state.sells || { n: 0, wins: 0 };
+  return `<p>${profitOn() ? "🚀 Der Profit-Modus läuft" : "Der Profit-Modus ist pausiert"} – seit ${since}.</p>
+    <ul><li>Depot: <b>${eur(eq)}</b>, seit Start <b class="${chg >= 0 ? "up" : "down"}">${pct(chg)}</b></li>
+    <li>Realisiert durch Jarvis: <b class="${(aiEngine.state.aiPnl || 0) - p.pnl0 >= 0 ? "up" : "down"}">${sEur((aiEngine.state.aiPnl || 0) - p.pnl0)}</b></li>
+    <li>${managed.length ? `Offene Positionen: ${managed.join(", ")}` : "Gerade keine offene Position – ich warte auf ein gutes Setup."}</li>
+    <li>Abgeschlossene Trades: ${sells.n}, davon mit Gewinn: ${sells.wins}</li></ul>
+    <p class="muted">Virtuelles Geld, simulierte Kurse – keine Anlageberatung.</p>`;
+}
+
 // Lagebericht für Jarvis und den Chat: Markt, Depot und die 2–3 sinnvollsten nächsten Schritte
 function jarvisBrief() {
   const h = new Date().getHours();
@@ -6170,7 +6217,7 @@ function jarvisSmalltalk(t, syms = []) {
   if (/(welcher tag|welches datum|den wievielten|was ist heute für ein tag)/.test(t)) return { html: `<p>Heute ist ${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.</p>` };
   if (/^(danke|dankeschön|vielen dank|thx|merci)/.test(t)) return { html: `<p>Immer gern, ${esc(title)}!</p>` };
   if (/witz/.test(t)) return { html: `<p>${JOKES[Math.floor(Math.random() * JOKES.length)]} 😄</p>` };
-  if (/(werde ich reich|reich werden|schnell reich|millionär)/.test(t)) return { html: `<p>Ehrlich, ${esc(title)}: Schnell reich wird man an der Börse fast nie – wer das verspricht, will meist dein Geld. Was wirklich funktioniert, ist langweilig: breit streuen, regelmäßig investieren, Kosten niedrig halten und Zeit arbeiten lassen. Im Übungsdepot kannst du das risikolos ausprobieren.</p>`, follow: ["Was ist Diversifikation?", "Was ist Zinseszins?", "Wie steht mein Depot?"] };
+  if (/(werde ich reich|reich werden|schnell reich|millionär)/.test(t)) return { html: `<p>Ehrlich, ${esc(title)}: Schnell reich wird man an der Börse fast nie – wer das verspricht, will meist dein Geld. Was wirklich funktioniert, ist langweilig: breit streuen, regelmäßig investieren, Kosten niedrig halten und Zeit arbeiten lassen. Im Übungsdepot kannst du das risikolos ausprobieren – oder mich im <b>Profit-Modus</b> für dich handeln lassen und zuschauen, wie Profis Risiko managen.</p>`, follow: ["Profit-Modus an", "Was ist Diversifikation?", "Wie steht mein Depot?"] };
   if (!syms.length && /(was (ist|sind|bedeutet|heißt|heisst)|erklär|erkläre|wie funktioniert)/.test(t)) {
     const g = GLOSSARY.find(([re]) => re.test(t));
     if (g) return { html: `<p>${g[1]}</p>`, follow: ["Erklär mir den Stop-Loss", "Was ist ein ETF?", "Was soll ich heute tun?"] };
@@ -6250,6 +6297,18 @@ function appCommand(text) {
       broker.addAlert(syms[0], price);
       renderRightPanel();
     });
+  }
+  // Profit-Modus: „Profit-Modus an“, „Mach mir Geld“, „Wie läuft der Profit-Modus?“
+  if (/(profit.?modus|getting rich|reich.?werden.?modus|money.?modus|mach (mir |uns )?(mehr )?geld|maximier\w* (meinen |den |meine )?(gewinn|profit|rendite)|geld.?maschine)/.test(t)) {
+    if (/(\baus\b|ausschalt|stopp|\bstop\b|beend|deaktiv|pausier)/.test(t)) return done(`<p>Profit-Modus ist aus, ${esc(jarvisTitle())}. Deine Positionen bleiben mit ihren Stops bestehen.</p>`, () => profitMode(false));
+    if (/(wie läuft|status|bilanz|stand|ergebnis|wie viel|wieviel)/.test(t)) return done(profitReport(), null, ["Profit-Modus aus", "Wie steht mein Depot?"]);
+    if (aiMode() !== "auto") return done(`<p>Den Profit-Modus – ich handle dann vollautomatisch für dein Übungsdepot – gibt es mit <b>AI Premium</b> und <b>Ultra</b>.</p>`, null, null, [{ label: "Ultra ansehen", primary: true, run: () => openPlans("Profit-Modus: Jarvis handelt vollautomatisch für dein Übungsdepot.") }]);
+    return done(`<p>🚀 Profit-Modus ist an, ${esc(jarvisTitle())}. Ab jetzt arbeite ich für dein Übungsdepot auf maximalen Gewinn – mit Disziplin:</p>
+      <ul><li>Ich scanne laufend alle ${STOCKS.length} Aktien und kaufe nur die mit dem besten Chance-Risiko: Aufwärtstrend, starkes Momentum, Konfidenz ab 55 %.</li>
+      <li>Ich setze bis zu 90 % des Depots ein, aber höchstens 12 % pro Aktie und 35 % pro Branche.</li>
+      <li>Jede Position bekommt Stop und Kursziel – auch deine bestehenden verwalte ich mit. Gewinne sichere ich mit Trailing-Stops, Verluste schneide ich früh ab.</li>
+      <li>Notbremse: Liegt das Depot an einem Tag 4 % im Minus, pausiere ich automatisch.</li></ul>
+      <p class="muted">Ehrlich: Auch die beste Strategie macht mal Verluste – niemand kann Gewinne garantieren. Das hier ist virtuelles Geld; du lernst, wie Profis handeln. Keine Anlageberatung.</p>`, () => profitMode(true), ["Wie läuft der Profit-Modus?", "Profit-Modus aus"]);
   }
   // Jarvis-Sprachmodus per Text starten
   if (/^(jarvis|hey jarvis|sprachmodus|sprich mit mir)$/.test(t)) return done(`<p>✦ Jarvis hört zu – sprich einfach los.</p>`, () => startJarvis());
