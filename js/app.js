@@ -1287,7 +1287,24 @@ function openPlans(reason) {
     (reason ? reason + " " : "") +
     (PAYMENT_CONFIG.mode === "live" ? `Sichere Zahlung über Stripe · ${PAYMENT_CONFIG.trialDays} Tage kostenlos testen · jederzeit kündbar. Der Handel im Depot läuft weiterhin mit virtuellem Geld.` : "Demo: Es findet keine Zahlung statt – Tarife lassen sich frei ausprobieren.");
   renderPlans($("#modal-plans"));
+  const pr = $("#plans-promo");
+  if (pr) {
+    pr.hidden = PAYMENT_CONFIG.mode !== "live";
+    $("#plans-promo-input").value = promoCode;
+    $("#plans-promo-state").textContent = promoCode ? `✓ ${promoCode} wird an der Kasse eingelöst` : "";
+  }
   openModal("#plans-modal");
+}
+function applyPromoInput() {
+  const code = $("#plans-promo-input").value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
+  promoCode = code;
+  try {
+    if (code) sessionStorage.setItem("akytex-promo", code);
+    else sessionStorage.removeItem("akytex-promo");
+  } catch (_) {
+    /* ignorieren */
+  }
+  $("#plans-promo-state").textContent = code ? `✓ ${code} wird an der Kasse eingelöst` : "";
 }
 function setPlan(id, quiet = false) {
   const p = planById(id);
@@ -2400,7 +2417,7 @@ function greetChat() {
   const h = new Date().getHours();
   const hi = h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
   const name = account.state.profile?.name?.split(" ")[0];
-  chat.push({ role: "assistant", reveal: true, html: `<p>${hi}${name ? " " + esc(name) : ""}! Ich bin <b>AKYTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>`, follow: ["Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Tagesplan"] });
+  chat.push({ role: "assistant", reveal: true, html: `<p>${hi}${name ? " " + esc(name) : ""}! Ich bin <b>AKYTEX AI</b>, dein persönlicher Assistent. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend – und ich steuere die App für dich: „Zeig mir Tesla auf 4 Stunden“, „SAP auf die Watchlist“, „Öffne den Shop“ oder „Schreib einen Post zu NVDA“. Per 🎙️ auch mit Sprache.</p>`, follow: ["Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Tagesplan"] });
 }
 function chatAbort() {
   chatCtl?.abort();
@@ -2422,8 +2439,32 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function sendChat(text) {
   text = text.trim();
   if (!text) return;
-  if (!aiMode()) return openPlans("Der Berater-Chat ist Teil von AKYTEX AI.");
+  const voice = voiceTurn;
+  voiceTurn = false;
   if (chat.some((m) => m.pending || m.streaming)) return toast("Einen Moment – AKYTEX AI antwortet noch.", "info");
+  // App-Befehle („öffne den Shop“, „dunkles Design“, „SAP auf die Watchlist“) sofort ausführen – auch ohne AI-Tarif
+  const cmd = appCommand(text);
+  if (cmd || !aiMode()) {
+    chat.push({ role: "user", text });
+    const reply = cmd
+      ? { role: "assistant", reveal: true, html: cmd.html, actions: cmd.actions, follow: cmd.follow }
+      : { role: "assistant", reveal: true, html: `<p>Die App steuere ich für dich in jedem Tarif – sag z. B. „Öffne den Shop“, „Zeig mir Tesla“ oder „Dunkles Design“. Für Beratung, Analysen und den Autopiloten brauchst du <b>AKYTEX AI</b>.</p>`, actions: [{ label: "Tarife ansehen", primary: true, run: () => runAppControl("open_plans") }], follow: ["Öffne den Shop", "Zeig mir Tesla", "Öffne mein Depot"] };
+    chat.push(reply);
+    chatStick = true;
+    renderChat();
+    saveChat();
+    haptic(6);
+    if (cmd?.run)
+      setTimeout(() => {
+        try {
+          cmd.run();
+        } catch (e) {
+          toast(e.message, "error");
+        }
+      }, 420);
+    if (voice) speak(reply.html.replace(/<[^>]+>/g, " "));
+    return;
+  }
   chat.push({ role: "user", text });
   const msg = { role: "assistant", pending: true, status: chatStatus(text) };
   chat.push(msg);
@@ -2433,6 +2474,7 @@ async function sendChat(text) {
   if (llm && !llmOff) {
     try {
       await llmAnswer(text, msg);
+      if (voice) speak(msg.plain || "");
       return;
     } catch (e) {
       if (e?.code === "cancelled") {
@@ -2462,10 +2504,11 @@ async function sendChat(text) {
   bump(msg, { pending: false, reveal: true, html: (msg.note ? `<p class="muted">${msg.note}</p>` : "") + ans.html, actions: ans.actions, follow: ans.follow });
   renderChat();
   saveChat();
+  if (voice) speak(ans.html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "));
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt.
+  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt. Du bist zugleich der persönliche Assistent der App: Mit app_control öffnest du Ansichten, Aktien, Tarife oder Einzahlungen, wenn der Nutzer das möchte. Geld bewegst du nie selbst – Käufe, Einzahlungen und Abos bestätigt immer der Nutzer. Denke voraus: Schlage passende nächste Schritte vor (Alarm, Stop, Watchlist), ohne aufdringlich zu sein.
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -2475,6 +2518,23 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
   const turns = [{ role: "user", content: rules }, ...history, { role: "user", content: text }];
   const proposals = [];
   const tools = [
+    {
+      name: "app_control",
+      description: "Steuert die AKYTEX-App für den Nutzer, wenn er das ausdrücklich möchte: navigate (value: home, chart, markets, ideas, clips, ai, shop, portfolio, account, legal), open_symbol (value: Ticker), set_timeframe (value: 1m, 5m, 15m, 1h, 4h, 1D, 1W), set_theme (value: dark oder light), watchlist_add / watchlist_remove (value: Ticker), autopilot_off, open_plans, open_cancel, open_funding (value: in oder out), open_cart, legal (value: impressum, privacy, terms, withdrawal, risk), account (value: profile, billing, invoices).",
+      inputSchema: { type: "object", properties: { action: { type: "string" }, value: { type: "string" } }, required: ["action"] },
+      execute: (i) => runAppControl(String(i.action || ""), i.value),
+    },
+    { name: "community_stats", description: "Bilanz der eigenen Ideen, Clips und Royalties des Nutzers in der Community.", execute: () => socialStats().replace(/<[^>]+>/g, " ") },
+    {
+      name: "draft_post",
+      description: "Schreibt einen Social-Media-Post (Ideen-Börse, Clip-Beschreibung) zu einer Aktie mit Kennzahlen, Hashtags und dem Hinweis „keine Anlageberatung“.",
+      inputSchema: { type: "object", properties: { symbol: { type: "string" } }, required: ["symbol"] },
+      execute: (i) => {
+        const sym = String(i.symbol || "").toUpperCase();
+        if (!market.has(sym)) throw new Error("Unbekanntes Symbol");
+        return socialPostText(sym);
+      },
+    },
     { name: "get_portfolio", description: "Liefert das Depot des Nutzers: Gesamtwert, Guthaben, Depot-Score, Positionen mit Gewicht, Gewinn/Verlust und AI-Rating sowie Hinweise.", execute: () => aiEngine.toolPortfolio() },
     {
       name: "analyze_stock",
@@ -2589,6 +2649,14 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
 }
 
 function runAiAction(a, btn) {
+  if (a.run) {
+    a.run();
+    if (a.label === "Rückgängig") {
+      btn.disabled = true;
+      btn.textContent = "✓ Rückgängig gemacht";
+    }
+    return;
+  }
   if (a.open) return setSymbol(a.open);
   if (a.fund) return openFund(a.fund, a.amount);
   const done = () => {
@@ -2793,7 +2861,7 @@ function bindAI() {
     }
     const ask = t.closest("[data-ask]");
     if (ask) {
-      if (settings.view !== "ai") setView("ai");
+      if (settings.view !== "ai" && !assistantOpen()) openAssistant(false);
       return sendChat(ask.dataset.ask);
     }
     const act = t.closest("[data-ai-act]");
@@ -2897,14 +2965,28 @@ function choosePlan(id) {
   }
   openCheckout(id);
 }
+$("#plans-promo-input")?.addEventListener("change", applyPromoInput);
+$("#plans-promo-btn")?.addEventListener("click", applyPromoInput);
 // ---------- AKYTEX Pay ----------
 // Ein elegantes Bezahl-Sheet für Abos, Shop-Bestellungen und Zahlungsmethoden (Testmodus)
 let pay = null;
+// Gutscheincode für echte Zahlungen: aus dem Tarif-Fenster oder per Link (?code=AKYTEXLEO), wird bei Stripe vorausgefüllt
+let promoCode = "";
+try {
+  promoCode = new URLSearchParams(location.search).get("code")?.toUpperCase() || sessionStorage.getItem("akytex-promo") || "";
+  if (promoCode) sessionStorage.setItem("akytex-promo", promoCode);
+} catch (_) {
+  /* ohne Speicher gilt der Code nur für diese Seite */
+}
 function openCheckout(planId, startStep = 0) {
-  if (startStep === 2) return openPay({ kind: "method" });
+  if (startStep === 2) {
+    // Zahlungsmethode echter Abos ändert der Kunde im Stripe-Kundenportal
+    if (PAYMENT_CONFIG.mode === "live" && PAYMENT_CONFIG.stripePortal) return window.open(PAYMENT_CONFIG.stripePortal, "_blank", "noopener");
+    return openPay({ kind: "method" });
+  }
   const link = stripeLinkFor(planId, settings.billing);
   if (link && PAYMENT_CONFIG.mode === "live") {
-    location.href = stripeUrl(link);
+    location.href = stripeUrl(link, promoCode || undefined);
     return;
   }
   openPay({ kind: "sub", planId, billing: settings.billing, addons: settings.addons.slice() });
@@ -3939,12 +4021,41 @@ let legalTab = "impressum";
 const PH = (t) => `<mark class="ph">[${t}]</mark>`;
 // Firmendaten aus js/config.js – fehlt ein Wert, bleibt der markierte Platzhalter stehen
 const CO = (key, label) => (CONFIG.company[key] ? esc(CONFIG.company[key]) : PH(label));
+// Rechtstexte – Vorlagen nach deutschem Recht, befüllt aus js/config.js. Vor dem Livegang anwaltlich prüfen lassen.
+const CN = () => (CONFIG.company.name ? esc(CONFIG.company.name) : PH("Firmenname"));
+const CADDR = () => `${CO("street", "Straße Hausnummer")}, ${CO("zipCity", "PLZ Ort")}`;
+const LIVEPAY = () => PAYMENT_CONFIG.mode === "live";
 const LEGAL = {
-  impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${CO("name", "Firmenname und Rechtsform")}<br>${CO("street", "Straße Hausnummer")}<br>${CO("zipCity", "PLZ Ort")}<br>${esc(CONFIG.company.country)}</p><p><b>Vertreten durch:</b> ${CO("representative", "Vor- und Nachname der verantwortlichen Person")}<br><b>Kontakt:</b> ${CO("email", "E-Mail")} · ${CO("phone", "Telefon")}${CONFIG.company.register ? `<br><b>Registereintrag:</b> ${esc(CONFIG.company.register)}` : ""}${CONFIG.company.vatId ? `<br><b>USt-IdNr.:</b> ${esc(CONFIG.company.vatId)}` : ""}</p><p><b>Aufsicht:</b> ${LIVE.trading ? CO("supervisory", "Aufsichtsbehörde") + (CONFIG.trading.partnerName ? ` · Depotführung und Orderausführung durch ${esc(CONFIG.trading.partnerName)}` : "") : "Aktuell kein Handel mit echtem Geld (virtuelles Depot)."}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${CONFIG.company.contentResponsible ? esc(CONFIG.company.contentResponsible) : CO("representative", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}</p>`,
-  privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li>${PAYMENT_CONFIG.mode === "live" ? `<li><b>Zahlungen:</b> Abos bezahlst du über Stripe (Stripe Payments Europe Ltd., Irland). Deine Zahlungsdaten gibst du direkt bei Stripe ein, wir erhalten sie nicht. Zweck: Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO). Details: stripe.com/de/privacy</li>` : "<li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li>"}<li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${CO("name", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}, ${CO("email", "Kontakt")} · Datenschutz-Kontakt: ${CO("privacyContact", "Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
-  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKYTEX von ${CO("name", "Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKYTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
-  withdrawal: () => `<h2>Widerrufsbelehrung (Vorlage)</h2><p><b>Widerrufsrecht:</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${CO("name", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}, ${CO("email", "E-Mail")}) mittels einer eindeutigen Erklärung über deinen Entschluss informieren.</p><p><b>Folgen des Widerrufs:</b> Wir erstatten alle Zahlungen unverzüglich, spätestens binnen vierzehn Tagen. ${PH("Regelung bei vorzeitigem Leistungsbeginn anwaltlich prüfen")}</p>`,
-  risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKYTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
+  impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${CO("name", "Firmenname und Rechtsform")}<br>${CO("street", "Straße Hausnummer")}<br>${CO("zipCity", "PLZ Ort")}<br>${esc(CONFIG.company.country)}</p><p><b>Vertreten durch:</b> ${CO("representative", "Vor- und Nachname der verantwortlichen Person")}<br><b>Kontakt:</b> ${CO("email", "E-Mail")} · ${CO("phone", "Telefon")}${CONFIG.company.register ? `<br><b>Registereintrag:</b> ${esc(CONFIG.company.register)}` : ""}${CONFIG.company.vatId ? `<br><b>USt-IdNr.:</b> ${esc(CONFIG.company.vatId)}` : ""}</p><p><b>Aufsicht:</b> ${LIVE.trading ? CO("supervisory", "Aufsichtsbehörde") + (CONFIG.trading.partnerName ? ` · Depotführung und Orderausführung durch ${esc(CONFIG.trading.partnerName)}` : "") : "Kein Handel mit echtem Geld und keine erlaubnispflichtigen Finanzdienstleistungen – das Depot ist virtuell."}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${CONFIG.company.contentResponsible ? esc(CONFIG.company.contentResponsible) : CO("representative", "Name")}, ${CADDR()}</p>
+    <h3>Kontaktstelle nach dem Digital Services Act</h3><p>Zentrale Kontaktstelle für Behörden und Nutzer (Art. 11 und 12 DSA): ${CO("email", "E-Mail")}. Kommunikation auf Deutsch oder Englisch. Rechtswidrige Inhalte in Ideen, Kommentaren oder Clips kannst du direkt über „Melden“ oder per E-Mail melden.</p>
+    <h3>Verbraucherstreitbeilegung</h3><p>Wir sind nicht bereit und nicht verpflichtet, an Streitbeilegungsverfahren vor einer Verbraucherschlichtungsstelle teilzunehmen.</p>`,
+  privacy: () => `<h2>Datenschutzerklärung</h2>
+    <h3>1. Verantwortlicher</h3><p>${CN()}, ${CADDR()}, vertreten durch ${CO("representative", "Name")} · ${CO("email", "E-Mail")}${CONFIG.company.privacyContact ? ` · Datenschutz: ${esc(CONFIG.company.privacyContact)}` : ""}</p>
+    <h3>2. Kurz gesagt</h3><ul><li>Kein Tracking, keine Werbe-Cookies, keine Analyse-Tools, keine Social-Media-Plugins.</li><li>Profil, Depot, Einstellungen, Ideen und Chatverlauf speichert die App <b>nur lokal in deinem Browser</b> (Local Storage/IndexedDB). Das ist für die Funktion unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG) und wird nicht an uns übertragen. Du kannst es jederzeit im Konto exportieren oder löschen.</li><li>Schriften und Programmbibliotheken liefern wir selbst aus – es gibt keine Verbindung zu Google Fonts oder anderen Drittanbietern.</li></ul>
+    <h3>3. Hosting</h3><p>Die Website wird über GitHub Pages (GitHub, Inc., USA) ausgeliefert. Beim Aufruf verarbeitet GitHub technisch notwendige Verbindungsdaten wie IP-Adresse, Zeitpunkt und abgerufene Datei, um die Seite auszuliefern und die Sicherheit zu gewährleisten (Art. 6 Abs. 1 lit. f DSGVO). Die Übermittlung in die USA erfolgt auf Grundlage des EU-US Data Privacy Framework bzw. von Standardvertragsklauseln.</p>
+    ${LIVEPAY() ? `<h3>4. Zahlungen über Stripe</h3><p>Abos bezahlst du über Stripe (Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Dublin 2, Irland). Deine Zahlungsdaten gibst du direkt bei Stripe ein, wir erhalten sie nicht. Wir erhalten von Stripe Name, E-Mail-Adresse, gewählten Tarif, Zahlungsstatus und Rechnungsdaten zur Vertragsabwicklung (Art. 6 Abs. 1 lit. b DSGVO) und bewahren Rechnungsdaten entsprechend der steuer- und handelsrechtlichen Pflichten auf (bis zu 10 Jahre, Art. 6 Abs. 1 lit. c DSGVO). Stripe kann Daten auch in Drittländern verarbeiten; Details: stripe.com/de/privacy.</p>` : `<h3>4. Zahlungen</h3><p>Der Checkout läuft derzeit im Testmodus; es werden keine Zahlungsdaten gespeichert oder übertragen.</p>`}
+    <h3>5. KI-Funktionen</h3><p>AKYTEX AI rechnet standardmäßig vollständig in deinem Browser. Nur wenn du die App in einer Claude-Umgebung nutzt, wird deine Chat-Frage samt der dafür nötigen Depotdaten an das Sprachmodell von Anthropic übermittelt (Art. 6 Abs. 1 lit. b DSGVO). Die Sprachausgabe und Spracheingabe nutzen die Funktionen deines Browsers bzw. Betriebssystems.</p>
+    <h3>6. Kontakt per E-Mail</h3><p>Schreibst du uns, verarbeiten wir deine Angaben zur Bearbeitung der Anfrage (Art. 6 Abs. 1 lit. b bzw. f DSGVO) und löschen sie, sobald sie nicht mehr erforderlich sind.</p>
+    <h3>7. Deine Rechte</h3><p>Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21 DSGVO). Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim Hamburgischen Beauftragten für Datenschutz und Informationsfreiheit.</p>`,
+  terms: () => `<h2>Allgemeine Geschäftsbedingungen</h2><ol class="legal-ol">
+    <li><b>Anbieter und Geltungsbereich.</b> Diese AGB gelten für alle Verträge über die Nutzung von AKYTEX (Website und App) zwischen dir und ${CN()}, ${CADDR()} („wir“). Abweichende Bedingungen gelten nicht.</li>
+    <li><b>Leistungen.</b> AKYTEX bietet Charts, Kurs- und Marktanalysen, Community-Funktionen und – je nach Tarif – die KI-Funktionen von AKYTEX AI. Das Depot ist <b>virtuell</b>: Kurse können simuliert sein, gehandelt wird mit Spielgeld. Wir führen keine echten Wertpapiergeschäfte aus, nehmen keine Kundengelder an und erbringen keine Anlageberatung, Anlagevermittlung oder Vermögensverwaltung.</li>
+    <li><b>Keine Anlageberatung, KI-Hinweis.</b> Analysen, Bewertungen, Ideen, Autopilot-Entscheidungen und Antworten von AKYTEX AI werden automatisch erzeugt, können fehlerhaft sein und sind keine Empfehlung zum Kauf oder Verkauf von Finanzinstrumenten. Du sprichst mit einer KI, nicht mit einem Menschen. Triff Anlageentscheidungen eigenverantwortlich.</li>
+    <li><b>Vertragsschluss.</b> Die Darstellung der Tarife ist kein bindendes Angebot. Mit Klick auf den Bezahl-Button bei unserem Zahlungsdienstleister Stripe gibst du ein verbindliches Angebot ab; der Vertrag kommt mit der Bestätigung per E-Mail bzw. der Freischaltung zustande. Vertragssprache ist Deutsch.</li>
+    <li><b>Testphase.</b> Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase. Kündigst du innerhalb der Testphase, entstehen keine Kosten. Andernfalls beginnt danach die kostenpflichtige Laufzeit.</li>
+    <li><b>Preise und Zahlung.</b> Es gelten die bei Vertragsschluss angezeigten Preise; sie sind Endpreise. Die Zahlung erfolgt im Voraus für den jeweiligen Abrechnungszeitraum über Stripe mit den dort angebotenen Zahlungsarten. Gutscheincodes sind nicht mit anderen Aktionen kombinierbar, sofern nicht anders angegeben.</li>
+    <li><b>Laufzeit und Kündigung.</b> Monatstarife laufen einen Monat und verlängern sich jeweils um einen Monat; du kannst jederzeit zum Ende des laufenden Monats kündigen. Jahrestarife laufen zunächst ein Jahr; danach läuft der Vertrag auf unbestimmte Zeit weiter und ist jederzeit mit einer Frist von einem Monat kündbar – bereits für die Zeit danach gezahlte Beträge erstatten wir anteilig. Kündigen kannst du über „Verträge hier kündigen“, im Kundenportal oder per E-Mail. Das Recht zur außerordentlichen Kündigung bleibt unberührt.</li>
+    <li><b>Deine Pflichten und Community.</b> Du bist für deine Inhalte (Ideen, Kommentare, Clips) verantwortlich. Verboten sind rechtswidrige, beleidigende, irreführende oder marktmanipulative Inhalte, das Ausgeben von Ideen als Anlageberatung sowie Inhalte, an denen du keine Rechte hast. Ideen und Clips mit Anlagebezug sind als persönliche Meinung zu kennzeichnen; Interessenkonflikte (z. B. eigene Positionen) musst du offenlegen. Wir dürfen gemeldete oder rechtswidrige Inhalte entfernen und Konten bei schweren Verstößen sperren.</li>
+    <li><b>Verfügbarkeit.</b> Wir bemühen uns um eine hohe Verfügbarkeit, schulden aber keine ununterbrochene Erreichbarkeit. Wartungen und Weiterentwicklungen können Funktionen vorübergehend einschränken.</li>
+    <li><b>Haftung.</b> Wir haften unbeschränkt bei Vorsatz und grober Fahrlässigkeit, bei Verletzung von Leben, Körper oder Gesundheit und nach dem Produkthaftungsgesetz. Bei leichter Fahrlässigkeit haften wir nur für die Verletzung wesentlicher Vertragspflichten und begrenzt auf den vertragstypischen, vorhersehbaren Schaden. Für Entscheidungen, die du auf Grundlage von Analysen oder KI-Antworten triffst, und für Verluste mit echtem Geld außerhalb von AKYTEX haften wir nicht.</li>
+    <li><b>Änderungen.</b> Änderungen dieser AGB oder der Preise teilen wir dir mindestens sechs Wochen vorher mit; du kannst dann zum Zeitpunkt der Änderung kündigen.</li>
+    <li><b>Schlussbestimmungen.</b> Es gilt deutsches Recht; zwingende Verbraucherschutzvorschriften deines Wohnsitzstaates bleiben unberührt. Sind einzelne Bestimmungen unwirksam, bleibt der Vertrag im Übrigen wirksam.</li></ol><p class="muted small">Stand: ${new Date().toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</p>`,
+  withdrawal: () => `<h2>Widerrufsbelehrung</h2><p class="muted">Für Verbraucher bei Verträgen über digitale Dienstleistungen (Abos).</p>
+    <h3>Widerrufsrecht</h3><p>Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${CN()}, ${CADDR()}, E-Mail: ${CO("email", "E-Mail")}, Telefon: ${CO("phone", "Telefon")}) mittels einer eindeutigen Erklärung (z. B. eine E-Mail) über deinen Entschluss, diesen Vertrag zu widerrufen, informieren. Du kannst dafür das unten stehende Muster-Widerrufsformular verwenden, das jedoch nicht vorgeschrieben ist. Zur Wahrung der Widerrufsfrist reicht es aus, dass du die Mitteilung über die Ausübung des Widerrufsrechts vor Ablauf der Widerrufsfrist absendest.</p>
+    <h3>Folgen des Widerrufs</h3><p>Wenn du diesen Vertrag widerrufst, haben wir dir alle Zahlungen, die wir von dir erhalten haben, unverzüglich und spätestens binnen vierzehn Tagen ab dem Tag zurückzuzahlen, an dem die Mitteilung über deinen Widerruf bei uns eingegangen ist. Für diese Rückzahlung verwenden wir dasselbe Zahlungsmittel, das du bei der ursprünglichen Transaktion eingesetzt hast, es sei denn, mit dir wurde ausdrücklich etwas anderes vereinbart; in keinem Fall werden dir wegen dieser Rückzahlung Entgelte berechnet. Hast du verlangt, dass die Dienstleistungen während der Widerrufsfrist beginnen sollen, so hast du uns einen angemessenen Betrag zu zahlen, der dem Anteil der bis zum Widerruf bereits erbrachten Dienstleistungen im Vergleich zum Gesamtumfang der im Vertrag vorgesehenen Dienstleistungen entspricht.</p>
+    <p class="muted">Hinweis: Die ersten ${PAYMENT_CONFIG.trialDays} Tage jedes Abos sind eine kostenlose Testphase. Widerrufst oder kündigst du in dieser Zeit, zahlst du nichts.</p>
+    <h3>Muster-Widerrufsformular</h3><div class="legal-form">(Wenn du den Vertrag widerrufen willst, fülle bitte dieses Formular aus und sende es zurück.)<br><br>An ${CN()}, ${CADDR()}, E-Mail: ${CO("email", "E-Mail")}<br><br>Hiermit widerrufe(n) ich/wir (*) den von mir/uns (*) abgeschlossenen Vertrag über die Erbringung der folgenden Dienstleistung: ______<br>Bestellt am (*)/erhalten am (*): ______<br>Name des/der Verbraucher(s): ______<br>Anschrift des/der Verbraucher(s): ______<br>Unterschrift des/der Verbraucher(s) (nur bei Mitteilung auf Papier)<br>Datum: ______<br><br>(*) Unzutreffendes streichen.</div>`,
+  risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien und anderen Finanzinstrumenten ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Backtests, Prognosen, Ideen-Trefferquoten und KI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKYTEX AI ist eine KI. Ihre Antworten entstehen automatisch, können falsch oder unvollständig sein und sind <b>keine Anlageberatung</b>.</li><li>Der Autopilot handelt regelbasiert und nur im virtuellen Depot; auch automatische Stops schützen in der Realität nicht vor Kurslücken.</li><li>Ideen und Clips der Community sind Meinungen einzelner Nutzer – prüfe sie selbst und achte auf mögliche Interessenkonflikte.</li><li>${LIVE.money ? `Depotführung und Ausführung erfolgen durch ${esc(CONFIG.trading.partnerName || "unseren Partner")}; es gelten dessen Bedingungen und Kosteninformationen.` : "Das Depot in AKYTEX ist virtuell: Es wird mit Spielgeld gehandelt, Kurse können simuliert sein."}</li></ul>`,
 };
 function renderLegal() {
   $$("#legal-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.legal === legalTab));
@@ -4577,6 +4688,9 @@ function speak(text) {
 }
 
 // ---------- AKYTEX Store ----------
+// Mit echten Zahlungen bleiben Käufe im Store (Merch, Kurse, Reports, Geschenkkarten) geschlossen, bis Versand,
+// Verpackungsregister und Einlösung von Geschenkkarten stehen. Themen-Pakete laufen weiter mit dem Depot-Guthaben.
+const SHOP_CLOSED = PAYMENT_CONFIG.mode === "live";
 let shopCat = "all";
 const basketAmt = {};
 const MERCH_SVG = {
@@ -4621,7 +4735,7 @@ function renderShop() {
   const prodCard = (p, i) => {
     const owned = shop.owns(p.id);
     const inCart = shop.state.cart.some((c) => c.id === p.id);
-    const cta = owned ? `<button class="btn" data-shop-open="${p.id}">${p.cat === "strategy" ? "Aktivieren" : "Öffnen"}</button>` : `<button class="btn primary" data-shop-add="${p.id}">${inCart && !p.physical && !p.gift ? "✓ Im Warenkorb" : "In den Warenkorb"}</button>`;
+    const cta = owned ? `<button class="btn" data-shop-open="${p.id}">${p.cat === "strategy" ? "Aktivieren" : "Öffnen"}</button>` : SHOP_CLOSED ? `<button class="btn" disabled title="Der Store für echte Käufe öffnet bald">Bald verfügbar</button>` : `<button class="btn primary" data-shop-add="${p.id}">${inCart && !p.physical && !p.gift ? "✓ Im Warenkorb" : "In den Warenkorb"}</button>`;
     return `<article class="p-card" style="--k:${i}">${productArt(p)}<div class="p-body"><span class="p-cat">${CATS[p.cat]}</span><b>${esc(p.name)}</b><small>${esc(p.desc)}</small><div class="p-foot"><b class="p-price">${eur(p.price)}</b>${owned ? '<span class="incl">gekauft</span>' : ""}${cta}</div></div></article>`;
   };
   let html = "";
@@ -4731,6 +4845,7 @@ function bindShop() {
     if (bi) return investBasket(bi.dataset.binvest);
     const add = t.closest("[data-shop-add]");
     if (add) {
+      if (SHOP_CLOSED) return toast("Echte Käufe im Store starten bald. Abos kannst du schon jetzt über Stripe abschließen.", "info", "Store");
       const ok = shop.add(add.dataset.shopAdd);
       haptic(8);
       syncCart();
@@ -4770,6 +4885,7 @@ function bindShop() {
       if (settings.view === "shop") renderShop();
       return;
     }
+    if (t.closest("[data-cart-checkout]") && SHOP_CLOSED) return toast("Echte Käufe im Store starten bald. Abos kannst du schon jetzt über Stripe abschließen.", "info", "Store");
     if (t.closest("[data-cart-checkout]")) {
       closeCart();
       return openPay({ kind: "shop", items: shop.cartItems() });
@@ -5449,3 +5565,410 @@ function startLive() {
     });
   }
 }
+
+// =====================================================================
+// AKYTEX AI als persönlicher Assistent: steuert die App per Text oder Sprache,
+// ist auf jeder Seite erreichbar (Λ-Knopf, Strg/Cmd+J) und meldet sich vorausschauend.
+// =====================================================================
+const ASSIST_KEY = "akytex-v2-assistant";
+const assist = (() => {
+  const base = { symViews: {}, viewCount: {}, dismissed: {}, shown: {}, proactive: true, lastHint: 0 };
+  try {
+    return { ...base, ...JSON.parse(localStorage.getItem(ASSIST_KEY) || "{}") };
+  } catch (_) {
+    return base;
+  }
+})();
+const saveAssist = () => {
+  try {
+    localStorage.setItem(ASSIST_KEY, JSON.stringify(assist));
+  } catch (_) {
+    /* ignorieren */
+  }
+};
+function assistantOpen() {
+  return !$("#jarvis-panel").hidden;
+}
+function openAssistant(focus = true) {
+  if (settings.view === "ai") {
+    if (focus) $("#chat-input").focus();
+    return;
+  }
+  const panel = $("#jarvis-panel");
+  $("#jp-body").appendChild($(".ai-chat"));
+  if (!chat.length) greetChat();
+  renderChat();
+  panel.hidden = false;
+  requestAnimationFrame(() => panel.classList.add("open"));
+  document.body.classList.add("jarvis-on");
+  hideHint();
+  if (focus && matchMedia("(pointer: fine)").matches) setTimeout(() => $("#chat-input").focus(), 250);
+}
+function closeAssistant() {
+  const panel = $("#jarvis-panel");
+  if (panel.hidden) return;
+  panel.classList.remove("open");
+  document.body.classList.remove("jarvis-on");
+  setTimeout(() => {
+    if (panel.classList.contains("open")) return;
+    panel.hidden = true;
+    $("#ai-main").prepend($(".ai-chat"));
+  }, 320);
+}
+
+// ---------- App-Steuerung ----------
+const VIEW_WORDS = [
+  [/\b(start|home|startseite)\b/, "home"],
+  [/\bchart\b/, "chart"],
+  [/(märkte|maerkte|marktübersicht|screener|heatmap)/, "markets"],
+  [/(ideen|ideenbörse|community)/, "ideas"],
+  [/\b(clips?|videos?)\b/, "clips"],
+  [/\b(ki|ai|cockpit|labor)\b/, "ai"],
+  [/\b(shop|store)\b/, "shop"],
+  [/\b(depot|portfolio)\b/, "portfolio"],
+  [/\bbusiness\b/, "business"],
+  [/\b(konto|profil|einstellungen)\b/, "account"],
+  [/(rechtliches|impressum|datenschutz|\bagb\b|widerruf|risikohinweis)/, "legal"],
+];
+const VIEW_NAMES = { home: "Startseite", chart: "Chart", markets: "Märkte", ideas: "Ideen-Börse", clips: "Clips", ai: "AI-Cockpit", shop: "Store", portfolio: "Depot", business: "Business", account: "Konto", legal: "Rechtliches" };
+const TF_WORDS = [
+  [/\b1\s*(min|minute)/, "1m"],
+  [/\b5\s*(min|minuten)/, "5m"],
+  [/\b15\s*(min|minuten)/, "15m"],
+  [/\b(4\s*(h|std|stunden)|4h)\b/, "4h"],
+  [/\b(1\s*(h|std|stunde)|1h|stunden(chart|kerzen)?|stündlich)\b/, "1h"],
+  [/\b(1\s*(t|tag)|tages(chart|kerzen)?|täglich|1d)\b/, "1D"],
+  [/\b(1\s*w|woche|wochen(chart|kerzen)?|wöchentlich)\b/, "1W"],
+];
+// Wortgrenzen mit Unicode, damit auch „Öffne“ erkannt wird (\b kennt keine Umlaute)
+const OPEN_VERB = /(?<![\p{L}])(öffne|öffnen|oeffne|zeig|zeige|zeigen|geh|gehe|wechsel|wechsle|wechsele|bring|navigier|navigiere|spring|lade|mach .* auf)(?![\p{L}])/u;
+
+// Führt eine Aktion aus und liefert eine kurze Rückmeldung (auch für das Sprachmodell)
+function runAppControl(action, value = "") {
+  const v = String(value || "").trim();
+  const mobileClose = () => innerWidth < 760 && setTimeout(closeAssistant, 900);
+  switch (action) {
+    case "navigate": {
+      const view = VIEWS.includes(v) ? v : null;
+      if (!view) throw new Error("Unbekannte Ansicht " + v);
+      if (view === "ai") closeAssistant();
+      setView(view);
+      mobileClose();
+      return `${VIEW_NAMES[view]} geöffnet`;
+    }
+    case "legal": {
+      legalTab = ["impressum", "privacy", "terms", "withdrawal", "risk"].includes(v) ? v : "impressum";
+      setView("legal");
+      mobileClose();
+      return "Rechtstext geöffnet";
+    }
+    case "account": {
+      acctTab = ["profile", "billing", "invoices", "notify", "security"].includes(v) ? v : "profile";
+      setView("account");
+      mobileClose();
+      return "Konto geöffnet";
+    }
+    case "open_symbol": {
+      const sym = v.toUpperCase();
+      if (!market.has(sym)) throw new Error("Unbekanntes Symbol " + sym);
+      setSymbol(sym);
+      mobileClose();
+      return `${sym} im Chart geöffnet`;
+    }
+    case "set_timeframe": {
+      const tf = TIMEFRAMES.find((t) => t.id.toLowerCase() === v.toLowerCase())?.id;
+      if (!tf) throw new Error("Unbekannter Zeitrahmen " + v);
+      setTimeframe(tf);
+      if (settings.view !== "chart") setView("chart");
+      mobileClose();
+      return `Zeitrahmen ${TIMEFRAMES.find((t) => t.id === tf).label}`;
+    }
+    case "set_theme": {
+      const want = v === "light" ? "light" : "dark";
+      if (settings.theme !== want) $("#theme-btn").click();
+      return want === "dark" ? "Dunkles Design an" : "Helles Design an";
+    }
+    case "watchlist_add":
+    case "watchlist_remove": {
+      const sym = v.toUpperCase();
+      if (!market.has(sym)) throw new Error("Unbekanntes Symbol " + sym);
+      const inList = settings.watchlist.includes(sym);
+      if ((action === "watchlist_add") !== inList) toggleWatch(sym);
+      return action === "watchlist_add" ? `${sym} steht auf deiner Watchlist` : `${sym} von der Watchlist entfernt`;
+    }
+    case "autopilot_off": {
+      aiEngine.state.config.enabled = false;
+      aiEngine.save();
+      renderAIHeader();
+      if (settings.view === "ai") renderAutopilot();
+      return "Autopilot pausiert";
+    }
+    case "open_plans":
+      closeAssistant();
+      openPlans();
+      return "Tarife geöffnet";
+    case "open_cancel":
+      closeAssistant();
+      openCancel();
+      return "Kündigung geöffnet";
+    case "open_funding":
+      closeAssistant();
+      openFund(v === "out" ? "out" : "in");
+      return v === "out" ? "Auszahlung geöffnet" : "Einzahlung geöffnet";
+    case "open_cart":
+      closeAssistant();
+      openCart();
+      return "Warenkorb geöffnet";
+    default:
+      throw new Error("Unbekannte Aktion " + action);
+  }
+}
+
+// Erkennt App-Befehle in normaler Sprache. Liefert eine Antwort oder null (dann antwortet die KI).
+function appCommand(text) {
+  const t = text.toLowerCase().replace(/[!?.]+$/g, "").trim();
+  const syms = aiEngine.findSymbols(text);
+  const done = (html, run, follow, actions = []) => ({ html, run, follow, actions });
+  const undo = (label, fn) => ({ label: "Rückgängig", run: fn });
+
+  // Design
+  if (/(dunkel|dunkl|dark|nacht|hell|light)/.test(t) && /(modus|mode|design|theme|mach|schalt|stell|wechsel|aktivier)/.test(t)) {
+    const want = /(dunkel|dunkl|dark|nacht)/.test(t) ? "dark" : "light";
+    const before = settings.theme;
+    return done(`<p>${want === "dark" ? "🌙 Dunkles" : "☀️ Helles"} Design ist an.</p>`, () => runAppControl("set_theme", want), null, [undo("", () => runAppControl("set_theme", before))]);
+  }
+  // Zeitrahmen
+  const tfHit = TF_WORDS.find(([re]) => re.test(t));
+  if (tfHit && /(zeitraum|zeitrahmen|zeitebene|timeframe|intervall|kerzen|chart|stell|wechsel|auf)/.test(t) && !/(kauf|verkauf|sparplan|alarm|um \d)/.test(t)) {
+    if (syms[0]) setSymbol(syms[0]);
+    const label = TIMEFRAMES.find((x) => x.id === tfHit[1]).label;
+    return done(`<p>Chart${syms[0] ? " " + syms[0] : ""} steht jetzt auf <b>${label}</b>.</p>`, () => runAppControl("set_timeframe", tfHit[1]), syms[0] ? [`Warum bewertest du ${syms[0]} so?`] : null);
+  }
+  // Watchlist
+  if (/(watchlist|beobachtungsliste|merkliste)/.test(t) && syms.length && !/(generier|erstell|thema|themen)/.test(t)) {
+    const remove = /(entfern|lösch|loesch|raus|streich|nimm .* (raus|weg))/.test(t);
+    const list = syms.slice(0, 5);
+    return done(`<p>${remove ? "Entfernt" : "Hinzugefügt"}: <b>${list.join(", ")}</b>${remove ? " – nicht mehr auf deiner Watchlist." : " – ich behalte sie für dich im Blick und melde mich bei starken Signalen."}</p>`, () => list.forEach((s) => runAppControl(remove ? "watchlist_remove" : "watchlist_add", s)), null, [undo("", () => list.forEach((s) => runAppControl(remove ? "watchlist_add" : "watchlist_remove", s)))]);
+  }
+  // Autopilot
+  if (/autopilot/.test(t) && /(\baus\b|ausschalt|stopp|\bstop\b|deaktivier|pausier|anhalten|not-?aus)/.test(t)) return done(`<p>🛑 Der Autopilot ist pausiert. Offene Positionen bleiben unverändert.</p>`, () => runAppControl("autopilot_off"));
+  if (/autopilot/.test(t) && /(\ban\b|\bein\b|einschalt|start|aktivier)/.test(t)) {
+    if (!aiMode()) return done(`<p>Der Autopilot gehört zu <b>AKYTEX AI</b>.</p>`, null, null, [{ label: "Tarife ansehen", run: () => runAppControl("open_plans"), primary: true }]);
+    const c = aiEngine.state.config;
+    return done(`<p>Soll ich den Autopiloten mit der Strategie <b>${STRATEGIES[c.strategy].label}</b> starten? Budget ${c.budgetPct} % deines Depots, Stop −${c.stopPct} %, Ziel +${c.takePct} %. Er handelt nur im virtuellen Depot und jede Entscheidung landet im Protokoll.</p>`, null, null, [
+      { label: "Autopilot starten", primary: true, run: () => { c.enabled = true; aiEngine.save(); renderAIHeader(); if (settings.view === "ai") renderAutopilot(); toast("Der Autopilot ist aktiv.", "success", "🤖 Autopilot an"); } },
+    ]);
+  }
+  // Abo, Kündigung, Rechnungen, Warenkorb
+  if (/(kündig|kuendig)/.test(t) && /(abo|vertrag|tarif|mitgliedschaft)/.test(t)) return done(`<p>Ich öffne die Kündigung für dich.</p>`, () => runAppControl("open_cancel"));
+  if (/(rechnung|beleg)/.test(t) && /(zeig|öffne|wo|meine)/.test(t)) return done(`<p>Hier sind deine Rechnungen.</p>`, () => runAppControl("account", "invoices"));
+  if (/(tarif|abo|upgrade|premium|preise)/.test(t) && /(zeig|öffne|abschließ|abschliess|buch|wechsel|änder|aender|upgrade|kauf|hol)/.test(t) && !syms.length) return done(`<p>Hier sind alle Tarife – ${PAYMENT_CONFIG.trialDays} Tage kostenlos testen.</p>`, () => runAppControl("open_plans"));
+  if (/warenkorb/.test(t)) return done(`<p>Dein Warenkorb ist offen.</p>`, () => runAppControl("open_cart"));
+  // Social: eigene Ideen und Clip-Texte
+  if (/(meine[rn]?|wie laufen|statistik|performance|reichweite)/.test(t) && /(ideen|posts|beiträge|beitraege|clips|royalt)/.test(t)) return done(socialStats(), null, ["Schreib einen Post zu NVDA", "Welche Idee soll ich als Nächstes teilen?"]);
+  if (/(caption|hashtag|post|beitrag|text|beschreibung)/.test(t) && /(schreib|erstell|mach|generier|formulier|für|fuer|zu)/.test(t) && syms.length) return done(socialPost(syms[0]), null, [`Idee zu ${syms[0]} schreiben`, "Wie laufen meine Ideen?"], [{ label: "Text kopieren", run: () => navigator.clipboard?.writeText(socialPostText(syms[0])).then(() => toast("Text kopiert.", "success")) }, { label: "Clip aufnehmen", run: () => runAppControl("navigate", "clips") }]);
+  // Rechtstexte
+  const legalMap = [[/impressum/, "impressum"], [/datenschutz/, "privacy"], [/\bagb\b|geschäftsbeding/, "terms"], [/widerruf/, "withdrawal"], [/risiko(hinweis)?/, "risk"]];
+  const lg = legalMap.find(([re]) => re.test(t));
+  if (lg && (OPEN_VERB.test(t) || t.split(" ").length <= 2)) return done(`<p>Ich öffne ${lg[1] === "impressum" ? "das Impressum" : lg[1] === "privacy" ? "die Datenschutzerklärung" : lg[1] === "terms" ? "die AGB" : lg[1] === "withdrawal" ? "die Widerrufsbelehrung" : "die Risikohinweise"}.</p>`, () => runAppControl("legal", lg[1]));
+  // Chart einer Aktie öffnen: „zeig mir Tesla“, „öffne den Chart von SAP“
+  if (syms.length && OPEN_VERB.test(t) && !/(kauf|verkauf|warum|prognose|backtest|muster|analys|bewert|halt|soll)/.test(t)) return done(`<p>${syms[0]} ist im Chart geöffnet.</p>`, () => runAppControl("open_symbol", syms[0]), [`Warum bewertest du ${syms[0]} so?`, `Prognose für ${syms[0]}`]);
+  // Navigation
+  if (OPEN_VERB.test(t) || t.split(" ").length <= 2) {
+    const hit = VIEW_WORDS.find(([re]) => re.test(t));
+    if (hit && !(hit[1] === "chart" && syms.length)) {
+      if (hit[1] === "account" && /(abo|zahlung)/.test(t)) return done(`<p>Hier verwaltest du dein Abo.</p>`, () => runAppControl("account", "billing"));
+      return done(`<p>${VIEW_NAMES[hit[1]]} ist geöffnet.</p>`, () => runAppControl("navigate", hit[1]));
+    }
+  }
+  return null;
+}
+
+function socialStats() {
+  const mine = community.state.ideas.map((i) => community.evaluate(i));
+  const open = mine.filter((i) => i.status === "open");
+  const copies = mine.reduce((a, i) => a + (i.copies || 0), 0);
+  const best = [...mine].sort((a, b) => (b.perf || 0) - (a.perf || 0))[0];
+  const clips = (clipsState.myGen || []).length;
+  if (!mine.length && !clips) return `<p>Du hast noch nichts geteilt. Soll ich dir eine erste Idee schreiben? Sag z. B. „Idee zu SAP schreiben“ – ich formuliere Titel, Begründung, Ziel und Stop.</p>`;
+  return `<p><b>Deine Community-Bilanz</b></p><ul><li>${mine.length} Ideen, davon ${open.length} laufend</li><li>${copies}× von anderen gehandelt · Royalties ${eur(community.state.royaltyTotal || 0)}</li>${best ? `<li>Beste Idee: <b>${best.symbol || best.sym}</b> ${pct(best.perf || 0)}</li>` : ""}<li>${clips} eigene Clips</li></ul><p>Tipp: Ideen mit klarem Ziel und Stop werden deutlich öfter gehandelt.</p>`;
+}
+function socialPostText(sym) {
+  const v = aiEngine.scan(sym);
+  const up = v.dayChg >= 0;
+  return `${sym} ${up ? "📈" : "📉"} ${pct(v.dayChg)} heute – AKYTEX AI sagt: ${v.rating.label}. ${v.reason.charAt(0).toUpperCase() + v.reason.slice(1)}. Unterstützung ${num(v.d.levels.support)} €, Widerstand ${num(v.d.levels.resistance)} €. Wie seht ihr das? #${sym} #Aktien #Trading #AKYTEX (Meine Meinung, keine Anlageberatung)`;
+}
+function socialPost(sym) {
+  return `<p>Entwurf für deinen Post zu <b>${sym}</b>:</p><blockquote class="post-draft">${esc(socialPostText(sym))}</blockquote><p class="muted small">Der Hinweis „keine Anlageberatung“ gehört bei Posts mit Aktienbezug dazu.</p>`;
+}
+
+// ---------- Vorausschauende Hinweise ----------
+let hintTimer = 0;
+const bootAt = Date.now();
+function hideHint() {
+  const h = $("#jarvis-hint");
+  if (!h || h.hidden) return;
+  h.classList.remove("show");
+  setTimeout(() => (h.hidden = true), 300);
+}
+function showHint(key, text, actions = [], { category = key.split("-")[0], cooldown = 6 * 3600e3 } = {}) {
+  const now = Date.now();
+  if (!assist.proactive || assist.dismissed[category] || document.hidden) return false;
+  if (now - bootAt < 20000 || now - assist.lastHint < 90000 || now - (assist.shown[key] || 0) < cooldown) return false;
+  if ($$(".modal.open").length || assistantOpen()) return false;
+  assist.lastHint = now;
+  assist.shown[key] = now;
+  saveAssist();
+  const h = $("#jarvis-hint");
+  h._actions = actions;
+  h._category = category;
+  h.innerHTML = `<span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span><div class="jh-body"><small>AKYTEX AI · Vorschlag</small><p>${text}</p><div class="jh-acts">${actions.map((a, i) => `<button class="${i === 0 ? "btn primary small" : "mini-btn"}" data-jh="${i}">${esc(a.label)}</button>`).join("")}<button class="jh-never" data-jh-never>Nicht mehr vorschlagen</button></div></div><button class="jh-x" data-jh-x aria-label="Schließen">✕</button>`;
+  h.hidden = false;
+  requestAnimationFrame(() => h.classList.add("show"));
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(hideHint, 16000);
+  haptic(6);
+  return true;
+}
+function assistantTick() {
+  if (document.hidden) return;
+  const now = Date.now();
+  const today = new Date().toDateString();
+  // 1) Morgens: Briefing anbieten
+  if (aiMode() && new Date().getHours() >= 6 && assist.briefDay !== today) {
+    const s = lab.sentimentIndex(market);
+    if (showHint(`brief-${today}`, `Guten Morgen! Stimmung heute: <b>${s.label || s.value}</b>. Dein Briefing und der Tagesplan sind fertig.`, [{ label: "Briefing", ask: "Wie ist die Marktlage heute?" }, { label: "Tagesplan", ask: "Tagesplan" }], { category: "brief", cooldown: 20 * 3600e3 })) {
+      assist.briefDay = today;
+      saveAssist();
+      return;
+    }
+  }
+  // 2) Oft angesehene Aktie ohne Watchlist-Eintrag
+  const sym = settings.symbol;
+  if (settings.view === "chart" && (assist.symViews[sym] || 0) >= 3 && !settings.watchlist.includes(sym) && now - (assist.dwellSince || now) > 15000) {
+    if (showHint(`watch-${sym}`, `Du schaust dir <b>${sym}</b> öfter an. Soll ich es auf deine Watchlist setzen? Dann melde ich mich bei starken Signalen.`, [{ label: "Auf Watchlist", run: () => runAppControl("watchlist_add", sym) }], { category: "watch", cooldown: 30 * 86400e3 })) return;
+  }
+  // 3) Position im Minus ohne Absicherung
+  for (const [s, p] of Object.entries(broker.state.positions)) {
+    const px = market.get(s).price;
+    const pnl = (px - p.avg) / p.avg;
+    const hasStop = broker.state.orders.some((o) => o.symbol === s && o.side === "sell" && o.type === "stop");
+    if (pnl < -0.05 && !hasStop && showHint(`stop-${s}-${today}`, `<b>${s}</b> liegt ${pct(pnl)} im Minus und hat keinen Stop. Soll ich dir zeigen, wo ein Stop sinnvoll wäre?`, [{ label: "Beraten", ask: `Soll ich ${s} verkaufen?` }], { category: "stop", cooldown: 20 * 3600e3 })) return;
+  }
+  // 4) Kurs nahe Unterstützung oder Widerstand (aktuelle Aktie und Positionen)
+  for (const s of [...new Set([sym, ...Object.keys(broker.state.positions)])].slice(0, 6)) {
+    const v = aiEngine.scan(s);
+    const px = v.price;
+    for (const [lvl, name] of [[v.d.levels.resistance, "Widerstand"], [v.d.levels.support, "Unterstützung"]]) {
+      if (!(lvl > 0) || Math.abs(px - lvl) / px > 0.006) continue;
+      const hasAlert = broker.state.alerts.some((a) => a.active && a.symbol === s && Math.abs(a.price - lvl) / lvl < 0.01);
+      if (!hasAlert && showHint(`lvl-${s}-${Math.round(lvl)}`, `<b>${s}</b> nähert sich dem ${name} bei <b>${num(lvl)} €</b>. Ein Durchbruch wäre ${name === "Widerstand" ? "ein Kaufsignal" : "ein Warnsignal"}. Alarm setzen?`, [{ label: "Alarm setzen", run: () => { broker.addAlert(s, +lvl.toFixed(2)); toast(`Alarm für ${s} bei ${num(lvl)} € aktiv.`, "success"); } }, { label: "Analyse", ask: `Warum bewertest du ${s} so?` }], { category: "lvl", cooldown: 12 * 3600e3 })) return;
+    }
+  }
+  // 5) Viel ungenutztes Guthaben
+  const eq = broker.equity();
+  if (aiMode() && eq > 0 && broker.buyingPower() / eq > 0.6 && showHint(`cash-${today}`, `${Math.round((broker.buyingPower() / eq) * 100)} % deines Depots liegen ungenutzt. Soll ich dir die stärksten Chancen von heute zeigen?`, [{ label: "Chancen zeigen", ask: "Was soll ich jetzt kaufen?" }], { category: "cash", cooldown: 22 * 3600e3 })) return;
+  // 6) Testphase endet bald (fair und transparent)
+  const sub = account.state.sub;
+  if (sub?.status === "trial" && sub.trialEnds - now < 2 * 86400e3 && sub.trialEnds > now) showHint(`trial-${sub.trialEnds}`, `Deine Testphase endet am <b>${new Date(sub.trialEnds).toLocaleDateString("de-DE")}</b>. Danach kostet ${planTitle(planById(sub.plan))} ${eur(sub.perMonth)} pro Monat. Du kannst vorher jederzeit kündigen.`, [{ label: "Abo verwalten", run: () => runAppControl("account", "billing") }], { category: "trial", cooldown: 24 * 3600e3 });
+}
+
+// ---------- Spracheingabe ----------
+let voiceTurn = false;
+function bindVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const btn = $("#chat-mic");
+  if (!SR || !btn) return btn && (btn.hidden = true);
+  let rec = null;
+  btn.addEventListener("click", () => {
+    if (rec) return rec.stop();
+    rec = new SR();
+    rec.lang = "de-DE";
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    const input = $("#chat-input");
+    let finalText = "";
+    rec.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      input.value = (finalText + interim).trim();
+    };
+    rec.onerror = (e) => {
+      if (e.error === "not-allowed") toast("Bitte erlaube den Zugriff aufs Mikrofon.", "error", "Spracheingabe");
+    };
+    rec.onend = () => {
+      btn.classList.remove("rec");
+      rec = null;
+      const text = (finalText || input.value).trim();
+      if (text) {
+        input.value = "";
+        voiceTurn = true;
+        sendChat(text);
+      }
+    };
+    btn.classList.add("rec");
+    haptic(8);
+    rec.start();
+  });
+}
+
+function initAssistant() {
+  $("#jarvis-fab").addEventListener("click", () => (assistantOpen() ? closeAssistant() : openAssistant()));
+  $("#jp-close").addEventListener("click", closeAssistant);
+  $("#jp-proactive").checked = assist.proactive;
+  $("#jp-proactive").addEventListener("change", (e) => {
+    assist.proactive = e.target.checked;
+    assist.dismissed = {};
+    saveAssist();
+    toast(assist.proactive ? "Ich melde mich, wenn es wichtig wird." : "Keine Vorschläge mehr – du kannst mich jederzeit fragen.", "info", "Vorausschauend " + (assist.proactive ? "an" : "aus"));
+  });
+  $("#jarvis-hint").addEventListener("click", (e) => {
+    const h = e.currentTarget;
+    const b = e.target.closest("[data-jh]");
+    if (b) {
+      const a = h._actions[+b.dataset.jh];
+      hideHint();
+      if (a.ask) {
+        openAssistant(false);
+        return sendChat(a.ask);
+      }
+      return a.run?.();
+    }
+    if (e.target.closest("[data-jh-never]")) {
+      assist.dismissed[h._category] = true;
+      saveAssist();
+      toast("Alles klar – diese Art Vorschlag zeige ich nicht mehr.", "info");
+    }
+    if (e.target.closest("[data-jh-x], [data-jh-never]")) hideHint();
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+      e.preventDefault();
+      assistantOpen() ? closeAssistant() : openAssistant();
+    }
+    if (e.key === "Escape" && assistantOpen()) closeAssistant();
+  });
+  // Nutzung merken (nur lokal), um vorausschauend helfen zu können
+  let lastSym = settings.symbol;
+  assist.dwellSince = Date.now();
+  setInterval(() => {
+    if (settings.symbol !== lastSym) {
+      lastSym = settings.symbol;
+      assist.dwellSince = Date.now();
+      assist.symViews[lastSym] = (assist.symViews[lastSym] || 0) + 1;
+      saveAssist();
+    }
+  }, 2000);
+  // Neue KI-Meldungen (Signale, Risiken) als Vorschlag zeigen
+  aiEngine.on("feed", (m) => {
+    if (!aiMode() || settings.view === "ai" || m.kind === "briefing") return;
+    showHint(`feed-${m.id}`, `${m.icon || "✦"} <b>${esc(m.title)}</b><br>${esc(m.text || "")}`, m.sym ? [{ label: "Details", ask: `Was hältst du von ${m.sym}?` }, { label: "Chart", run: () => runAppControl("open_symbol", m.sym) }] : [], { category: "feed", cooldown: 3600e3 });
+  });
+  setInterval(assistantTick, 15000);
+  bindVoice();
+}
+
+initAssistant();

@@ -27,9 +27,7 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Akytex" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@300;500;600;700&display=swap" />
+  <link rel="stylesheet" href="css/fonts.css" />
   <link rel="stylesheet" href="css/app.css" />
 </head>
 <body>
@@ -512,8 +510,8 @@
       <div class="ai-layout" id="ai-main">
         <section class="card ai-chat">
           <div class="card-head chat-head">
-            <div class="chat-id"><span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span><div><h2>AKYTEX AI</h2><small><i class="live-dot"></i><span id="ai-model"></span></small></div></div>
-            <button class="link-btn" id="chat-new" title="Neuen Chat beginnen">＋ Neuer Chat</button>
+            <div class="chat-id"><span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span><div><h2>AKYTEX AI <span class="ki-badge" title="Du sprichst mit einer künstlichen Intelligenz. Antworten entstehen automatisch und sind keine Anlageberatung.">KI</span></h2><small><i class="live-dot"></i><span id="ai-model"></span></small></div></div>
+            <div class="chat-head-acts"><button class="link-btn" id="chat-new" title="Neuen Chat beginnen">＋ Neu</button><button class="icon-btn jp-only" id="jp-close" title="Schließen (Esc)" aria-label="Assistent schließen">✕</button></div>
           </div>
           <div class="chat-log" id="chat-log" aria-live="polite"></div>
           <div class="chat-sugg" id="chat-sugg">
@@ -525,7 +523,8 @@
             <button data-ask="Wie funktioniert der Autopilot?">Autopilot?</button>
           </div>
           <form class="chat-form" id="chat-form" autocomplete="off">
-            <input type="text" id="chat-input" placeholder="Frag AKYTEX AI … z. B. „Kaufe 5 SAP“ oder „Was ist ein RSI?“" maxlength="400" />
+            <input type="text" id="chat-input" placeholder="Frag oder sag AKYTEX AI, was es tun soll …" maxlength="400" />
+            <button type="button" class="icon-btn mic-btn" id="chat-mic" title="Spracheingabe" aria-label="Spracheingabe">🎙️</button>
             <button type="button" class="icon-btn" id="chat-stop" hidden title="Antwort stoppen">■</button>
             <button type="submit" class="send-btn" aria-label="Senden">➤</button>
           </form>
@@ -756,6 +755,7 @@
     <div class="modal-box wide" role="dialog" aria-label="Tarife">
       <div class="modal-head"><h3>Wähle deinen Tarif</h3><button class="icon-btn" data-close>✕</button></div>
       <p class="muted plans-note" id="plans-note">Demo: Es findet keine Zahlung statt – Tarife lassen sich frei ausprobieren.</p>
+      <div class="plans-promo" id="plans-promo" hidden><input type="text" id="plans-promo-input" placeholder="Gutscheincode" autocomplete="off" maxlength="40" /><button class="btn" id="plans-promo-btn" type="button">Einlösen</button><small class="up" id="plans-promo-state"></small></div>
       <div class="plans" id="modal-plans"></div>
     </div>
   </div>
@@ -807,6 +807,13 @@
       </form>
     </div>
   </div>
+
+  <button class="jarvis-fab" id="jarvis-fab" aria-label="AKYTEX AI öffnen (Strg+J)" title="AKYTEX AI (Strg+J)"><span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span></button>
+  <div class="jarvis-hint" id="jarvis-hint" role="status" aria-live="polite" hidden></div>
+  <aside class="jarvis-panel" id="jarvis-panel" aria-label="AKYTEX AI Assistent" hidden>
+    <div class="jp-body" id="jp-body"></div>
+    <label class="jp-proactive"><input type="checkbox" id="jp-proactive" checked /> Vorausschauend: Ich melde mich, wenn es wichtig wird</label>
+  </aside>
 
   <div class="modal pay-modal" id="pay-modal" hidden>
     <div class="modal-box pay-box" role="dialog" aria-label="AKYTEX Pay"><div class="pay-sheet" id="pay-sheet"></div></div>
