@@ -766,8 +766,27 @@ async function handle(text) {
   listen();
 }
 
+// Abkürzungen ausschreiben – klingt natürlicher und trennt Sätze nicht mitten im „z. B.“
+const ABBR = [
+  [/\bz\.\s?B\./g, "zum Beispiel"],
+  [/\bd\.\s?h\./g, "das heißt"],
+  [/\bu\.\s?a\./g, "unter anderem"],
+  [/\bbzw\./g, "beziehungsweise"],
+  [/\bca\./g, "circa"],
+  [/\binkl\./g, "inklusive"],
+  [/\bevtl\./g, "eventuell"],
+  [/\bggf\./g, "gegebenenfalls"],
+  [/\busw\./g, "und so weiter"],
+  [/\betc\./g, "et cetera"],
+  [/\bNr\./g, "Nummer"],
+  [/\bMio\./g, "Millionen"],
+  [/\bMrd\./g, "Milliarden"],
+  [/\bTsd\./g, "Tausend"],
+];
+const speakable = (t) => ABBR.reduce((s, [re, w]) => s.replace(re, w), t);
 // Sprechen Satz für Satz: natürlichere Pausen, keine Abbrüche bei langen Texten, Untertitel synchron
 function speakOut(text) {
+  text = speakable(text);
   return new Promise((resolve) => {
     setState("speak");
     showSay("");
@@ -789,16 +808,20 @@ function speakOut(text) {
     }
     speechSynthesis.cancel();
     // Sätze bilden, sehr kurze Stücke an den nächsten Satz hängen
+    // Satzende nur bei . ! ? mit folgendem Leerzeichen – „1.500“ oder „3,5.“ bleiben ganz
     const parts = [];
-    const re = /[^.!?]+[.!?]*\s*/g;
-    let m;
-    while ((m = re.exec(text))) {
-      const t = m[0];
-      if (!t.trim()) continue;
-      const last = parts[parts.length - 1];
-      if (last && last.text.length < 40) last.text += t;
-      else parts.push({ text: t, at: m.index });
-    }
+    let start = 0;
+    const push = (end) => {
+      const t = text.slice(start, end);
+      if (t.trim()) {
+        const last = parts[parts.length - 1];
+        if (last && last.text.length < 40) last.text += t;
+        else parts.push({ text: t, at: start });
+      }
+      start = end;
+    };
+    for (let i = 0; i < text.length; i++) if (".!?".includes(text[i]) && (i + 1 === text.length || /\s/.test(text[i + 1]))) push(i + 1);
+    push(text.length);
     const v = bestVoice || pickVoice();
     let left = parts.length;
     let bounded = false;
