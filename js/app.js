@@ -35,6 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
+const APP_VERSION = "4.3"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -1207,7 +1208,24 @@ function setupInstall() {
   });
 
   if ("serviceWorker" in navigator && location.protocol !== "file:") {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    // Neue Version erkannt → einmal automatisch neu laden, damit niemand auf einem alten Stand hängt
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      toast("AKYTEX wurde aktualisiert – lade die neue Version …", "info", "✨ Update");
+      setTimeout(() => location.reload(), 1200);
+    });
+    navigator.serviceWorker
+      .register("./sw.js", { updateViaCache: "none" })
+      .then((reg) => {
+        const check = () => reg.update().catch(() => {});
+        check();
+        setInterval(check, 15 * 60000);
+        document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && check());
+      })
+      .catch(() => {});
   }
 }
 
@@ -4258,7 +4276,7 @@ function injectFooters() {
       <div><b>Konto</b><button data-goto="account" data-acct-tab="billing">Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">Rechnungen</button><button data-cancel-open class="sf-cancel">Verträge hier kündigen</button></div>
       <div><b>Rechtliches</b><button data-legal-open="impressum">Impressum</button><button data-legal-open="privacy">Datenschutz</button><button data-legal-open="terms">AGB</button><button data-legal-open="risk">Risikohinweise</button></div>
     </div>
-    <small class="sf-note">${PAYMENT_CONFIG.mode === "live" ? "Trading-Simulator: Kurse und Depot sind simuliert, gehandelt wird mit virtuellem Geld. Keine Bots: Community-Inhalte stammen nur von echten Nutzern, Clips kommen nur von echten Nutzern. Abos werden über Stripe echt abgerechnet. Keine Anlageberatung." : "Trading-Simulator: Kurse und Zahlungen sind simuliert. Keine Bots in der Community. Keine Anlageberatung. Kein echtes Geld."} © ${new Date().getFullYear()} ${PH("Firmenname")}</small>
+    <small class="sf-note">${PAYMENT_CONFIG.mode === "live" ? "Trading-Simulator: Kurse und Depot sind simuliert, gehandelt wird mit virtuellem Geld. Keine Bots: Community-Inhalte und Clips stammen nur von echten Nutzern. Abos werden über Stripe echt abgerechnet. Keine Anlageberatung." : "Trading-Simulator: Kurse und Zahlungen sind simuliert. Keine Bots in der Community. Keine Anlageberatung. Kein echtes Geld."} © ${new Date().getFullYear()} ${PH("Firmenname")} · Version ${APP_VERSION}</small>
   </footer>`;
   $$(".site-foot-slot").forEach((s) => (s.outerHTML = foot));
   for (const v of ["markets", "ideas", "ai", "portfolio", "business", "account", "legal"]) {
