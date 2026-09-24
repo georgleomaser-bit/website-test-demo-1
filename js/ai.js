@@ -10,8 +10,8 @@ const pc = (v) => (v > 0 ? "+" : "") + f2(v * 100) + " %";
 const eur = (v) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
 const deaccent = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 // Umgangssprachliche Namen und Marken
-const ALIASES = { google: "GOOGL", alphabet: "GOOGL", youtube: "GOOGL", facebook: "META", instagram: "META", whatsapp: "META", mercedes: "MBG", daimler: "MBG", vw: "VOW3", volkswagen: "VOW3", telekom: "DTE", "munchener ruck": "MUV2", "munich re": "MUV2", lvmh: "MC", "louis vuitton": "MC", totalenergies: "TTE", nestle: "NESN", ozempic: "NOVO", "coca cola": "KO", cola: "KO", mcdonalds: "MCD", "mc donalds": "MCD", exxon: "XOM", jpmorgan: "JPM", "jp morgan": "JPM", "deutsche post": "DHL", "deutsche bank": "DBK", "johnson": "JNJ", microsoft: "MSFT", amazon: "AMZN", nvidia: "NVDA" };
-const STOP = new Set(["aktie", "aktien", "kaufen", "verkaufen", "welche", "sollte", "meinem", "meiner", "depot", "heute", "morgen", "markt", "lohnt", "risiko", "wieviel", "prognose", "backtest", "muster", "warum", "besser", "gerade", "einzahlen", "auszahlen", "danke", "hallo", "bitte", "zeitplan", "sparplan", "chancen", "steuer", "sektor", "sektoren", "stimmung", "tagesplan", "portfolio", "analyse", "trade", "trades", "order", "orders"]);
+const ALIASES = { google: "GOOGL", alphabet: "GOOGL", youtube: "GOOGL", facebook: "META", instagram: "META", whatsapp: "META", mercedes: "MBG", daimler: "MBG", vw: "VOW3", volkswagen: "VOW3", telekom: "DTE", "munchener ruck": "MUV2", "munich re": "MUV2", lvmh: "MC", "louis vuitton": "MC", totalenergies: "TTE", nestle: "NESN", ozempic: "NOVO", "coca cola": "KO", cola: "KO", mcdonalds: "MCD", "mc donalds": "MCD", exxon: "XOM", jpmorgan: "JPM", "jp morgan": "JPM", "deutsche post": "DHL", "deutsche bank": "DBK", "johnson": "JNJ", microsoft: "MSFT", amazon: "AMZN", nvidia: "NVDA", "n video": "NVDA", envidia: "NVDA", "en vidia": "NVDA", "in video": "NVDA", "rhein metall": "RHM", rheinmetall: "RHM", "s a p": "SAP", "es a p": "SAP", palantier: "PLTR", "palan tier": "PLTR", tesler: "TSLA", "apple aktie": "AAPL", "äppel": "AAPL", "net flix": "NFLX" };
+const STOP = new Set(["sie", "aktie", "aktien", "kaufen", "verkaufen", "welche", "sollte", "meinem", "meiner", "depot", "heute", "morgen", "markt", "lohnt", "risiko", "wieviel", "prognose", "backtest", "muster", "warum", "besser", "gerade", "einzahlen", "auszahlen", "danke", "hallo", "bitte", "zeitplan", "sparplan", "chancen", "steuer", "sektor", "sektoren", "stimmung", "tagesplan", "portfolio", "analyse", "trade", "trades", "order", "orders"]);
 // Tippfehler-Abstand (Damerau-Levenshtein, optimal string alignment)
 function osa(a, b) {
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
@@ -726,10 +726,12 @@ export class AkytexAI {
   findSymbols(text) {
     const out = [];
     const up = text.toUpperCase();
+    // Kürzel, die auch normale deutsche Wörter sind („sie“, „ko“, „v“), zählen nur in Großbuchstaben
+    const AMBIG = new Set(["SIE", "KO", "V", "MC", "BAS", "MA"]);
     const low = deaccent(text.toLowerCase());
     for (const st of this.market.list) {
       const first = deaccent(st.n.split(/[ .,-]/)[0].toLowerCase());
-      if (new RegExp(`\\b${st.s}\\b`).test(up) || (first.length > 3 && new RegExp(`\\b${first.replace(/[^a-z0-9]/g, "")}`).test(low))) out.push(st.s);
+      if (new RegExp(`\\b${st.s}\\b`).test(AMBIG.has(st.s) ? text : up) || (first.length > 3 && new RegExp(`\\b${first.replace(/[^a-z0-9]/g, "")}`).test(low))) out.push(st.s);
     }
     for (const [alias, sym] of Object.entries(ALIASES)) if (!out.includes(sym) && new RegExp(`\\b${alias}\\b`).test(low)) out.push(sym);
     if (out.length) return out;

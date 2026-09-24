@@ -14,6 +14,7 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { initAI, aiReady, aiChat } from "./ai.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = +process.env.PORT || 8080;
@@ -81,13 +82,13 @@ function send(res, status, body, headers = {}) {
   res.end(json ? JSON.stringify(body) : body);
 }
 const fail = (res, status, msg) => send(res, status, { ok: false, msg });
-async function readJson(req) {
+async function readJson(req, max = MAX_JSON) {
   if (!/^application\/json/.test(req.headers["content-type"] || "")) throw Object.assign(new Error("JSON erwartet."), { status: 415 });
   let size = 0;
   const chunks = [];
   for await (const c of req) {
     size += c.length;
-    if (size > MAX_JSON) throw Object.assign(new Error("Anfrage zu groß."), { status: 413 });
+    if (size > max) throw Object.assign(new Error("Anfrage zu groß."), { status: 413 });
     chunks.push(c);
   }
   try {
@@ -178,7 +179,13 @@ async function api(req, res, url) {
   const me = userOf(req);
   let m;
 
-  if (p === "/health") return send(res, 200, { ok: true, service: "akytex", clips: Object.values(db.clips).filter(visible).length });
+  if (p === "/health") return send(res, 200, { ok: true, service: "akytex", clips: Object.values(db.clips).filter(visible).length, ai: aiReady() });
+
+  // Echtes Sprachmodell für AKYTEX AI / Jarvis (nur mit ANTHROPIC_API_KEY)
+  if (p === "/ai/chat" && req.method === "POST") {
+    if (limited("ai:" + ip, 60, 600000)) return fail(res, 429, "Viele Fragen auf einmal – gib mir kurz eine Pause.");
+    return send(res, 200, { ok: true, ...(await aiChat(await readJson(req, 256 * 1024))) });
+  }
 
   // Anonymes Konto: Handle + geheimer Schlüssel (nur als Hash gespeichert)
   if (p === "/session" && req.method === "POST") {
@@ -424,4 +431,5 @@ const server = http.createServer(async (req, res) => {
 });
 server.requestTimeout = 10 * 60000; // große Uploads über langsame Leitungen
 server.headersTimeout = 30000;
-server.listen(PORT, () => console.log(`AKYTEX-Server läuft auf http://localhost:${PORT}  (Daten: ${DATA}${ADMIN_TOKEN.length >= 24 ? ", Moderation aktiv" : ", Moderation AUS – ADMIN_TOKEN setzen"})`));
+const aiOn = await initAI(DATA);
+server.listen(PORT, () => console.log(`AKYTEX-Server läuft auf http://localhost:${PORT}  (Daten: ${DATA}${ADMIN_TOKEN.length >= 24 ? ", Moderation aktiv" : ", Moderation AUS – ADMIN_TOKEN setzen"}${aiOn ? ", KI aktiv" : ", KI aus – ANTHROPIC_API_KEY setzen"})`));
