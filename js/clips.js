@@ -76,6 +76,8 @@ export function demoClips(market, traders) {
   return out;
 }
 
+const barCache = new Map();
+
 // ---------- Canvas-Renderer (9:16) ----------
 export function drawClip(ctx, W, H, clip, market, t, authorLabel) {
   const p = Math.min(1, t / CLIP_MS);
@@ -101,7 +103,10 @@ export function drawClip(ctx, W, H, clip, market, t, authorLabel) {
   ctx.globalAlpha = 1;
 
   // Chart-Replay (Stundenkerzen der letzten Tage)
-  const bars = aggregate(market.get(clip.sym).m1.slice(-60 * 24 * 5), "1h");
+  // Stundenkerzen höchstens einmal pro Sekunde neu berechnen statt in jedem Frame
+  let cached = barCache.get(clip.sym);
+  if (!cached || Date.now() - cached.at > 1000) barCache.set(clip.sym, (cached = { at: Date.now(), bars: aggregate(market.get(clip.sym).m1.slice(-60 * 24 * 5), "1h") }));
+  const bars = cached.bars;
   const closes = bars.map((b) => b.close);
   const n = Math.max(2, Math.floor(closes.length * (0.15 + 0.85 * Math.min(1, p * 1.25))));
   const vis = closes.slice(0, n);

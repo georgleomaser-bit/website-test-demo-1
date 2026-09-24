@@ -2,25 +2,16 @@
 // Standard ist der TESTMODUS: Es fließt kein Geld, und es werden nur Testkarten/Test-IBANs angenommen,
 // damit niemand echte Zahlungsdaten eingibt. Für echte Zahlungen Stripe-Zahlungslinks eintragen (siehe PAYMENTS.md).
 import { planById, planPrice, ADDONS } from "./plans.js";
+import { CONFIG, LIVE } from "./config.js";
 
 export const PAYMENT_CONFIG = {
-  mode: "test",
+  // "live", sobald in js/config.js Stripe-Links UND die Firmendaten fürs Impressum eingetragen sind –
+  // ohne Anbieterkennzeichnung darf in Deutschland nichts verkauft werden
+  mode: LIVE.payments && LIVE.legal ? "live" : "test",
   vatRate: 0.19,
   trialDays: 14,
-  // Stripe Payment Links, z. B. "pro-monthly": "https://buy.stripe.com/…" – leer = Test-Checkout in der App
-  stripeLinks: {
-    "plus-monthly": "",
-    "plus-yearly": "",
-    "pro-monthly": "",
-    "pro-yearly": "",
-    "elite-monthly": "",
-    "elite-yearly": "",
-    "ai-monthly": "",
-    "ai-yearly": "",
-    "aiprem-monthly": "",
-    "aiprem-yearly": "",
-  },
-  stripePortal: "", // Stripe-Kundenportal (Zahlungsmethode ändern, kündigen)
+  stripeLinks: CONFIG.stripe.links,
+  stripePortal: CONFIG.stripe.portal,
   promos: {
     AKYTEX20: { pct: 0.2, label: "20 % Rabatt im ersten Jahr" },
     START: { freeMonths: 1, label: "1 zusätzlicher Monat gratis" },

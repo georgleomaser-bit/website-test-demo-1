@@ -11,6 +11,8 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import { demoClips, drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
+import { CONFIG, LIVE } from "./config.js";
+import { connectMarket, connectBroker, loginUrl } from "./live.js";
 import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, FUNDING, ibanValid, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
 
 // ---------- Hilfsfunktionen ----------
@@ -102,7 +104,8 @@ broker.feeFn = () => planById(settings.plan).fee;
 const plan = () => planById(settings.plan);
 const planTitle = (p) => (p.name.startsWith("AKYTEX") ? p.name : "AKYTEX " + p.name);
 const aiEngine = new AkytexAI(market, broker);
-const aiMode = () => plan().limits.ai || null; // null | "assist" | "auto"
+// Mit echtem Geld handelt der Autopilot nie selbstständig (das wäre Vermögensverwaltung) – nur Vorschläge
+const aiMode = () => (LIVE.money && plan().limits.ai === "auto" ? "assist" : plan().limits.ai || null); // null | "assist" | "auto"
 const scheduler = new Scheduler(market, broker);
 const shop = new Shop(market);
 const hasAddon = (id) => settings.addons.includes(id) || ADDONS.find((a) => a.id === id).includedIn.includes(settings.plan);
@@ -285,10 +288,10 @@ function buildTicker() {
 function renderTicker() {
   for (const el of $$("#ticker .tk")) {
     const q = market.quote(el.dataset.sym);
-    el.querySelector(".p").textContent = num(q.price);
+    setText(el.querySelector(".p"), num(q.price));
     const c = el.querySelector(".c");
-    c.textContent = pct(q.changePct);
-    c.className = `c ${cls(q.changePct)}`;
+    setText(c, pct(q.changePct));
+    setClass(c, `c ${cls(q.changePct)}`);
   }
 }
 
@@ -350,6 +353,13 @@ function updateQuoteCard() {
 }
 
 // Kurs-Aufblitzen ohne erzwungenes Layout (kein offsetWidth-Trick): Klasse im nächsten Frame neu setzen
+// Nur schreiben, was sich geändert hat – jede DOM-Änderung kostet Stil- und Layoutberechnung
+function setText(el, v) {
+  if (el.textContent !== v) el.textContent = v;
+}
+function setClass(el, v) {
+  if (el.className !== v) el.className = v;
+}
 function flash(el, price, prev) {
   if (price === prev) return;
   el.classList.remove("fl-up", "fl-down");
@@ -373,13 +383,13 @@ function renderWatchlist() {
     const q = market.quote(tr.dataset.sym);
     const p = tr.querySelector(".p");
     flash(p, q.price, q.prev);
-    p.textContent = num(q.price);
+    setText(p, num(q.price));
     const c = tr.querySelector(".c");
-    c.textContent = sNum(q.change);
-    c.className = `num c ${cls(q.change)}`;
+    setText(c, sNum(q.change));
+    setClass(c, `num c ${cls(q.change)}`);
     const cp = tr.querySelector(".cp");
-    cp.textContent = pct(q.changePct);
-    cp.className = `num cp ${cls(q.change)}`;
+    setText(cp, pct(q.changePct));
+    setClass(cp, `num cp ${cls(q.change)}`);
   }
 }
 function renderWatchlistSelection() {
@@ -1088,15 +1098,18 @@ market.onTick(() => {
   requestAnimationFrame(() => {
     frame = false;
     if (settings.view === "chart") {
+      // Chart und Kurs bei jedem Tick, Nebenbereiche halb so oft – spart auf dem Handy die Hälfte der Arbeit
       chart.update();
       updateQuoteCard();
-      renderWatchlist();
-      renderRightPanel();
-      renderTicket();
-      renderAccountBar();
-      if ((ui.btab === "positions" || ui.btab === "orders") && slowTick % 2 === 0) renderBottom();
+      if (slowTick % 2 === 0) {
+        renderWatchlist();
+        renderRightPanel();
+        renderTicket();
+        renderAccountBar();
+        if (ui.btab === "positions" || ui.btab === "orders") renderBottom();
+      }
     }
-    renderTicker();
+    if (slowTick % 2 === 1) renderTicker();
     syncTitle();
     if (settings.view === "home") renderHomeLive();
     if (settings.view === "business" && slowTick % 5 === 0) renderBusiness();
@@ -1936,21 +1949,27 @@ function heroAnim(on) {
   cancelAnimationFrame(heroRaf);
   if (!on || !cv || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
   const ctx = cv.getContext("2d");
-  const dpr = Math.min(2, devicePixelRatio || 1);
+  const dpr = Math.min(1.5, devicePixelRatio || 1);
   const candles = [];
   let price = 0.5;
   let t = 0;
   const resize = () => {
-    cv.width = cv.clientWidth * dpr;
+    cv.width = Math.round(cv.clientWidth * dpr);
     cv.height = cv.clientHeight * dpr;
   };
   resize();
-  const draw = () => {
-    if (cv.width !== cv.clientWidth * dpr) resize();
+  let last = 0;
+  let visible = true;
+  new IntersectionObserver(([e]) => (visible = e.isIntersecting)).observe(cv);
+  const draw = (now = performance.now()) => {
+    heroRaf = requestAnimationFrame(draw);
+    if (!visible || document.hidden || now - last < 32) return; // 30 Bilder/s, nur wenn sichtbar
+    last = now;
+    if (cv.width !== Math.round(cv.clientWidth * dpr)) resize();
     const W = cv.width;
     const H = cv.height;
     t++;
-    if (t % 6 === 0) {
+    if (t % 3 === 0) {
       const o = price;
       price = Math.min(0.85, Math.max(0.15, price + (Math.random() - 0.47) * 0.035));
       candles.push({ x: W + 10, o, c: price, h: Math.max(o, price) + Math.random() * 0.02, l: Math.min(o, price) - Math.random() * 0.02 });
@@ -1958,7 +1977,7 @@ function heroAnim(on) {
     ctx.clearRect(0, 0, W, H);
     const bw = 7 * dpr;
     for (const c of candles) {
-      c.x -= 1.2 * dpr;
+      c.x -= 2.4 * dpr; // doppelte Schrittweite bei halber Bildrate: gleiche Geschwindigkeit
       const up = c.c >= c.o;
       const drift = (1 - c.x / W) * 0.25; // leicht ansteigend nach rechts
       const Y = (v) => H * (1 - v + drift - 0.1);
@@ -1972,7 +1991,6 @@ function heroAnim(on) {
       ctx.fillRect(c.x - bw / 2, Math.min(Y(c.o), Y(c.c)), bw, Math.max(2, Math.abs(Y(c.o) - Y(c.c))));
     }
     while (candles.length && candles[0].x < -20) candles.shift();
-    heroRaf = requestAnimationFrame(draw);
   };
   draw();
 }
@@ -3260,7 +3278,7 @@ function renderFund() {
   const m = fundMethod();
   const chips = inDir ? [50, 100, 250, 500, 1000].map((v) => `<button data-fund-chip="${v}">${v.toLocaleString("de-DE")} €</button>`).join("") : [[0.25, "25 %"], [0.5, "50 %"], [1, "Alles"]].map(([f, l]) => `<button data-fund-chip="${(Math.floor(broker.buyingPower() * f * 100) / 100).toFixed(2)}">${l}</button>`).join("");
   $("#fund-sheet").innerHTML = `
-    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div><span class="test-chip">🧪 Demo-Geld</span><button class="icon-btn" data-close>✕</button></div>
+    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div>${broker.live ? `<span class="test-chip live">🔒 Echtgeld</span>` : `<span class="test-chip">🧪 Demo-Geld</span>`}<button class="icon-btn" data-close>✕</button></div>
     <div class="seg fund-seg" role="tablist"><button class="${inDir ? "active" : ""}" data-fund-dir="in">Einzahlen</button><button class="${inDir ? "" : "active"}" data-fund-dir="out">Auszahlen</button><i class="seg-glider" style="transform:translateX(${inDir ? 0 : 100}%)"></i></div>
     <div class="fund-amount"><div class="fa-num" id="fa-num"></div><small id="fa-sub"></small></div>
     <div class="fund-chips">${chips}</div>
@@ -3274,7 +3292,7 @@ function renderFund() {
     <div class="fund-extra" id="fund-extra"></div>
     <p class="co-err" id="fund-err" hidden></p>
     <button class="hold-pay" id="fund-hold"><span class="hp-fill"></span><span class="hp-label" id="fund-label"></span></button>
-    <p class="ps-foot">🔒 Demo: Es wird kein echtes Geld bewegt. Echte Ein- und Auszahlungen gibt es erst mit einem lizenzierten Bankpartner.</p>`;
+    <p class="ps-foot">${broker.live ? `🔒 Ein- und Auszahlungen laufen über ${esc(CONFIG.trading.partnerName || "unseren Bankpartner")}. Dein Geld liegt getrennt vom Firmenvermögen.` : "🔒 Demo: Es wird kein echtes Geld bewegt. Echte Ein- und Auszahlungen gibt es erst mit einem lizenzierten Bankpartner."}</p>`;
   renderFundExtra();
   paintFundAmount(false);
   bindFundHold($("#fund-hold"), validateFund, runFund);
@@ -3282,6 +3300,11 @@ function renderFund() {
 function renderFundExtra() {
   const m = fundMethod();
   let h = "";
+  if (broker.live && fund.dir === "in") {
+    const ex = $("#fund-extra");
+    ex.innerHTML = `<p class="fe-note">${m.id === "transfer" ? "Nach dem Bestätigen zeigen wir dir die IBAN deines Depots." : "Nach dem Bestätigen geht es zur sicheren Bezahlseite unseres Partners."}</p>`;
+    return;
+  }
   if (fund.dir === "in" && m.id === "card") h = account.state.method?.type === "card" ? `<p class="fe-note">💳 Gespeicherte Karte: <b>${esc(account.state.method.label)}</b></p>` : `<label class="field"><span>Kartennummer (Testkarte)</span><input id="fe-card" inputmode="numeric" autocomplete="off" placeholder="4242 4242 4242 4242" value="${esc(fund.card)}" /></label>`;
   if (fund.dir === "in" && m.id === "sepa") h = `<label class="field"><span>Deine IBAN (Lastschriftmandat)</span><input id="fe-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" value="${esc(fund.iban)}" /></label><p class="fe-note">Das Geld ist sofort handelbar. Wir ziehen es in 1–3 Bankarbeitstagen ein.</p>`;
   if (fund.dir === "in" && m.id === "transfer") h = `<div class="fe-bank"><div><span>Empfänger</span><b>${esc(account.state.profile?.name || "Dein Name")} · AKYTEX</b></div><div><span>IBAN</span><b>${FUNDING.demoIban}</b><button class="mini-btn" data-copy="${FUNDING.demoIban}">Kopieren</button></div><div><span>Verwendungszweck</span><b>AKYTEX ${broker.state.created.toString(36).toUpperCase().slice(-6)}</b></div></div><p class="fe-note">Demo-IBAN – bitte nichts Echtes überweisen. In der Demo ist das Geld nach wenigen Sekunden da statt nach einem Werktag.</p>`;
@@ -3329,6 +3352,7 @@ function validateFund() {
     if (!ibanValid(fund.iban)) return "Bitte eine gültige IBAN für dein Referenzkonto eingeben.";
     return null;
   }
+  if (broker.live) return fund.dir === "in" || ibanValid(fund.iban) ? null : "Bitte eine gültige IBAN für dein Referenzkonto eingeben."; // Zahlart prüft der Partner
   if (m.instant && instantToday() + v > FUNDING.instantDailyLimit) return `Sofort-Einzahlungen sind auf ${eur(FUNDING.instantDailyLimit)} pro Tag begrenzt. Für größere Beträge nutze die Überweisung.`;
   if (m.id === "card" && account.state.method?.type !== "card") {
     const n = fund.card.replace(/\D/g, "");
@@ -3346,6 +3370,18 @@ async function runFund() {
   const v = fundAmount();
   const m = fundMethod();
   const label = btn.querySelector(".hp-label");
+  if (broker.live) {
+    label.innerHTML = `<span class="spinner sm"></span> Wird beauftragt …`;
+    try {
+      await broker.requestTransfer({ type: fund.dir, amount: v, method: m.id, iban: fund.iban.replace(/\s/g, "") || undefined });
+    } catch (e) {
+      btn.classList.remove("busy");
+      paintFundAmount(false);
+      return fundError(e.message);
+    }
+    $("#fund-sheet").innerHTML = `<div class="ps-success"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg><h2>${fund.dir === "in" ? "Einzahlung" : "Auszahlung"} beauftragt</h2><p class="muted">${eur(v)} · ${esc(m.name)}. Du siehst den Stand im Depot.</p><div class="co-done-actions"><button class="btn primary" data-close>Fertig</button></div></div>`;
+    return;
+  }
   if (fund.dir === "in" && (m.wallet || /3ds/.test(TEST_CARDS[fund.card.replace(/\D/g, "")]?.result || ""))) {
     label.innerHTML = `<span class="face"><i></i></span> Bestätige …`;
     const ok = await secureDialog(m.id === "card" ? "card" : m.id, m.id === "card", $("#fund-modal"));
@@ -3889,11 +3925,13 @@ function bindAccount() {
 // ---------- Rechtliches (Vorlagen) ----------
 let legalTab = "impressum";
 const PH = (t) => `<mark class="ph">[${t}]</mark>`;
+// Firmendaten aus js/config.js – fehlt ein Wert, bleibt der markierte Platzhalter stehen
+const CO = (key, label) => (CONFIG.company[key] ? esc(CONFIG.company[key]) : PH(label));
 const LEGAL = {
-  impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${PH("Firmenname und Rechtsform")}<br>${PH("Straße Hausnummer")}<br>${PH("PLZ Ort")}</p><p><b>Vertreten durch:</b> ${PH("Geschäftsführung")}<br><b>Kontakt:</b> ${PH("E-Mail")} · ${PH("Telefon")}<br><b>Registereintrag:</b> ${PH("Registergericht, HRB-Nummer")}<br><b>USt-IdNr.:</b> ${PH("DE…")}</p><p><b>Aufsicht:</b> Im Echtbetrieb ${PH("Bundesanstalt für Finanzdienstleistungsaufsicht (BaFin) bzw. lizenzierter Partner")}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${PH("Name, Anschrift")}</p>`,
-  privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung für diese Demo</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li><li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li><li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${PH("Name, Anschrift, Kontakt")} · Datenschutzbeauftragter: ${PH("Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
-  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKYTEX von ${PH("Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKYTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
-  withdrawal: () => `<h2>Widerrufsbelehrung (Vorlage)</h2><p><b>Widerrufsrecht:</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${PH("Name, Anschrift, E-Mail")}) mittels einer eindeutigen Erklärung über deinen Entschluss informieren.</p><p><b>Folgen des Widerrufs:</b> Wir erstatten alle Zahlungen unverzüglich, spätestens binnen vierzehn Tagen. ${PH("Regelung bei vorzeitigem Leistungsbeginn anwaltlich prüfen")}</p>`,
+  impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${CO("name", "Firmenname und Rechtsform")}<br>${CO("street", "Straße Hausnummer")}<br>${CO("zipCity", "PLZ Ort")}<br>${esc(CONFIG.company.country)}</p><p><b>Vertreten durch:</b> ${CO("representative", "Geschäftsführung")}<br><b>Kontakt:</b> ${CO("email", "E-Mail")} · ${CO("phone", "Telefon")}<br><b>Registereintrag:</b> ${CO("register", "Registergericht, HRB-Nummer")}<br><b>USt-IdNr.:</b> ${CO("vatId", "DE…")}</p><p><b>Aufsicht:</b> ${LIVE.trading ? CO("supervisory", "Aufsichtsbehörde") + (CONFIG.trading.partnerName ? ` · Depotführung und Orderausführung durch ${esc(CONFIG.trading.partnerName)}` : "") : "Aktuell kein Handel mit echtem Geld (virtuelles Depot)."}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${CO("representative", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}</p>`,
+  privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung für diese Demo</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li><li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li><li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${CO("name", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}, ${CO("email", "Kontakt")} · Datenschutz-Kontakt: ${CO("privacyContact", "Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
+  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKYTEX von ${CO("name", "Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKYTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
+  withdrawal: () => `<h2>Widerrufsbelehrung (Vorlage)</h2><p><b>Widerrufsrecht:</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${CO("name", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}, ${CO("email", "E-Mail")}) mittels einer eindeutigen Erklärung über deinen Entschluss informieren.</p><p><b>Folgen des Widerrufs:</b> Wir erstatten alle Zahlungen unverzüglich, spätestens binnen vierzehn Tagen. ${PH("Regelung bei vorzeitigem Leistungsbeginn anwaltlich prüfen")}</p>`,
   risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKYTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
 };
 function renderLegal() {
@@ -4824,25 +4862,28 @@ function playClip(id) {
     const v = el.querySelector("video");
     v.play().catch(() => {});
     const loop = () => {
-      if (v.duration) bar.style.width = (v.currentTime / v.duration) * 100 + "%";
+      if (v.duration) bar.style.transform = `scaleX(${v.currentTime / v.duration})`;
       clipRaf = requestAnimationFrame(loop);
     };
     loop();
     return;
   }
   const cv = el.querySelector("canvas");
-  const dpr = Math.min(2, devicePixelRatio || 1);
+  const dpr = Math.min(1.5, devicePixelRatio || 1);
   cv.width = cv.clientWidth * dpr;
   cv.height = cv.clientHeight * dpr;
   const ctx = cv.getContext("2d");
   const label = "@" + clipAuthor(c).handle;
   clipT0 = performance.now() - (clipPausedAt || 0);
   clipPausedAt = null;
-  const loop = () => {
+  let lastDraw = 0;
+  const loop = (now = performance.now()) => {
+    clipRaf = requestAnimationFrame(loop);
+    if (now - lastDraw < 32) return; // 30 Bilder/s genügen für den Chart-Clip und halten den Rest flüssig
+    lastDraw = now;
     const t = (performance.now() - clipT0) % CLIP_MS;
     drawClip(ctx, cv.width, cv.height, c, market, t, label);
-    bar.style.width = (t / CLIP_MS) * 100 + "%";
-    clipRaf = requestAnimationFrame(loop);
+    bar.style.transform = `scaleX(${t / CLIP_MS})`;
   };
   loop();
 }
@@ -5031,76 +5072,110 @@ function bindClips() {
 }
 
 // ---------- Weltraum: Sternenfeld mit Parallaxe und Sternschnuppen ----------
+// Die Sterne werden nur einmal gezeichnet. Bewegung (Drift, Parallaxe, Funkeln, Sternschnuppen) läuft
+// ausschließlich über CSS-Transform/Opacity auf der GPU – kein Neuzeichnen pro Frame mehr.
 function spaceField() {
-  const cv = $("#space");
-  if (!cv) return;
-  const ctx = cv.getContext("2d");
+  const host = $("#space");
+  if (!host) return;
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const dpr = Math.min(2, devicePixelRatio || 1);
-  let W = 0;
-  let H = 0;
-  let stars = [];
-  let shoot = null;
-  let mx = 0;
-  let my = 0;
-  let last = 0;
   const hues = [220, 250, 275, 45, 200];
-  const init = () => {
-    W = cv.width = innerWidth * dpr;
-    H = cv.height = innerHeight * dpr;
-    const n = Math.min(900, Math.round((innerWidth * innerHeight) / 2300));
-    stars = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, z: Math.random() ** 2, tw: Math.random() * 6.28, h: hues[Math.floor(Math.random() * hues.length)] }));
-  };
-  init();
-  addEventListener("resize", init);
-  addEventListener("pointermove", (e) => {
-    mx = (e.clientX / innerWidth - 0.5) * 2;
-    my = (e.clientY / innerHeight - 0.5) * 2;
-  });
-  const frame = (t) => {
-    requestAnimationFrame(frame);
-    const hidden = document.hidden || settings.view === "chart" || document.documentElement.dataset.theme !== "dark";
-    if (hidden || t - last < 33) return; // ~30 fps reicht und schont den Akku
-    last = t;
-    ctx.clearRect(0, 0, W, H);
-    for (const s of stars) {
-      if (!reduce) {
-        s.x -= (0.03 + s.z * 0.18) * dpr;
-        if (s.x < 0) s.x += W;
-      }
-      const x = s.x + mx * s.z * 14 * dpr;
-      const y = s.y + my * s.z * 10 * dpr;
-      const a = 0.25 + 0.75 * s.z * (0.65 + 0.35 * Math.sin(t / 700 + s.tw));
-      const r = (0.35 + s.z * 1.35) * dpr;
-      ctx.fillStyle = `hsla(${s.h}, 90%, ${s.h === 45 ? 80 : 88}%, ${a})`;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, 6.283);
-      ctx.fill();
-      if (s.z > 0.85) {
-        ctx.fillStyle = `hsla(${s.h}, 100%, 85%, ${a * 0.12})`;
+  const LAYERS = [
+    { share: 0.6, zMin: 0, zMax: 0.35, secs: 260, par: 3 },
+    { share: 0.3, zMin: 0.35, zMax: 0.7, secs: 170, par: 7 },
+    { share: 0.1, zMin: 0.7, zMax: 1, secs: 110, par: 14, twinkle: true },
+  ];
+  let builtW = 0;
+  const build = () => {
+    const W = innerWidth;
+    const H = Math.max(innerHeight, screen.height || 0); // Adressleiste ein/aus erzwingt kein Neuzeichnen
+    if (Math.abs(W - builtW) < 40 && host.childElementCount) return;
+    builtW = W;
+    host.innerHTML = "";
+    const total = Math.min(900, Math.round((W * H) / 2300));
+    for (const L of LAYERS) {
+      const tile = document.createElement("canvas");
+      tile.width = W * dpr;
+      tile.height = H * dpr;
+      const ctx = tile.getContext("2d");
+      const n = Math.round(total * L.share);
+      for (let i = 0; i < n; i++) {
+        const z = L.zMin + Math.random() * (L.zMax - L.zMin);
+        const h = hues[Math.floor(Math.random() * hues.length)];
+        const x = Math.random() * tile.width;
+        const y = Math.random() * tile.height;
+        const a = 0.25 + 0.75 * z * 0.85;
+        const r = (0.35 + z * 1.35) * dpr;
+        ctx.fillStyle = `hsla(${h}, 90%, ${h === 45 ? 80 : 88}%, ${a})`;
         ctx.beginPath();
-        ctx.arc(x, y, r * 4, 0, 6.283);
+        ctx.arc(x, y, r, 0, 6.283);
         ctx.fill();
+        if (z > 0.85) {
+          ctx.fillStyle = `hsla(${h}, 100%, 85%, ${a * 0.12})`;
+          ctx.beginPath();
+          ctx.arc(x, y, r * 4, 0, 6.283);
+          ctx.fill();
+        }
       }
-    }
-    if (!reduce && !shoot && Math.random() < 0.004) shoot = { x: Math.random() * W * 0.8 + W * 0.2, y: Math.random() * H * 0.4, vx: -(8 + Math.random() * 6) * dpr, vy: (3 + Math.random() * 3) * dpr, life: 1 };
-    if (shoot) {
-      const g = ctx.createLinearGradient(shoot.x, shoot.y, shoot.x - shoot.vx * 12, shoot.y - shoot.vy * 12);
-      g.addColorStop(0, `rgba(255,255,255,${shoot.life})`);
-      g.addColorStop(1, "rgba(124,156,255,0)");
-      ctx.strokeStyle = g;
-      ctx.lineWidth = 2 * dpr;
-      ctx.beginPath();
-      ctx.moveTo(shoot.x, shoot.y);
-      ctx.lineTo(shoot.x - shoot.vx * 12, shoot.y - shoot.vy * 12);
-      ctx.stroke();
-      shoot.x += shoot.vx;
-      shoot.y += shoot.vy;
-      shoot.life -= 0.02;
-      if (shoot.life <= 0) shoot = null;
+      const par = document.createElement("div");
+      par.className = "sf-par";
+      par.style.setProperty("--par", L.par);
+      const drift = document.createElement("div");
+      drift.className = "sf-drift" + (L.twinkle ? " twinkle" : "");
+      drift.style.animationDuration = L.twinkle ? `${L.secs}s, 4.5s` : L.secs + "s";
+      // Zwei gleiche Kacheln nebeneinander: Die Drift um -50 % läuft nahtlos im Kreis
+      const twin = document.createElement("canvas");
+      twin.width = tile.width;
+      twin.height = tile.height;
+      twin.getContext("2d").drawImage(tile, 0, 0);
+      drift.append(tile, twin);
+      par.appendChild(drift);
+      host.appendChild(par);
     }
   };
-  requestAnimationFrame(frame);
+  build();
+  let rt = 0;
+  addEventListener("resize", () => {
+    clearTimeout(rt);
+    rt = setTimeout(build, 250);
+  });
+  if (reduce) return host.classList.add("still");
+  // Parallaxe mit der Maus (nur mit feinem Zeiger), höchstens einmal pro Frame
+  if (matchMedia("(pointer: fine)").matches) {
+    let raf = 0;
+    let mx = 0;
+    let my = 0;
+    addEventListener("pointermove", (e) => {
+      mx = (e.clientX / innerWidth - 0.5) * 2;
+      my = (e.clientY / innerHeight - 0.5) * 2;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        host.style.setProperty("--mx", mx.toFixed(3));
+        host.style.setProperty("--my", my.toFixed(3));
+      });
+    }, { passive: true });
+  }
+  // Sternschnuppen: gelegentlich ein kurzes Element, animiert per Web Animations (GPU)
+  const shoot = () => {
+    setTimeout(shoot, 7000 + Math.random() * 9000);
+    if (document.hidden || getComputedStyle(host).display === "none") return;
+    const el = document.createElement("i");
+    el.className = "sf-shoot";
+    el.style.left = 30 + Math.random() * 65 + "vw";
+    el.style.top = Math.random() * 35 + "vh";
+    host.appendChild(el);
+    const dx = -(260 + Math.random() * 200);
+    el.animate(
+      [
+        { transform: "translate3d(0,0,0) rotate(-22deg)", opacity: 0 },
+        { opacity: 1, offset: 0.15 },
+        { transform: `translate3d(${dx}px, ${-dx * 0.42}px, 0) rotate(-22deg)`, opacity: 0 },
+      ],
+      { duration: 1100, easing: "cubic-bezier(.3,.6,.4,1)" }
+    ).onfinish = () => el.remove();
+  };
+  setTimeout(shoot, 4000);
 }
 
 // ---------- Bewegung: Splash, Segmente, Ripple, Haptik ----------
@@ -5316,3 +5391,42 @@ setView(settings.view);
 setupInstall();
 renderAIHeader();
 market.start();
+startLive();
+
+// ---------- Echtbetrieb (nur mit Einträgen in js/config.js) ----------
+function startLive() {
+  document.body.classList.toggle("live-money", LIVE.money);
+  if (LIVE.money) {
+    $$(".demo-chip").forEach((c) => {
+      c.textContent = "LIVE";
+      c.title = `Echte Kurse und echtes Depot${CONFIG.trading.partnerName ? " bei " + CONFIG.trading.partnerName : ""}`;
+      c.classList.add("live");
+    });
+    $("#reset-btn")?.remove();
+    const note = $("#plans-note");
+    if (note) note.textContent = LIVE.payments ? "Sichere Zahlung über Stripe. Kündigung jederzeit möglich." : note.textContent;
+  }
+  if (LIVE.data)
+    connectMarket(market, (st) => {
+      if (st === "reconnecting") toast("Verbindung zu den Kursdaten unterbrochen – verbinde neu …", "info", "Kurse");
+    }).then(() => {
+      // Chart und Ansichten mit der echten Historie neu aufbauen
+      chart.configure({ symbol: settings.symbol });
+      renderQuoteCard();
+      renderRightPanel();
+    });
+  if (LIVE.trading) {
+    let shown = false;
+    connectBroker(broker, (st, user) => {
+      if (st === "login" && !shown) {
+        shown = true;
+        const b = document.createElement("div");
+        b.className = "live-login";
+        b.innerHTML = `<div><b>Dein echtes Depot</b><small>Melde dich an oder eröffne ein Depot${CONFIG.trading.partnerName ? " bei " + esc(CONFIG.trading.partnerName) : ""}.</small></div><a class="btn primary" href="${esc(loginUrl())}">Anmelden</a>`;
+        document.body.appendChild(b);
+      }
+      if (st === "live") $(".live-login")?.remove();
+      if (st === "live" && user?.name) account.setProfile({ name: user.name, email: user.email || "" });
+    });
+  }
+}

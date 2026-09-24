@@ -171,9 +171,8 @@ export class Market {
   }
 
   tick() {
+    if (this.feed) return; // echte Kurse kommen über applyTrade()
     const t = nowSec();
-    const minute = Math.floor(t / 60) * 60;
-    const day = Math.floor(t / DAY) * DAY;
     const sz = season(t);
     const dtFactor = Math.sqrt(TICK_MS / 60000);
     for (const st of this.stocks.values()) {
@@ -182,35 +181,70 @@ export class Market {
       if (Math.random() < 0.0004) r += gauss(Math.random) * st.sigmaM * 6; // gelegentliche Sprünge (News)
       const price = st.price * Math.exp(r);
       const vol = Math.max(1, Math.round((st.adv / 1440) * dtFactor ** 2 * sz * st.vs * Math.exp(gauss(Math.random) * 0.7)));
-
-      let c = st.m1[st.m1.length - 1];
-      if (c.time !== minute) {
-        c = { time: minute, open: st.price, high: st.price, low: st.price, close: st.price, volume: 0 };
-        st.m1.push(c);
-        if (st.m1.length > INTRADAY_DAYS * 1440 + 60) st.m1.shift();
-      }
-      c.high = Math.max(c.high, price);
-      c.low = Math.min(c.low, price);
-      c.close = price;
-      c.volume += vol;
-
-      let d = st.days[st.days.length - 1];
-      if (d.time !== day) {
-        d = { time: day, open: st.price, high: st.price, low: st.price, close: st.price, volume: 0 };
-        st.days.push(d);
-      }
-      d.high = Math.max(d.high, price);
-      d.low = Math.min(d.low, price);
-      d.close = price;
-      d.volume += vol;
-
-      st.trades.unshift({ ts: Date.now(), price, size: vol, side: price >= st.price ? "buy" : "sell" });
-      if (st.trades.length > 60) st.trades.length = 60;
-
-      st.prev = st.price;
-      st.price = price;
+      this.record(st, price, vol, t);
     }
     for (const fn of this.listeners) fn();
+  }
+
+  // Einen Kurs in Minuten- und Tageskerzen eintragen (Simulation und echte Daten)
+  record(st, price, vol, t, ts = Date.now()) {
+    const minute = Math.floor(t / 60) * 60;
+    const day = Math.floor(t / DAY) * DAY;
+    let c = st.m1[st.m1.length - 1];
+    if (!c || c.time !== minute) {
+      c = { time: minute, open: st.price, high: st.price, low: st.price, close: st.price, volume: 0 };
+      st.m1.push(c);
+      if (st.m1.length > INTRADAY_DAYS * 1440 + 60) st.m1.shift();
+    }
+    c.high = Math.max(c.high, price);
+    c.low = Math.min(c.low, price);
+    c.close = price;
+    c.volume += vol;
+
+    let d = st.days[st.days.length - 1];
+    if (!d || d.time !== day) {
+      d = { time: day, open: st.price, high: st.price, low: st.price, close: st.price, volume: 0 };
+      st.days.push(d);
+    }
+    d.high = Math.max(d.high, price);
+    d.low = Math.min(d.low, price);
+    d.close = price;
+    d.volume += vol;
+
+    st.trades.unshift({ ts, price, size: vol, side: price >= st.price ? "buy" : "sell" });
+    if (st.trades.length > 60) st.trades.length = 60;
+
+    st.prev = st.price;
+    st.price = price;
+  }
+
+  // ---------- Echte Kurse ----------
+  // Simulation abschalten; ab jetzt kommen Kurse nur noch vom Datenanbieter
+  useFeed() {
+    this.feed = true;
+    this.pending = false;
+  }
+  // Historie eines Symbols ersetzen (Zeit in Sekunden, lokale Zeitzone wie nowSec)
+  loadHistory(sym, { m1 = [], days = [] }) {
+    const st = this.get(sym);
+    if (!st || !days.length) return false;
+    st.m1 = m1.length ? m1 : st.m1;
+    st.days = days;
+    const last = (m1.length ? m1 : days)[(m1.length ? m1 : days).length - 1];
+    st.price = st.prev = last.close;
+    return true;
+  }
+  // Ein echter Trade/Kurs vom Datenanbieter; Beobachter werden höchstens einmal pro Frame benachrichtigt
+  applyTrade(sym, price, vol = 0, tsMs = Date.now()) {
+    const st = this.get(sym);
+    if (!st || !(price > 0)) return;
+    this.record(st, price, Math.max(0, vol), toLocalSec(tsMs), tsMs);
+    if (this.pending) return;
+    this.pending = true;
+    requestAnimationFrame(() => {
+      this.pending = false;
+      for (const fn of this.listeners) fn();
+    });
   }
 
   bars(sym, tf) {
