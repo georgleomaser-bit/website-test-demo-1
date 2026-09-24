@@ -2091,3 +2091,15 @@ html.jv-open .jarvis-fab, html.jv-open .jarvis-hint { opacity: 0; pointer-events
 .ai-plan-cards .price { flex-wrap: wrap; row-gap: 0; }
 .ai-plan-cards .price b { font-size: clamp(22px, 1.9vw, 28px); white-space: nowrap; }
 .ai-plan-cards .price s { white-space: nowrap; }
+
+/* Startseite: Ultra / Jarvis */
+.jvp { display: flex; justify-content: center; }
+.jvp-card { position: relative; width: min(920px, 100%); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: clamp(28px, 5vw, 56px) clamp(18px, 4vw, 48px); border-radius: 32px; border: 2px solid transparent; background: linear-gradient(color-mix(in srgb, var(--panel) 92%, transparent), color-mix(in srgb, var(--panel) 92%, transparent)) padding-box, conic-gradient(from var(--jv-a), #bc82f3, #f5b9ea, #8d9fff, #ff6778, #ffba71, #c686ff, #bc82f3) border-box; animation: jvSpin 6s linear infinite; box-shadow: 0 30px 90px rgba(188, 130, 243, 0.28); }
+.jvp-card::before { content: ""; position: absolute; inset: -12px; z-index: -1; border-radius: 40px; background: conic-gradient(from var(--jv-a), #bc82f3, #f5b9ea, #8d9fff, #ff6778, #ffba71, #c686ff, #bc82f3); filter: blur(28px); opacity: 0.35; animation: jvSpin 6s linear infinite; }
+.jvp-card h2 { margin: 0; font-size: clamp(28px, 5vw, 48px); }
+.jvp-card .sec-lead { margin: 0; max-width: 640px; }
+.jvp-quotes { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.jvp-quotes span { padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 600; background: rgba(188, 130, 243, 0.1); border: 1px solid rgba(188, 130, 243, 0.3); }
+.jvp-cta { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
+.jvp .plan-badge.ultra { position: static; transform: none; }
+@media (prefers-reduced-motion: reduce) { .jvp-card, .jvp-card::before { animation: none; } }

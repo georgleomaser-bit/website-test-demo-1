@@ -2232,7 +2232,7 @@ function renderAIView(full = false) {
   $("#ai-doctor-card").classList.toggle("is-locked", !mode);
   $$('.ai-pane[data-aipane="plan"], .ai-pane[data-aipane="lab"]').forEach((p) => p.classList.toggle("is-locked", !mode));
   if (!mode) {
-    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKYTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKYTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
+    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKYTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKYTEX AI</b> (ab 79 €/Monat), <b>AI Premium</b> mit selbstständig handelndem Autopilot und <b>Ultra</b> mit Jarvis, dem Sprachmodus.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
   }
   if (full && !chat.length) greetChat();
   if (aiTab !== "cockpit") {
@@ -2904,6 +2904,11 @@ function bindAI() {
     if (ask) {
       if (settings.view !== "ai" && !assistantOpen()) openAssistant(false);
       return sendChat(ask.dataset.ask);
+    }
+    if (t.closest("[data-jarvis-try]")) return startJarvis();
+    if (t.closest("[data-plan-ultra]")) {
+      openPlans("AKYTEX Ultra: alles aus AI Premium plus Jarvis, der Sprachmodus.");
+      return setTimeout(() => $("#modal-plans .ai-plan.ultra")?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
     }
     const act = t.closest("[data-ai-act]");
     if (act) {
