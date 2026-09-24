@@ -30,6 +30,8 @@ export const STRATEGIES = {
   balanced: { label: "AI-Mix", buyScore: 0.3, sellScore: -0.3, desc: "Ausgewogene Trendfolge mit solidem Chance-Risiko-Verhältnis." },
   aggressive: { label: "Offensiv", buyScore: 0.18, sellScore: -0.4, desc: "Mehr Trades, höhere Schwankungen, früher Einstieg." },
   momentum: { label: "Momentum", buyScore: 0.25, sellScore: -0.25, desc: "Kauft die stärksten Aktien der letzten 20 Tage im Aufwärtstrend.", rank: (v, m) => m.perf(v.sym, 20) },
+  // Jarvis' Profit-Modus: bestes erwartetes Chance-Risiko aus Signal-Score und 20-Tage-Momentum, nur im Aufwärtstrend
+  profit: { label: "Profit-Modus", buyScore: 0.22, sellScore: -0.28, desc: "Jarvis' Maximal-Modus: kauft die Aktien mit dem besten erwarteten Chance-Risiko (Trend, Momentum, Konfidenz), sichert Gewinne mit Trailing-Stops und schneidet Verluste früh ab.", filter: (v) => v.d.trendUp, rank: (v, m) => v.score * 0.6 + (m.perf(v.sym, 20) || 0) * 4 },
   meanrev: { label: "Rebound", buyScore: -0.2, sellScore: -0.5, desc: "Kauft überverkaufte Qualitätswerte (RSI < 35) im langfristigen Aufwärtstrend.", filter: (v) => v.h.rsi != null && v.h.rsi < 35 && v.d.trendUp },
 };
 
