@@ -35,7 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "4.8"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "4.9"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2544,8 +2544,8 @@ async function sendChatCore(text) {
         await finishStream(msg, { streaming: false, html: partial + "<p class='muted'>Abgebrochen.</p>" });
         return;
       }
-      if (["not_granted", "sampling_disabled", "tools_unavailable", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) llmOff = true;
-      msg.note = e?.code === "rate_limited" ? "Das Sprachmodell ist gerade ausgelastet – ich antworte mit der lokalen Engine." : "";
+      if (["not_granted", "quota", "sampling_disabled", "tools_unavailable", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) llmOff = true;
+      msg.note = e?.code === "rate_limited" ? "Das Sprachmodell ist gerade ausgelastet – ich antworte mit der lokalen Engine." : e?.code === "quota" ? "Deine Gratis-Fragen an das Sprachmodell sind für heute aufgebraucht – ich antworte mit der lokalen Engine. Mit AKYTEX AI oder Ultra unbegrenzt." : "";
       cancelAnimationFrame(msg.raf);
       Object.assign(msg, { raf: 0, streaming: false, finished: false, target: "", shown: 0 });
       bump(msg, { pending: true, status: "Wechsle auf die lokale Engine" });
@@ -3080,37 +3080,93 @@ function stripeUrl(link, promo) {
   if (promo) u.searchParams.set("prefilled_promo_code", promo);
   return u.toString();
 }
-// Erfolgs-URL in Stripe: https://DEINE-DOMAIN/?checkout=success&plan=pro&billing=monthly
-function handleStripeReturn() {
+// Bezahlten Tarif lokal eintragen (Anzeige im Konto: Laufzeit, Beleg, Kündigung)
+function activatePaid(planId, billing, sessionId, until) {
+  if (billing !== "founder") account.subscribe(quote({ planId, billing, addons: [] }), { type: "stripe", label: "Stripe" });
+  else {
+    // Gründer-Deal: Einmalzahlung, 12 Monate, keine Verlängerung
+    const now = Date.now();
+    const f = CONFIG.stripe.founder[planId] || { price: 0 };
+    const ends = until || now + 365 * 86400000;
+    account.state.sub = { plan: planId, billing: "founder", status: "founder", started: now, trialEnds: now, renews: ends, cancelAt: ends, perMonth: f.price / 12, total: f.price, promo: null };
+    account.state.method = { type: "stripe", label: "Stripe (Einmalzahlung)" };
+  }
+  // Kaufnummer von Stripe merken – damit lässt sich der Kauf auf einem neuen Gerät wiederherstellen
+  if (sessionId) account.state.sub.stripeSession = sessionId;
+  if (until && billing !== "founder") account.state.sub.renews = until;
+  account.save();
+  settings.billing = billing === "yearly" ? "yearly" : "monthly";
+  saveSettings();
+  setPlan(planId, true);
+  syncAccountUI();
+}
+function dropPaid() {
+  account.state.sub = null;
+  account.save();
+  setPlan("free", true);
+  syncAccountUI();
+}
+// Erfolgs-URL in Stripe: https://DEINE-DOMAIN/?checkout=success&plan=pro&billing=monthly&session_id={CHECKOUT_SESSION_ID}
+// Läuft AKYTEX auf dem eigenen Server mit Stripe-Schlüssel, entscheidet allein der Server (Abfrage bei Stripe),
+// welcher Tarif gekauft wurde – ein nachgebauter Rückkehr-Link schaltet dann nichts frei.
+let stripeReturn = Promise.resolve();
+async function handleStripeReturn() {
   const q = new URLSearchParams(location.search);
   const st = q.get("checkout");
   if (!st) return;
   history.replaceState(null, "", location.pathname + location.hash);
   if (st === "cancel") return toast("Der Bezahlvorgang wurde abgebrochen. Es wurde nichts berechnet.", "info", "Abgebrochen");
+  if (st !== "success") return;
+  const sid = q.get("session_id") || "";
+  if ((await cloud.cloudReady()) && cloud.billingOnServer()) {
+    if (!sid) return toast("Die Kaufnummer fehlt – öffne den Link aus der Stripe-Bestätigung oder schreib uns.", "error", "Kauf nicht bestätigt");
+    toast("Einen Moment, ich prüfe deine Zahlung bei Stripe …", "info", "Zahlung");
+    try {
+      const r = await cloud.verifyPurchase(sid);
+      if (r.plan === "free") throw new Error("Für diesen Kauf ist kein Tarif aktiv.");
+      activatePaid(r.plan, r.billing, sid, r.until);
+      confetti();
+      toast(`${planTitle(planById(r.plan))} ist aktiv – von Stripe bestätigt. Den Beleg bekommst du per E-Mail.`, "success", "Zahlung erfolgreich");
+    } catch (e) {
+      toast(e.message || "Die Zahlung konnte nicht bestätigt werden.", "error", "Kauf nicht bestätigt");
+    }
+    return;
+  }
   const planId = q.get("plan");
-  const billing = q.get("billing") === "yearly" ? "yearly" : "monthly"; // "founder" = Einmalzahlung (siehe unten)
-  if (st !== "success" || !planId || !PLANS.some((p) => p.id === planId)) return;
-  if (billing === "yearly" || q.get("billing") !== "founder") account.subscribe(quote({ planId, billing, addons: [] }), { type: "stripe", label: "Stripe" });
-  else {
-    // Gründer-Deal: Einmalzahlung, 12 Monate, keine Verlängerung
-    const now = Date.now();
-    const f = CONFIG.stripe.founder[planId] || { price: 0 };
-    const ends = now + 365 * 86400000;
-    account.state.sub = { plan: planId, billing: "founder", status: "founder", started: now, trialEnds: now, renews: ends, cancelAt: ends, perMonth: f.price / 12, total: f.price, promo: null };
-    account.state.method = { type: "stripe", label: "Stripe (Einmalzahlung)" };
-    account.save();
-  }
-  // Kaufnummer von Stripe merken – damit lässt sich das Abo später eindeutig prüfen (Support, Server-Abgleich)
-  if (q.get("session_id")) {
-    account.state.sub.stripeSession = q.get("session_id");
-    account.save();
-  }
-  settings.billing = billing;
-  saveSettings();
-  setPlan(planId, true);
-  syncAccountUI();
+  const billing = q.get("billing") === "founder" ? "founder" : q.get("billing") === "yearly" ? "yearly" : "monthly";
+  if (!planId || !PLANS.some((p) => p.id === planId)) return;
+  activatePaid(planId, billing, sid);
   confetti();
-  toast(q.get("billing") === "founder" ? `Willkommen als Gründer-Mitglied! ${planTitle(planById(planId))} ist 12 Monate aktiv. Die Rechnung schickt dir Stripe per E-Mail.` : `Dein Abo ${planTitle(planById(planId))} ist aktiv. Den Beleg schickt dir Stripe per E-Mail.`, "success", "Zahlung erfolgreich");
+  toast(billing === "founder" ? `Willkommen als Gründer-Mitglied! ${planTitle(planById(planId))} ist 12 Monate aktiv. Die Rechnung schickt dir Stripe per E-Mail.` : `Dein Abo ${planTitle(planById(planId))} ist aktiv. Den Beleg schickt dir Stripe per E-Mail.`, "success", "Zahlung erfolgreich");
+}
+// Eigener Server mit Kaufprüfung: Tarif mit dem abgleichen, was Stripe bestätigt hat
+async function syncServerPlan() {
+  if (!cloud.billingOnServer()) return;
+  let r;
+  try {
+    r = await cloud.serverBilling();
+  } catch (_) {
+    return; // Server kurz weg: nichts ändern
+  }
+  if (r.plan === settings.plan && (r.plan === "free" || account.state.sub)) return;
+  if (r.plan !== "free") return activatePaid(r.plan, r.billing, account.state.sub?.stripeSession, r.until);
+  if (planById(settings.plan).monthly) {
+    dropPaid();
+    toast("Für dieses Konto ist bei Stripe kein aktives Abo hinterlegt. Hast du auf einem anderen Gerät gekauft? Im Konto unter „Kauf wiederherstellen“.", "info", "Tarif geprüft");
+  }
+}
+async function restorePurchase() {
+  const sid = (prompt("Kaufnummer eingeben (beginnt mit „cs_“ – steht im Konto des Geräts, auf dem du gekauft hast):") || "").trim();
+  if (!sid) return;
+  try {
+    const r = await cloud.verifyPurchase(sid);
+    if (r.plan === "free") throw new Error("Für diese Kaufnummer ist kein Tarif aktiv.");
+    activatePaid(r.plan, r.billing, sid, r.until);
+    renderAccount();
+    toast(`${planTitle(planById(r.plan))} ist wieder aktiv.`, "success", "Kauf wiederhergestellt");
+  } catch (e) {
+    toast(e.message || "Das hat nicht geklappt.", "error", "Kauf wiederherstellen");
+  }
 }
 function openPay(order) {
   const saved = account.state.method;
@@ -4007,7 +4063,8 @@ function renderAccount() {
     html = `<div class="bill-card ${p.group ? "ai" : ""}"><div><span class="usp-eyebrow">Dein Tarif</span><h2>${planTitle(p)}</h2><p class="muted">${sub?.billing === "founder" ? `${eur(sub.total)} einmalig · 12 Monate, keine Verlängerung` : sub ? `${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"} · ${sub.billing === "yearly" ? "jährlich" : "monatlich"}` : p.monthly ? "Direkt aktiviert (ohne Checkout)" : "Kostenlos"}</p></div>
         ${sub ? `<span class="status-pill ${sub.status}">${{ trial: "Testphase", active: "Aktiv", canceled: "Gekündigt", founder: "Gründer-Mitglied" }[sub.status]}</span>` : ""}</div>
       ${sub ? `<div class="kv"><div><span>${sub.status === "trial" ? "Testphase bis" : sub.status === "canceled" || sub.status === "founder" ? "Endet am" : "Nächste Abbuchung"}</span><b>${new Date(sub.status === "canceled" || sub.status === "founder" ? sub.cancelAt : sub.status === "trial" ? sub.trialEnds : sub.renews).toLocaleDateString("de-DE")}</b></div><div><span>Zahlungsmethode</span><b>${esc(account.state.method?.label || "–")}</b></div><div><span>Gutschein</span><b>${sub.promo || "–"}</b></div></div>` : ""}
-      <div class="btn-row"><button class="btn primary" data-open-plans>Tarif wechseln</button>${sub ? `<button class="btn" data-change-method>Zahlungsmethode ändern</button>` : ""}${PAYMENT_CONFIG.stripePortal ? `<a class="btn" href="${PAYMENT_CONFIG.stripePortal}" target="_blank" rel="noopener">Kundenportal</a>` : ""}</div>
+      <div class="btn-row"><button class="btn primary" data-open-plans>Tarif wechseln</button>${sub ? `<button class="btn" data-change-method>Zahlungsmethode ändern</button>` : ""}${PAYMENT_CONFIG.stripePortal ? `<a class="btn" href="${PAYMENT_CONFIG.stripePortal}" target="_blank" rel="noopener">Kundenportal</a>` : ""}${cloud.billingOnServer() ? `<button class="btn" data-restore-purchase>Kauf wiederherstellen</button>` : ""}</div>
+      ${sub?.stripeSession ? `<p class="muted small">Kaufnummer (für ein neues Gerät): <code>${esc(sub.stripeSession)}</code> <button class="link-btn" data-copy="${esc(sub.stripeSession)}">Kopieren</button></p>` : ""}
       <div class="cancel-zone"><div><b>Kündigen</b><small class="muted">Jederzeit zum Ende der Laufzeit – ohne Umwege.</small></div><button class="btn danger" data-cancel-open>Verträge hier kündigen</button></div>`;
   } else if (acctTab === "invoices") {
     const inv = account.state.invoices;
@@ -4077,6 +4134,12 @@ function bindAccount() {
     if (inv) return openInvoice(+inv.dataset.invoice);
     if (t.closest("[data-cancel-open]")) return openCancel();
     if (t.closest("[data-change-method]")) return openCheckout(settings.plan, 2);
+    if (t.closest("[data-restore-purchase]")) return restorePurchase();
+    const kn = t.closest("#acct-body [data-copy]");
+    if (kn) {
+      navigator.clipboard?.writeText(kn.dataset.copy).then(() => toast("Kaufnummer kopiert.", "success"), () => {});
+      return;
+    }
     if (t.closest("[data-perm]")) {
       if ("Notification" in window) Notification.requestPermission().then((r) => toast(r === "granted" ? "Benachrichtigungen sind erlaubt." : "Benachrichtigungen wurden nicht erlaubt.", r === "granted" ? "success" : "info")).catch(() => {});
       return;
@@ -5806,6 +5869,8 @@ cloud.cloudReady().then(async (on) => {
     renderAIHeader();
   }
   await cloud.loadMe();
+  await stripeReturn;
+  await syncServerPlan();
   const n = $(".clips-note");
   if (n) n.textContent = "Hier laufen nur Videos echter Nutzer, gespeichert auf dem AKYTEX-Server: keine Bots, keine KI-Clips, keine gekauften Likes. Unangemessenes bitte mit ⚑ melden. Keine Anlageberatung.";
   if (settings.view === "clips") renderClips();
@@ -5836,7 +5901,7 @@ bindShop();
 bindClips();
 bindCheckout();
 bindFund();
-handleStripeReturn();
+stripeReturn = handleStripeReturn();
 bindCancel();
 bindOnboarding();
 bindAccount();

@@ -3,8 +3,9 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/georgleomaser-bit/website-test-demo-1/HEAD/server/install.sh | sudo bash
 #
-# Richtet ein: Node.js 22, AKYTEX als Dienst (startet nach Absturz/Neustart von selbst), Caddy mit automatischem HTTPS,
-# Firewall, tägliche Backups und den Befehl „akytex-update“. Ohne eigene Domain gibt es eine kostenlose
+# Richtet ein: Node.js 22, AKYTEX als abgeschotteter Dienst (startet nach Absturz/Neustart von selbst), Caddy mit
+# automatischem HTTPS, Firewall, Schutz gegen Passwort-Raten (fail2ban), automatische Sicherheitsupdates,
+# tägliche Backups und den Befehl „akytex-update“. Ohne eigene Domain gibt es eine kostenlose
 # HTTPS-Adresse der Form 1-2-3-4.sslip.io. Mehrfach ausführen ist ungefährlich (z. B. um die Domain zu ändern).
 set -euo pipefail
 
@@ -41,6 +42,8 @@ DOMAIN=${AKYTEX_DOMAIN:-$(ask "  Eigene Domain (z. B. akytex.org) – Enter für
 DOMAIN=${DOMAIN:-$FREE_HOST}
 DOMAIN=$(printf '%s' "$DOMAIN" | tr 'A-Z' 'a-z' | sed 's#^https\?://##; s#/.*##')
 KEY=${ANTHROPIC_API_KEY:-$(ask "  Anthropic-API-Schlüssel für das Sprachmodell (optional – Enter zum Überspringen): ")}
+STRIPE=${STRIPE_SECRET_KEY:-$(ask "  Eingeschränkter Stripe-Schlüssel rk_live_… zur Kaufprüfung (optional – Enter zum Überspringen): ")}
+case "$STRIPE" in "" | rk_*) ;; sk_*) echo "  ⚠️  Bitte keinen geheimen Hauptschlüssel (sk_…) nehmen, sondern einen eingeschränkten (rk_…) mit nur Leserechten."; STRIPE="" ;; *) STRIPE="" ;; esac
 
 if [ "$DOMAIN" != "$FREE_HOST" ]; then
   RESOLVED=$(getent ahostsv4 "$DOMAIN" | awk 'NR==1{print $1}' || true)
@@ -54,7 +57,7 @@ fi
 say "Pakete installieren (dauert 1–3 Minuten)"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-apt-get install -y -qq curl git ca-certificates gnupg openssl ufw debian-keyring debian-archive-keyring apt-transport-https >/dev/null
+apt-get install -y -qq curl git ca-certificates gnupg openssl ufw fail2ban unattended-upgrades debian-keyring debian-archive-keyring apt-transport-https >/dev/null
 
 if ! command -v node >/dev/null || [ "$(node -v | sed 's/^v//; s/\..*//')" -lt 20 ]; then
   say "Node.js 22 installieren"
@@ -80,15 +83,18 @@ fi
 (cd "$APP" && npm install --omit=dev --no-audit --no-fund --silent)
 mkdir -p "$DATA"
 chown -R akytex:akytex "$APP" "$DATA"
+chmod 700 "$DATA" # Datenbank und Videos: nur der Dienst selbst darf lesen
 
 say "Einstellungen"
 grep -q '^ADMIN_TOKEN=' "$ENVF" 2>/dev/null || setenv ADMIN_TOKEN "$(openssl rand -hex 24)"
 setenv PORT 8080
+setenv HOST 127.0.0.1 # nur über Caddy (HTTPS) erreichbar, nie direkt
 setenv DATA_DIR "$DATA"
 setenv TRUST_PROXY 1
 setenv PROXY_IP_HEADER x-forwarded-for
 setenv ALLOWED_HOSTS "$DOMAIN"
 [ -n "$KEY" ] && setenv ANTHROPIC_API_KEY "$KEY"
+[ -n "$STRIPE" ] && setenv STRIPE_SECRET_KEY "$STRIPE"
 chmod 600 "$ENVF"
 
 say "Dienst einrichten"
@@ -107,9 +113,25 @@ ExecStart=$(command -v node) server/akytex-server.mjs
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
+UMask=0077
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictNamespaces=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
 ReadWritePaths=$DATA
 
 [Install]
@@ -124,17 +146,24 @@ mkdir -p /etc/caddy
 cat >/etc/caddy/Caddyfile <<EOF
 $DOMAIN {
 	encode zstd gzip
+	header -Server
+	request_body {
+		max_size 64MB
+	}
 	reverse_proxy 127.0.0.1:8080
 }
 EOF
 systemctl enable -q caddy
 systemctl restart caddy
 
-say "Firewall und Backups"
+say "Firewall, Schutz und Backups"
 ufw allow OpenSSH >/dev/null
 ufw allow 80/tcp >/dev/null
 ufw allow 443/tcp >/dev/null
 ufw --force enable >/dev/null
+# fail2ban sperrt IPs, die das SSH-Passwort erraten wollen; Sicherheitsupdates spielt Ubuntu/Debian selbst ein
+systemctl enable -q --now fail2ban 2>/dev/null || true
+printf 'APT::Periodic::Update-Package-Lists "1";\nAPT::Periodic::Unattended-Upgrade "1";\n' >/etc/apt/apt.conf.d/20auto-upgrades
 mkdir -p /var/backups/akytex
 cat >/etc/cron.daily/akytex-backup <<'EOF'
 #!/bin/sh
@@ -165,6 +194,7 @@ if [ -n "$STATUS" ]; then echo "  ✅ AKYTEX läuft!"; else echo "  ⚠️  Der 
 echo ""
 echo "     Adresse:   https://$DOMAIN"
 echo "     KI:        $(printf '%s' "$STATUS" | grep -q '"ai":true' && echo 'Sprachmodell aktiv' || echo 'lokale Engine (Schlüssel in /etc/akytex.env als ANTHROPIC_API_KEY eintragen, dann: systemctl restart akytex)')"
+echo "     Käufe:     $(printf '%s' "$STATUS" | grep -q '"billing":true' && echo 'werden bei Stripe geprüft' || echo 'ungeprüft (Skript erneut starten und Stripe-Schlüssel rk_live_… eingeben)')"
 echo "     Moderation: ADMIN_TOKEN=$ADMIN"
 echo ""
 echo "     Aktualisieren: akytex-update"

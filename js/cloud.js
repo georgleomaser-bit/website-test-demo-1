@@ -41,6 +41,8 @@ export async function cloudReady() {
 }
 export const cloudOn = () => available === true;
 export const aiOnServer = () => available === true && info.ai === true;
+// Prüft der Server Käufe bei Stripe? Dann gilt nur der Tarif, den der Server bestätigt.
+export const billingOnServer = () => available === true && info.billing === true;
 
 // Sprachmodell über den eigenen Server – gleiche Schnittstelle wie die Claude-Umgebung:
 // llm(turns, { tools, signal, onText }) → { text }. Die Werkzeuge laufen hier im Browser.
@@ -55,9 +57,10 @@ export async function serverLLM(turns, { tools = [], signal, onText } = {}) {
     stop();
     let r;
     try {
+      if (billingOnServer() && !me) await ensureUser();
       r = await call("POST", "ai/chat", { messages, tools: defs });
     } catch (e) {
-      throw Object.assign(e, { code: e.status === 429 ? "rate_limited" : e.status === 503 ? "not_granted" : "server" });
+      throw Object.assign(e, { code: e.status === 429 ? "rate_limited" : e.status === 402 ? "quota" : e.status === 503 ? "not_granted" : "server" });
     }
     stop();
     const content = r.content || [];
@@ -115,6 +118,12 @@ export async function loadMe() {
     return null;
   }
 }
+// Kauf von Stripe bestätigen lassen (Kaufnummer aus der Rückleitung) und Tarif abfragen
+export async function verifyPurchase(sessionId) {
+  await ensureUser();
+  return call("POST", "billing/verify", { sessionId });
+}
+export const serverBilling = () => call("GET", "billing");
 export const renameMe = async (handle) => (me = (await call("PATCH", "me", { handle })).user);
 export async function deleteMe() {
   await call("DELETE", "me");
