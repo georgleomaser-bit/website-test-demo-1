@@ -1,5 +1,5 @@
 // Service Worker: macht AKYTEX offline nutzbar und installierbar.
-const VERSION = "akytex-v4.1.0";
+const VERSION = "akytex-v4.2.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -63,7 +63,8 @@ self.addEventListener("fetch", (e) => {
   // Server-API (Clips, Videos) nie cachen – immer live vom AKYTEX-Server
   if (req.method !== "GET" || u.origin !== location.origin || u.pathname.includes("/api/")) return;
   e.respondWith(
-    fetch(req)
+    // „no-cache“: beim Server nachfragen, ob es eine neue Version gibt – so ist jedes Update sofort da
+    fetch(req, { cache: "no-cache" })
       .then((res) => {
         const copy = res.clone();
         caches.open(VERSION).then((c) => c.put(req, copy));
