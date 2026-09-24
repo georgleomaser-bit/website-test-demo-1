@@ -65,7 +65,7 @@ window.WS = (() => {
     const year = new Date().getFullYear();
     return `<!doctype html>
 <html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(d.name)}</title><meta name="description" content="${esc(d.claim)} – ${esc(d.addr)}">
+<title>${esc(d.name)}</title>${d.draft ? '<meta name="robots" content="noindex, nofollow">' : ''}<meta name="description" content="${esc(d.claim)} – ${esc(d.addr)}">
 <style>
 *{box-sizing:border-box}body{margin:0;font:17px/1.6 ${st.font};color:#1a1a1a;background:${st.bg}}
 a{color:${c}}.w{max-width:960px;margin:0 auto;padding:0 20px}
@@ -83,6 +83,7 @@ footer{background:#111;color:#bbb;padding:32px 0;font-size:14px}footer a{color:#
 .call{position:fixed;right:16px;bottom:16px;background:${c};color:${ink};border-radius:99px;padding:14px 20px;font-weight:700;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.25)}
 @media(min-width:900px){.call{display:none}}
 </style></head><body>
+${d.draft ? `<div style="background:#ffd43b;color:#111;text-align:center;padding:8px 12px;font:600 14px/1.4 sans-serif">Unverbindlicher Entwurf – nicht die offizielle Seite von ${esc(d.name)}. Texte und Preise sind Platzhalter.</div>` : ''}
 <div class="w"><nav><strong>${esc(d.name)}</strong><div><a href="#leistungen">Leistungen</a><a href="#kontakt">Kontakt</a></div></nav></div>
 <div class="hero"><div class="w"><h1>${esc(d.name)}</h1><p>${esc(d.claim)}</p>${tel ? `<a class="btn" href="tel:${esc(tel)}">Jetzt anrufen</a>` : ''}</div></div>
 <section><div class="w"><h2>Über uns</h2><p>${esc(d.about)}</p></div></section>

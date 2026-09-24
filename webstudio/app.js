@@ -45,6 +45,7 @@ function showTab(t) {
   document.querySelectorAll('main > section').forEach((s) => { s.hidden = s.id !== 'tab-' + t; });
   if (t === 'offer') renderDoc();
   if (t === 'crm') renderBoard();
+  if (t === 'auto' && window.renderAuto) window.renderAuto();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('nav [data-tab]').forEach((b) => b.addEventListener('click', () => showTab(b.dataset.tab)));
@@ -56,6 +57,7 @@ Object.entries(PRESETS).forEach(([k, p]) => kindSel.add(new Option(p.label, k)))
 function fillForm() {
   kindSel.value = state.site.kind;
   FIELDS.forEach((f) => { $('f-' + f).value = state.site[f] ?? ''; });
+  $('f-draft').checked = !!state.site.draft;
 }
 let pvTimer;
 function updatePreview() {
@@ -73,6 +75,7 @@ function updatePreview() {
   }, 120);
 }
 FIELDS.forEach((f) => $('f-' + f).addEventListener('input', (e) => { state.site[f] = e.target.value; save(); updatePreview(); }));
+$('f-draft').addEventListener('change', (e) => { state.site.draft = e.target.checked; save(); updatePreview(); });
 kindSel.addEventListener('change', () => {
   const keep = { phone: state.site.phone, mail: state.site.mail, addr: state.site.addr, owner: state.site.owner };
   state.site = { ...fresh(kindSel.value), ...keep };
@@ -189,7 +192,10 @@ function renderBoard() {
     items.forEach((l) => {
       const card = document.createElement('div');
       card.className = 'lead';
-      card.innerHTML = `<b>${esc(l.name)}</b><span class="small muted">${esc(l.contact)} · ${euro(l.value)}</span>`;
+      const due = l.next && (l.stage === 'lead' || l.stage === 'offer') ? l.next <= todayISO() : false;
+      card.innerHTML = `<b>${esc(l.name)}</b><span class="small muted">${esc(l.contact)} · ${euro(l.value)}</span>`
+        + (l.next && !due && (l.stage === 'lead' || l.stage === 'offer') ? `<br><span class="small muted">Nachfassen: ${new Date(l.next).toLocaleDateString('de-DE')}</span>` : '')
+        + (due ? '<br><span class="small due">Heute nachfassen</span>' : '');
       const acts = document.createElement('div');
       acts.className = 'acts';
       const btn = (txt, fn, ghost = true) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = txt; if (ghost) b.className = 'ghost'; b.addEventListener('click', fn); acts.append(b); };
@@ -203,6 +209,7 @@ function renderBoard() {
   });
   renderStats();
 }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
 function renderStats() {
   const sum = (st) => state.leads.filter((l) => st.includes(l.stage)).reduce((a, l) => a + l.value, 0);
   const paid = sum(['paid']);

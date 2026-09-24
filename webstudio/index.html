@@ -54,8 +54,10 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1p
 .stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .stat span{display:block;font-size:12px;color:var(--muted)}.stat strong{font-size:20px}
+.letter{background:#fff;color:#111;border:1px solid var(--line);border-radius:var(--r);padding:24px;margin-bottom:16px;white-space:pre-line}.letter .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;white-space:normal}
+.due{color:var(--warn);font-weight:700}
 .note{border-left:4px solid var(--warn);padding:10px 14px;background:var(--card);border-radius:8px}
-@media print{header,nav,.no-print,section:not(#tab-offer){display:none!important}body{background:#fff}.doc{border:0;padding:0}}
+@media print{header,nav,.no-print,section:not(#tab-offer):not(.printing){display:none!important}#tab-auto.printing>*:not(#a-results){display:none}.letter{page-break-after:always;border:0!important}.letter .acts{display:none}body{background:#fff}.doc{border:0;padding:0}}
 </style>
 </head>
 <body>
@@ -66,7 +68,8 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1p
       <div class="goal"><span id="goalText">iPhone 18 Pro: 0 € von 1.299 €</span><div class="bar"><i id="goalBar"></i></div></div>
     </div>
     <nav role="tablist">
-      <button role="tab" data-tab="build" aria-selected="true">1 · Webseite bauen</button>
+      <button role="tab" data-tab="auto" aria-selected="true">⚡ Autopilot</button>
+      <button role="tab" data-tab="build" aria-selected="false">1 · Webseite bauen</button>
       <button role="tab" data-tab="offer" aria-selected="false">2 · Angebot &amp; Rechnung</button>
       <button role="tab" data-tab="crm" aria-selected="false">3 · Kunden</button>
       <button role="tab" data-tab="plan" aria-selected="false">4 · Plan</button>
@@ -75,8 +78,30 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1p
 </header>
 
 <main class="wrap">
+  <!-- Autopilot -->
+  <section id="tab-auto">
+    <div class="card">
+      <h2>⚡ Autopilot: 10 Läden → 10 fertige Webseiten + Anschreiben</h2>
+      <p class="muted small">Such auf Google Maps Läden ohne Webseite und füg sie hier ein – eine Zeile pro Laden: <code>Name; Branche; Adresse; Telefon</code>. Der Autopilot baut jede Webseite, schreibt einen persönlichen Brief, legt den Kunden an und plant das Nachfassen.</p>
+      <textarea id="a-list" style="min-height:140px" placeholder="Salon Anna; Friseur; Lindenstr. 4, 12345 Musterstadt; 0123 45678&#10;Bäckerei Roth; Bäckerei; Markt 2, 12345 Musterstadt; 0123 98765"></textarea>
+      <div class="row" style="margin-top:8px">
+        <div><label for="a-me">Dein Name</label><input id="a-me"></div>
+        <div><label for="a-contact">Deine Telefonnummer</label><input id="a-contact" inputmode="tel"></div>
+        <div><label for="a-base">Vorschau-Adresse (nach dem Hochladen)</label><input id="a-base" placeholder="https://mein-studio.netlify.app"></div>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button id="a-run" type="button">Alles erzeugen</button>
+        <button id="a-zip" type="button" class="ghost">Alle Webseiten als ZIP</button>
+        <button id="a-letters" type="button" class="ghost">Alle Briefe drucken</button>
+      </div>
+      <p id="a-msg" class="small muted" style="margin-top:8px"></p>
+    </div>
+    <div class="card no-print" id="a-todo"></div>
+    <div id="a-results"></div>
+  </section>
+
   <!-- 1 Builder -->
-  <section id="tab-build">
+  <section id="tab-build" hidden>
     <div class="builder">
       <div class="card">
         <h2>Webseite für einen Laden</h2>
@@ -106,6 +131,7 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1p
         </div>
         <label for="f-owner">Inhaber (fürs Impressum)</label>
         <input id="f-owner">
+        <label style="display:flex;gap:8px;align-items:center;color:var(--ink)"><input id="f-draft" type="checkbox" style="width:auto"> Entwurf-Hinweis zeigen (vor Übergabe an den Kunden ausschalten)</label>
         <div class="row" style="margin-top:12px">
           <button id="dl" type="button">HTML herunterladen</button>
           <button id="toOffer" type="button" class="ghost">Angebot erstellen →</button>
@@ -200,5 +226,6 @@ table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1p
 </main>
 <script src="templates.js"></script>
 <script src="app.js"></script>
+<script src="autopilot.js"></script>
 </body>
 </html>
