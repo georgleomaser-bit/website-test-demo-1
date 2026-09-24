@@ -13,16 +13,33 @@ Ein kleiner Mietserver (z. B. Hetzner CX22, ca. 4–5 € im Monat) mit Ubuntu 2
 ```bash
 curl -fsSL https://raw.githubusercontent.com/georgleomaser-bit/website-test-demo-1/HEAD/server/install.sh | sudo bash
 ```
-Das Skript fragt nach einer Domain und optional nach dem Anthropic-Schlüssel und richtet dann alles ein:
+Das Skript fragt nach einer Domain, optional nach dem Anthropic-Schlüssel und dem Stripe-Schlüssel, und richtet dann alles ein:
 - Node.js
 - AKYTEX als Dienst, der sich nach Absturz oder Neustart selbst wieder startet
 - **HTTPS automatisch** über Caddy, ohne Domain unter der kostenlosen Adresse `1-2-3-4.sslip.io`
-- Firewall und tägliche Backups (14 Tage)
+- Firewall, fail2ban gegen Passwort-Raten, automatische Sicherheitsupdates, tägliche Backups (14 Tage)
 
 Später:
 - `akytex-update` holt die neueste Version.
 - `journalctl -u akytex -f` zeigt die Logs.
 - Einstellungen stehen in `/etc/akytex.env`. Danach `systemctl restart akytex`.
+
+## 🔒 Käufe prüfen lassen (Stripe-Schlüssel)
+Ohne diesen Schlüssel glaubt die App dem Rückkehr-Link von Stripe. Wer den Link nachbaut, könnte sich dann einen Tarif „freischalten“. Mit dem Schlüssel fragt der Server bei jedem Kauf direkt bei Stripe nach. Nur was dort wirklich bezahlt ist, wird aktiv, und gekündigte Abos laufen automatisch aus.
+
+1. Stripe → **Entwickler → API-Schlüssel → Eingeschränkten Schlüssel erstellen**, Name z. B. „AKYTEX Server“.
+2. Nur **Lesen** erlauben für: *Checkout Sessions*, *Subscriptions* und *Payment Links*. Alles andere bleibt auf „Keine“.
+3. Den Schlüssel `rk_live_…` kopieren und den Installationsbefehl oben noch einmal ausführen (ungefährlich). Bei der Frage nach dem Stripe-Schlüssel einfügen.
+4. In Stripe bei jedem Payment Link unter „Nach der Zahlung“ die **Adresse eures Servers** eintragen, mit `?checkout=success&session_id={CHECKOUT_SESSION_ID}` am Ende. Dafür könnt ihr uns (Claude) einfach die Adresse sagen.
+
+Der Server nimmt nur eingeschränkte Schlüssel an, niemals den geheimen Hauptschlüssel `sk_…`. Was damit abgesichert ist:
+- Links mit erfundener oder unbezahlter Kaufnummer schalten nichts frei.
+- Wer ein günstiges Abo kauft, bekommt nicht per geändertem Link ein teures.
+- Ein im Browser-Speicher verstellter Tarif wird beim nächsten Start zurückgesetzt.
+- Eine weitergegebene Kaufnummer zieht höchstens 3-mal auf ein anderes Konto um, und das alte Konto verliert den Tarif dabei.
+- Das Sprachmodell (kostet echtes Geld) antwortet ohne KI-Tarif nur ein paar Mal am Tag pro Konto (`FREE_AI_DAILY`, Standard 15 Anfragen), mit AKYTEX AI, AI Premium oder Ultra bis `PAID_AI_DAILY` (Standard 400).
+
+Neues Gerät: Im Konto unter „Abo & Zahlung“ steht die Kaufnummer. Auf dem neuen Gerät „Kauf wiederherstellen“ tippen und sie einfügen.
 
 ## ⚡ Einfachster Start: Doppelklick
 1. **Node.js** installieren: https://nodejs.org → „LTS“, einmalig.

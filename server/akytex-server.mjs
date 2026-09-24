@@ -8,6 +8,9 @@
 //   ADMIN_TOKEN  Geheimes Passwort für die Moderation (mindestens 24 Zeichen, Pflicht für /api/admin)
 //   TRUST_PROXY  "1", wenn der Server hinter Cloudflare/Nginx läuft (echte IP aus X-Forwarded-For)
 //   ALLOWED_HOSTS Weitere eigene Adressen für den Herkunfts-Check, z. B. "akytex.org"
+//   HOST         Adresse, an die der Server bindet (hinter Caddy/Nginx: 127.0.0.1 – dann nur über HTTPS erreichbar)
+//   STRIPE_SECRET_KEY  Eingeschränkter Stripe-Schlüssel (nur Lesen) – Käufe werden dann serverseitig geprüft (billing.mjs)
+//   FREE_AI_DAILY / PAID_AI_DAILY  Sprachmodell-Anfragen pro Konto und Tag ohne bzw. mit KI-Tarif (Standard 15 / 400)
 import http from "node:http";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -15,9 +18,11 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { initAI, aiReady, aiChat } from "./ai.mjs";
+import { billingOn, billingView, planOf, refreshPlan, verifyCheckout } from "./billing.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = +process.env.PORT || 8080;
+const HOST = process.env.HOST || undefined;
 const DATA = path.resolve(process.env.DATA_DIR || path.join(ROOT, "data"));
 const VIDEOS = path.join(DATA, "videos");
 const DB_FILE = path.join(DATA, "db.json");
@@ -32,10 +37,13 @@ const MAX_JSON = 16 * 1024;
 const UPLOADS_PER_DAY = 10;
 const HIDE_AFTER_REPORTS = 3;
 const PAGE = 20;
+const AI_PLANS = new Set(["ai", "aiprem", "ultra"]);
+const FREE_AI_DAILY = +process.env.FREE_AI_DAILY || 15;
+const PAID_AI_DAILY = +process.env.PAID_AI_DAILY || 400;
 
 // ---------- Datenbank (JSON-Datei, atomar geschrieben) ----------
 fs.mkdirSync(VIDEOS, { recursive: true });
-let db = { users: {}, clips: {}, comments: {}, likes: {}, reports: {} };
+let db = { users: {}, clips: {}, comments: {}, likes: {}, reports: {}, purchases: {} };
 try {
   db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) };
 } catch (_) {
@@ -77,6 +85,9 @@ const SECURITY = {
   "Referrer-Policy": "strict-origin-when-cross-origin",
   "Permissions-Policy": "camera=(), microphone=(self), geolocation=(), payment=()",
   "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "X-Permitted-Cross-Domain-Policies": "none",
+  "Origin-Agent-Cluster": "?1",
   "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
 };
 function send(res, status, body, headers = {}) {
@@ -182,12 +193,38 @@ async function api(req, res, url) {
   const me = userOf(req);
   let m;
 
-  if (p === "/health") return send(res, 200, { ok: true, service: "akytex", clips: Object.values(db.clips).filter(visible).length, ai: aiReady() });
+  if (p === "/health") return send(res, 200, { ok: true, service: "akytex", clips: Object.values(db.clips).filter(visible).length, ai: aiReady(), billing: billingOn() });
 
-  // Echtes Sprachmodell für AKYTEX AI / Jarvis (nur mit ANTHROPIC_API_KEY)
+  // Echtes Sprachmodell für AKYTEX AI / Jarvis (nur mit ANTHROPIC_API_KEY).
+  // Mit Stripe-Prüfung: Kontingent pro Konto – groß mit bezahltem KI-Tarif, klein zum Ausprobieren.
   if (p === "/ai/chat" && req.method === "POST") {
     if (limited("ai:" + ip, 60, 600000)) return fail(res, 429, "Viele Fragen auf einmal – gib mir kurz eine Pause.");
-    return send(res, 200, { ok: true, ...(await aiChat(await readJson(req, 256 * 1024))) });
+    if (!billingOn()) return send(res, 200, { ok: true, ...(await aiChat(await readJson(req, 256 * 1024))) });
+    if (!me) return fail(res, 401, "Bitte zuerst anmelden.");
+    if (await refreshPlan(me)) save();
+    const paid = AI_PLANS.has(planOf(me));
+    const day = new Date().toISOString().slice(0, 10);
+    const used = me.aiDay === day ? me.aiUsed || 0 : 0;
+    if (used >= (paid ? PAID_AI_DAILY : FREE_AI_DAILY)) return fail(res, paid ? 429 : 402, paid ? "Für heute ist dein KI-Kontingent aufgebraucht – morgen geht's weiter." : "Deine Gratis-Fragen an das Sprachmodell sind für heute aufgebraucht. Mit AKYTEX AI oder Ultra antwortet es dir unbegrenzt.");
+    const out = await aiChat(await readJson(req, 256 * 1024));
+    Object.assign(me, { aiDay: day, aiUsed: used + 1 });
+    save();
+    return send(res, 200, { ok: true, ...out });
+  }
+
+  // Tarif: nur was Stripe bestätigt hat
+  if (p === "/billing" && req.method === "GET") {
+    if (me && (await refreshPlan(me))) save();
+    return send(res, 200, { ok: true, ...billingView(me) });
+  }
+  if (p === "/billing/verify" && req.method === "POST") {
+    if (!billingOn()) return fail(res, 501, "Kaufprüfung ist auf diesem Server nicht eingerichtet.");
+    if (!me) return fail(res, 401, "Bitte zuerst anmelden.");
+    if (limited("verify:" + ip, 20, 600000)) return fail(res, 429, "Zu viele Versuche – bitte kurz warten.");
+    const b = await readJson(req);
+    const out = await verifyCheckout(me, clean(b.sessionId, 220), db.purchases, db.users);
+    save();
+    return send(res, 200, { ok: true, ...out });
   }
 
   // Anonymes Konto: Handle + geheimer Schlüssel (nur als Hash gespeichert)
@@ -217,6 +254,7 @@ async function api(req, res, url) {
     for (const c of Object.values(db.clips)) if (c.author === me.id) await removeClip(c);
     for (const list of Object.values(db.comments)) for (let i = list.length - 1; i >= 0; i--) if (list[i].author === me.id) list.splice(i, 1);
     for (const l of Object.values(db.likes)) delete l[me.id];
+    for (const [k, v] of Object.entries(db.purchases)) if (v.user === me.id) delete db.purchases[k]; // Kauf kann auf ein neues Konto
     delete db.users[me.id];
     save();
     return send(res, 200, { ok: true });
@@ -435,4 +473,4 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 10 * 60000; // große Uploads über langsame Leitungen
 server.headersTimeout = 30000;
 const aiOn = await initAI(DATA);
-server.listen(PORT, () => console.log(`AKYTEX-Server läuft auf http://localhost:${PORT}  (Daten: ${DATA}${ADMIN_TOKEN.length >= 24 ? ", Moderation aktiv" : ", Moderation AUS – ADMIN_TOKEN setzen"}${aiOn ? ", KI aktiv" : ", KI aus – ANTHROPIC_API_KEY setzen"})`));
+server.listen(PORT, HOST, () => console.log(`AKYTEX-Server läuft auf http://localhost:${PORT}  (Daten: ${DATA}${ADMIN_TOKEN.length >= 24 ? ", Moderation aktiv" : ", Moderation AUS – ADMIN_TOKEN setzen"}${aiOn ? ", KI aktiv" : ", KI aus – ANTHROPIC_API_KEY setzen"}${billingOn() ? ", Kaufprüfung aktiv" : ""})`));
