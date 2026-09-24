@@ -205,6 +205,8 @@ export class Broker {
     const s = this.state;
     const sym = order.symbol;
     let pnl = null;
+    let held = null; // Haltedauer und Einstand fürs Trader-Profil (Jarvis)
+    let entry = null;
     const { orderFee, ideaFee, total: fee } = this.costs(order.qty, price, order.ideaFeePct || 0);
     if (order.side === "buy") {
       const cost = order.qty * price;
@@ -225,6 +227,8 @@ export class Broker {
         return;
       }
       s.cash += order.qty * price - fee;
+      held = Date.now() - (p.opened || Date.now());
+      entry = p.avg;
       pnl = (price - p.avg) * order.qty - fee;
       p.realized += pnl;
       s.realized += pnl;
@@ -233,7 +237,7 @@ export class Broker {
     }
 
     s.fees = (s.fees || 0) + fee;
-    const fill = { id: uid(), orderId: order.id, symbol: sym, side: order.side, type: order.type, qty: order.qty, price, fee, orderFee, ideaFee, ideaId: order.ideaId || null, pnl, ts: Date.now(), time: nowSec() };
+    const fill = { id: uid(), orderId: order.id, symbol: sym, side: order.side, type: order.type, qty: order.qty, price, fee, orderFee, ideaFee, ideaId: order.ideaId || null, pnl, held, entry, ts: Date.now(), time: nowSec() };
     s.fills.unshift(fill);
     s.fills.length = Math.min(s.fills.length, 500);
     order.status = "ausgeführt";

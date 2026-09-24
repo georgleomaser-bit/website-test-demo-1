@@ -11,7 +11,7 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
-import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle } from "./jarvis.js";
+import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle, jarvisPersona } from "./jarvis.js";
 import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
@@ -35,7 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "4.9"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.0"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -1139,7 +1139,7 @@ document.addEventListener("keydown", (e) => {
     setToolButtons("cursor");
     return;
   }
-  if (typing) return;
+  if (typing || document.documentElement.classList.contains("jv-open")) return; // Jarvis hat eigene Tasten
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
     chart.undoDrawing();
@@ -2568,7 +2568,7 @@ async function sendChatCore(text) {
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich, konkret und durchdacht: bei einfachen Fragen kurz, bei Analysen gründlich mit Begründung, Zahlen und Alternativen (bis etwa 250 Wörter). Beginne immer mit der Kernaussage – die ersten Sätze werden vorgelesen. Sprich den Nutzer mit „${jarvisTitle()}“ an. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt. Du bist zugleich der persönliche Assistent der App: Mit app_control öffnest du Ansichten, Aktien, Tarife oder Einzahlungen, wenn der Nutzer das möchte. Geld bewegst du nie selbst – Käufe, Einzahlungen und Abos bestätigt immer der Nutzer. Denke voraus: Schlage passende nächste Schritte vor (Alarm, Stop, Watchlist), ohne aufdringlich zu sein. Dein Ziel ist, das Übungsdepot so profitabel wie möglich zu machen – mit Profi-Disziplin: bestes Chance-Risiko, Positionsgrößen nach Risiko, Stops, Gewinne laufen lassen, Verluste früh begrenzen, Streuung. Den vollautomatischen Profit-Modus (profit_mode) schlägst du vor, wenn jemand „einfach Geld machen“ will.
+  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich, konkret und durchdacht: bei einfachen Fragen kurz, bei Analysen gründlich mit Begründung, Zahlen und Alternativen (bis etwa 250 Wörter). Beginne immer mit der Kernaussage – die ersten Sätze werden vorgelesen. Sprich den Nutzer mit „${jarvisTitle()}“ an. ${jarvisPersona()} ${dnaBrief()} Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Grundhaltung: präzise – wie ein erfahrener Trader, der die Dinge einfach erklärt (den Tonfall bestimmt die gewählte Stimmung). Du bist zugleich der persönliche Assistent der App: Mit app_control öffnest du Ansichten, Aktien, Tarife oder Einzahlungen, wenn der Nutzer das möchte. Geld bewegst du nie selbst – Käufe, Einzahlungen und Abos bestätigt immer der Nutzer. Denke voraus: Schlage passende nächste Schritte vor (Alarm, Stop, Watchlist), ohne aufdringlich zu sein. Dein Ziel ist, das Übungsdepot so profitabel wie möglich zu machen – mit Profi-Disziplin: bestes Chance-Risiko, Positionsgrößen nach Risiko, Stops, Gewinne laufen lassen, Verluste früh begrenzen, Streuung. Den vollautomatischen Profit-Modus (profit_mode) schlägst du vor, wenn jemand „einfach Geld machen“ will.
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -6332,6 +6332,103 @@ function jarvisQuickStatus() {
   if (!pos) return "Dein Übungsdepot ist startklar.";
   return `Dein Depot steht bei ${pct(total).replace("+", "plus ").replace("-", "minus ")}.`;
 }
+// ---------- Trader-DNA: Jarvis lernt aus deinen eigenen Trades ----------
+// Persönlich und nicht kopierbar: Das Profil entsteht aus dem Verhalten jedes einzelnen Nutzers und wird mit
+// jedem Trade genauer (Trefferquote, Chance-Risiko, Haltedauer, Fehler-Muster, Lieblingsbranchen).
+function traderDNA() {
+  const fills = broker.state.fills || [];
+  const sells = fills.filter((f) => f.side === "sell" && f.pnl != null);
+  const n = sells.length;
+  const out = { n, trades: fills.length, strengths: [], weak: [], tips: [], score: null, style: null };
+  if (n < 3) return out;
+  const avg = (a, g) => (a.length ? a.reduce((sum, x) => sum + g(x), 0) / a.length : 0);
+  const ret = (f) => (f.entry ? f.price / f.entry - 1 : f.pnl / Math.max(1, f.qty * f.price - f.pnl));
+  const wins = sells.filter((f) => f.pnl > 0);
+  const losses = sells.filter((f) => f.pnl <= 0);
+  const winRate = wins.length / n;
+  const avgWin = avg(wins, ret);
+  const avgLoss = avg(losses, ret);
+  const payoff = losses.length && avgLoss ? avgWin / Math.abs(avgLoss) : wins.length ? 9 : 0;
+  const gp = wins.reduce((sum, f) => sum + f.pnl, 0);
+  const gl = Math.abs(losses.reduce((sum, f) => sum + f.pnl, 0));
+  const pf = gl ? gp / gl : gp ? 9 : 0;
+  const timed = (a) => a.filter((f) => f.held != null);
+  const heldW = avg(timed(wins), (f) => f.held);
+  const heldL = avg(timed(losses), (f) => f.held);
+  const heldAll = avg(timed(sells), (f) => f.held);
+  const days = new Set(fills.map((f) => new Date(f.ts).toDateString())).size || 1;
+  const perDay = fills.length / days;
+  const feeShare = (broker.state.fees || 0) / Math.max(1, gp + gl);
+  const sec = {};
+  for (const f of fills.filter((x) => x.side === "buy")) {
+    const k = STOCKS.find((z) => z.s === f.symbol)?.sec || "Sonstige";
+    sec[k] = (sec[k] || 0) + 1;
+  }
+  const buysN = Object.values(sec).reduce((a, b) => a + b, 0) || 1;
+  const fav = Object.entries(sec).sort((a, b) => b[1] - a[1])[0];
+  const bySym = {};
+  for (const f of sells) bySym[f.symbol] = (bySym[f.symbol] || 0) + f.pnl;
+  const syms = Object.entries(bySym).sort((a, b) => b[1] - a[1]);
+  const eq = broker.equity() || 1;
+  const maxW = Math.max(0, ...Object.entries(broker.state.positions || {}).map(([sym, p]) => (p.qty * market.get(sym).price) / eq));
+  const dur = (ms) => (ms < 3600e3 ? `${Math.max(1, Math.round(ms / 60e3))} Min.` : ms < 86400e3 ? `${nf1(ms / 3600e3)} Std.` : `${nf1(ms / 86400e3)} Tage`);
+  const disposition = heldW > 0 && heldL > heldW * 1.5 && payoff < 1.2;
+  Object.assign(out, { winRate, avgWin, avgLoss, payoff, pf, heldW, heldL, perDay, feeShare, fav, best: syms[0], worst: syms[syms.length - 1], maxW });
+  out.style = !heldAll ? "Trader" : heldAll < 3600e3 ? "Daytrader" : heldAll < 5 * 86400e3 ? "Swing-Trader" : "Investor";
+  if (winRate >= 0.55) out.strengths.push(`Starke Trefferquote: ${pct(winRate).replace("+", "")} deiner Trades enden im Plus.`);
+  if (payoff >= 1.5) out.strengths.push(`Du lässt Gewinne laufen: Ein Gewinner bringt im Schnitt ${nf1(payoff)}-mal so viel wie ein Verlierer kostet.`);
+  if (pf >= 1.3) out.strengths.push(`Profit-Faktor ${nf1(pf)}: Unterm Strich verdienst du mehr, als du verlierst.`);
+  if (winRate < 0.4) out.weak.push(`Nur ${pct(winRate).replace("+", "")} deiner Trades sind Gewinner.`);
+  if (payoff < 1 && losses.length) out.weak.push(`Deine Verluste (Ø ${pct(avgLoss)}) sind größer als deine Gewinne (Ø ${pct(avgWin)}).`);
+  if (disposition) {
+    out.weak.push(`Verlierer hältst du ${nf1(heldL / heldW)}-mal so lange wie Gewinner (${dur(heldL)} statt ${dur(heldW)}) – der klassische Dispositionseffekt.`);
+    out.tips.push("Setz schon beim Kauf einen Stop – und für Gewinner einen Trailing-Stop statt eines frühen Verkaufs.");
+  }
+  if (perDay > 10) {
+    out.weak.push(`Sehr viele Orders: rund ${Math.round(perDay)} pro Handelstag.`);
+    out.tips.push("Weniger, dafür bessere Trades: nur Setups mit klarem Chance-Risiko von mindestens 1 : 2.");
+  }
+  if (feeShare > 0.15) out.tips.push(`Gebühren fressen rund ${Math.round(feeShare * 100)} % deiner Gewinne und Verluste – größere, seltenere Orders sparen.`);
+  if (maxW > 0.3) {
+    out.weak.push(`Klumpenrisiko: Eine Position macht ${Math.round(maxW * 100)} % deines Depots aus.`);
+    out.tips.push("Höchstens 10–15 % pro Aktie – dann wirft dich kein einzelner Absturz um.");
+  }
+  if (fav && fav[1] / buysN > 0.6 && buysN >= 4) out.tips.push(`Du kaufst fast nur ${fav[0]} (${Math.round((fav[1] / buysN) * 100)} %). Eine zweite Branche glättet die Schwankungen.`);
+  if (!out.tips.length) out.tips.push(winRate >= 0.5 && pf >= 1 ? "Bleib bei deinem System – und erhöhe die Positionsgröße nur, wenn die Serie hält." : "Starte mit dem Profit-Modus oder kleinen Positionen und Stops – ich werte jede Order für dich aus.");
+  const sc = 50 + (winRate - 0.5) * 60 + Math.max(-1, Math.min(1, payoff - 1)) * 15 + (pf >= 1 ? 10 : -10) - (disposition ? 10 : 0) - (perDay > 10 ? 8 : 0) - (maxW > 0.3 ? 8 : 0);
+  out.score = Math.round(Math.max(0, Math.min(100, sc)));
+  return out;
+}
+// Kurzfassung für das Sprachmodell – so werden alle Antworten persönlich
+function dnaBrief() {
+  const d = traderDNA();
+  if (d.n < 3) return "";
+  return `Trader-DNA des Nutzers (aus ${d.n} abgeschlossenen Trades, nutze sie für persönliche Tipps): Stil ${d.style}, Disziplin-Score ${d.score}/100, Trefferquote ${Math.round(d.winRate * 100)} %, Ø Gewinn ${pct(d.avgWin)}, Ø Verlust ${pct(d.avgLoss)}, Profit-Faktor ${nf1(d.pf)}.${d.weak.length ? " Schwächen: " + d.weak.join(" ") : ""}${d.strengths.length ? " Stärken: " + d.strengths.join(" ") : ""}`;
+}
+function dnaReport() {
+  const d = traderDNA();
+  const title = esc(jarvisTitle());
+  if (d.n < 3)
+    return `<p>🧬 Für deine Trader-DNA brauche ich mindestens <b>3 abgeschlossene Trades</b>, ${title} – bisher sind es ${d.n}. Kauf und verkauf ein paar Aktien im Übungsdepot, dann sage ich dir genau, was du gut machst und wo Geld liegen bleibt.</p>`;
+  const li = (a) => a.map((x) => `<li>${esc(x)}</li>`).join("");
+  return `<p>🧬 <b>Deine Trader-DNA</b>, ${title}: Typ <b>${d.style}</b> · Disziplin-Score <b>${d.score}/100</b></p>
+    <ul><li>Trefferquote <b>${Math.round(d.winRate * 100)} %</b> (${d.n} abgeschlossene Trades)</li><li>Ø Gewinner <b class="up">${pct(d.avgWin)}</b> · Ø Verlierer <b class="down">${pct(d.avgLoss)}</b></li><li>Profit-Faktor <b>${nf1(d.pf)}</b>${d.best ? ` · bester Wert <b>${esc(d.best[0])}</b> (${eur(d.best[1])})` : ""}${d.worst && d.worst[1] < 0 ? ` · schwächster <b>${esc(d.worst[0])}</b> (${eur(d.worst[1])})` : ""}</li></ul>
+    ${d.strengths.length ? `<p><b>Das machst du stark:</b></p><ul>${li(d.strengths)}</ul>` : ""}
+    ${d.weak.length ? `<p><b>Hier bleibt Geld liegen:</b></p><ul>${li(d.weak)}</ul>` : ""}
+    <p><b>Mein Plan für dich:</b></p><ul>${li(d.tips)}</ul>
+    <p class="muted">Deine DNA lernt mit jedem Trade dazu – sie gehört nur dir und bleibt auf deinem Gerät. Übungsdepot, keine Anlageberatung.</p>`;
+}
+// Stimmung für Jarvis’ Auto-Modus: Tagesveränderung von Depot und Markt (in %)
+function jarvisMoodHint() {
+  const eq = broker.equity() || 1;
+  let dayAbs = 0;
+  for (const [sym, p] of Object.entries(broker.state.positions || {})) {
+    const q = market.quote(sym);
+    dayAbs += p.qty * q.price * (q.changePct / (1 + q.changePct));
+  }
+  const mk = STOCKS.reduce((sum, x) => sum + market.quote(x.s).changePct, 0) / STOCKS.length;
+  return { day: (dayAbs / eq) * 100, market: mk * 100 };
+}
 // Jarvis fragt über den normalen Chat – so landet alles auch im Verlauf
 async function jarvisAsk(text) {
   const from = chat.length;
@@ -6363,6 +6460,8 @@ function appCommand(text) {
       renderRightPanel();
     });
   }
+  // Trader-DNA: „Analysiere mich“, „Was mache ich falsch?“, „Meine Trader-DNA“
+  if (/(trader.?dna|meine dna|analysier\w* mich|mein(e)? (trading.?)?(profil|stil)|was mache ich falsch|wie gut bin ich|meine (fehler|schwächen|stärken)|coach mich|bewerte mich)/.test(t)) return done(dnaReport(), null, ["Profit-Modus an", "Wie steht mein Depot?", "Was ist ein Trailing-Stop?"]);
   // Profit-Modus: „Profit-Modus an“, „Mach mir Geld“, „Wie läuft der Profit-Modus?“
   if (/(profit.?modus|getting rich|reich.?werden.?modus|money.?modus|mach (mir |uns )?(mehr )?geld|maximier\w* (meinen |den |meine )?(gewinn|profit|rendite)|geld.?maschine)/.test(t)) {
     if (/(\baus\b|ausschalt|stopp|\bstop\b|beend|deaktiv|pausier)/.test(t)) return done(`<p>Profit-Modus ist aus, ${esc(jarvisTitle())}. Deine Positionen bleiben mit ihren Stops bestehen.</p>`, () => profitMode(false));
@@ -6582,7 +6681,9 @@ function initAssistant() {
     upsell: () => openPlans("Jarvis, der Sprachmodus, ist Teil von AKYTEX Ultra."),
     score: jarvisScore,
     quickStatus: jarvisQuickStatus,
+    moodHint: jarvisMoodHint,
     hud: () => ({
+      dna: ((sc) => (sc != null ? `${sc}/100` : "LERNT"))(traderDNA().score),
       depot: eur(broker.equity()),
       market: `${STOCKS.filter((x) => market.quote(x.s).changePct > 0).length}/${STOCKS.length} ▲`,
       mode: profitOn() ? "PROFIT" : aiEngine.state.config.enabled ? "AUTOPILOT" : "BEREIT",

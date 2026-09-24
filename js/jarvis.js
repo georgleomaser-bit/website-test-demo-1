@@ -48,6 +48,135 @@ function setTitle(t) {
   }
 }
 
+// ---------- Emotionen: Grundstimmung und Reaktionen – frei wählbar ----------
+const MOOD_KEY = "akytex-jarvis-mood";
+const REACT_KEY = "akytex-jarvis-react";
+const MEM_KEY = "akytex-jarvis-memory";
+// rgb: Farbe von Kugel und HUD · rate/pitch: Stimme · pace: Bewegung der Kugel · tone: Anweisung fürs Sprachmodell
+export const MOODS = {
+  jarvis: { label: "Klassisch", icon: "🎩", rgb: [255, 176, 72], rate: 1, pitch: 0, pace: 1, tone: "souverän und höflich wie ein britischer Butler, mit trockenem Humor", sample: "Sehr wohl. Klassisch, souverän, zu Diensten." },
+  ruhig: { label: "Ruhig", icon: "🌊", rgb: [70, 186, 255], rate: 0.93, pitch: -0.04, pace: 0.55, tone: "ruhig, gelassen und beruhigend, ohne Hektik – auch wenn der Markt wackelt", sample: "Ganz ruhig. Ich bin entspannt für dich da." },
+  motiviert: { label: "Motiviert", icon: "🔥", rgb: [255, 98, 44], rate: 1.1, pitch: 0.05, pace: 1.7, tone: "energisch und motivierend wie ein Coach, voller Tatendrang, aber diszipliniert", sample: "Los geht's! Volle Energie, wir holen das Maximum raus!" },
+  herzlich: { label: "Herzlich", icon: "💛", rgb: [255, 128, 168], rate: 1, pitch: 0.03, pace: 0.85, tone: "herzlich, warm und ermutigend – du freust dich ehrlich mit dem Nutzer", sample: "Schön, dass du da bist. Ich kümmere mich gern um dich." },
+  witzig: { label: "Witzig", icon: "😎", rgb: [176, 112, 255], rate: 1.04, pitch: 0.02, pace: 1.25, tone: "locker und witzig mit kurzen, charmanten Sprüchen – in der Sache aber präzise", sample: "Witzig-Modus an. Keine Sorge, die Zahlen nehme ich trotzdem ernst." },
+  ernst: { label: "Fokus", icon: "🎯", rgb: [150, 220, 255], rate: 0.98, pitch: -0.03, pace: 0.8, tone: "sachlich, knapp und fokussiert, ohne Floskeln und ohne Witze", sample: "Fokus-Modus. Nur Fakten, keine Floskeln." },
+};
+export const REACTIONS = {
+  joy: { label: "Freude", icon: "🎉", desc: "bei Gewinnen" },
+  worry: { label: "Sorge", icon: "🫣", desc: "bei Verlusten und Risiken" },
+  hype: { label: "Begeisterung", icon: "⚡", desc: "bei starken Signalen" },
+  humor: { label: "Humor", icon: "😄", desc: "kleine Sprüche" },
+};
+const load = (k, d) => {
+  try {
+    const v = localStorage.getItem(k);
+    return v == null ? d : JSON.parse(v);
+  } catch (_) {
+    return d;
+  }
+};
+const keep = (k, v) => {
+  try {
+    localStorage.setItem(k, JSON.stringify(v));
+  } catch (_) {
+    /* nur für diese Sitzung */
+  }
+};
+export const moodSetting = () => {
+  const m = load(MOOD_KEY, "auto");
+  return m === "auto" || MOODS[m] ? m : "auto";
+};
+// „Auto“: Jarvis passt seine Stimmung an Tageszeit, Depot und Markt an
+function autoMood() {
+  const h = new Date().getHours();
+  const c = J.deps?.moodHint?.() || {};
+  if (h >= 22 || h < 6) return "ruhig";
+  if (c.day <= -1.5) return "ernst";
+  if (c.day >= 1.5 || c.market >= 1) return "motiviert";
+  return "jarvis";
+}
+export function jarvisMood() {
+  const set = moodSetting();
+  const key = set === "auto" ? autoMood() : set;
+  return { key, auto: set === "auto", ...MOODS[key] };
+}
+function setMood(k) {
+  keep(MOOD_KEY, k);
+  updateMoodBox();
+  updateHud();
+}
+export const reactions = () => ({ joy: true, worry: true, hype: true, humor: true, ...load(REACT_KEY, {}) });
+function setReactions(r) {
+  keep(REACT_KEY, r);
+  updateMoodBox();
+}
+export const jarvisMemory = () => (Array.isArray(load(MEM_KEY, [])) ? load(MEM_KEY, []) : []).slice(-30);
+// Für das Sprachmodell: Tonfall, erlaubte Emotionen und was Jarvis sich gemerkt hat
+export function jarvisPersona() {
+  const m = jarvisMood();
+  const r = reactions();
+  const shown = Object.entries(REACTIONS)
+    .filter(([k]) => r[k] && k !== "humor")
+    .map(([, v]) => `${v.label} ${v.desc}`);
+  const mem = jarvisMemory();
+  return `Tonfall: ${m.tone}. ${shown.length ? `Zeige passende Gefühle: ${shown.join(", ")}.` : "Bleib emotional neutral."}${r.humor && m.key !== "ernst" ? "" : " Keine Witze."}${mem.length ? ` Das hat dir der Nutzer anvertraut (nutze es, wenn es passt): ${mem.map((x) => `„${x.t}“`).join("; ")}.` : ""}`;
+}
+// Ich-Form in Du-Form, damit Jarvis Gemerktes natürlich wiedergibt („ich mag Tesla“ → „du magst Tesla“)
+const PRON = { ich: "du", mich: "dich", mir: "dir", mein: "dein", meine: "deine", meinen: "deinen", meinem: "deinem", meiner: "deiner", meines: "deines" };
+const VERB = { bin: "bist", habe: "hast", hab: "hast", mag: "magst", kann: "kannst", will: "willst", muss: "musst", darf: "darfst", soll: "sollst", möchte: "möchtest", weiß: "weißt", werde: "wirst", hätte: "hättest", wäre: "wärst" };
+const NOT_VERB = /^(k?eine|gerne?|heute|morgen|immer|lieber|diese|jede|alle|welche|seine|ihre|unsere|deine|meine|viele|wenige|ganze|große|kleine|nie|ohne|halbe|ganze)$/i;
+function toYou(t) {
+  const w = t.split(/\s+/);
+  const hasIch = w.some((x) => x.toLowerCase() === "ich");
+  return w
+    .map((x, i) => {
+      const lw = x.toLowerCase();
+      if (PRON[lw]) return PRON[lw];
+      if (!hasIch) return x;
+      if (VERB[lw]) return VERB[lw];
+      // regelmäßige Verben direkt nach „ich“ oder am Satzende („… Tesla kaufe“): -e → -st
+      const verbSpot = (i > 0 && w[i - 1].toLowerCase() === "ich") || i === w.length - 1;
+      if (!verbSpot || !/^[a-zäöüß]{3,}e$/.test(x) || /(che|ie)$/.test(x) || NOT_VERB.test(x)) return x;
+      if (/[^aeiouäöü]le$/.test(x)) return x.slice(0, -2) + "elst"; // handle → handelst
+      return x.slice(0, -1) + (/[dt]e$/.test(x) ? "est" : "st");
+      return x;
+    })
+    .join(" ");
+}
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const FILLERS = {
+  jarvis: ["Einen Moment, ich prüfe das.", "Sehr wohl – ich rechne kurz nach.", "Ich sehe mir die Zahlen an."],
+  ruhig: ["Ganz in Ruhe – ich schaue nach.", "Einen Augenblick."],
+  motiviert: ["Sekunde, ich hol dir die Zahlen!", "Bin dran!"],
+  herzlich: ["Gern, ich schaue kurz für dich nach.", "Einen Moment, ich kümmere mich darum."],
+  witzig: ["Moment, meine Schaltkreise glühen kurz.", "Ich frag kurz die Glaskugel … Spaß, ich rechne."],
+  ernst: ["Analyse läuft.", "Prüfe."],
+};
+const OPENERS = {
+  joy: { jarvis: ["Ausgezeichnet."], ruhig: ["Schön."], motiviert: ["Stark!", "Ja, so läuft das!"], herzlich: ["Oh, das freut mich!"], witzig: ["Na bitte, läuft bei dir!"], ernst: [] },
+  worry: { jarvis: ["Hm, Vorsicht."], ruhig: ["Kein Grund zur Panik."], motiviert: ["Kopf hoch, das drehen wir."], herzlich: ["Keine Sorge, ich bin bei dir."], witzig: ["Autsch. Aber wir bleiben cool."], ernst: ["Achtung."] },
+  hype: { jarvis: ["Interessant."], ruhig: ["Das ist spannend."], motiviert: ["Jetzt wird's spannend!"], herzlich: ["Oh, schau mal!"], witzig: ["Ui, da ist Musik drin!"], ernst: ["Relevantes Signal."] },
+};
+const QUIPS = ["Und nein, ich kann keine Lottozahlen vorhersagen.", "Das Depot und ich sind übrigens beste Freunde.", "Ich hätte Kaffee angeboten, aber ich bin eine KI.", "Das war jetzt schneller als jeder Börsenbrief."];
+// Grobe Stimmung einer Antwort: grüne/rote Zahlen und Signalwörter
+function feeling(html) {
+  const s = String(html);
+  if (/(kaufsignal|top-setup|starkes signal|ausbruch|breakout|beste chance)/i.test(s)) return "hype";
+  const up = (s.match(/class="[^"]*\bup\b/g) || []).length + (s.match(/(gewinn|im plus|gestiegen|zugelegt|rekord)/gi) || []).length;
+  const down = (s.match(/class="[^"]*\bdown\b/g) || []).length + (s.match(/(verlust|im minus|gefallen|eingebrochen|warnung|vorsicht)/gi) || []).length;
+  if (up >= down + 2) return "joy";
+  if (down >= up + 2) return "worry";
+  return null;
+}
+const FLASH = { joy: [110, 255, 150], worry: [255, 70, 55], hype: [255, 236, 140] };
+function emote(kind) {
+  if (!FLASH[kind]) return;
+  J.flash = { rgb: FLASH[kind], at: performance.now(), dur: kind === "worry" ? 2200 : 1600 };
+  if (kind !== "worry") J.burst = 1;
+  J.kick = 1;
+  J.voiceMod = kind === "joy" || kind === "hype" ? { rate: 1.04, pitch: 0.04 } : { rate: 0.95, pitch: -0.04 };
+}
+
 // ---------- Stimme: bevorzugt eine deutsche Männerstimme ----------
 const MALE = /(markus|yannick|martin|viktor|conrad|killian|florian|bernd|christoph|kasper|ralf|klaus|jonas|stefan|hans|eddy|reed|rocko|grandpa|opa|male|mann|männlich|x-deg|-deg-)/i;
 const FEMALE = /(anna|helena|petra|katja|amala|seraphina|katharina|marlene|vicki|hedda|elke|louisa|tanja|gisela|female|frau|x-deb|x-dea|x-nfh)/i;
@@ -139,8 +268,8 @@ function build() {
     <div class="jv-hud" aria-hidden="true">
       <i class="jv-fr tl"></i><i class="jv-fr tr"></i><i class="jv-fr bl"></i><i class="jv-fr br"></i>
       <div class="jv-top"><span class="jv-brand">J.A.R.V.I.S. <em>· AKYTEX</em></span><span class="jv-meter">${"<i></i>".repeat(24)}</span><span class="jv-clock" data-hud="clock"></span></div>
-      <div class="jv-side jv-left"><p>DEPOT<b data-hud="depot">–</b></p><p>MARKT<b data-hud="market">–</b></p><p>MODUS<b data-hud="mode">–</b></p></div>
-      <div class="jv-side jv-right"><p>STIMME<b data-hud="voice">–</b></p><p>ANREDE<b data-hud="title">–</b></p><p>STATUS<b data-hud="state">ONLINE</b></p></div>
+      <div class="jv-side jv-left"><p>DEPOT<b data-hud="depot">–</b></p><p>MARKT<b data-hud="market">–</b></p><p>MODUS<b data-hud="mode">–</b></p><p>TRADER-DNA<b data-hud="dna">–</b></p></div>
+      <div class="jv-side jv-right"><p>STIMME<b data-hud="voice">–</b></p><p>EMOTION<b data-hud="mood">–</b></p><p>ANREDE<b data-hud="title">–</b></p><p>STATUS<b data-hud="state">ONLINE</b></p></div>
       <i class="jv-reticle"></i>
     </div>
     <div class="jv-stage" role="dialog" aria-label="Jarvis – Sprachmodus">
@@ -149,8 +278,14 @@ function build() {
       <p class="jv-say" aria-live="polite"></p>
       <div class="jv-acts"></div>
     </div>
+    <div class="jv-moodbox" hidden role="dialog" aria-label="Emotionen von Jarvis">
+      <p class="jv-mb-h">STIMMUNG</p><div class="jv-mb-row" data-mb="mood"></div>
+      <p class="jv-mb-h">EMOTIONEN ZEIGEN</p><div class="jv-mb-row" data-mb="react"></div>
+    </div>
+    <p class="jv-keys" aria-hidden="true">LEERTASTE · SPRECHEN &nbsp; ESC · BEENDEN &nbsp; ALT+J · JARVIS</p>
     <div class="jv-controls">
       <form class="jv-type" hidden><input type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag Jarvis … (🎤 auf der Tastatur zum Diktieren)" aria-label="Frage an Jarvis" /></form>
+      <button class="jv-btn" data-jv="mood" title="Emotionen wählen" aria-label="Emotionen wählen">🎭</button>
       <button class="jv-btn" data-jv="voice" title="Stimme wechseln" aria-label="Stimme wechseln">🗣</button>
       <button class="jv-btn jv-micbtn" data-jv="mic" title="Mikrofon an/aus" aria-label="Mikrofon an oder aus">🎙</button>
       <button class="jv-btn" data-jv="chat" title="Im Chat weiterlesen" aria-label="Chat öffnen">💬</button>
@@ -189,8 +324,42 @@ function updateHud() {
   set("depot", h.depot || "–");
   set("market", h.market || "–");
   set("mode", h.mode || "BEREIT");
+  set("dna", h.dna || "LERNT");
   set("voice", ((bestVoice || pickVoice())?.name || "System").split(/[ (]/)[0].toUpperCase());
   set("title", jarvisTitle().toUpperCase());
+  const m = jarvisMood();
+  set("mood", (m.auto ? "AUTO · " : "") + m.label.toUpperCase());
+}
+// Auswahl der Emotionen: Grundstimmung (eine) und Reaktionen (beliebig viele)
+function updateMoodBox() {
+  const box = $("#jv")?.querySelector(".jv-moodbox");
+  if (!box) return;
+  const cur = moodSetting();
+  const r = reactions();
+  box.querySelector('[data-mb="mood"]').innerHTML =
+    `<button class="jv-mchip ${cur === "auto" ? "on" : ""}" data-mood="auto" style="--mc:255,210,140"><i>✨</i>Auto</button>` +
+    Object.entries(MOODS)
+      .map(([k, m]) => `<button class="jv-mchip ${cur === k ? "on" : ""}" data-mood="${k}" style="--mc:${m.rgb.join(",")}"><i>${m.icon}</i>${m.label}</button>`)
+      .join("");
+  box.querySelector('[data-mb="react"]').innerHTML = Object.entries(REACTIONS)
+    .map(([k, v]) => `<button class="jv-mchip ${r[k] ? "on" : ""}" data-react="${k}" aria-pressed="${!!r[k]}" title="${v.label} ${v.desc}"><i>${v.icon}</i>${v.label}</button>`)
+    .join("");
+}
+function toggleMoodBox(show) {
+  const box = root().querySelector(".jv-moodbox");
+  const on = show ?? box.hidden;
+  box.hidden = !on;
+  root().querySelector('[data-jv="mood"]').classList.toggle("on", on);
+  if (on) updateMoodBox();
+}
+// Neue Stimmung vorführen: Farbe, Tempo und Stimme wechseln sofort
+async function previewMood(k) {
+  setMood(k);
+  const m = jarvisMood();
+  J.kick = 1;
+  J.burst = 0.8;
+  await speakOut(k === "auto" ? `Auto-Modus. Ich passe meine Stimmung an Markt, Depot und Tageszeit an. Gerade bin ich ${m.label.toLowerCase()}.` : m.sample);
+  if (J.on && !J.typing && !J.rec) listen();
 }
 // Leiser Ton wie bei einem Assistenten: hoch = ich höre, runter = verstanden
 function chime(up) {
@@ -257,6 +426,16 @@ function onClick(e) {
   }
   if (b?.dataset.jv === "mic") return toggleMute();
   if (b?.dataset.jv === "voice") return cycleVoice();
+  if (b?.dataset.jv === "mood") return toggleMoodBox();
+  const mc = e.target.closest("[data-mood], [data-react]");
+  if (mc?.dataset.mood) return previewMood(mc.dataset.mood);
+  if (mc?.dataset.react) {
+    const r = reactions();
+    r[mc.dataset.react] = !r[mc.dataset.react];
+    setReactions(r);
+    if (r[mc.dataset.react] && FLASH[mc.dataset.react]) emote(mc.dataset.react);
+    return;
+  }
   if (b?.dataset.jvAct != null) {
     const a = J.actions?.[+b.dataset.jvAct];
     if (a) J.deps.runAction(a, b);
@@ -367,41 +546,61 @@ const PTS = Array.from({ length: N }, (_, i) => {
   }
   return { kind, x, y, z, rad: kind === 0 ? 0.9 + ((i * 37) % 19) / 100 : kind === 3 ? 0.97 + ((i * 11) % 9) / 100 : kind === 1 ? 0.2 + ((i * 53) % 50) / 100 : 1.12 + ((i * 29) % 30) / 100, seed, sp: 0.3 + ((i * 7) % 10) / 12 };
 });
-// Leuchtpunkte in festen Größen vorrendern – ohne Skalierung zeichnet der Browser sie am schnellsten
-const SPRITES = [3, 5, 7, 10, 14].map((n) => {
-  const c = document.createElement("canvas");
-  c.width = c.height = n;
-  const g = c.getContext("2d");
-  const h = n / 2;
-  const gr = g.createRadialGradient(h, h, 0, h, h, h);
-  gr.addColorStop(0, "rgba(255,246,222,1)");
-  gr.addColorStop(0.25, "rgba(255,196,100,0.95)");
-  gr.addColorStop(0.6, "rgba(255,140,40,0.3)");
-  gr.addColorStop(1, "rgba(255,110,0,0)");
-  g.fillStyle = gr;
-  g.fillRect(0, 0, n, n);
-  return { n, c };
-});
+// Leuchtpunkte in festen Größen vorrendern – ohne Skalierung zeichnet der Browser sie am schnellsten.
+// Farbe folgt der Stimmung: bei jedem Farbwechsel werden die fünf kleinen Vorlagen neu gemalt (billig).
+const mixc = (c, w, k) => c.map((v, i) => Math.round(v + ((w[i] ?? w) - v) * k));
+function makeSprites(rgb) {
+  const hi = mixc(rgb, 255, 0.86);
+  const mid = mixc(rgb, 255, 0.3);
+  return [3, 5, 7, 10, 14].map((n) => {
+    const c = document.createElement("canvas");
+    c.width = c.height = n;
+    const g = c.getContext("2d");
+    const h = n / 2;
+    const gr = g.createRadialGradient(h, h, 0, h, h, h);
+    gr.addColorStop(0, `rgba(${hi},1)`);
+    gr.addColorStop(0.25, `rgba(${mid},0.95)`);
+    gr.addColorStop(0.6, `rgba(${rgb},0.3)`);
+    gr.addColorStop(1, `rgba(${mixc(rgb, 0, 0.3)},0)`);
+    g.fillStyle = gr;
+    g.fillRect(0, 0, n, n);
+    return { n, c };
+  });
+}
+let SPRITES = makeSprites([255, 176, 72]);
+let spriteRgb = [255, 176, 72];
 const spriteFor = (size) => SPRITES[size < 4 ? 0 : size < 6 ? 1 : size < 8.5 ? 2 : size < 12 ? 3 : 4];
 const ARCS = Array.from({ length: 7 }, (_, i) => ({ r: 1.02 + i * 0.045, len: 0.5 + ((i * 3) % 5) * 0.28, off: i * 1.7, sp: (i % 2 ? -1 : 1) * (0.2 + i * 0.07), w: i % 3 === 0 ? 2.2 : 1.1 }));
-let heat = [255, 176, 72]; // Grundfarbe: Gold/Bernstein
-const HEAT = { listen: [255, 186, 90], think: [255, 150, 50], speak: [255, 200, 110], idle: [210, 150, 80], muted: [170, 120, 70], upsell: [255, 190, 100], type: [230, 170, 90] };
+let heat = [255, 176, 72]; // aktuelle Farbe (gleitet weich zur Zielfarbe)
+// Helligkeit je Zustand – die Farbe selbst kommt aus der Stimmung
+const TINT = { listen: 1, think: 0.86, speak: 1.12, idle: 0.86, muted: 0.7, upsell: 1, type: 0.92 };
+function targetColor(now) {
+  const base = jarvisMood().rgb;
+  const f = TINT[J.state] ?? 1;
+  let c = base.map((v) => Math.min(255, v * f));
+  const fl = J.flash;
+  if (fl) {
+    const p = (now - fl.at) / fl.dur;
+    if (p >= 1) J.flash = null;
+    else c = mixc(c, fl.rgb, Math.sin(Math.PI * Math.min(1, p * 1.4)) * 0.85);
+  }
+  return c;
+}
 function drawOrb(t, dt) {
   const cv = root().querySelector(".jv-orb");
   if (!cv || root().classList.contains("glow-only")) return;
-  const dpr = Math.min(MOBILE ? 1.5 : 1.35, devicePixelRatio || 1);
+  const dpr = Math.min(MOBILE ? 1.5 : 1.35, devicePixelRatio || 1) * (J.stride > 2 ? 0.85 : 1);
   const css = cv.clientWidth || 300;
   const S = Math.round(css * dpr);
   if (cv.width !== S) cv.width = cv.height = S;
   const x = cv.getContext("2d");
-  const k = 1 - Math.pow(0.05, dt);
-  const target = HEAT[J.state] || HEAT.listen;
-  heat = heat.map((v, i) => v + (target[i] - v) * k);
   const [hr, hg, hb] = heat.map((v) => v | 0);
   const L = J.lvl;
+  const B = J.burst || 0;
+  const pace = jarvisMood().pace;
   const c = S / 2;
-  const R = S * 0.3;
-  const spin = J.state === "think" ? 1.4 : J.state === "speak" ? 0.7 : 0.4;
+  const R = S * 0.3 * (1 + 0.07 * B);
+  const spin = (J.state === "think" ? 1.4 : J.state === "speak" ? 0.7 : 0.4) * (0.6 + 0.4 * pace) + B * 1.6;
   J.ay = (J.ay || 0) + dt * (spin + L * 0.8);
   const ax = 0.42 + 0.12 * Math.sin(t * 0.33);
   const cy = Math.cos(J.ay);
@@ -417,11 +616,14 @@ function drawOrb(t, dt) {
   x.fillStyle = glow;
   x.fillRect(0, 0, S, S);
   x.globalCompositeOperation = "lighter";
-  // Partikel
+  // Partikel (bei schwacher Hardware nur jeder 2./3. – die Kugel bleibt vollständig, nur lichter)
   const f = 3.2;
-  for (let i = 0; i < N; i++) {
+  const st = J.stride || 1;
+  const boost = 1 + 0.22 * (st - 1);
+  const wobK = (0.1 + 0.04 * pace) * (1 + B * 1.5);
+  for (let i = 0; i < N; i += st) {
     const p = PTS[i];
-    const wob = 1 + L * 0.14 * Math.sin(p.seed * 3 + t * (2 + p.sp * 3)) + (p.kind === 1 ? 0.08 * Math.sin(t * p.sp + p.seed) : 0);
+    const wob = 1 + (L + B * 0.6) * wobK * Math.sin(p.seed * 3 + t * (2 + p.sp * 3 * pace)) + (p.kind === 1 ? 0.08 * Math.sin(t * p.sp + p.seed) : 0);
     let px = p.x;
     let py = p.y;
     let pz = p.z;
@@ -441,7 +643,7 @@ function drawOrb(t, dt) {
     const sxp = c + X * r * R * s;
     const syp = c + Y * r * R * s;
     const depth = (1 - Z) / 2;
-    const a = (p.kind === 1 ? 0.5 : p.kind === 3 ? 0.4 : 0.22) + 0.6 * depth * (0.6 + 0.4 * L);
+    const a = ((p.kind === 1 ? 0.5 : p.kind === 3 ? 0.4 : 0.22) + 0.6 * depth * (0.6 + 0.4 * L)) * boost;
     const size = (p.kind === 3 ? 4.2 : p.kind === 1 ? 5 : 3.2) * (0.55 + 0.9 * depth) * dpr * (0.9 + 0.45 * L);
     const sp = spriteFor(size);
     x.globalAlpha = a > 1 ? 1 : a;
@@ -497,14 +699,48 @@ function loop(now) {
   else if (J.state === "idle" || J.state === "muted") target = 0.12 + 0.04 * Math.sin(t * 1.3);
   if (J.thinkGlow && !J.on) target = 0.3 + 0.12 * Math.sin(t * 4);
   J.kick *= Math.pow(0.02, dt);
+  J.burst = (J.burst || 0) * Math.pow(0.08, dt);
+  // Farbe weich zur Stimmung gleiten lassen; HUD und Leuchtpunkte folgen
+  const tc = targetColor(now);
+  const kc = 1 - Math.pow(0.04, dt);
+  heat = heat.map((v, i) => v + (tc[i] - v) * kc);
+  if (heat.some((v, i) => Math.abs(v - spriteRgb[i]) > 3) && now - (J.spriteAt || 0) > 60) {
+    spriteRgb = heat.map((v) => v | 0);
+    SPRITES = makeSprites(spriteRgb);
+    J.spriteAt = now;
+    const el = root();
+    el.style.setProperty("--jv-c", spriteRgb.join(", "));
+    el.style.setProperty("--jv-hi", mixc(spriteRgb, 255, 0.55).join(", "));
+    el.style.setProperty("--jv-bg", mixc(spriteRgb, 0, 0.84).join(", "));
+  }
   // Bildratenunabhängig glätten – gleich weich bei 60 und 120 Hz
   J.lvl += (Math.max(0, Math.min(1, target)) - J.lvl) * (1 - Math.pow(0.0008, dt));
   root().style.setProperty("--lvl", J.lvl.toFixed(3));
-  if (!REDUCED || !J.drawn) drawOrb(t, dt);
+  if (!REDUCED || !J.drawn) {
+    const t0 = performance.now();
+    drawOrb(t, dt);
+    tune(performance.now() - t0, dt * 1000, now);
+  }
   J.drawn = true;
   if (J.on && now - (J.hudAt || 0) > 1000) {
     J.hudAt = now;
     updateHud();
+  }
+}
+// Flüssig auf jedem Gerät: ruckelt es (unter ~40 Bildern/s), zeichnet Jarvis weniger Partikel – und wieder
+// alle, sobald Luft ist. Nach einem Rückfall wartet er länger, damit die Qualität nicht hin und her springt.
+function tune(cost, frame, now) {
+  J.cost = (J.cost ?? cost) * 0.92 + cost * 0.08;
+  J.frame = (J.frame ?? frame) * 0.92 + frame * 0.08;
+  if (now - (J.tunedAt || 0) < 1500) return;
+  J.tunedAt = now;
+  const st = J.stride || 1;
+  if (J.frame > 25 && st < 3) {
+    J.stride = st + 1;
+    if (now - (J.upAt || 0) < 5000) J.lockUntil = now + 20000; // gerade erst hochgeschaltet und wieder zu langsam
+  } else if (J.frame < 19 && st > 1 && now > (J.lockUntil || 0)) {
+    J.stride = st - 1;
+    J.upAt = now;
   }
 }
 function startLoop() {
@@ -560,7 +796,39 @@ export function thinkGlow(on) {
 // ---------- Ablauf ----------
 export function initJarvis(deps) {
   J.deps = deps;
-  addEventListener("keydown", (e) => e.key === "Escape" && J.on && stopJarvis());
+  // Tastatur im Browser: Alt+J öffnet Jarvis, Leertaste = sprechen (bzw. fertig), Esc schließt
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && J.on) {
+      if (!root().querySelector(".jv-moodbox").hidden) return toggleMoodBox(false);
+      return stopJarvis();
+    }
+    if (e.altKey && e.code === "KeyJ" && !e.ctrlKey && !e.metaKey) {
+      e.preventDefault();
+      if (J.on || J.deps.allowed() || trialLeft()) startJarvis();
+      else J.deps.upsell();
+      return;
+    }
+    const typing = e.target.closest?.("input, textarea, select, [contenteditable]");
+    if (!J.on || typing || e.code !== "Space" || e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    e.preventDefault();
+    if (J.state === "listen" && J.rec) {
+      // Leertaste beim Zuhören: „Ich bin fertig“ – sofort auswerten
+      clearTimeout(J.endTimer);
+      try {
+        J.rec.stop();
+      } catch (_) {
+        /* schon beendet */
+      }
+      return;
+    }
+    if (["speak", "idle"].includes(J.state)) {
+      if (!J.voiceOk) unlockVoice();
+      J.speakToken = (J.speakToken || 0) + 1;
+      speechSynthesis?.cancel();
+      listen(true);
+      J.finishSpeak?.();
+    }
+  });
 }
 export async function startJarvis() {
   const d = J.deps;
@@ -736,6 +1004,65 @@ const BYE = /^(stopp?|danke( dir| schön)?( jarvis)?|tschüss|tschau|ciao|ende|b
 export const voiceSafe = (a) => !!a && !(a.side || a.fund || a.schedule || a.plan || /kauf|verkauf|order|zahl|einzahl|auszahl|abo|bestell|handel|ausführ/i.test(a.label || ""));
 
 const next = () => (J.typing ? setState("type", "Schreib oder diktiere deine Frage") : listen());
+// „Sei ruhiger“, „Stimmung motiviert“, „Emotion witzig“, „Modus Auto“
+const MOOD_WORDS = [
+  [/^(ruhig|gelassen|entspannt|chill)/, "ruhig"],
+  [/^(motiviert|energisch|power|hype|gas)/, "motiviert"],
+  [/^(herzlich|warm|lieb|nett|freundlich)/, "herzlich"],
+  [/^(witzig|lustig|cool|locker)/, "witzig"],
+  [/^(ernst|sachlich|fokus|konzentriert|professionell)/, "ernst"],
+  [/^(klassisch|normal|butler|jarvis)/, "jarvis"],
+  [/^(auto|automatisch)/, "auto"],
+];
+function moodFromSpeech(t) {
+  const m = t.match(/^(?:sei|werd|werde|bleib|klingt?|sprich|stimmung|emotion|modus|laune|stell dich auf|wechsel(?:e)? (?:zu|auf)|sei mal|sei bitte)\s+(?:(?:etwas|mal|bitte|wieder|mehr|jetzt|ab jetzt|so|ein bisschen|auf)\s+)*([\p{L}]+)/u);
+  if (!m) return null;
+  const hit = MOOD_WORDS.find(([re]) => re.test(m[1]));
+  return hit ? hit[1] : null;
+}
+function reactFromSpeech(t) {
+  const r = reactions();
+  if (/^(keine|ohne|lass die) (witze|sprüche|humor)/.test(t)) return { r: { ...r, humor: false }, say: "Verstanden. Keine Witze mehr." };
+  if (/^(mach (wieder |mehr )?witze|mehr humor|sei wieder lustig|witze an)/.test(t)) return { r: { ...r, humor: true }, say: "Humor ist wieder an. Ich verspreche nichts." };
+  if (/^(zeig |zeige )?(keine|ohne) (emotionen|gefühle)/.test(t)) return { r: { joy: false, worry: false, hype: false, humor: false }, say: "In Ordnung. Ab jetzt ganz neutral." };
+  if (/^(zeig|zeige) (wieder |deine |alle )?(emotionen|gefühle)/.test(t)) return { r: { joy: true, worry: true, hype: true, humor: true }, say: "Mit Gefühl. Ich freue mich mit dir – und sage dir, wenn es brenzlig wird." };
+  return null;
+}
+// Gedächtnis: „Merk dir, dass ich Tesla mag“ · „Was weißt du über mich?“ · „Vergiss alles“
+async function memoryCommand(t, raw) {
+  const title = jarvisTitle();
+  const add = raw.match(/^(?:merk|merke|speicher|notier|notiere)\s+dir[,:]?\s*(?:bitte\s+)?(?:dass\s+)?(.{3,160})$/i);
+  if (add) {
+    const note = add[1].replace(/[.!]+$/, "").trim();
+    const sub = /\bdass\s/i.test(raw.slice(0, raw.length - add[1].length + 5));
+    const list = jarvisMemory().filter((x) => x.t.toLowerCase() !== note.toLowerCase());
+    list.push({ t: note, sub, at: Date.now() });
+    keep(MEM_KEY, list.slice(-30));
+    emote("joy");
+    await speakOut(`Alles klar, ${title}. Ich merke mir${sub ? ", dass" : ":"} ${toYou(note)}.`);
+    return true;
+  }
+  if (/(was weißt du (alles )?über mich|was hast du dir gemerkt|was merkst du dir|dein gedächtnis)/.test(t)) {
+    const list = jarvisMemory();
+    await speakOut(list.length ? `Ich habe mir ${list.length === 1 ? "eine Sache" : list.length + " Dinge"} gemerkt: ${list.slice(-5).map((x) => (x.sub ? "dass " : "") + toYou(x.t)).join(", und ")}.` : `Noch nichts, ${title}. Sag einfach „Merk dir …“.`);
+    return true;
+  }
+  const del = t.match(/^vergiss\s+(alles|das|.{3,80})$/);
+  if (del) {
+    const list = jarvisMemory();
+    let left = list;
+    if (del[1] === "alles") left = [];
+    else if (del[1] === "das") left = list.slice(0, -1);
+    else {
+      const words = del[1].replace(/^(dass|das mit)\s+/, "").split(/\s+/).filter((w) => w.length > 2);
+      left = list.filter((x) => !words.every((w) => x.t.toLowerCase().includes(w)));
+    }
+    keep(MEM_KEY, left);
+    await speakOut(list.length === left.length ? "Dazu hatte ich mir nichts gemerkt." : del[1] === "alles" ? "Erledigt. Mein Gedächtnis ist leer." : "Vergessen.");
+    return true;
+  }
+  return false;
+}
 async function handle(text) {
   const d = J.deps;
   const t = text.toLowerCase().trim();
@@ -751,6 +1078,25 @@ async function handle(text) {
     await speakOut(`Alles klar, ${nt}. So nenne ich dich ab jetzt.`);
     return J.on && next();
   }
+  const mood = moodFromSpeech(t);
+  if (mood) {
+    toggleMoodBox(false);
+    await previewMood(mood);
+    return;
+  }
+  if (/^(welche |zeig (mir )?(die |deine )?)?(stimmungen|emotionen|gefühle)( gibt es| hast du| zeigen| wählen)?$/.test(t) || /emotionen (wählen|einstellen|ändern)/.test(t)) {
+    toggleMoodBox(true);
+    await speakOut(`Wähle meine Stimmung: ${Object.values(MOODS).map((m) => m.label).join(", ")} oder Auto. Darunter legst du fest, welche Gefühle ich zeige.`);
+    return J.on && next();
+  }
+  const rx = reactFromSpeech(t);
+  if (rx) {
+    setReactions(rx.r);
+    await speakOut(rx.say);
+    return J.on && next();
+  }
+  const mem = await memoryCommand(t, text);
+  if (mem) return J.on && next();
   if (J.rest && !J.pending && MORE.test(t)) {
     const { text: part, rest } = toSpeech(J.rest);
     J.rest = rest;
@@ -779,11 +1125,22 @@ async function handle(text) {
   showActions([]);
   showSay("");
   let reply;
+  let answered = false;
+  let filler = null;
+  const md = jarvisMood();
+  const fillTimer = setTimeout(() => {
+    if (!J.on || answered || J.state !== "think") return;
+    const list = md.key === "witzig" && !reactions().humor ? FILLERS.jarvis : FILLERS[md.key];
+    filler = speakOut(pick(list)).then(() => J.on && !answered && setState("think"));
+  }, 1400);
   try {
     reply = await d.ask(text);
   } catch (e) {
     reply = { html: `<p>Das hat gerade nicht geklappt: ${esc(e.message)}</p>` };
   }
+  answered = true;
+  clearTimeout(fillTimer);
+  if (filler) await Promise.race([filler, new Promise((r) => setTimeout(r, 2500))]);
   if (!J.on) return;
   if (free) useTrial();
   const { text: said, rest } = toSpeech(reply?.html || "Dazu habe ich gerade keine Antwort.");
@@ -795,7 +1152,16 @@ async function handle(text) {
   J.pending = offer || null;
   const money = acts.find((a) => !voiceSafe(a));
   const tail = offer ? ` Sag „ja“, und ich mache: ${offer.label}.` : money ? " Bestätige das bitte per Tipp auf den Button." : rest ? " Soll ich mehr erzählen?" : "";
-  await speakOut(said + tail);
+  const rs = reactions();
+  const feel = feeling(reply?.html);
+  let open = "";
+  if (feel && rs[feel]) {
+    emote(feel);
+    const o = OPENERS[feel][md.key] || [];
+    if (o.length && Math.random() < 0.6) open = pick(o) + " ";
+  }
+  const quip = rs.humor && md.key === "witzig" && !offer && !money && Math.random() < 0.3 ? " " + pick(QUIPS) : "";
+  await speakOut(open + said + tail + quip);
   if (!J.on || J.rec) return;
   if (free && !trialLeft()) return upsellCard(false);
   if (J.typing) return setState("type", "Schreib oder diktiere deine Frage");
@@ -861,6 +1227,9 @@ function speakOut(text) {
       J.sayTimer = setTimeout(finish, Math.min(7000, 400 + text.length * 40));
     };
     J.finishSpeak = finish;
+    const md = jarvisMood();
+    const mod = J.voiceMod || { rate: 1, pitch: 0 };
+    J.voiceMod = null;
     if (!("speechSynthesis" in window) || !text.trim()) return captions();
     stopRec();
     audioMode("playback");
@@ -913,8 +1282,8 @@ function speakOut(text) {
         } catch (_) {
           /* Stimme nicht mehr vorhanden: Standardstimme */
         }
-        u.pitch = isMale(v) ? 0.95 : 0.72; // ohne Männerstimme im System: vorhandene Stimme tiefer
-        u.rate = 1.02;
+        u.pitch = Math.max(0.3, (isMale(v) ? 0.95 : 0.72) + md.pitch + mod.pitch); // ohne Männerstimme im System: vorhandene Stimme tiefer
+        u.rate = Math.min(1.4, 1.02 * md.rate * mod.rate);
         // Untertitel wie im Film: nur der Satz, der gerade gesprochen wird
         u.onstart = () => {
           if (!live()) return;
