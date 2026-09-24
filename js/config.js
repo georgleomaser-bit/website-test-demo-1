@@ -6,13 +6,14 @@ export const CONFIG = {
 
   // Anbieterkennzeichnung (Impressum, AGB, Rechnungen). Pflicht vor dem ersten zahlenden Kunden.
   company: {
-    name: "", // z. B. "AKYTEX GmbH"
-    representative: "", // Geschäftsführung
-    street: "",
-    zipCity: "",
+    name: "akytex united",
+    representative: "Leo Maser, Paul Jazra", // Pflicht: vollständiger Name der verantwortlichen Person(en)
+    contentResponsible: "Paul Jazra", // Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV
+    street: "Alter Wall 56",
+    zipCity: "20457 Hamburg",
     country: "Deutschland",
-    email: "",
-    phone: "",
+    email: "acytex@outlook.de",
+    phone: "+49 151 10681903",
     register: "", // z. B. "Amtsgericht München, HRB 123456"
     vatId: "", // z. B. "DE123456789"
     supervisory: "", // z. B. "Bundesanstalt für Finanzdienstleistungsaufsicht (BaFin)" bzw. Partner
@@ -57,7 +58,8 @@ export const LIVE = {
   payments: filled(CONFIG.stripe.links),
   trading: !!CONFIG.trading.apiBase,
   data: !!(CONFIG.marketData.streamUrl && CONFIG.marketData.historyUrl),
-  legal: !!(CONFIG.company.name && CONFIG.company.street && CONFIG.company.email),
+  // Ein Impressum braucht immer eine verantwortliche Person bzw. Firma mit Rechtsform, Anschrift und Kontakt
+  legal: !!(CONFIG.company.name && CONFIG.company.representative && CONFIG.company.street && CONFIG.company.zipCity && CONFIG.company.email && CONFIG.company.phone),
 };
 // Echtgeld-Betrieb nur, wenn Handel UND echte Kurse angeschlossen sind
 LIVE.money = LIVE.trading && LIVE.data;
