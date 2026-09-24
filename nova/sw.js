@@ -1,6 +1,6 @@
 // NOVA Service Worker: immer die neueste Version laden (Netz zuerst), offline aus dem Speicher
-const VERSION = "nova-v1.0.0";
-const CORE = ["./", "./index.html", "./css/nova.css", "./js/main.js", "./js/app.js", "./js/space.js", "./js/orb.js", "./js/voice.js", "./js/skills.js", "./js/config.js", "./manifest.webmanifest", "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png"];
+const VERSION = "nova-v1.1.0";
+const CORE = ["./", "./index.html", "./css/nova.css", "./js/main.js", "./js/app.js", "./js/orb.js", "./js/voice.js", "./js/skills.js", "./js/config.js", "./manifest.webmanifest", "./icons/icon.svg", "./icons/icon-192.png", "./icons/icon-512.png"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(CORE)).catch(() => {}));
   self.skipWaiting();

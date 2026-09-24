@@ -1,5 +1,2 @@
-// Einstieg: Weltraum-Hintergrund starten, dann die App
-import { startSpace } from "./space.js";
+// Einstieg: die App
 import "./app.js";
-
-startSpace(document.getElementById("space"));

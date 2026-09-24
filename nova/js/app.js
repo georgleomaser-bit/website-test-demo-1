@@ -7,7 +7,7 @@ import { createOrb } from "./orb.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const VERSION = "1.0";
+const VERSION = "1.1";
 
 // ---------- Server ----------
 const API = new URL("api/", document.baseURI).href;
@@ -553,7 +553,7 @@ function saveChat(q, a) {
   c.at = Date.now();
   sk.store.set("chats", [c, ...list.filter((x) => x.id !== c.id)].slice(0, 40));
 }
-const HELLO = () => `<div class="hello" id="hello"><h1>Frag mich <em>alles</em>.</h1><p>Schreiben, erklären, programmieren, recherchieren, Ideen spinnen – per Text oder Stimme. Ich lese auch Fotos und PDFs.</p></div>`;
+const HELLO = () => `<div class="hello" id="hello"><h1>Wie kann ich helfen?</h1><p>Schreiben, erklären, programmieren, recherchieren – per Text oder Stimme. Fotos und PDFs kann ich auch lesen.</p></div>`;
 function newChat() {
   if (busy) stopper?.abort();
   voice.stopSpeaking();

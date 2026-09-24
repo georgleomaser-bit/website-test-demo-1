@@ -1,6 +1,6 @@
 # NOVA – das zweite Business von akytex united
 
-NOVA ist ein **KI-Assistent zum Sprechen und Schreiben**, so wie Claude, aber als eigene App im Weltraum-Design. Er ist komplett getrennt von AKYTEX: eigener Ordner, eigene App, eigener Server und eigene Tarife.
+NOVA ist ein **KI-Assistent zum Sprechen und Schreiben**, so wie Claude, aber als eigene App mit professionellem Design (hell und dunkel, passend zum Gerät). Er ist komplett getrennt von AKYTEX: eigener Ordner, eigene App, eigener Server und eigene Tarife.
 
 **Vorschau (ohne Server):** https://georgleomaser-bit.github.io/website-test-demo-1/nova/
 Dort laufen schon Wetter, Timer, Erinnerungen, Rechner, Sparziele, das Gedächtnis und die Sprache. Für alles andere braucht NOVA den Server mit Claude.
@@ -83,11 +83,11 @@ Danach prüft der Server jeden Kauf bei Stripe. Nachgebaute Links schalten nicht
 ## Dateien
 | Datei | Inhalt |
 |---|---|
-| `index.html`, `css/nova.css` | Oberfläche im Weltraum-Design |
+| `index.html`, `css/nova.css` | Oberfläche (professionell, hell/dunkel) |
 | `js/app.js` | Gespräch, Chats, Tarife, Einstellungen |
 | `js/voice.js` | Sprechen und Zuhören (robust auf dem iPhone) |
 | `js/skills.js` | Wetter, Timer, Sparziele, Rechner, Gedächtnis |
-| `js/orb.js`, `js/space.js` | Planeten-Kern und Sternenhimmel |
+| `js/orb.js` | animiertes NOVA-Zeichen (hört zu, denkt, spricht) |
 | `js/config.js` | Name, Tarife, Stripe-Links (eine Stelle für alles) |
 | `server/nova-server.mjs` | Server: Claude, Konten, Kontingente, Kaufprüfung |
 | `server/install.sh` | Installation mit einem Befehl |
