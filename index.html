@@ -106,6 +106,7 @@
       <button class="view-btn" data-view="markets">Märkte</button>
       <button class="view-btn" data-view="ideas">Ideen</button>
       <button class="view-btn" data-view="clips">Clips</button>
+      <button class="view-btn" data-view="lounge">Lounge<span class="nav-badge" id="lounge-badge" hidden></span></button>
       <button class="view-btn ai-nav" data-view="ai"><span class="spark-ic">✦</span> AI<span class="nav-badge" id="ai-badge" hidden></span></button>
       <button class="view-btn" data-view="shop">Shop</button>
       <button class="view-btn" data-view="portfolio">Depot</button>
@@ -686,6 +687,11 @@
     </div>
   </main>
 
+  <!-- ================= LOUNGE ================= -->
+  <main class="view page lounge-view" id="view-lounge" hidden>
+    <div class="page-inner lounge" id="lounge"></div>
+  </main>
+
   <!-- ================= KONTO ================= -->
   <main class="view page" id="view-account" hidden>
     <div class="page-inner">
@@ -899,6 +905,7 @@
     </div>
   </div>
 
+  <button class="lg-pill" id="lg-pill" hidden><i></i><span>Im Call</span> · zurück</button>
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <script src="js/vendor/lightweight-charts.standalone.production.js"></script>

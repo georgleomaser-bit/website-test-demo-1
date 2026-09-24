@@ -25,6 +25,12 @@ async function call(method, path, body, headers = {}) {
   return data;
 }
 
+// Für andere Module (Lounge): gemeinsamer Zugang zur API
+export const apiBase = base;
+export const authHeaders = () => (token() ? { Authorization: "Bearer " + token() } : {});
+export const apiCall = call;
+export const hasAccount = () => !!token();
+
 export async function cloudReady() {
   if (available !== null) return available;
   // Statische Hosts (GitHub Pages, Netlify, Vercel) haben keine AKYTEX-API – gar nicht erst anfragen

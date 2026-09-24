@@ -11,6 +11,7 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
+import { initLounge, showLounge, hideLounge } from "./lounge.js";
 import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
@@ -50,7 +51,7 @@ function saveSettings() {
 }
 
 // ---------- Zustand ----------
-const VIEWS = ["home", "chart", "markets", "ideas", "clips", "ai", "shop", "portfolio", "business", "account", "legal"];
+const VIEWS = ["home", "chart", "markets", "ideas", "clips", "lounge", "ai", "shop", "portfolio", "business", "account", "legal"];
 const market = new Market();
 const broker = new Broker(market);
 const firstVisit = (() => {
@@ -273,6 +274,8 @@ function applyView(view, animate = true) {
   if (view === "shop") renderShop();
   if (view === "clips") renderClips();
   else pauseClips();
+  if (view === "lounge") showLounge();
+  else hideLounge();
   if (view === "legal") renderLegal();
   heroAnim(view === "home");
 }
@@ -2550,7 +2553,7 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
   const tools = [
     {
       name: "app_control",
-      description: "Steuert die AKYTEX-App für den Nutzer, wenn er das ausdrücklich möchte: navigate (value: home, chart, markets, ideas, clips, ai, shop, portfolio, account, legal), open_symbol (value: Ticker), set_timeframe (value: 1m, 5m, 15m, 1h, 4h, 1D, 1W), set_theme (value: dark oder light), watchlist_add / watchlist_remove (value: Ticker), autopilot_off, open_plans, open_cancel, open_funding (value: in oder out), open_cart, legal (value: impressum, privacy, terms, withdrawal, risk), account (value: profile, billing, invoices).",
+      description: "Steuert die AKYTEX-App für den Nutzer, wenn er das ausdrücklich möchte: navigate (value: home, chart, markets, ideas, clips, lounge, ai, shop, portfolio, account, legal), open_symbol (value: Ticker), set_timeframe (value: 1m, 5m, 15m, 1h, 4h, 1D, 1W), set_theme (value: dark oder light), watchlist_add / watchlist_remove (value: Ticker), autopilot_off, open_plans, open_cancel, open_funding (value: in oder out), open_cart, legal (value: impressum, privacy, terms, withdrawal, risk), account (value: profile, billing, invoices).",
       inputSchema: { type: "object", properties: { action: { type: "string" }, value: { type: "string" } }, required: ["action"] },
       execute: (i) => runAppControl(String(i.action || ""), i.value),
     },
@@ -4079,6 +4082,7 @@ const LEGAL = {
     <h3>3. Hosting</h3><p>Die Website wird über GitHub Pages (GitHub, Inc., USA) ausgeliefert. Beim Aufruf verarbeitet GitHub technisch notwendige Verbindungsdaten wie IP-Adresse, Zeitpunkt und abgerufene Datei, um die Seite auszuliefern und die Sicherheit zu gewährleisten (Art. 6 Abs. 1 lit. f DSGVO). Die Übermittlung in die USA erfolgt auf Grundlage des EU-US Data Privacy Framework bzw. von Standardvertragsklauseln.</p>
     ${LIVEPAY() ? `<h3>4. Zahlungen über Stripe</h3><p>Abos bezahlst du über Stripe (Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Dublin 2, Irland). Deine Zahlungsdaten gibst du direkt bei Stripe ein, wir erhalten sie nicht. Wir erhalten von Stripe Name, E-Mail-Adresse, gewählten Tarif, Zahlungsstatus und Rechnungsdaten zur Vertragsabwicklung (Art. 6 Abs. 1 lit. b DSGVO) und bewahren Rechnungsdaten entsprechend der steuer- und handelsrechtlichen Pflichten auf (bis zu 10 Jahre, Art. 6 Abs. 1 lit. c DSGVO). Stripe kann Daten auch in Drittländern verarbeiten; Details: stripe.com/de/privacy.</p>` : `<h3>4. Zahlungen</h3><p>Der Checkout läuft derzeit im Testmodus; es werden keine Zahlungsdaten gespeichert oder übertragen.</p>`}
     <h3>Clips auf dem AKYTEX-Server</h3><p>Wenn du AKYTEX über unseren eigenen Server nutzt und einen Clip hochlädst, likest, kommentierst oder meldest, legen wir ein anonymes Konto an: einen frei wählbaren Nutzernamen und einen zufälligen Zugangsschlüssel (gespeichert nur als Hash). Wir speichern deine Videos samt Beschreibung, Likes, Kommentare und Meldungen, um den Clip-Feed für alle Nutzer bereitzustellen (Art. 6 Abs. 1 lit. b DSGVO) und rechtswidrige Inhalte nach dem Digital Services Act zu bearbeiten (Art. 6 Abs. 1 lit. c DSGVO). IP-Adressen verwenden wir nur kurzzeitig im Arbeitsspeicher zum Schutz vor Missbrauch (Rate-Limits) und speichern sie nicht dauerhaft. Clips kannst du jederzeit selbst löschen; für die Löschung des ganzen Kontos schreib uns an ${CO("email", "E-Mail")}.</p>
+    <h3>Lounge: Warteraum, Freunde und Calls</h3><p>In der Lounge verarbeiten wir deinen Nutzernamen, deinen Online-Status, in welchem Call du gerade bist, deine Freundesliste samt Anfragen und Blockierungen sowie Meldungen über andere Nutzer (Art. 6 Abs. 1 lit. b DSGVO; Meldungen zusätzlich lit. c und f). Audio, Video und geteilte Bildschirme laufen per WebRTC direkt zwischen den Geräten der Teilnehmenden, verschlüsselt (DTLS-SRTP), und werden von uns weder weitergeleitet noch aufgezeichnet. Für den Verbindungsaufbau tauschen die Geräte technische Verbindungsdaten aus; dabei sehen die anderen Teilnehmenden deine IP-Adresse. Zur Ermittlung der öffentlichen Adresse nutzt dein Browser einen STUN-Server von Cloudflare, Inc. (USA; EU-US Data Privacy Framework), der dabei deine IP-Adresse verarbeitet. Online-Status und Call-Teilnahme speichern wir nur, solange du verbunden bist.</p>
     <h3>5. KI-Funktionen</h3><p>AKYTEX AI rechnet standardmäßig vollständig in deinem Browser. Nur wenn du die App in einer Claude-Umgebung nutzt, wird deine Chat-Frage samt der dafür nötigen Depotdaten an das Sprachmodell von Anthropic übermittelt (Art. 6 Abs. 1 lit. b DSGVO). Die Sprachausgabe und Spracheingabe nutzen die Funktionen deines Browsers bzw. Betriebssystems.</p>
     <h3>6. Kontakt per E-Mail</h3><p>Schreibst du uns, verarbeiten wir deine Angaben zur Bearbeitung der Anfrage (Art. 6 Abs. 1 lit. b bzw. f DSGVO) und löschen sie, sobald sie nicht mehr erforderlich sind.</p>
     <h3>7. Deine Rechte</h3><p>Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21 DSGVO). Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim Hamburgischen Beauftragten für Datenschutz und Informationsfreiheit.</p>`,
@@ -4091,6 +4095,7 @@ const LEGAL = {
     <li><b>Preise und Zahlung.</b> Es gelten die bei Vertragsschluss angezeigten Preise; sie sind Endpreise. Die Zahlung erfolgt im Voraus für den jeweiligen Abrechnungszeitraum über Stripe mit den dort angebotenen Zahlungsarten. Gutscheincodes sind nicht mit anderen Aktionen kombinierbar, sofern nicht anders angegeben.</li>
     <li><b>Laufzeit und Kündigung.</b> Monatstarife laufen einen Monat und verlängern sich jeweils um einen Monat; du kannst jederzeit zum Ende des laufenden Monats kündigen. Jahrestarife laufen zunächst ein Jahr; danach läuft der Vertrag auf unbestimmte Zeit weiter und ist jederzeit mit einer Frist von einem Monat kündbar – bereits für die Zeit danach gezahlte Beträge erstatten wir anteilig. Kündigen kannst du über „Verträge hier kündigen“, im Kundenportal oder per E-Mail. Das Recht zur außerordentlichen Kündigung bleibt unberührt.</li>
     <li><b>Deine Pflichten und Community.</b> Du bist für deine Inhalte (Ideen, Kommentare, Clips) verantwortlich. Verboten sind rechtswidrige, beleidigende, irreführende oder marktmanipulative Inhalte, das Ausgeben von Ideen als Anlageberatung sowie Inhalte, an denen du keine Rechte hast. Ideen und Clips mit Anlagebezug sind als persönliche Meinung zu kennzeichnen; Interessenkonflikte (z. B. eigene Positionen) musst du offenlegen. Wir dürfen gemeldete oder rechtswidrige Inhalte entfernen und Konten bei schweren Verstößen sperren.</li>
+    <li><b>Lounge und Calls.</b> Die Lounge darfst du ab 16 Jahren nutzen. Sei respektvoll; Belästigung, Beleidigung, Spam und das Pushen von Aktien sind verboten. Das Aufnehmen oder Mitschneiden von Calls ohne Einwilligung aller Beteiligten ist verboten und kann strafbar sein (§ 201 StGB). Äußerungen in Calls sind keine Anlageberatung. Du kannst Personen jederzeit blockieren und melden; wer einen Call leitet, kann Personen daraus entfernen.</li>
     <li><b>Verfügbarkeit.</b> Wir bemühen uns um eine hohe Verfügbarkeit, schulden aber keine ununterbrochene Erreichbarkeit. Wartungen und Weiterentwicklungen können Funktionen vorübergehend einschränken.</li>
     <li><b>Haftung.</b> Wir haften unbeschränkt bei Vorsatz und grober Fahrlässigkeit, bei Verletzung von Leben, Körper oder Gesundheit und nach dem Produkthaftungsgesetz. Bei leichter Fahrlässigkeit haften wir nur für die Verletzung wesentlicher Vertragspflichten und begrenzt auf den vertragstypischen, vorhersehbaren Schaden. Für Entscheidungen, die du auf Grundlage von Analysen oder KI-Antworten triffst, und für Verluste mit echtem Geld außerhalb von AKYTEX haften wir nicht.</li>
     <li><b>Änderungen.</b> Änderungen dieser AGB oder der Preise teilen wir dir mindestens sechs Wochen vorher mit; du kannst dann zum Zeitpunkt der Änderung kündigen.</li>
@@ -4139,7 +4144,7 @@ function togglePopover(id, render) {
 let cmdIdx = 0;
 function cmdItems(q) {
   const items = [
-    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["ai", "AKYTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
+    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["lounge", "Lounge (Calls & Freunde)"], ["ai", "AKYTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
     { icon: "✦", label: "Tarife ansehen", run: () => openPlans() },
     { icon: "💳", label: "Pro abonnieren (Checkout)", run: () => openCheckout("pro") },
     { icon: "🤖", label: "AI Premium abonnieren (Checkout)", run: () => openCheckout("aiprem") },
@@ -5749,6 +5754,7 @@ async function share() {
 }
 
 // ---------- Start ----------
+initLounge({ toast, beep, haptic, confetti, go: (v) => setView(v), profileName: () => account.state.profile?.name || "" });
 cloud.cloudReady().then(async (on) => {
   if (!on) return;
   await cloud.loadMe();
@@ -5938,6 +5944,7 @@ const VIEW_WORDS = [
   [/(märkte|maerkte|marktübersicht|screener|heatmap)/, "markets"],
   [/(ideen|ideenbörse|community)/, "ideas"],
   [/\b(clips?|videos?)\b/, "clips"],
+  [/(lounge|warteraum|\bcalls?\b|anrufen|freunde)/, "lounge"],
   [/\b(ki|ai|cockpit|labor)\b/, "ai"],
   [/\b(shop|store)\b/, "shop"],
   [/\b(depot|portfolio)\b/, "portfolio"],
@@ -5945,7 +5952,7 @@ const VIEW_WORDS = [
   [/\b(konto|profil|einstellungen)\b/, "account"],
   [/(rechtliches|impressum|datenschutz|\bagb\b|widerruf|risikohinweis)/, "legal"],
 ];
-const VIEW_NAMES = { home: "Startseite", chart: "Chart", markets: "Märkte", ideas: "Ideen-Börse", clips: "Clips", ai: "AI-Cockpit", shop: "Store", portfolio: "Depot", business: "Business", account: "Konto", legal: "Rechtliches" };
+const VIEW_NAMES = { home: "Startseite", chart: "Chart", markets: "Märkte", ideas: "Ideen-Börse", clips: "Clips", lounge: "Lounge", ai: "AI-Cockpit", shop: "Store", portfolio: "Depot", business: "Business", account: "Konto", legal: "Rechtliches" };
 const TF_WORDS = [
   [/\b1\s*(min|minute)/, "1m"],
   [/\b5\s*(min|minuten)/, "5m"],
