@@ -10,6 +10,8 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 > **Drittes Business: Handy-Hilfe** – kleiner Service vor Ort mit Sparziel-Tracker fürs iPhone 18 Pro und druckbarem Flyer: [`iphone/`](iphone/index.html) · Vorschau: `…/website-test-demo-1/iphone/`
 
+> **Viertes Business: Web-Studio** – Webseiten für lokale Läden bauen (Generator mit Live-Vorschau und Download), Angebote und Rechnungen, Kunden-Board mit iPhone-Sparziel: [`webstudio/`](webstudio/index.html)
+
 ## Funktionen
 
 **Charts (TradingView Lightweight Charts)**

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Web-Studio</title>
+<meta name="description" content="Web-Studio: Webseiten für lokale Läden bauen, Angebote schreiben, Kunden verwalten – schneller zum iPhone 18 Pro.">
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--ink:#13161b;--muted:#5d6570;--line:#e2e5ea;--accent:#0a66ff;--ok:#128a4a;--warn:#b25b00;--r:14px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0c0e12;--card:#161a20;--ink:#eef1f5;--muted:#9aa3ae;--line:#2a2f37;--accent:#4c8dff;--ok:#3ccf7f;--warn:#ffb14a}}
+:root[data-theme="dark"]{--bg:#0c0e12;--card:#161a20;--ink:#eef1f5;--muted:#9aa3ae;--line:#2a2f37;--accent:#4c8dff;--ok:#3ccf7f;--warn:#ffb14a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0 8px;flex-wrap:wrap}
+.top h1{font-size:20px;margin:0}
+.goal{flex:1 1 260px;max-width:420px;font-size:13px;color:var(--muted)}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;width:0;background:var(--ok);transition:width .4s}
+nav{display:flex;gap:4px;overflow-x:auto;padding-bottom:8px}
+nav button{background:transparent;color:var(--muted);border:1px solid transparent;white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--ink);border-color:var(--line);background:var(--card)}
+main{padding:16px 0 64px}
+section[hidden]{display:none}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:16px}
+h2{font-size:18px;margin:0 0 10px}h3{font-size:15px;margin:14px 0 6px}
+p{margin:0 0 10px}.muted{color:var(--muted)}.small{font-size:13px}
+.builder{display:grid;gap:16px;grid-template-columns:minmax(0,380px) minmax(0,1fr);align-items:start}
+@media (max-width:860px){.builder{grid-template-columns:minmax(0,1fr)}}
+label{display:block;font-size:13px;color:var(--muted);margin:8px 0 3px}
+input,select,textarea{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+textarea{min-height:84px;resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap}.row>*{flex:1 1 120px}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:9px 14px;background:var(--accent);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.preview{position:sticky;top:120px}
+.device{display:flex;gap:6px;margin-bottom:8px}
+iframe{width:100%;height:70vh;border:1px solid var(--line);border-radius:var(--r);background:#fff;transition:max-width .3s;display:block;margin:0 auto}
+.checks{list-style:none;padding:0;margin:8px 0 0;font-size:13px}
+.checks li::before{content:"✓ ";color:var(--ok)}.checks li.bad::before{content:"! ";color:var(--warn)}
+.pk{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.pkg{border:1px solid var(--line);border-radius:12px;padding:12px;cursor:pointer}
+.pkg input{width:auto;margin-right:6px}
+.pkg strong{font-size:20px;color:var(--accent);display:block}
+table{width:100%;border-collapse:collapse}td,th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}td.n,th.n{text-align:right;white-space:nowrap}
+.doc{background:#fff;color:#111;border-radius:var(--r);padding:28px;border:1px solid var(--line)}
+.doc h2{font-size:22px}
+.board{display:grid;gap:10px;grid-template-columns:repeat(4,minmax(220px,1fr));overflow-x:auto}
+.col{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:10px;min-height:120px}
+.col h3{margin:0 0 8px;display:flex;justify-content:space-between}
+.lead{border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:8px;background:var(--bg)}
+.lead b{display:block}.lead .acts{display:flex;gap:4px;margin-top:6px;flex-wrap:wrap}.lead .acts button{padding:3px 8px;font-size:12px}
+.stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:12px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat span{display:block;font-size:12px;color:var(--muted)}.stat strong{font-size:20px}
+.note{border-left:4px solid var(--warn);padding:10px 14px;background:var(--card);border-radius:8px}
+@media print{header,nav,.no-print,section:not(#tab-offer){display:none!important}body{background:#fff}.doc{border:0;padding:0}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="top">
+      <h1>Web-Studio</h1>
+      <div class="goal"><span id="goalText">iPhone 18 Pro: 0 € von 1.299 €</span><div class="bar"><i id="goalBar"></i></div></div>
+    </div>
+    <nav role="tablist">
+      <button role="tab" data-tab="build" aria-selected="true">1 · Webseite bauen</button>
+      <button role="tab" data-tab="offer" aria-selected="false">2 · Angebot &amp; Rechnung</button>
+      <button role="tab" data-tab="crm" aria-selected="false">3 · Kunden</button>
+      <button role="tab" data-tab="plan" aria-selected="false">4 · Plan</button>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- 1 Builder -->
+  <section id="tab-build">
+    <div class="builder">
+      <div class="card">
+        <h2>Webseite für einen Laden</h2>
+        <p class="muted small">Einmal ausfüllen, rechts siehst du die fertige Seite. Als HTML-Datei herunterladen und dem Kunden geben oder kostenlos bei Netlify hochladen.</p>
+        <label for="f-kind">Branche (Vorlage)</label>
+        <select id="f-kind"></select>
+        <label for="f-name">Name des Ladens</label>
+        <input id="f-name">
+        <label for="f-claim">Slogan</label>
+        <input id="f-claim">
+        <label for="f-about">Über uns</label>
+        <textarea id="f-about"></textarea>
+        <label for="f-services">Leistungen &amp; Preise (eine pro Zeile: Name | Preis)</label>
+        <textarea id="f-services"></textarea>
+        <label for="f-hours">Öffnungszeiten (eine pro Zeile)</label>
+        <textarea id="f-hours"></textarea>
+        <div class="row">
+          <div><label for="f-phone">Telefon</label><input id="f-phone" inputmode="tel"></div>
+          <div><label for="f-mail">E-Mail</label><input id="f-mail" inputmode="email"></div>
+        </div>
+        <label for="f-addr">Adresse</label>
+        <input id="f-addr">
+        <div class="row">
+          <div><label for="f-color">Hauptfarbe</label><input id="f-color" type="color"></div>
+          <div><label for="f-style">Stil</label>
+            <select id="f-style"><option value="modern">Modern</option><option value="warm">Warm</option><option value="bold">Kräftig</option></select></div>
+        </div>
+        <label for="f-owner">Inhaber (fürs Impressum)</label>
+        <input id="f-owner">
+        <div class="row" style="margin-top:12px">
+          <button id="dl" type="button">HTML herunterladen</button>
+          <button id="toOffer" type="button" class="ghost">Angebot erstellen →</button>
+        </div>
+        <button id="resetSite" type="button" class="ghost" style="margin-top:8px;width:100%">Vorlage neu laden</button>
+        <ul class="checks" id="checks"></ul>
+      </div>
+      <div class="preview">
+        <div class="device no-print">
+          <button type="button" class="ghost" data-w="390">Handy</button>
+          <button type="button" class="ghost" data-w="820">Tablet</button>
+          <button type="button" class="ghost" data-w="">Desktop</button>
+        </div>
+        <iframe id="pv" title="Vorschau der Kundenwebseite" sandbox></iframe>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2 Angebot -->
+  <section id="tab-offer" hidden>
+    <div class="card no-print">
+      <h2>Paket wählen</h2>
+      <div class="pk" id="packages"></div>
+      <h3>Extras</h3>
+      <div class="pk" id="extras"></div>
+      <div class="row" style="margin-top:10px">
+        <div><label for="o-client">Kunde</label><input id="o-client"></div>
+        <div><label for="o-me">Dein Name</label><input id="o-me"></div>
+        <div><label for="o-type">Dokument</label><select id="o-type"><option value="Angebot">Angebot</option><option value="Rechnung">Rechnung</option></select></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button id="print" type="button">Drucken / als PDF speichern</button>
+        <button id="toLead" type="button" class="ghost">Als Kunde speichern</button>
+      </div>
+    </div>
+    <div class="doc" id="doc"></div>
+  </section>
+
+  <!-- 3 CRM -->
+  <section id="tab-crm" hidden>
+    <div class="stats">
+      <div class="stat"><span>Bezahlt</span><strong id="c-paid">0 €</strong></div>
+      <div class="stat"><span>Offen (Aufträge)</span><strong id="c-open">0 €</strong></div>
+      <div class="stat"><span>Abschlussquote</span><strong id="c-rate">–</strong></div>
+      <div class="stat"><span>Noch Aufträge bis iPhone</span><strong id="c-need">–</strong></div>
+    </div>
+    <div class="card no-print">
+      <form id="leadForm" class="row">
+        <input id="l-name" placeholder="Laden / Kunde" required>
+        <input id="l-contact" placeholder="Telefon oder Ansprechpartner">
+        <input id="l-value" type="number" min="0" step="1" placeholder="Wert €">
+        <button type="submit">+ Kontakt</button>
+      </form>
+      <div class="row" style="margin-top:8px">
+        <label class="small" style="flex:0 1 auto;margin:auto 0">iPhone-Preis €</label>
+        <input id="goalInput" type="number" min="1" step="1" style="flex:0 1 140px">
+      </div>
+    </div>
+    <div class="board" id="board"></div>
+  </section>
+
+  <!-- 4 Plan -->
+  <section id="tab-plan" hidden>
+    <div class="card">
+      <h2>Der schnelle Weg: 3 Webseiten = iPhone 18 Pro</h2>
+      <p>Eine Webseite für einen Laden verkaufst du für 290–590 €. Mit dem Generator baust du sie in etwa einer Stunde. Du brauchst also nur <strong>3 zahlende Kunden</strong> statt 60 kleiner Aufträge.</p>
+      <h3>Woche 1 – Beispiel bauen</h3>
+      <ol>
+        <li>Such dir 3 Läden in deiner Nähe ohne Webseite (Google Maps: Friseur, Café, Handwerker – kein „Website“-Knopf).</li>
+        <li>Bau für jeden schon vorher eine Beispielseite mit ihrem Namen. Das ist dein stärkstes Verkaufsargument.</li>
+        <li>Lade sie als Vorschau kostenlos bei Netlify Drop hoch (app.netlify.com/drop).</li>
+      </ol>
+      <h3>Woche 2 – ansprechen</h3>
+      <ol>
+        <li>Hingehen, wenn wenig los ist. Handy mit der fertigen Seite zeigen.</li>
+        <li>Skript: „Hallo, ich hab Ihnen schon mal eine Webseite gebaut – schauen Sie mal. Wenn sie Ihnen gefällt, kostet sie einmalig 290 €, fertig und online.“</li>
+        <li>Nicht drängen. Angebot aus Tab 2 dalassen, in 3 Tagen nachfragen.</li>
+        <li>Jeden Kontakt in Tab 3 eintragen. Realistisch sagt jeder 5.–10. Laden ja.</li>
+      </ol>
+      <h3>Woche 3–6 – liefern</h3>
+      <ol>
+        <li>Texte und Fotos vom Kunden holen, anpassen, Datei übergeben oder beim Kunden-Netlify-Konto hochladen.</li>
+        <li>Domain (ca. 1 €/Monat) bucht der Kunde selbst auf seinen Namen.</li>
+        <li>Wartung anbieten (19 €/Monat): Öffnungszeiten ändern, neue Preise. Das ist Geld jeden Monat.</li>
+      </ol>
+    </div>
+    <div class="note">
+      <p><strong>Ehrlich:</strong> Schneller als Handy-Hilfe, aber nicht garantiert. Du musst Läden ansprechen und mit Absagen klarkommen. Realistisch sind 4–8 Wochen bis zum iPhone.</p>
+      <p><strong>Pflicht:</strong> Das ist ein Gewerbe. Die Anmeldung beim Gewerbeamt (ca. 20–60 €) braucht einen Ausweis, unter 18 zusätzlich die Zustimmung der Eltern und oft des Familiengerichts. Mit der Kleinunternehmerregelung (§ 19 UStG) schreibst du Rechnungen ohne Mehrwertsteuer. Impressum und Datenschutz auf der Kundenseite verantwortet der Kunde – der Generator legt ein Impressum an, die Angaben müssen stimmen.</p>
+    </div>
+  </section>
+</main>
+<script src="templates.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
