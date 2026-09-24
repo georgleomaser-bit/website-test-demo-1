@@ -1,7 +1,7 @@
 // AKYTEX mit einem Klick öffentlich starten: Server + kostenloser Cloudflare-Tunnel.
 // Aufruf per Doppelklick auf „AKYTEX-starten.bat“ (Windows) bzw. „AKYTEX-starten.command“ (Mac)
 // oder im Terminal: node server/start-public.mjs
-// Ergebnis: eine öffentliche https-Adresse (…trycloudflare.com), über die alle AKYTEX samt Clips und Lounge nutzen können.
+// Ergebnis: eine öffentliche https-Adresse (…trycloudflare.com), über die alle AKYTEX samt Clips nutzen können.
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -93,7 +93,7 @@ if (exe) {
     shown = true;
     process.env.ALLOWED_HOSTS = new URL(m[0]).host;
     fs.writeFileSync(path.join(DATA, "public-url.txt"), m[0]);
-    say(`\n${line}\n  ✅ AKYTEX ist LIVE – mit Clips und Lounge für alle:\n\n     ${m[0]}\n\n  Diesen Link an Freunde schicken. Er gilt, solange dieses Fenster offen ist.\n  Moderations-Passwort: ${tokenFile}\n  Beenden: dieses Fenster schließen (oder Strg+C).\n${line}\n`);
+    say(`\n${line}\n  ✅ AKYTEX ist LIVE – mit Clips für alle:\n\n     ${m[0]}\n\n  Diesen Link an Freunde schicken. Er gilt, solange dieses Fenster offen ist.\n  Moderations-Passwort: ${tokenFile}\n  Beenden: dieses Fenster schließen (oder Strg+C).\n${line}\n`);
     setTimeout(() => openBrowser(m[0]), 1500);
   };
   tunnel.stdout.on("data", scan);

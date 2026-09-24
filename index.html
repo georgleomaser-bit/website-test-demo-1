@@ -106,7 +106,6 @@
       <button class="view-btn" data-view="markets">Märkte</button>
       <button class="view-btn" data-view="ideas">Ideen</button>
       <button class="view-btn" data-view="clips">Clips</button>
-      <button class="view-btn" data-view="lounge">Lounge<span class="nav-badge" id="lounge-badge" hidden></span></button>
       <button class="view-btn ai-nav" data-view="ai"><span class="spark-ic">✦</span> AI<span class="nav-badge" id="ai-badge" hidden></span></button>
       <button class="view-btn" data-view="shop">Shop</button>
       <button class="view-btn" data-view="portfolio">Depot</button>
@@ -518,7 +517,7 @@
         <section class="card ai-chat">
           <div class="card-head chat-head">
             <div class="chat-id"><span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span><div><h2>AKYTEX AI <span class="ki-badge" title="Du sprichst mit einer künstlichen Intelligenz. Antworten entstehen automatisch und sind keine Anlageberatung.">KI</span></h2><small><i class="live-dot"></i><span id="ai-model"></span></small></div></div>
-            <div class="chat-head-acts"><button class="link-btn" id="chat-new" title="Neuen Chat beginnen">＋ Neu</button><button class="icon-btn jp-only" id="jp-close" title="Schließen (Esc)" aria-label="Assistent schließen">✕</button></div>
+            <div class="chat-head-acts"><button class="jv-start" id="jv-start" title="Mit Jarvis sprechen (Ultra)"><span class="jv-dot" aria-hidden="true"></span>Jarvis</button><button class="link-btn" id="chat-new" title="Neuen Chat beginnen">＋ Neu</button><button class="icon-btn jp-only" id="jp-close" title="Schließen (Esc)" aria-label="Assistent schließen">✕</button></div>
           </div>
           <div class="chat-log" id="chat-log" aria-live="polite"></div>
           <div class="chat-sugg" id="chat-sugg">
@@ -531,7 +530,7 @@
           </div>
           <form class="chat-form" id="chat-form" autocomplete="off">
             <input type="text" id="chat-input" placeholder="Frag oder sag AKYTEX AI, was es tun soll …" maxlength="400" />
-            <button type="button" class="icon-btn mic-btn" id="chat-mic" title="Spracheingabe" aria-label="Spracheingabe">🎙️</button>
+            <button type="button" class="icon-btn mic-btn" id="chat-mic" title="Mit Jarvis sprechen" aria-label="Mit Jarvis sprechen">🎙️</button>
             <button type="button" class="icon-btn" id="chat-stop" hidden title="Antwort stoppen">■</button>
             <button type="submit" class="send-btn" aria-label="Senden">➤</button>
           </form>
@@ -685,11 +684,6 @@
       </aside>
       <div class="clips-feed" id="clips-feed"></div>
     </div>
-  </main>
-
-  <!-- ================= LOUNGE ================= -->
-  <main class="view page lounge-view" id="view-lounge" hidden>
-    <div class="page-inner lounge" id="lounge"></div>
   </main>
 
   <!-- ================= KONTO ================= -->
@@ -905,7 +899,6 @@
     </div>
   </div>
 
-  <button class="lg-pill" id="lg-pill" hidden><i></i><span>Im Call</span> · zurück</button>
   <div class="toasts" id="toasts" aria-live="polite"></div>
 
   <script src="js/vendor/lightweight-charts.standalone.production.js"></script>

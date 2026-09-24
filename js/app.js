@@ -11,7 +11,7 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
-import { initLounge, showLounge, hideLounge } from "./lounge.js";
+import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft } from "./jarvis.js";
 import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
@@ -51,7 +51,7 @@ function saveSettings() {
 }
 
 // ---------- Zustand ----------
-const VIEWS = ["home", "chart", "markets", "ideas", "clips", "lounge", "ai", "shop", "portfolio", "business", "account", "legal"];
+const VIEWS = ["home", "chart", "markets", "ideas", "clips", "ai", "shop", "portfolio", "business", "account", "legal"];
 const market = new Market();
 const broker = new Broker(market);
 const firstVisit = (() => {
@@ -274,8 +274,6 @@ function applyView(view, animate = true) {
   if (view === "shop") renderShop();
   if (view === "clips") renderClips();
   else pauseClips();
-  if (view === "lounge") showLounge();
-  else hideLounge();
   if (view === "legal") renderLegal();
   heroAnim(view === "home");
 }
@@ -1252,7 +1250,7 @@ function renderPlans(el) {
         const price = planPrice(p, billing);
         const isCur = p.id === settings.plan;
         return `<div class="plan ai-plan ${p.id} ${isCur ? "current" : ""}">
-          ${p.id === "aiprem" ? '<span class="plan-badge gold">Autopilot</span>' : ""}
+          ${p.id === "aiprem" ? '<span class="plan-badge gold">Autopilot</span>' : p.id === "ultra" ? '<span class="plan-badge ultra">✦ Jarvis</span>' : ""}
           <h4>${p.name}</h4><p class="muted">${p.tagline}</p>
           <div class="price">${billing === "yearly" ? `<s>${nf2.format(p.monthly)} €</s>` : ""}<b>${nf2.format(price)} €</b><span>/ Monat</span></div>
           <div class="price-sub">${billing === "yearly" ? `${eur(p.yearly * 12)} jährlich abgerechnet · du sparst ${eur((p.monthly - p.yearly) * 12)}` : `monatlich kündbar · ≈ ${eur((price * 12) / 365)} pro Tag`}</div>
@@ -2072,7 +2070,7 @@ function bizModel(v, usersOverride) {
   const conv = v.conv / 100;
   const paid = users * conv;
   const y = v.yearly / 100;
-  const mix = { plus: 0.44, pro: 0.38, elite: 0.125, ai: 0.04, aiprem: 0.015 };
+  const mix = { plus: 0.44, pro: 0.38, elite: 0.12, ai: 0.04, aiprem: 0.013, ultra: 0.007 };
   const subsM = paid * PLANS.filter((p) => mix[p.id]).reduce((a, p) => a + mix[p.id] * (y * p.yearly + (1 - y) * p.monthly), 0);
   const trades = users * 0.35 * v.trades;
   const streams = [
@@ -2469,7 +2467,17 @@ function chatStatus(text) {
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Während AKYTEX AI nachdenkt, leuchten die Bildschirmränder sanft
 async function sendChat(text) {
+  const t = setTimeout(() => thinkGlow(true), 220);
+  try {
+    return await sendChatCore(text);
+  } finally {
+    clearTimeout(t);
+    thinkGlow(false);
+  }
+}
+async function sendChatCore(text) {
   text = text.trim();
   if (!text) return;
   const voice = voiceTurn;
@@ -2553,7 +2561,7 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
   const tools = [
     {
       name: "app_control",
-      description: "Steuert die AKYTEX-App für den Nutzer, wenn er das ausdrücklich möchte: navigate (value: home, chart, markets, ideas, clips, lounge, ai, shop, portfolio, account, legal), open_symbol (value: Ticker), set_timeframe (value: 1m, 5m, 15m, 1h, 4h, 1D, 1W), set_theme (value: dark oder light), watchlist_add / watchlist_remove (value: Ticker), autopilot_off, open_plans, open_cancel, open_funding (value: in oder out), open_cart, legal (value: impressum, privacy, terms, withdrawal, risk), account (value: profile, billing, invoices).",
+      description: "Steuert die AKYTEX-App für den Nutzer, wenn er das ausdrücklich möchte: navigate (value: home, chart, markets, ideas, clips, ai, shop, portfolio, account, legal), open_symbol (value: Ticker), set_timeframe (value: 1m, 5m, 15m, 1h, 4h, 1D, 1W), set_theme (value: dark oder light), watchlist_add / watchlist_remove (value: Ticker), autopilot_off, open_plans, open_cancel, open_funding (value: in oder out), open_cart, legal (value: impressum, privacy, terms, withdrawal, risk), account (value: profile, billing, invoices).",
       inputSchema: { type: "object", properties: { action: { type: "string" }, value: { type: "string" } }, required: ["action"] },
       execute: (i) => runAppControl(String(i.action || ""), i.value),
     },
@@ -4082,8 +4090,7 @@ const LEGAL = {
     <h3>3. Hosting</h3><p>Die Website wird über GitHub Pages (GitHub, Inc., USA) ausgeliefert. Beim Aufruf verarbeitet GitHub technisch notwendige Verbindungsdaten wie IP-Adresse, Zeitpunkt und abgerufene Datei, um die Seite auszuliefern und die Sicherheit zu gewährleisten (Art. 6 Abs. 1 lit. f DSGVO). Die Übermittlung in die USA erfolgt auf Grundlage des EU-US Data Privacy Framework bzw. von Standardvertragsklauseln.</p>
     ${LIVEPAY() ? `<h3>4. Zahlungen über Stripe</h3><p>Abos bezahlst du über Stripe (Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Dublin 2, Irland). Deine Zahlungsdaten gibst du direkt bei Stripe ein, wir erhalten sie nicht. Wir erhalten von Stripe Name, E-Mail-Adresse, gewählten Tarif, Zahlungsstatus und Rechnungsdaten zur Vertragsabwicklung (Art. 6 Abs. 1 lit. b DSGVO) und bewahren Rechnungsdaten entsprechend der steuer- und handelsrechtlichen Pflichten auf (bis zu 10 Jahre, Art. 6 Abs. 1 lit. c DSGVO). Stripe kann Daten auch in Drittländern verarbeiten; Details: stripe.com/de/privacy.</p>` : `<h3>4. Zahlungen</h3><p>Der Checkout läuft derzeit im Testmodus; es werden keine Zahlungsdaten gespeichert oder übertragen.</p>`}
     <h3>Clips auf dem AKYTEX-Server</h3><p>Wenn du AKYTEX über unseren eigenen Server nutzt und einen Clip hochlädst, likest, kommentierst oder meldest, legen wir ein anonymes Konto an: einen frei wählbaren Nutzernamen und einen zufälligen Zugangsschlüssel (gespeichert nur als Hash). Wir speichern deine Videos samt Beschreibung, Likes, Kommentare und Meldungen, um den Clip-Feed für alle Nutzer bereitzustellen (Art. 6 Abs. 1 lit. b DSGVO) und rechtswidrige Inhalte nach dem Digital Services Act zu bearbeiten (Art. 6 Abs. 1 lit. c DSGVO). IP-Adressen verwenden wir nur kurzzeitig im Arbeitsspeicher zum Schutz vor Missbrauch (Rate-Limits) und speichern sie nicht dauerhaft. Clips kannst du jederzeit selbst löschen; für die Löschung des ganzen Kontos schreib uns an ${CO("email", "E-Mail")}.</p>
-    <h3>Lounge: Warteraum, Freunde und Calls</h3><p>In der Lounge verarbeiten wir deinen Nutzernamen, deinen Online-Status, in welchem Call du gerade bist, deine Freundesliste samt Anfragen und Blockierungen sowie Meldungen über andere Nutzer (Art. 6 Abs. 1 lit. b DSGVO; Meldungen zusätzlich lit. c und f). Audio, Video und geteilte Bildschirme laufen per WebRTC direkt zwischen den Geräten der Teilnehmenden, verschlüsselt (DTLS-SRTP), und werden von uns weder weitergeleitet noch aufgezeichnet. Für den Verbindungsaufbau tauschen die Geräte technische Verbindungsdaten aus; dabei sehen die anderen Teilnehmenden deine IP-Adresse. Zur Ermittlung der öffentlichen Adresse nutzt dein Browser einen STUN-Server von Cloudflare, Inc. (USA; EU-US Data Privacy Framework), der dabei deine IP-Adresse verarbeitet. Online-Status und Call-Teilnahme speichern wir nur, solange du verbunden bist.</p>
-    <h3>5. KI-Funktionen</h3><p>AKYTEX AI rechnet standardmäßig vollständig in deinem Browser. Nur wenn du die App in einer Claude-Umgebung nutzt, wird deine Chat-Frage samt der dafür nötigen Depotdaten an das Sprachmodell von Anthropic übermittelt (Art. 6 Abs. 1 lit. b DSGVO). Die Sprachausgabe und Spracheingabe nutzen die Funktionen deines Browsers bzw. Betriebssystems.</p>
+    <h3>5. KI-Funktionen</h3><p>AKYTEX AI rechnet standardmäßig vollständig in deinem Browser. Nur wenn du die App in einer Claude-Umgebung nutzt, wird deine Chat-Frage samt der dafür nötigen Depotdaten an das Sprachmodell von Anthropic übermittelt (Art. 6 Abs. 1 lit. b DSGVO). Die Sprachausgabe und Spracheingabe (auch Jarvis, der Sprachmodus) nutzen die Funktionen deines Browsers bzw. Betriebssystems: Je nach Browser wird deine gesprochene Eingabe dabei zur Erkennung an dessen Anbieter übertragen (z. B. Google bei Chrome, Apple bei Safari). AKYTEX selbst nimmt nichts auf und speichert keine Sprachaufnahmen. Das Mikrofon ist nur aktiv, solange Jarvis sichtbar zuhört (leuchtende Bildschirmränder).</p>
     <h3>6. Kontakt per E-Mail</h3><p>Schreibst du uns, verarbeiten wir deine Angaben zur Bearbeitung der Anfrage (Art. 6 Abs. 1 lit. b bzw. f DSGVO) und löschen sie, sobald sie nicht mehr erforderlich sind.</p>
     <h3>7. Deine Rechte</h3><p>Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21 DSGVO). Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim Hamburgischen Beauftragten für Datenschutz und Informationsfreiheit.</p>`,
   terms: () => `<h2>Allgemeine Geschäftsbedingungen</h2><ol class="legal-ol">
@@ -4095,7 +4102,6 @@ const LEGAL = {
     <li><b>Preise und Zahlung.</b> Es gelten die bei Vertragsschluss angezeigten Preise; sie sind Endpreise. Die Zahlung erfolgt im Voraus für den jeweiligen Abrechnungszeitraum über Stripe mit den dort angebotenen Zahlungsarten. Gutscheincodes sind nicht mit anderen Aktionen kombinierbar, sofern nicht anders angegeben.</li>
     <li><b>Laufzeit und Kündigung.</b> Monatstarife laufen einen Monat und verlängern sich jeweils um einen Monat; du kannst jederzeit zum Ende des laufenden Monats kündigen. Jahrestarife laufen zunächst ein Jahr; danach läuft der Vertrag auf unbestimmte Zeit weiter und ist jederzeit mit einer Frist von einem Monat kündbar – bereits für die Zeit danach gezahlte Beträge erstatten wir anteilig. Kündigen kannst du über „Verträge hier kündigen“, im Kundenportal oder per E-Mail. Das Recht zur außerordentlichen Kündigung bleibt unberührt.</li>
     <li><b>Deine Pflichten und Community.</b> Du bist für deine Inhalte (Ideen, Kommentare, Clips) verantwortlich. Verboten sind rechtswidrige, beleidigende, irreführende oder marktmanipulative Inhalte, das Ausgeben von Ideen als Anlageberatung sowie Inhalte, an denen du keine Rechte hast. Ideen und Clips mit Anlagebezug sind als persönliche Meinung zu kennzeichnen; Interessenkonflikte (z. B. eigene Positionen) musst du offenlegen. Wir dürfen gemeldete oder rechtswidrige Inhalte entfernen und Konten bei schweren Verstößen sperren.</li>
-    <li><b>Lounge und Calls.</b> Die Lounge darfst du ab 16 Jahren nutzen. Sei respektvoll; Belästigung, Beleidigung, Spam und das Pushen von Aktien sind verboten. Das Aufnehmen oder Mitschneiden von Calls ohne Einwilligung aller Beteiligten ist verboten und kann strafbar sein (§ 201 StGB). Äußerungen in Calls sind keine Anlageberatung. Du kannst Personen jederzeit blockieren und melden; wer einen Call leitet, kann Personen daraus entfernen.</li>
     <li><b>Verfügbarkeit.</b> Wir bemühen uns um eine hohe Verfügbarkeit, schulden aber keine ununterbrochene Erreichbarkeit. Wartungen und Weiterentwicklungen können Funktionen vorübergehend einschränken.</li>
     <li><b>Haftung.</b> Wir haften unbeschränkt bei Vorsatz und grober Fahrlässigkeit, bei Verletzung von Leben, Körper oder Gesundheit und nach dem Produkthaftungsgesetz. Bei leichter Fahrlässigkeit haften wir nur für die Verletzung wesentlicher Vertragspflichten und begrenzt auf den vertragstypischen, vorhersehbaren Schaden. Für Entscheidungen, die du auf Grundlage von Analysen oder KI-Antworten triffst, und für Verluste mit echtem Geld außerhalb von AKYTEX haften wir nicht.</li>
     <li><b>Änderungen.</b> Änderungen dieser AGB oder der Preise teilen wir dir mindestens sechs Wochen vorher mit; du kannst dann zum Zeitpunkt der Änderung kündigen.</li>
@@ -4144,7 +4150,7 @@ function togglePopover(id, render) {
 let cmdIdx = 0;
 function cmdItems(q) {
   const items = [
-    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["lounge", "Lounge (Calls & Freunde)"], ["ai", "AKYTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
+    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["ai", "AKYTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
     { icon: "✦", label: "Tarife ansehen", run: () => openPlans() },
     { icon: "💳", label: "Pro abonnieren (Checkout)", run: () => openCheckout("pro") },
     { icon: "🤖", label: "AI Premium abonnieren (Checkout)", run: () => openCheckout("aiprem") },
@@ -4152,6 +4158,8 @@ function cmdItems(q) {
     { icon: "⏱", label: "Zeitplan / Timer anlegen", run: () => setAiTab("plan") },
     { icon: "🧪", label: "AI-Labor öffnen", run: () => setAiTab("lab") },
     { icon: "🎬", label: "Chart-Clip aufnehmen", run: () => recordChartClip() },
+    { icon: "✦", label: "Jarvis-Sprachmodus starten", run: () => startJarvis() },
+    { icon: "✦", label: "AKYTEX Ultra abonnieren (Checkout)", run: () => openCheckout("ultra") },
     { icon: "🛍️", label: "Warenkorb öffnen", run: () => openCart() },
     { icon: "⏰", label: "Alarm erstellen", run: () => openAlertModal(settings.symbol, market.get(settings.symbol).price) },
     { icon: "◐", label: "Hell/Dunkel umschalten", run: () => $("#theme-btn").click() },
@@ -4712,6 +4720,7 @@ function speak(text) {
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "de-DE";
+    u.voice = pickVoice();
     u.rate = 1.03;
     speechSynthesis.speak(u);
   } catch (_) {
@@ -4989,7 +4998,7 @@ function resolveTips(silent = false) {
     changed = true;
     if (!silent) {
       const st = tipStats();
-      toast(tip.result === "hit" ? `Dein ${tip.sym}-Tipp war richtig (${pct(move * 100)}). +35 XP${st.streak > 1 ? ` · 🔥 Serie ${st.streak}` : ""}` : `Dein ${tip.sym}-Tipp lag daneben (${pct(move * 100)}). Nächstes Mal! +10 XP`, tip.result === "hit" ? "success" : "info", tip.result === "hit" ? "✅ Treffer" : "❌ Knapp daneben");
+      toast(tip.result === "hit" ? `Dein ${tip.sym}-Tipp war richtig (${pct(move)}). +35 XP${st.streak > 1 ? ` · 🔥 Serie ${st.streak}` : ""}` : `Dein ${tip.sym}-Tipp lag daneben (${pct(move)}). Nächstes Mal! +10 XP`, tip.result === "hit" ? "success" : "info", tip.result === "hit" ? "✅ Treffer" : "❌ Knapp daneben");
     }
     updateVote(id);
   }
@@ -5001,7 +5010,7 @@ function resolveTips(silent = false) {
 function voteHtml(c) {
   const tip = clipsState.tips[c.id];
   if (!tip) return `<div class="clip-vote" data-vote="${c.id}"><span>Hoch oder runter? <small>15 Min</small></span><button data-dir="up">📈 Hoch</button><button data-dir="down">📉 Runter</button></div>`;
-  if (tip.result) return `<div class="clip-vote done ${tip.result}" data-vote="${c.id}"><span>${tip.result === "hit" ? "✅ Treffer" : "❌ Daneben"} · ${tip.dir === "up" ? "📈" : "📉"} ${esc(tip.sym)} ${pct(tip.move * 100)}</span></div>`;
+  if (tip.result) return `<div class="clip-vote done ${tip.result}" data-vote="${c.id}"><span>${tip.result === "hit" ? "✅ Treffer" : "❌ Daneben"} · ${tip.dir === "up" ? "📈" : "📉"} ${esc(tip.sym)} ${pct(tip.move)}</span></div>`;
   const left = Math.max(1, Math.ceil((TIP_MS - (Date.now() - tip.ts)) / 60000));
   return `<div class="clip-vote done" data-vote="${c.id}"><span>Dein Tipp: ${tip.dir === "up" ? "📈 Hoch" : "📉 Runter"} ab ${num(tip.price)} € · Auflösung in ${left} Min ⏳</span></div>`;
 }
@@ -5754,7 +5763,6 @@ async function share() {
 }
 
 // ---------- Start ----------
-initLounge({ toast, beep, haptic, confetti, go: (v) => setView(v), profileName: () => account.state.profile?.name || "" });
 cloud.cloudReady().then(async (on) => {
   if (!on) return;
   await cloud.loadMe();
@@ -5944,7 +5952,6 @@ const VIEW_WORDS = [
   [/(märkte|maerkte|marktübersicht|screener|heatmap)/, "markets"],
   [/(ideen|ideenbörse|community)/, "ideas"],
   [/\b(clips?|videos?)\b/, "clips"],
-  [/(lounge|warteraum|\bcalls?\b|anrufen|freunde)/, "lounge"],
   [/\b(ki|ai|cockpit|labor)\b/, "ai"],
   [/\b(shop|store)\b/, "shop"],
   [/\b(depot|portfolio)\b/, "portfolio"],
@@ -5952,7 +5959,7 @@ const VIEW_WORDS = [
   [/\b(konto|profil|einstellungen)\b/, "account"],
   [/(rechtliches|impressum|datenschutz|\bagb\b|widerruf|risikohinweis)/, "legal"],
 ];
-const VIEW_NAMES = { home: "Startseite", chart: "Chart", markets: "Märkte", ideas: "Ideen-Börse", clips: "Clips", lounge: "Lounge", ai: "AI-Cockpit", shop: "Store", portfolio: "Depot", business: "Business", account: "Konto", legal: "Rechtliches" };
+const VIEW_NAMES = { home: "Startseite", chart: "Chart", markets: "Märkte", ideas: "Ideen-Börse", clips: "Clips", ai: "AI-Cockpit", shop: "Store", portfolio: "Depot", business: "Business", account: "Konto", legal: "Rechtliches" };
 const TF_WORDS = [
   [/\b1\s*(min|minute)/, "1m"],
   [/\b5\s*(min|minuten)/, "5m"],
@@ -6047,12 +6054,81 @@ function runAppControl(action, value = "") {
 }
 
 // Erkennt App-Befehle in normaler Sprache. Liefert eine Antwort oder null (dann antwortet die KI).
+// Lagebericht für Jarvis und den Chat: Markt, Depot und die 2–3 sinnvollsten nächsten Schritte
+function jarvisBrief() {
+  const h = new Date().getHours();
+  const name = account.state.profile?.name?.split(" ")[0];
+  const qs = STOCKS.map((s) => ({ s: s.s, n: s.n, ...market.quote(s.s) }));
+  const up = qs.filter((q) => q.changePct > 0).length;
+  const byChg = [...qs].sort((a, b) => b.changePct - a.changePct);
+  const top = byChg[0];
+  const flop = byChg[byChg.length - 1];
+  const st = broker.state;
+  const pos = Object.entries(st.positions || {}).map(([sym, p]) => {
+    const px = market.get(sym).price;
+    return { sym, qty: p.qty, value: p.qty * px, pnl: px / p.avg - 1 };
+  });
+  const equity = broker.equity();
+  const total = equity / broker.invested() - 1;
+  const cashShare = equity ? st.cash / equity : 1;
+  const hasStop = (sym) => (st.orders || []).some((o) => o.symbol === sym && o.side === "sell" && o.type === "stop");
+  const steps = [];
+  const actions = [];
+  const loser = pos.filter((p) => p.pnl < -0.05).sort((a, b) => a.pnl - b.pnl)[0];
+  const noStop = pos.filter((p) => !hasStop(p.sym)).sort((a, b) => b.value - a.value)[0];
+  if (loser) {
+    steps.push(`<b>${loser.sym}</b> liegt ${pct(loser.pnl)} im Minus. Prüf, ob deine Idee noch stimmt, oder sichere dich mit einem Stop ab.`);
+    actions.push({ label: `${loser.sym} öffnen`, primary: true, run: () => setSymbol(loser.sym) });
+  }
+  if (noStop && noStop.sym !== loser?.sym) {
+    steps.push(`Für <b>${noStop.sym}</b> hast du keinen Stop. Ein Stop begrenzt den Verlust, falls es schiefgeht.`);
+    actions.push({ label: `${noStop.sym} absichern`, primary: !actions.length, run: () => setSymbol(noStop.sym) });
+  }
+  if (!pos.length) {
+    steps.push(`Dein Übungsdepot ist noch leer. Schau dir <b>${top.s}</b> an, heute der stärkste Wert mit ${pct(top.changePct)}, und probier einen ersten Trade mit virtuellem Geld.`);
+    actions.push({ label: `${top.s} ansehen`, primary: true, run: () => setSymbol(top.s) });
+  } else if (cashShare > 0.6) {
+    steps.push(`${Math.round(cashShare * 100)} % deines Depots liegen als Cash herum. In der Marktübersicht findest du die stärksten Bewegungen des Tages.`);
+    actions.push({ label: "Märkte öffnen", run: () => setView("markets") });
+  }
+  const mover = (settings.watchlist || []).map((s) => qs.find((q) => q.s === s)).filter(Boolean).sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))[0];
+  if (steps.length < 3 && mover && Math.abs(mover.changePct) > 0.02) {
+    steps.push(`Auf deiner Watchlist bewegt sich <b>${mover.s}</b> heute stark (${pct(mover.changePct)}). Ein Blick auf den Chart lohnt sich.`);
+    actions.push({ label: `${mover.s} Chart`, run: () => setSymbol(mover.s) });
+  }
+  if (!steps.length) steps.push("Alles im grünen Bereich: Deine Positionen sind abgesichert. Setz dir einen Preisalarm, dann melde ich mich, wenn sich etwas tut.");
+  const hi = h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
+  const mood = up > qs.length * 0.6 ? "freundlich" : up < qs.length * 0.4 ? "schwach" : "gemischt";
+  return {
+    html: `<p>${hi}${name ? " " + esc(name) : ""}! Hier ist dein Lagebericht.</p>
+      <p>Der Markt ist heute <b>${mood}</b>: ${up} von ${qs.length} Aktien im Plus. Stärkster Wert: <b>${top.s}</b> ${pct(top.changePct)}, schwächster: <b>${flop.s}</b> ${pct(flop.changePct)}.</p>
+      <p>Dein Depot: <b>${eur(equity)}</b>, insgesamt <b class="${total >= 0 ? "up" : "down"}">${pct(total)}</b>${pos.length ? ` bei ${pos.length} ${pos.length === 1 ? "Position" : "Positionen"}` : ""}.</p>
+      <p><b>Deine nächsten Schritte:</b></p><ul>${steps.slice(0, 3).map((s) => `<li>${s}</li>`).join("")}</ul>
+      <p class="muted">Keine Anlageberatung – das Depot ist virtuell, die Kurse sind simuliert.</p>`,
+    actions: actions.slice(0, 3),
+  };
+}
+// Jarvis fragt über den normalen Chat – so landet alles auch im Verlauf
+async function jarvisAsk(text) {
+  await sendChat(text);
+  const m = [...chat].reverse().find((x) => x.role === "assistant" && !x.pending);
+  return m ? { html: m.html || (m.plain ? `<p>${esc(m.plain)}</p>` : ""), actions: m.actions || [] } : null;
+}
+const jarvisAllowed = () => !!plan().limits.voice;
+
 function appCommand(text) {
   const t = text.toLowerCase().replace(/[!?.]+$/g, "").trim();
   const syms = aiEngine.findSymbols(text);
   const done = (html, run, follow, actions = []) => ({ html, run, follow, actions });
   const undo = (label, fn) => ({ label: "Rückgängig", run: fn });
 
+  // Jarvis-Sprachmodus per Text starten
+  if (/^(jarvis|hey jarvis|sprachmodus|sprich mit mir)$/.test(t)) return done(`<p>✦ Jarvis hört zu – sprich einfach los.</p>`, () => startJarvis());
+  // Lagebericht: Was soll ich tun?
+  if (/(was soll ich (heute |jetzt |als nächstes )?(tun|machen)|was steht (heute )?an|lagebericht|briefing|tagesbriefing|wie sieht('| e)?s aus|was gibt('| e)?s neues|was ist los|was geht)/.test(t) && !/(kauf|verkauf)/.test(t)) {
+    const b = jarvisBrief();
+    return done(b.html, null, ["Wie steht mein Depot?", "Zeig mir die Märkte"], b.actions);
+  }
   // Design
   if (/(dunkel|dunkl|dark|nacht|hell|light)/.test(t) && /(modus|mode|design|theme|mach|schalt|stell|wechsel|aktivier)/.test(t)) {
     const want = /(dunkel|dunkl|dark|nacht)/.test(t) ? "dark" : "light";
@@ -6203,6 +6279,8 @@ function bindVoice() {
   if (!SR || !btn) return btn && (btn.hidden = true);
   let rec = null;
   btn.addEventListener("click", () => {
+    // Mit Ultra (oder Gratis-Fragen) startet das Mikro den Jarvis-Sprachmodus, sonst normales Diktieren
+    if (!rec && (jarvisAllowed() || trialLeft())) return startJarvis();
     if (rec) return rec.stop();
     rec = new SR();
     rec.lang = "de-DE";
@@ -6238,7 +6316,38 @@ function bindVoice() {
 }
 
 function initAssistant() {
-  $("#jarvis-fab").addEventListener("click", () => (assistantOpen() ? closeAssistant() : openAssistant()));
+  initJarvis({
+    ask: jarvisAsk,
+    allowed: jarvisAllowed,
+    runAction: (a, btn) => runAiAction(a, btn),
+    toast,
+    haptic,
+    name: () => account.state.profile?.name?.split(" ")[0] || "",
+    openChat: () => openAssistant(false),
+    upsell: () => openPlans("Jarvis, der Sprachmodus, ist Teil von AKYTEX Ultra."),
+  });
+  $("#jv-start").hidden = !jarvisSupported();
+  $("#jv-start").addEventListener("click", () => startJarvis());
+  // Λ-Knopf: antippen = Chat, gedrückt halten = Jarvis-Sprachmodus
+  let press = 0;
+  let longPressed = false;
+  const fab = $("#jarvis-fab");
+  fab.addEventListener("pointerdown", () => {
+    longPressed = false;
+    press = setTimeout(() => {
+      longPressed = true;
+      haptic(20);
+      startJarvis();
+    }, 480);
+  });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) fab.addEventListener(ev, () => clearTimeout(press));
+  fab.addEventListener("contextmenu", (e) => e.preventDefault());
+  fab.addEventListener("click", (e) => {
+    if (longPressed) return e.preventDefault();
+    assistantOpen() ? closeAssistant() : openAssistant();
+  });
+  if (jarvisSupported())
+    setTimeout(() => showHint("jarvis-intro", "Neu: Sprich mit mir! Halte das Λ gedrückt oder tippe auf „Jarvis“, und ich sage dir, was heute ansteht.", [{ label: "Jetzt ausprobieren", run: () => startJarvis() }], { cooldown: 30 * 86400e3 }), 24000);
   $("#jp-close").addEventListener("click", closeAssistant);
   $("#jp-proactive").checked = assist.proactive;
   $("#jp-proactive").addEventListener("change", (e) => {

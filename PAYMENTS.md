@@ -21,7 +21,7 @@ AKYTEX läuft standardmäßig im **Testmodus** (`js/payments.js` → `PAYMENT_CO
 ## Echte Zahlungen mit Stripe (ohne eigenen Server)
 
 1. Konto bei [Stripe](https://stripe.com) anlegen und verifizieren.
-2. Für jeden Tarif ein Produkt mit **zwei Preisen** anlegen (monatlich und jährlich): Plus, Pro, Elite, AKYTEX AI, AI Premium.
+2. Für jeden Tarif ein Produkt mit **zwei Preisen** anlegen (monatlich und jährlich): Plus, Pro, Elite, AKYTEX AI, AI Premium, Ultra.
 3. Pro Preis einen **Payment Link** erstellen (Abo, 14 Tage Testphase, Gutscheincodes erlauben, Steuer aktivieren).
 4. Die Links in `js/payments.js` unter `stripeLinks` eintragen, z. B. `"pro-monthly": "https://buy.stripe.com/…"`.
 5. Das **Kundenportal** in Stripe aktivieren und den Link bei `stripePortal` eintragen (Zahlungsmethode ändern, kündigen, Rechnungen).

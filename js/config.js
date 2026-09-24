@@ -34,6 +34,8 @@ export const CONFIG = {
       "ai-yearly": "https://buy.stripe.com/7sYfZjfmXf8q2dP39677O07",
       "aiprem-monthly": "https://buy.stripe.com/5kQ4gB1w72lEbOp5he77O08",
       "aiprem-yearly": "https://buy.stripe.com/9B6aEZ6Qr1hAbOp7pm77O09",
+      "ultra-monthly": "https://buy.stripe.com/7sYcN7dePgcu4lX39677O0c",
+      "ultra-yearly": "https://buy.stripe.com/00w4gB7Uv3pI05HfVS77O0d",
     },
     portal: "https://billing.stripe.com/p/login/3cI4gB6Qr1hA6u5gZW77O00", // Stripe-Kundenportal (Zahlungsmethode ändern, kündigen, Rechnungen)
     // Gründer-Deal: Einmalzahlung für 12 Monate, kein Abo, je 100 Plätze (Limit bei Stripe). Leere Links blenden den Deal aus.

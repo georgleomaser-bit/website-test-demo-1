@@ -14,7 +14,6 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
-import { createLounge } from "./lounge.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = +process.env.PORT || 8080;
@@ -72,7 +71,7 @@ const SECURITY = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Permissions-Policy": "camera=(self), microphone=(self), display-capture=(self), geolocation=(), payment=()",
+  "Permissions-Policy": "camera=(), microphone=(self), geolocation=(), payment=()",
   "Cross-Origin-Opener-Policy": "same-origin",
   "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
 };
@@ -82,13 +81,13 @@ function send(res, status, body, headers = {}) {
   res.end(json ? JSON.stringify(body) : body);
 }
 const fail = (res, status, msg) => send(res, status, { ok: false, msg });
-async function readJson(req, max = MAX_JSON) {
+async function readJson(req) {
   if (!/^application\/json/.test(req.headers["content-type"] || "")) throw Object.assign(new Error("JSON erwartet."), { status: 415 });
   let size = 0;
   const chunks = [];
   for await (const c of req) {
     size += c.length;
-    if (size > max) throw Object.assign(new Error("Anfrage zu groß."), { status: 413 });
+    if (size > MAX_JSON) throw Object.assign(new Error("Anfrage zu groß."), { status: 413 });
     chunks.push(c);
   }
   try {
@@ -157,17 +156,12 @@ function sniffVideo(buf) {
   return null;
 }
 
-// ---------- Lounge (Warteraum, Freunde, Calls) ----------
-const lounge = createLounge({ db, save, send, fail, readJson, clean, limited, id });
-
 // ---------- API ----------
 async function api(req, res, url) {
   const ip = ipOf(req);
   const write = req.method !== "GET" && req.method !== "HEAD";
-  // Verbindungsaufbau für Calls erzeugt viele kleine Nachrichten – eigenes Limit pro Konto in lounge.mjs
-  const signaling = url.pathname === "/api/live/signal";
-  if (!signaling && limited("all:" + ip, 300, 60000)) return fail(res, 429, "Zu viele Anfragen. Bitte kurz warten.");
-  if (!signaling && write && limited("w:" + ip, 40, 60000)) return fail(res, 429, "Zu viele Aktionen. Bitte kurz warten.");
+  if (limited("all:" + ip, 300, 60000)) return fail(res, 429, "Zu viele Anfragen. Bitte kurz warten.");
+  if (write && limited("w:" + ip, 40, 60000)) return fail(res, 429, "Zu viele Aktionen. Bitte kurz warten.");
   // Schreibende Anfragen nur von der eigenen Seite (Schutz gegen fremde Webseiten)
   if (write && req.headers.origin) {
     let host = "";
@@ -184,8 +178,7 @@ async function api(req, res, url) {
   const me = userOf(req);
   let m;
 
-  if (p === "/health") return send(res, 200, { ok: true, service: "akytex", clips: Object.values(db.clips).filter(visible).length, lounge: true, ...lounge.stats() });
-  if (await lounge.handle(req, res, p, me, ip)) return;
+  if (p === "/health") return send(res, 200, { ok: true, service: "akytex", clips: Object.values(db.clips).filter(visible).length });
 
   // Anonymes Konto: Handle + geheimer Schlüssel (nur als Hash gespeichert)
   if (p === "/session" && req.method === "POST") {
@@ -214,8 +207,6 @@ async function api(req, res, url) {
     for (const c of Object.values(db.clips)) if (c.author === me.id) await removeClip(c);
     for (const list of Object.values(db.comments)) for (let i = list.length - 1; i >= 0; i--) if (list[i].author === me.id) list.splice(i, 1);
     for (const l of Object.values(db.likes)) delete l[me.id];
-    lounge.dropUser(me.id);
-    for (const u of Object.values(db.users)) if (u.rel) for (const k of ["friends", "incoming", "outgoing", "blocked"]) u.rel[k] = u.rel[k].filter((x) => x !== me.id);
     delete db.users[me.id];
     save();
     return send(res, 200, { ok: true });
@@ -358,7 +349,6 @@ async function api(req, res, url) {
         .map(([cid, r]) => ({ clip: { ...clipView(db.clips[cid]), hidden: !!db.clips[cid].hidden }, reports: r }));
       return send(res, 200, { ok: true, reports: out });
     }
-    if (p === "/admin/user-reports" && req.method === "GET") return send(res, 200, { ok: true, reports: (db.userReports || []).slice(-200).reverse() });
     if (p === "/admin/clips" && req.method === "GET") return send(res, 200, { ok: true, clips: Object.values(db.clips).filter((c) => !c.deleted).map((c) => ({ ...clipView(c), hidden: !!c.hidden })) });
     if ((m = /^\/admin\/clips\/([A-Za-z0-9_-]{6,20})\/(hide|restore|delete)$/.exec(p)) && req.method === "POST") {
       const c = db.clips[m[1]];
@@ -374,7 +364,6 @@ async function api(req, res, url) {
       const u = db.users[m[1]];
       if (!u) return fail(res, 404, "Nutzer nicht gefunden.");
       u.banned = m[2] === "ban";
-      if (u.banned) lounge.dropUser(u.id);
       save();
       return send(res, 200, { ok: true });
     }

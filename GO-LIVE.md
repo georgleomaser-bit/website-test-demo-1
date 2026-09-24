@@ -30,6 +30,7 @@ Das Stripe-Konto „akytex“ ist mit Claude verbunden, der Zugang darf aber bis
 | Elite | 29,99 € | 299,88 € (24,99 €/Monat) |
 | AKYTEX AI | 99,00 € | 948,00 € (79,00 €/Monat) |
 | AI Premium | 249,00 € | 2.388,00 € (199,00 €/Monat) |
+| Ultra (mit Jarvis-Sprachmodus) | 299,00 € | 2.868,00 € (239,00 €/Monat) |
 
 Später sinnvoll: ein kleiner Server mit Stripe-Webhook, der Abos serverseitig prüft (siehe `PAYMENTS.md`).
 
