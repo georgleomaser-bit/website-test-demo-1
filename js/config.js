@@ -24,18 +24,18 @@ export const CONFIG = {
   // Sobald hier Links stehen, gehen die Abo-Buttons automatisch auf die echte Stripe-Bezahlseite.
   stripe: {
     links: {
-      "plus-monthly": "",
-      "plus-yearly": "",
-      "pro-monthly": "",
-      "pro-yearly": "",
-      "elite-monthly": "",
-      "elite-yearly": "",
-      "ai-monthly": "",
-      "ai-yearly": "",
-      "aiprem-monthly": "",
-      "aiprem-yearly": "",
+      "plus-monthly": "https://buy.stripe.com/3cI4gB6Qr1hA6u5gZW77O00",
+      "plus-yearly": "https://buy.stripe.com/cNifZj8Yze4mf0B9xu77O01",
+      "pro-monthly": "https://buy.stripe.com/cNi9AV2Ab3pI8Cd39677O02",
+      "pro-yearly": "https://buy.stripe.com/5kQdRbgr1f8q2dPeRO77O03",
+      "elite-monthly": "https://buy.stripe.com/6oU9AVa2D9O67y910Y77O04",
+      "elite-yearly": "https://buy.stripe.com/14A00l7UvbWe19L5he77O05",
+      "ai-monthly": "https://buy.stripe.com/cNifZjb6Hgcu5q16li77O06",
+      "ai-yearly": "https://buy.stripe.com/7sYfZjfmXf8q2dP39677O07",
+      "aiprem-monthly": "https://buy.stripe.com/5kQ4gB1w72lEbOp5he77O08",
+      "aiprem-yearly": "https://buy.stripe.com/9B6aEZ6Qr1hAbOp7pm77O09",
     },
-    portal: "", // Stripe-Kundenportal (Zahlungsmethode ändern, kündigen, Rechnungen)
+    portal: "https://billing.stripe.com/p/login/3cI4gB6Qr1hA6u5gZW77O00", // Stripe-Kundenportal (Zahlungsmethode ändern, kündigen, Rechnungen)
   },
 
   // Echter Handel über den Server des lizenzierten Broker-Partners (API siehe GO-LIVE.md).
