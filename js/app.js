@@ -3082,6 +3082,7 @@ function bindHold() {
   btn.addEventListener("pointerdown", start);
   btn.addEventListener("pointerup", cancel);
   btn.addEventListener("pointerleave", cancel);
+  btn.addEventListener("pointercancel", cancel);
   btn.addEventListener("keydown", (e) => {
     if ((e.key === " " || e.key === "Enter") && !e.repeat) start(e);
   });
@@ -3434,6 +3435,7 @@ function bindFundHold(btn, validate, run) {
   btn.addEventListener("pointerdown", start);
   btn.addEventListener("pointerup", cancel);
   btn.addEventListener("pointerleave", cancel);
+  btn.addEventListener("pointercancel", cancel);
   btn.addEventListener("keydown", (e) => {
     if ((e.key === " " || e.key === "Enter") && !e.repeat) start(e);
   });
