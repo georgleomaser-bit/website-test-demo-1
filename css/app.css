@@ -2468,3 +2468,10 @@ html[data-theme] .lg-trade .btn.sell { background: #dc2626; color: #fff; border-
 .ac-badge { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 16px; border: 1px solid var(--border); background: var(--panel-2); text-align: center; filter: grayscale(1); opacity: 0.45; }
 .ac-badge span { font-size: 32px; }
 .ac-badge.on { filter: none; opacity: 1; border-color: rgba(255, 170, 60, 0.7); box-shadow: 0 0 18px rgba(255, 160, 50, 0.2); }
+/* Jarvis: Stimme wählen (wie bei Siri) */
+.jv-moodbox { max-height: min(62vh, 560px); overflow-y: auto; }
+.jv-mchip em { font-style: normal; font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 6px; background: rgba(var(--jv-c), 0.3); }
+.jv-vhint { flex-basis: 100%; color: rgba(var(--jv-hi), 0.55); font-size: 11px; line-height: 1.4; }
+.jv-sliders { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px; }
+.jv-sliders label { display: flex; flex-direction: column; gap: 6px; font: 700 10px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.2em; color: rgba(var(--jv-hi), 0.6); }
+.jv-sliders input[type="range"] { accent-color: rgb(var(--jv-c)); background: rgba(var(--jv-c), 0.2); }
