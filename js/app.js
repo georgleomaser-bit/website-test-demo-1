@@ -1283,7 +1283,9 @@ function renderPlans(el) {
     </details>`;
 }
 function openPlans(reason) {
-  $("#plans-note").textContent = (reason ? reason + " " : "") + "Demo: Es findet keine Zahlung statt – Tarife lassen sich frei ausprobieren.";
+  $("#plans-note").textContent =
+    (reason ? reason + " " : "") +
+    (PAYMENT_CONFIG.mode === "live" ? `Sichere Zahlung über Stripe · ${PAYMENT_CONFIG.trialDays} Tage kostenlos testen · jederzeit kündbar. Der Handel im Depot läuft weiterhin mit virtuellem Geld.` : "Demo: Es findet keine Zahlung statt – Tarife lassen sich frei ausprobieren.");
   renderPlans($("#modal-plans"));
   openModal("#plans-modal");
 }
@@ -3648,6 +3650,16 @@ function openInvoice(i) {
 function openCancel() {
   const sub = account.state.sub;
   const body = $("#cancel-body");
+  if (PAYMENT_CONFIG.mode === "live" && PAYMENT_CONFIG.stripePortal) {
+    // Echte Abos laufen bei Stripe – gekündigt wird dort, damit die Kündigung auch wirklich wirkt
+    body.innerHTML = `<p>Deine Abos werden sicher über <b>Stripe</b> abgerechnet. Dort kündigst du mit einem Klick zum Ende der Laufzeit – bis dahin nutzt du alle Funktionen weiter.</p>
+      <ol class="cancel-steps"><li>Kundenportal öffnen</li><li>Mit der E-Mail-Adresse anmelden, mit der du bezahlt hast (du bekommst einen Code)</li><li>„Abo kündigen“ wählen – du erhältst sofort eine Bestätigung per E-Mail</li></ol>
+      <a class="btn danger-solid" href="${esc(PAYMENT_CONFIG.stripePortal)}" target="_blank" rel="noopener">Jetzt kündigen im Kundenportal</a>
+      <p class="muted small">Alternativ per E-Mail an <a href="mailto:${esc(CONFIG.company.email)}?subject=${encodeURIComponent("Kündigung meines AKYTEX-Abos")}">${esc(CONFIG.company.email)}</a> – bitte mit der E-Mail-Adresse deines Abos.</p>`;
+    closeModals();
+    setTimeout(() => openModal("#cancel-modal"), 330);
+    return;
+  }
   if (!sub || sub.status === "canceled") {
     body.innerHTML = sub
       ? `<p>Dein Abo <b>${planTitle(planById(sub.plan))}</b> ist bereits gekündigt und endet am <b>${new Date(sub.cancelAt).toLocaleDateString("de-DE")}</b>.</p><button class="btn" data-resume>Kündigung zurücknehmen</button>`
@@ -3929,7 +3941,7 @@ const PH = (t) => `<mark class="ph">[${t}]</mark>`;
 const CO = (key, label) => (CONFIG.company[key] ? esc(CONFIG.company[key]) : PH(label));
 const LEGAL = {
   impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${CO("name", "Firmenname und Rechtsform")}<br>${CO("street", "Straße Hausnummer")}<br>${CO("zipCity", "PLZ Ort")}<br>${esc(CONFIG.company.country)}</p><p><b>Vertreten durch:</b> ${CO("representative", "Vor- und Nachname der verantwortlichen Person")}<br><b>Kontakt:</b> ${CO("email", "E-Mail")} · ${CO("phone", "Telefon")}${CONFIG.company.register ? `<br><b>Registereintrag:</b> ${esc(CONFIG.company.register)}` : ""}${CONFIG.company.vatId ? `<br><b>USt-IdNr.:</b> ${esc(CONFIG.company.vatId)}` : ""}</p><p><b>Aufsicht:</b> ${LIVE.trading ? CO("supervisory", "Aufsichtsbehörde") + (CONFIG.trading.partnerName ? ` · Depotführung und Orderausführung durch ${esc(CONFIG.trading.partnerName)}` : "") : "Aktuell kein Handel mit echtem Geld (virtuelles Depot)."}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${CONFIG.company.contentResponsible ? esc(CONFIG.company.contentResponsible) : CO("representative", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}</p>`,
-  privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung für diese Demo</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li><li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li><li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${CO("name", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}, ${CO("email", "Kontakt")} · Datenschutz-Kontakt: ${CO("privacyContact", "Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
+  privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li>${PAYMENT_CONFIG.mode === "live" ? `<li><b>Zahlungen:</b> Abos bezahlst du über Stripe (Stripe Payments Europe Ltd., Irland). Deine Zahlungsdaten gibst du direkt bei Stripe ein, wir erhalten sie nicht. Zweck: Vertragserfüllung (Art. 6 Abs. 1 lit. b DSGVO). Details: stripe.com/de/privacy</li>` : "<li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li>"}<li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${CO("name", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}, ${CO("email", "Kontakt")} · Datenschutz-Kontakt: ${CO("privacyContact", "Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
   terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKYTEX von ${CO("name", "Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKYTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
   withdrawal: () => `<h2>Widerrufsbelehrung (Vorlage)</h2><p><b>Widerrufsrecht:</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${CO("name", "Name")}, ${CO("street", "Anschrift")}, ${CO("zipCity", "")}, ${CO("email", "E-Mail")}) mittels einer eindeutigen Erklärung über deinen Entschluss informieren.</p><p><b>Folgen des Widerrufs:</b> Wir erstatten alle Zahlungen unverzüglich, spätestens binnen vierzehn Tagen. ${PH("Regelung bei vorzeitigem Leistungsbeginn anwaltlich prüfen")}</p>`,
   risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKYTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
@@ -5403,9 +5415,16 @@ function startLive() {
       c.classList.add("live");
     });
     $("#reset-btn")?.remove();
-    const note = $("#plans-note");
-    if (note) note.textContent = LIVE.payments ? "Sichere Zahlung über Stripe. Kündigung jederzeit möglich." : note.textContent;
   }
+  // Direktlinks auf Rechtstexte, z. B. #legal-privacy (für Stripe und E-Mails)
+  const legalHash = () => {
+    const m = location.hash.match(/^#legal-(impressum|privacy|terms|withdrawal|risk)$/);
+    if (!m) return;
+    legalTab = m[1];
+    setView("legal");
+  };
+  legalHash();
+  addEventListener("hashchange", legalHash);
   if (LIVE.data)
     connectMarket(market, (st) => {
       if (st === "reconnecting") toast("Verbindung zu den Kursdaten unterbrochen – verbinde neu …", "info", "Kurse");
