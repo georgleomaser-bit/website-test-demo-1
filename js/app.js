@@ -737,6 +737,7 @@ function bindDrawbar() {
 function openModal(id) {
   const m = $(id);
   m.hidden = false;
+  document.documentElement.classList.add("modal-open");
   requestAnimationFrame(() => requestAnimationFrame(() => m.classList.add("open")));
 }
 function closeModals() {
@@ -744,11 +745,16 @@ function closeModals() {
     m.classList.remove("open");
     setTimeout(() => {
       if (!m.classList.contains("open")) m.hidden = true;
+      if (!$$(".modal.open").length) document.documentElement.classList.remove("modal-open");
     }, 320);
   });
 }
+// Nur schließen, wenn der Tipp auf dem Hintergrund begann und endete – sonst würde z. B. „Gedrückt halten“,
+// das über einem neu eingeblendeten Dialog losgelassen wird, den ganzen Dialog schließen
+let backdropDown = false;
+document.addEventListener("pointerdown", (e) => (backdropDown = e.target.classList?.contains("modal")), true);
 document.addEventListener("click", (e) => {
-  if (e.target.matches("[data-close]") || e.target.classList.contains("modal")) closeModals();
+  if (e.target.matches("[data-close]") || (e.target.classList.contains("modal") && backdropDown)) closeModals();
 });
 
 let searchIdx = 0;
@@ -3197,7 +3203,7 @@ function payComplete(method) {
   syncAccountUI();
   $("#pay-sheet").innerHTML = `<div class="ps-success"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg><h2>${esc(title)}</h2><p class="muted">${esc(sub)}</p><div class="co-done-actions">${actions}</div></div>`;
 }
-function secureDialog(m, is3ds, host = $("#pay-sheet")) {
+function secureDialog(m, is3ds, host = $("#pay-modal")) {
   return new Promise((resolve) => {
     const d = document.createElement("div");
     d.className = "secure-sheet";
@@ -3342,7 +3348,7 @@ async function runFund() {
   const label = btn.querySelector(".hp-label");
   if (fund.dir === "in" && (m.wallet || /3ds/.test(TEST_CARDS[fund.card.replace(/\D/g, "")]?.result || ""))) {
     label.innerHTML = `<span class="face"><i></i></span> Bestätige …`;
-    const ok = await secureDialog(m.id === "card" ? "card" : m.id, m.id === "card", $("#fund-sheet"));
+    const ok = await secureDialog(m.id === "card" ? "card" : m.id, m.id === "card", $("#fund-modal"));
     if (!ok) {
       btn.classList.remove("busy");
       paintFundAmount(false);
