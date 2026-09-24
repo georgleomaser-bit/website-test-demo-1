@@ -76,12 +76,25 @@ export const PLANS = [
     limits: { indicators: 99, alerts: 999, aiDetails: true, copy: true, depth: 12, ai: "auto" },
     features: ["Alles aus AKYTEX AI", "Autopilot handelt selbstständig in deinen Limits", "3 Strategien, Trailing-Stops, Branchenlimits", "Protokoll mit Begründung für jede Entscheidung", "Not-Aus jederzeit · Prioritäts-Support"],
   },
+  {
+    id: "ultra",
+    name: "Ultra",
+    group: "ai",
+    monthly: 299,
+    yearly: 239,
+    fee: 0,
+    ideaFee: 0.001,
+    creatorShare: 0.7,
+    tagline: "Jarvis: sprich einfach mit AKYTEX",
+    limits: { indicators: 99, alerts: 999, aiDetails: true, copy: true, depth: 12, ai: "auto", voice: true },
+    features: ["Alles aus AI Premium", "Jarvis-Sprachmodus: fragen, steuern, planen – per Stimme", "Gesprochener Lagebericht mit deinen nächsten Schritten", "Leuchtender KI-Modus an den Bildschirmrändern", "Neue KI-Funktionen immer zuerst"],
+  },
 ];
 
 export const ADDONS = [
-  { id: "l2", name: "Level-2-Orderbuch", price: 4.99, icon: "📊", desc: "Volle Markttiefe mit 12 Ebenen für alle Aktien.", includedIn: ["pro", "elite", "ai", "aiprem"] },
-  { id: "signals", name: "AI-Signal-Alarme", price: 6.99, icon: "⚡", desc: "Sofort-Meldung, sobald AKYTEX AI das Rating einer Aktie ändert.", includedIn: ["elite", "ai", "aiprem"] },
-  { id: "tax", name: "Steuer-Report", price: 2.99, icon: "🧾", desc: "Gewinne, Gebühren und geschätzte Abgeltungsteuer auf einen Blick.", includedIn: ["elite", "ai", "aiprem"] },
+  { id: "l2", name: "Level-2-Orderbuch", price: 4.99, icon: "📊", desc: "Volle Markttiefe mit 12 Ebenen für alle Aktien.", includedIn: ["pro", "elite", "ai", "aiprem", "ultra"] },
+  { id: "signals", name: "AI-Signal-Alarme", price: 6.99, icon: "⚡", desc: "Sofort-Meldung, sobald AKYTEX AI das Rating einer Aktie ändert.", includedIn: ["elite", "ai", "aiprem", "ultra"] },
+  { id: "tax", name: "Steuer-Report", price: 2.99, icon: "🧾", desc: "Gewinne, Gebühren und geschätzte Abgeltungsteuer auf einen Blick.", includedIn: ["elite", "ai", "aiprem", "ultra"] },
 ];
 
 export const planById = (id) => PLANS.find((p) => p.id === id) || PLANS[0];
