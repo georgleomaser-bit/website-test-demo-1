@@ -455,9 +455,17 @@
     <div class="page-inner">
       <div class="page-head">
         <h1>Mein Depot</h1>
-        <button class="btn ghost" id="reset-btn">Demo-Konto zurücksetzen</button>
+        <div class="btn-row">
+          <button class="btn primary" data-fund="in">＋ Einzahlen</button>
+          <button class="btn" data-fund="out">Auszahlen</button>
+          <button class="btn ghost" id="reset-btn">Demo-Konto zurücksetzen</button>
+        </div>
       </div>
       <div class="kpis" id="kpis"></div>
+      <section class="card transfers-card" id="transfers-card" hidden>
+        <div class="card-head"><h2>Ein- und Auszahlungen</h2><span class="muted" id="transfers-sum"></span></div>
+        <div class="transfers" id="transfers"></div>
+      </section>
       <div class="grid-2">
         <section class="card">
           <div class="card-head"><h2>Depotentwicklung</h2></div>
@@ -481,9 +489,9 @@
   <main class="view page ai-page" id="view-ai" hidden>
     <div class="page-inner">
       <section class="ai-hero">
-        <div class="orb" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="orb-stage" aria-hidden="true"><span class="orbit"></span><span class="orbit o2"></span><div class="orb"><i></i><i></i><i></i></div></div>
         <div class="ai-hero-copy">
-          <span class="usp-eyebrow">AKYTEX AI</span>
+          <span class="usp-eyebrow">ΛKYTEX AI</span>
           <h1>Dein Depot. <span class="grad">Mit Verstand.</span></h1>
           <p class="muted">Berät dich, meldet sich, wenn es wichtig wird – und handelt auf Wunsch selbstständig innerhalb deiner Grenzen.</p>
           <div class="ai-chips" id="ai-chips"></div>
@@ -503,7 +511,10 @@
       <div class="ai-pane" data-aipane="cockpit">
       <div class="ai-layout" id="ai-main">
         <section class="card ai-chat">
-          <div class="card-head"><h2>Berater</h2><span class="muted" id="ai-model"></span></div>
+          <div class="card-head chat-head">
+            <div class="chat-id"><span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span><div><h2>AKYTEX AI</h2><small><i class="live-dot"></i><span id="ai-model"></span></small></div></div>
+            <button class="link-btn" id="chat-new" title="Neuen Chat beginnen">＋ Neuer Chat</button>
+          </div>
           <div class="chat-log" id="chat-log" aria-live="polite"></div>
           <div class="chat-sugg" id="chat-sugg">
             <button data-ask="Wie steht mein Depot?">Wie steht mein Depot?</button>
@@ -799,6 +810,10 @@
 
   <div class="modal pay-modal" id="pay-modal" hidden>
     <div class="modal-box pay-box" role="dialog" aria-label="AKYTEX Pay"><div class="pay-sheet" id="pay-sheet"></div></div>
+  </div>
+
+  <div class="modal pay-modal" id="fund-modal" hidden>
+    <div class="modal-box pay-box" role="dialog" aria-label="Geld ein- oder auszahlen"><div class="pay-sheet fund-sheet" id="fund-sheet"></div></div>
   </div>
 
   <div class="modal" id="onboard-modal" hidden>

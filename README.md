@@ -75,12 +75,9 @@ Siehe [`LAUNCH.md`](LAUNCH.md) für die Checkliste zum öffentlichen Start (Tech
 
 ## Online stellen (Link zum Teilen)
 
-Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch auf GitHub Pages:
+Die Seite liegt auf GitHub Pages und wird direkt aus dem Standard-Branch veröffentlicht (Settings → Pages → *Deploy from a branch*). Jede Änderung, die dort landet, ist nach ein bis zwei Minuten online:
 
-1. Repository → **Settings → Pages** → Source: **GitHub Actions** wählen.
-   (GitHub Pages ist für private Repositories nur mit einem kostenpflichtigen Plan verfügbar – sonst das Repository auf *public* stellen.)
-2. Workflow **Deploy AKYTEX to GitHub Pages** erneut ausführen (Actions → Run workflow).
-3. Die Adresse lautet dann `https://georgleomaser-bit.github.io/website-test-demo-1/` – diesen Link kann man verschicken und die App von dort installieren.
+`https://georgleomaser-bit.github.io/website-test-demo-1/` – diesen Link kann man verschicken und die App von dort installieren.
 
 ## Aufbau
 

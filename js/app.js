@@ -11,7 +11,7 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import { demoClips, drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
-import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
+import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, FUNDING, ibanValid, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
 
 // ---------- Hilfsfunktionen ----------
 const $ = (s, root = document) => root.querySelector(s);
@@ -349,11 +349,11 @@ function updateQuoteCard() {
   }
 }
 
+// Kurs-Aufblitzen ohne erzwungenes Layout (kein offsetWidth-Trick): Klasse im nächsten Frame neu setzen
 function flash(el, price, prev) {
   if (price === prev) return;
   el.classList.remove("fl-up", "fl-down");
-  void el.offsetWidth;
-  el.classList.add(price > prev ? "fl-up" : "fl-down");
+  requestAnimationFrame(() => el.classList.add(price > prev ? "fl-up" : "fl-down"));
 }
 
 // ---------- Watchlist ----------
@@ -559,13 +559,14 @@ function bindTicket() {
 function renderAccountBar() {
   const eq = broker.equity();
   const un = broker.unrealized();
-  const total = eq - START_CASH;
+  const total = eq - broker.invested();
   $("#acct").innerHTML = `
     <span>Gesamtwert <b>${eur(eq)}</b></span>
     <span>Guthaben <b>${eur(broker.state.cash)}</b></span>
     <span>Kaufkraft <b>${eur(broker.buyingPower())}</b></span>
     <span>Unreal. G/V <b class="${cls(un)}">${sEur(un)}</b></span>
-    <span>Gesamt <b class="${cls(total)}">${pct(total / START_CASH)}</b></span>`;
+    <span>Gesamt <b class="${cls(total)}">${pct(total / broker.invested())}</b></span>
+    <span class="acct-fund"><button class="mini-btn" data-fund="in">＋ Einzahlen</button><button class="mini-btn" data-fund="out">Auszahlen</button></span>`;
   $("#cnt-pos").textContent = Object.keys(broker.state.positions).length;
   $("#cnt-ord").textContent = broker.state.orders.length;
   $("#cnt-al").textContent = broker.state.alerts.filter((a) => a.active).length;
@@ -1008,10 +1009,10 @@ function renderPortfolio(full = false) {
   const eq = broker.equity();
   const un = broker.unrealized();
   const st = broker.stats();
-  const total = eq - START_CASH;
+  const total = eq - broker.invested();
   $("#kpis").innerHTML = [
     ["Gesamtwert", eur(eq), ""],
-    ["Gesamtrendite", `${sEur(total)} <small>${pct(total / START_CASH)}</small>`, cls(total)],
+    ["Gesamtrendite", `${sEur(total)} <small>${pct(total / broker.invested())}</small>`, cls(total)],
     ["Guthaben", eur(broker.state.cash), ""],
     ["Positionswert", eur(broker.positionsValue()), ""],
     ["Unrealisiert", sEur(un), cls(un)],
@@ -1024,6 +1025,7 @@ function renderPortfolio(full = false) {
   ]
     .map(([k, v, c]) => `<div class="kpi"><span>${k}</span><b class="${c}">${v}</b></div>`)
     .join("");
+  if (full) renderTransfers();
 
   // Aufteilung
   const parts = Object.entries(broker.state.positions).map(([s, p]) => ({ s, v: p.qty * market.get(s).price }));
@@ -1597,7 +1599,7 @@ function renderIdeas() {
 }
 function renderLeaderboard() {
   if (settings.view !== "ideas") return;
-  const me = { id: "me", handle: "du", style: "Dein Demo-Depot", color: "#6ea2f2", me: true, ret1y: broker.equity() / START_CASH - 1, winRate: broker.stats().winRate ?? 0, followers: 0 };
+  const me = { id: "me", handle: "du", style: "Dein Demo-Depot", color: "#6ea2f2", me: true, ret1y: broker.equity() / broker.invested() - 1, winRate: broker.stats().winRate ?? 0, followers: 0 };
   const rows = [...community.traders, me].sort((a, b) => b.ret1y - a.ret1y);
   const medal = ["🥇", "🥈", "🥉"];
   $("#leaderboard").innerHTML = rows
@@ -2088,7 +2090,16 @@ function renderBusiness(full = false) {
 let llm = null; // Sprachmodell (nur in Claude-Umgebungen verfügbar)
 let llmOff = false;
 let chatCtl = null;
-const chat = []; // { role: "user"|"assistant", text, html, actions }
+const CHAT_KEY = "akytex-v2-chat";
+// { role: "user"|"assistant", text, html, actions, follow } – die letzten 40 Nachrichten bleiben gespeichert
+const chat = (() => {
+  try {
+    const c = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]");
+    return Array.isArray(c) ? c.slice(-40) : [];
+  } catch (_) {
+    return [];
+  }
+})();
 const aiActions = new Map();
 try {
   window.claude?.use?.("sample")?.then((s) => {
@@ -2104,6 +2115,19 @@ function ring(value, label, size = 86, color = "#6ea2f2") {
   const r = 34;
   const C = 2 * Math.PI * r;
   return `<div class="ring" style="--s:${size}px"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${r}" class="ring-bg"/><circle cx="40" cy="40" r="${r}" class="ring-fg" stroke="${color}" stroke-dasharray="${(value / 100) * C} ${C}" transform="rotate(-90 40 40)"/></svg><b>${value}</b><span>${label}</span></div>`;
+}
+// Ring an Ort und Stelle aktualisieren, damit er weich zum neuen Wert gleitet statt neu zu erscheinen
+function setRing(host, value, label, size, color) {
+  const fg = host.querySelector(".ring-fg");
+  if (!fg) {
+    host.innerHTML = ring(0, label, size, color);
+    requestAnimationFrame(() => requestAnimationFrame(() => setRing(host, value, label, size, color)));
+    return;
+  }
+  const C = 2 * Math.PI * 34;
+  fg.setAttribute("stroke-dasharray", `${(value / 100) * C} ${C}`);
+  fg.setAttribute("stroke", color);
+  host.querySelector(".ring b").textContent = value;
 }
 const scoreColor = (v) => (v >= 70 ? "#22c55e" : v >= 45 ? "#f59e0b" : "#ef4444");
 
@@ -2127,7 +2151,7 @@ function renderAIView(full = false) {
   const mode = aiMode();
   renderAIHeader();
   const doc = aiEngine.doctor();
-  $("#ai-score").innerHTML = ring(doc.score, "Depot-Score", 128, scoreColor(doc.score));
+  setRing($("#ai-score"), doc.score, "Depot-Score", 128, scoreColor(doc.score));
   $("#ai-locked").hidden = !!mode;
   $("#ai-main").classList.toggle("is-locked", !mode);
   $("#ai-opps-card").classList.toggle("is-locked", !mode);
@@ -2136,9 +2160,7 @@ function renderAIView(full = false) {
   if (!mode) {
     $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKYTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKYTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
   }
-  if (full && !chat.length) {
-    chat.push({ role: "assistant", html: `<p>Hallo! Ich bin <b>AKYTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>` });
-  }
+  if (full && !chat.length) greetChat();
   if (aiTab !== "cockpit") {
     if (aiTab === "plan") renderPlanPane();
     if (aiTab === "lab" && full) renderLab();
@@ -2177,31 +2199,209 @@ function fmtLLM(text) {
   return html + (inList ? "</ul>" : "");
 }
 
+// Chat-Darstellung: jede Nachricht bekommt ein festes DOM-Element und wird nur neu gezeichnet,
+// wenn sie sich ändert (m.v). So spielen Animationen nur einmal, und Streaming bleibt flüssig.
+const LAMBDA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 19 L12 5.5 L18.5 19"/></svg>';
+const chatEls = new WeakMap();
+let chatStick = true;
+let chatFollowRaf = 0;
+const bump = (m, patch = {}) => {
+  Object.assign(m, patch);
+  m.v = (m.v || 0) + 1;
+};
+function saveChat() {
+  try {
+    localStorage.setItem(CHAT_KEY, JSON.stringify(chat.filter((m) => !m.pending && !m.streaming).slice(-40).map(({ role, text, html, plain, follow }) => ({ role, text, html, plain, follow }))));
+  } catch (_) {
+    /* ignorieren */
+  }
+}
+function followChat() {
+  const log = $("#chat-log");
+  if (!log || !chatStick) return (chatFollowRaf = 0);
+  const target = log.scrollHeight - log.clientHeight;
+  const d = target - log.scrollTop;
+  if (Math.abs(d) < 1) {
+    log.scrollTop = target;
+    return (chatFollowRaf = 0);
+  }
+  log.scrollTop += d * 0.2;
+  chatFollowRaf = requestAnimationFrame(followChat);
+}
+function kickChatScroll() {
+  if (!chatFollowRaf) chatFollowRaf = requestAnimationFrame(followChat);
+}
+function thinkingHTML(m) {
+  return `<span class="think"><span class="think-label">${esc(m.status || "Denkt nach")}</span><span class="think-dots"><i></i><i></i><i></i></span></span>`;
+}
+// Wörter nacheinander einblenden (nur Opacity/Transform – läuft auf der GPU)
+function revealWords(root) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) if (walker.currentNode.nodeValue.trim()) nodes.push(walker.currentNode);
+  const total = nodes.reduce((a, n) => a + n.nodeValue.split(/\s+/).filter(Boolean).length, 0);
+  const step = Math.max(5, Math.min(24, 1100 / Math.max(1, total)));
+  let i = 0;
+  for (const n of nodes) {
+    const frag = document.createDocumentFragment();
+    for (const part of n.nodeValue.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) {
+        frag.appendChild(document.createTextNode(part));
+        continue;
+      }
+      const s = document.createElement("span");
+      s.className = "w";
+      s.style.setProperty("--d", Math.round(i++ * step) + "ms");
+      s.textContent = part;
+      frag.appendChild(s);
+    }
+    n.replaceWith(frag);
+  }
+  return Math.round(i * step);
+}
+function paintMsg(el, m, k) {
+  el._v = m.v;
+  if (m.role === "user") {
+    el.querySelector(".bubble").textContent = m.text;
+    return;
+  }
+  el.querySelector(".msg-av").classList.toggle("busy", !!(m.pending || m.streaming));
+  const body = el.querySelector(".msg-body");
+  if (m.pending) body.innerHTML = thinkingHTML(m);
+  else if (m.streaming) body.innerHTML = streamHTML(m);
+  else {
+    body.innerHTML = m.html ?? esc(m.text || "");
+    const dur = m.reveal ? revealWords(body) : 0;
+    m.reveal = false;
+    el.style.setProperty("--rev", dur + "ms");
+  }
+  const done = !m.pending && !m.streaming;
+  el.querySelector(".speak").hidden = !done || k === 0;
+  el.querySelector(".speak").dataset.speak = k;
+  const acts = (done && m.actions) || [];
+  el.querySelector(".msg-acts").innerHTML = acts
+    .map((a) => {
+      const id = "a" + k + "_" + Math.random().toString(36).slice(2, 7);
+      aiActions.set(id, a);
+      return `<button class="${a.primary ? "btn primary small" : "mini-btn"}" data-ai-act="${id}" ${a.done ? "disabled" : ""}>${a.done ? "✓ " : ""}${esc(a.label)}</button>`;
+    })
+    .join("");
+  const follow = (done && k === chat.length - 1 && m.follow) || [];
+  el.querySelector(".msg-follow").innerHTML = follow.map((f) => `<button data-ask="${esc(f)}">${esc(f)}</button>`).join("");
+}
 function renderChat() {
   const log = $("#chat-log");
   if (!log) return;
-  log.innerHTML = chat
-    .map((m, k) => {
-      const acts = (m.actions || [])
-        .map((a) => {
-          const id = "a" + k + "_" + Math.random().toString(36).slice(2, 7);
-          aiActions.set(id, a);
-          return `<button class="${a.primary ? "btn primary small" : "mini-btn"}" data-ai-act="${id}" ${a.done ? "disabled" : ""}>${a.done ? "✓ " : ""}${esc(a.label)}</button>`;
-        })
-        .join("");
-      return `<div class="msg ${m.role}">${m.role === "assistant" ? '<span class="msg-av">✦</span>' : ""}<div class="bubble">${m.role === "assistant" && !m.pending && k > 0 ? `<button class="speak" data-speak="${k}" title="Vorlesen">🔊</button>` : ""}${m.html ?? esc(m.text)}${m.pending ? '<span class="typing"><i></i><i></i><i></i></span>' : ""}${acts ? `<div class="msg-acts">${acts}</div>` : ""}</div></div>`;
-    })
-    .join("");
-  log.scrollTop = log.scrollHeight;
+  chat.forEach((m, k) => {
+    let el = chatEls.get(m);
+    if (!el || !el.isConnected) {
+      el = document.createElement("div");
+      el.className = "msg " + m.role;
+      el.innerHTML = m.role === "assistant" ? `<span class="msg-av">${LAMBDA}</span><div class="msg-col"><div class="bubble"><button class="speak" title="Vorlesen" hidden>🔊</button><div class="msg-body"></div><div class="msg-acts"></div></div><div class="msg-follow"></div></div>` : `<div class="bubble"></div>`;
+      el._v = -1;
+      log.appendChild(el);
+      chatEls.set(m, el);
+    }
+    if (el._v !== m.v) paintMsg(el, m, k);
+  });
+  // Folgefragen nur unter der letzten Antwort
+  const fs = log.querySelectorAll(".msg-follow");
+  fs.forEach((f, i) => {
+    if (i < fs.length - 1 && f.childElementCount) f.innerHTML = "";
+  });
+  kickChatScroll();
 }
+// Streaming: Text läuft mit gleichmäßiger Geschwindigkeit ein, egal wie ruckartig er ankommt
+function streamHTML(m) {
+  const html = fmtLLM(m.target.slice(0, Math.floor(m.shown)));
+  const caret = '<i class="caret"></i>';
+  return /<\/(p|li)>(<\/ul>)?$/.test(html) ? html.replace(/(<\/(p|li)>)(<\/ul>)?$/, caret + "$1$3") : html + caret;
+}
+function streamTo(m, full) {
+  m.target = full;
+  if (!m.streaming) {
+    m.streaming = true;
+    m.shown = m.shown || 0;
+    bump(m, { pending: false });
+    renderChat();
+  }
+  if (m.raf) return;
+  let last = performance.now();
+  const step = (now) => {
+    const dt = Math.min(64, now - last);
+    last = now;
+    const backlog = m.target.length - m.shown;
+    if (backlog > 0) {
+      m.shown = Math.min(m.target.length, m.shown + ((50 + backlog * 3.5) * dt) / 1000);
+      const el = chatEls.get(m);
+      if (el) el.querySelector(".msg-body").innerHTML = streamHTML(m);
+      kickChatScroll();
+    }
+    if (m.shown < m.target.length || !m.finished) m.raf = requestAnimationFrame(step);
+    else {
+      m.raf = 0;
+      m.streaming = false;
+      m.onDone?.();
+    }
+  };
+  m.raf = requestAnimationFrame(step);
+}
+function finishStream(m, patch) {
+  return new Promise((resolve) => {
+    const end = () => {
+      bump(m, { streaming: false, pending: false, ...patch });
+      renderChat();
+      saveChat();
+      resolve();
+    };
+    if (!m.streaming) return end();
+    m.finished = true;
+    m.onDone = end;
+  });
+}
+function newChat() {
+  chat.length = 0;
+  chatAbort();
+  $("#chat-log").innerHTML = "";
+  aiEngine.lastSym = null;
+  saveChat();
+  greetChat();
+  renderChat();
+}
+function greetChat() {
+  const h = new Date().getHours();
+  const hi = h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
+  const name = account.state.profile?.name?.split(" ")[0];
+  chat.push({ role: "assistant", reveal: true, html: `<p>${hi}${name ? " " + esc(name) : ""}! Ich bin <b>AKYTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>`, follow: ["Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Tagesplan"] });
+}
+function chatAbort() {
+  chatCtl?.abort();
+}
+
+function chatStatus(text) {
+  const sym = aiEngine.findSymbols(text)[0];
+  const t = text.toLowerCase();
+  if (sym) return `Analysiere ${sym}`;
+  if (/depot|portfolio|wie steh/.test(t)) return "Prüfe dein Depot";
+  if (/risiko|var\b|monte/.test(t)) return "Berechne dein Risiko";
+  if (/kauf|chance|empfehl|beste|top/.test(t)) return `Scanne ${STOCKS.length} Aktien`;
+  if (/markt|lage|stimmung|sektor/.test(t)) return "Lese den Markt";
+  if (/plan/.test(t)) return "Erstelle deinen Plan";
+  return "Denkt nach";
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function sendChat(text) {
   text = text.trim();
   if (!text) return;
   if (!aiMode()) return openPlans("Der Berater-Chat ist Teil von AKYTEX AI.");
+  if (chat.some((m) => m.pending || m.streaming)) return toast("Einen Moment – AKYTEX AI antwortet noch.", "info");
   chat.push({ role: "user", text });
-  const msg = { role: "assistant", html: "", pending: true };
+  const msg = { role: "assistant", pending: true, status: chatStatus(text) };
   chat.push(msg);
+  chatStick = true;
   renderChat();
   haptic(6);
   if (llm && !llmOff) {
@@ -2210,29 +2410,36 @@ async function sendChat(text) {
       return;
     } catch (e) {
       if (e?.code === "cancelled") {
-        msg.pending = false;
-        msg.html = msg.html || "<p class='muted'>Abgebrochen.</p>";
-        renderChat();
+        const partial = msg.target ? fmtLLM(msg.target.slice(0, Math.floor(msg.shown))) : "";
+        cancelAnimationFrame(msg.raf);
+        msg.raf = 0;
+        await finishStream(msg, { streaming: false, html: partial + "<p class='muted'>Abgebrochen.</p>" });
         return;
       }
       if (["not_granted", "sampling_disabled", "tools_unavailable", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) llmOff = true;
       msg.note = e?.code === "rate_limited" ? "Das Sprachmodell ist gerade ausgelastet – ich antworte mit der lokalen Engine." : "";
+      cancelAnimationFrame(msg.raf);
+      Object.assign(msg, { raf: 0, streaming: false, finished: false, target: "", shown: 0 });
+      bump(msg, { pending: true, status: "Wechsle auf die lokale Engine" });
+      renderChat();
       renderAIHeader();
     } finally {
       $("#chat-stop").hidden = true;
     }
   }
-  // Lokale Engine: kurze „Denkpause“, dann Antwort
-  await new Promise((r) => setTimeout(r, 450 + Math.random() * 500));
-  const ans = aiEngine.answer(text, { universe: aiUniverse(), scheduler, community });
-  msg.pending = false;
-  msg.html = (msg.note ? `<p class="muted">${msg.note}</p>` : "") + ans.html;
-  msg.actions = ans.actions;
+  // Lokale Engine: kurze „Denkpause“ mit sichtbaren Schritten, dann Antwort
+  await wait(260 + Math.random() * 220);
+  bump(msg, { status: "Formuliere Antwort" });
   renderChat();
+  await wait(200 + Math.random() * 180);
+  const ans = aiEngine.answer(text, { universe: aiUniverse(), scheduler, community });
+  bump(msg, { pending: false, reveal: true, html: (msg.note ? `<p class="muted">${msg.note}</p>` : "") + ans.html, actions: ans.actions, follow: ans.follow });
+  renderChat();
+  saveChat();
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- ").
+  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt.
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -2331,27 +2538,33 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
       } },
     { name: "get_autopilot", description: "Status und Einstellungen des Autopiloten sowie die letzten Entscheidungen.", execute: () => ({ ...aiEngine.state.config, tier: aiMode(), lastDecisions: aiEngine.state.log.slice(0, 5).map((l) => `${l.side} ${l.qty} ${l.sym}: ${l.why}`) }) },
   ];
+  // Sichtbare Denkschritte: jedes Werkzeug meldet, was gerade passiert
+  const toolStatus = { get_portfolio: "Lese dein Depot", analyze_stock: (i) => `Analysiere ${i.symbol}`, scan_market: `Scanne ${STOCKS.length} Aktien`, forecast: (i) => `Rechne Prognose für ${i.symbol}`, backtest: (i) => `Backtest ${i.symbol}`, patterns: (i) => `Suche Muster bei ${i.symbol}`, portfolio_risk: "Simuliere dein Risiko", market_overview: "Lese den Markt", daily_plan: "Erstelle deinen Tagesplan", propose_trade: "Bereite Order vor", propose_schedule: "Plane Auftrag", get_autopilot: "Prüfe den Autopiloten" };
+  for (const t of tools) {
+    const ex = t.execute;
+    t.execute = (i = {}) => {
+      const st = toolStatus[t.name];
+      if (msg.pending) {
+        bump(msg, { status: typeof st === "function" ? st(i) : st || "Arbeite" });
+        renderChat();
+      }
+      return ex(i);
+    };
+  }
   chatCtl = new AbortController();
   $("#chat-stop").hidden = false;
   const { text: out } = await llm(turns, {
     tools,
     modelTier: "quick",
     signal: chatCtl.signal,
-    onText: ({ text: t }) => {
-      msg.pending = false;
-      msg.html = fmtLLM(t);
-      renderChat();
-    },
+    onText: ({ text: t }) => streamTo(msg, t),
   });
-  msg.pending = false;
-  msg.plain = out;
-  msg.html = fmtLLM(out);
-  msg.actions = proposals;
-  renderChat();
+  await finishStream(msg, { plain: out, html: fmtLLM(out), reveal: !msg.target, actions: proposals, follow: aiEngine.followUps(text, aiEngine.findSymbols(out)[0]) });
 }
 
 function runAiAction(a, btn) {
   if (a.open) return setSymbol(a.open);
+  if (a.fund) return openFund(a.fund, a.amount);
   const done = () => {
     a.done = true;
     btn.disabled = true;
@@ -2526,6 +2739,19 @@ function bindAI() {
     sendChat(v);
   });
   $("#chat-stop").addEventListener("click", () => chatCtl?.abort());
+  $("#chat-new")?.addEventListener("click", newChat);
+  const log = $("#chat-log");
+  // Automatisch mitscrollen, außer der Nutzer scrollt selbst nach oben
+  const userScroll = (up) => {
+    if (up) chatStick = false;
+  };
+  log.addEventListener("wheel", (e) => userScroll(e.deltaY < 0), { passive: true });
+  let ty = 0;
+  log.addEventListener("touchstart", (e) => (ty = e.touches[0].clientY), { passive: true });
+  log.addEventListener("touchmove", (e) => userScroll(e.touches[0].clientY > ty + 4), { passive: true });
+  log.addEventListener("scroll", () => {
+    if (log.scrollHeight - log.scrollTop - log.clientHeight < 40) chatStick = true;
+  }, { passive: true });
   $("#feed-clear").addEventListener("click", () => {
     aiEngine.state.unread = 0;
     aiEngine.save();
@@ -2630,7 +2856,7 @@ setInterval(() => {
   if (settings.view === "ai") {
     renderOpps();
     renderDoctor(aiEngine.doctor());
-    $("#ai-score").innerHTML = ring(aiEngine.doctor().score, "Depot-Score", 128, scoreColor(aiEngine.doctor().score));
+    setRing($("#ai-score"), aiEngine.doctor().score, "Depot-Score", 128, scoreColor(aiEngine.doctor().score));
   }
 }, 25000);
 
@@ -2652,10 +2878,41 @@ function openCheckout(planId, startStep = 0) {
   if (startStep === 2) return openPay({ kind: "method" });
   const link = stripeLinkFor(planId, settings.billing);
   if (link && PAYMENT_CONFIG.mode === "live") {
-    location.href = link;
+    location.href = stripeUrl(link);
     return;
   }
   openPay({ kind: "sub", planId, billing: settings.billing, addons: settings.addons.slice() });
+}
+// Stripe Payment Link mit Kundendaten vorbelegen; die Rückkehr wird in handleStripeReturn() ausgewertet
+function stripeUrl(link, promo) {
+  const u = new URL(link);
+  if (!account.state.ref) {
+    account.state.ref = "akx_" + Math.random().toString(36).slice(2, 12);
+    account.save();
+  }
+  u.searchParams.set("client_reference_id", account.state.ref);
+  u.searchParams.set("locale", "de");
+  if (account.state.profile?.email) u.searchParams.set("prefilled_email", account.state.profile.email);
+  if (promo) u.searchParams.set("prefilled_promo_code", promo);
+  return u.toString();
+}
+// Erfolgs-URL in Stripe: https://DEINE-DOMAIN/?checkout=success&plan=pro&billing=monthly
+function handleStripeReturn() {
+  const q = new URLSearchParams(location.search);
+  const st = q.get("checkout");
+  if (!st) return;
+  history.replaceState(null, "", location.pathname + location.hash);
+  if (st === "cancel") return toast("Der Bezahlvorgang wurde abgebrochen. Es wurde nichts berechnet.", "info", "Abgebrochen");
+  const planId = q.get("plan");
+  const billing = q.get("billing") === "yearly" ? "yearly" : "monthly";
+  if (st !== "success" || !planId || !PLANS.some((p) => p.id === planId)) return;
+  account.subscribe(quote({ planId, billing, addons: [] }), { type: "stripe", label: "Stripe" });
+  settings.billing = billing;
+  saveSettings();
+  setPlan(planId, true);
+  syncAccountUI();
+  confetti();
+  toast(`Dein Abo ${planTitle(planById(planId))} ist aktiv. Den Beleg schickt dir Stripe per E-Mail.`, "success", "Zahlung erfolgreich");
 }
 function openPay(order) {
   const saved = account.state.method;
@@ -2939,16 +3196,16 @@ function payComplete(method) {
   syncAccountUI();
   $("#pay-sheet").innerHTML = `<div class="ps-success"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg><h2>${esc(title)}</h2><p class="muted">${esc(sub)}</p><div class="co-done-actions">${actions}</div></div>`;
 }
-function secureDialog(m, is3ds) {
+function secureDialog(m, is3ds, host = $("#pay-sheet")) {
   return new Promise((resolve) => {
     const d = document.createElement("div");
     d.className = "secure-sheet";
-    const title = is3ds ? "3-D Secure" : { paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna" }[m];
+    const title = is3ds ? "3-D Secure" : { paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna", instant: "Deine Bank" }[m];
     d.innerHTML = `<div class="ss-box"><div class="ss-logo ${m}">${title}</div>
       <p>${is3ds ? "Deine Bank bittet um Bestätigung. Öffne deine Banking-App (simuliert) oder bestätige hier." : "Bestätige die Zahlung über " + title + " (simuliert)."}</p>
       <div class="ss-face" ${m === "apple" ? "" : "hidden"}><span></span></div>
       <div class="ss-actions"><button class="btn ghost" data-ss="0">Abbrechen</button><button class="btn primary" data-ss="1">${m === "apple" ? "Mit Face ID bestätigen" : "Bestätigen"}</button></div></div>`;
-    $("#pay-sheet").appendChild(d);
+    host.appendChild(d);
     requestAnimationFrame(() => d.classList.add("open"));
     d.addEventListener("click", (e) => {
       const b = e.target.closest("[data-ss]");
@@ -2965,6 +3222,302 @@ function secureDialog(m, is3ds) {
       } else finish();
     });
   });
+}
+// ---------- Ein- und Auszahlungen (wie bei Neobrokern) ----------
+let fund = null;
+const fundMethods = () => FUNDING[fund.dir];
+const fundMethod = () => fundMethods().find((m) => m.id === fund.method) || fundMethods()[0];
+const fundAmount = () => parseFloat((fund.amt || "0").replace(",", ".")) || 0;
+function preferredWallet() {
+  if (window.ApplePaySession) return "apple";
+  if (/Android/i.test(navigator.userAgent)) return "google";
+  return account.state.method?.type === "card" ? "card" : "instant";
+}
+function instantToday() {
+  const d0 = new Date().setHours(0, 0, 0, 0);
+  return (broker.state.transfers || []).filter((t) => t.type === "in" && t.at >= d0 && t.method !== "transfer").reduce((a, t) => a + t.amount, 0);
+}
+function openFund(dir = "in", amount = 0) {
+  fund = { dir, amt: amount ? String(amount).replace(".", ",") : "", method: dir === "in" ? preferredWallet() : "instant", open: null, card: "", iban: account.state.refIban || "" };
+  closeModals();
+  setTimeout(() => {
+    renderFund();
+    openModal("#fund-modal");
+  }, 330);
+}
+function fundIcon(m) {
+  return `<span class="fm-ic ${m.id}">${m.icon}</span>`;
+}
+function renderFund() {
+  const inDir = fund.dir === "in";
+  const m = fundMethod();
+  const chips = inDir ? [50, 100, 250, 500, 1000].map((v) => `<button data-fund-chip="${v}">${v.toLocaleString("de-DE")} €</button>`).join("") : [[0.25, "25 %"], [0.5, "50 %"], [1, "Alles"]].map(([f, l]) => `<button data-fund-chip="${(Math.floor(broker.buyingPower() * f * 100) / 100).toFixed(2)}">${l}</button>`).join("");
+  $("#fund-sheet").innerHTML = `
+    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div><span class="test-chip">🧪 Demo-Geld</span><button class="icon-btn" data-close>✕</button></div>
+    <div class="seg fund-seg" role="tablist"><button class="${inDir ? "active" : ""}" data-fund-dir="in">Einzahlen</button><button class="${inDir ? "" : "active"}" data-fund-dir="out">Auszahlen</button><i class="seg-glider" style="transform:translateX(${inDir ? 0 : 100}%)"></i></div>
+    <div class="fund-amount"><div class="fa-num" id="fa-num"></div><small id="fa-sub"></small></div>
+    <div class="fund-chips">${chips}</div>
+    <div class="keypad" id="keypad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"].map((k) => `<button data-key="${k}" aria-label="${k === "⌫" ? "Löschen" : k}">${k}</button>`).join("")}</div>
+    <div class="ps-rows">
+      <div class="ps-row ${fund.open === "method" ? "open" : ""}" data-row="method">
+        <button class="ps-head" data-fund-toggle="method"><span>${inDir ? "Zahlart" : "Auszahlung"}</span><b id="fm-cur">${fundIcon(m)} ${m.name}</b><i>›</i></button>
+        <div class="ps-body"><div class="fm-list">${fundMethods().map((x) => `<button class="fm ${x.id === m.id ? "on" : ""}" data-fund-method="${x.id}">${fundIcon(x)}<div><b>${x.name}</b><small>${x.eta}</small></div><i></i></button>`).join("")}</div></div>
+      </div>
+    </div>
+    <div class="fund-extra" id="fund-extra"></div>
+    <p class="co-err" id="fund-err" hidden></p>
+    <button class="hold-pay" id="fund-hold"><span class="hp-fill"></span><span class="hp-label" id="fund-label"></span></button>
+    <p class="ps-foot">🔒 Demo: Es wird kein echtes Geld bewegt. Echte Ein- und Auszahlungen gibt es erst mit einem lizenzierten Bankpartner.</p>`;
+  renderFundExtra();
+  paintFundAmount(false);
+  bindFundHold($("#fund-hold"), validateFund, runFund);
+}
+function renderFundExtra() {
+  const m = fundMethod();
+  let h = "";
+  if (fund.dir === "in" && m.id === "card") h = account.state.method?.type === "card" ? `<p class="fe-note">💳 Gespeicherte Karte: <b>${esc(account.state.method.label)}</b></p>` : `<label class="field"><span>Kartennummer (Testkarte)</span><input id="fe-card" inputmode="numeric" autocomplete="off" placeholder="4242 4242 4242 4242" value="${esc(fund.card)}" /></label>`;
+  if (fund.dir === "in" && m.id === "sepa") h = `<label class="field"><span>Deine IBAN (Lastschriftmandat)</span><input id="fe-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" value="${esc(fund.iban)}" /></label><p class="fe-note">Das Geld ist sofort handelbar. Wir ziehen es in 1–3 Bankarbeitstagen ein.</p>`;
+  if (fund.dir === "in" && m.id === "transfer") h = `<div class="fe-bank"><div><span>Empfänger</span><b>${esc(account.state.profile?.name || "Dein Name")} · AKYTEX</b></div><div><span>IBAN</span><b>${FUNDING.demoIban}</b><button class="mini-btn" data-copy="${FUNDING.demoIban}">Kopieren</button></div><div><span>Verwendungszweck</span><b>AKYTEX ${broker.state.created.toString(36).toUpperCase().slice(-6)}</b></div></div><p class="fe-note">Demo-IBAN – bitte nichts Echtes überweisen. In der Demo ist das Geld nach wenigen Sekunden da statt nach einem Werktag.</p>`;
+  if (fund.dir === "out") h = `<label class="field"><span>Referenzkonto (IBAN)</span><input id="fe-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" value="${esc(fund.iban)}" /></label><p class="fe-note">Auszahlungen gehen nur auf ein Konto auf deinen Namen. Verfügbar: <b>${eur(broker.buyingPower())}</b>.</p>`;
+  const ex = $("#fund-extra");
+  ex.innerHTML = h;
+  ex.animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" });
+}
+function paintFundAmount(pop = true) {
+  const v = fundAmount();
+  const [int, dec] = (fund.amt || "0").split(",");
+  const intF = (+int || 0).toLocaleString("de-DE");
+  const num = $("#fa-num");
+  num.innerHTML = `${intF}${dec !== undefined ? `<span class="fa-dec">,${dec}</span>` : ""}<span class="fa-cur"> €</span>`;
+  num.classList.toggle("empty", !fund.amt);
+  if (pop) num.animate([{ transform: "scale(1.045)" }, { transform: "scale(1)" }], { duration: 220, easing: "cubic-bezier(.2,.9,.3,1.2)" });
+  const inDir = fund.dir === "in";
+  $("#fa-sub").textContent = inDir ? `Guthaben danach ${eur(broker.state.cash + v)}` : `Verfügbar ${eur(broker.buyingPower())}`;
+  const m = fundMethod();
+  $("#fund-label").innerHTML = inDir ? (m.id === "transfer" ? `Ich habe ${v ? eur(v) : ""} überwiesen` : `Zum Einzahlen halten${v ? " · " + eur(v) : ""}`) : `Zum Auszahlen halten${v ? " · " + eur(v) : ""}`;
+  $$("#fund-sheet [data-fund-chip]").forEach((c) => c.classList.toggle("on", Math.abs(+c.dataset.fundChip - v) < 0.005));
+}
+function fundKey(k) {
+  let a = fund.amt || "";
+  if (k === "⌫") a = a.slice(0, -1);
+  else if (k === ",") a = a.includes(",") ? a : (a || "0") + ",";
+  else {
+    if (a.includes(",") && a.split(",")[1].length >= 2) return shake($("#fa-num"));
+    if (a === "0") a = "";
+    a += k;
+    if (parseFloat(a.replace(",", ".")) > FUNDING.max) return shake($("#fa-num"));
+  }
+  fund.amt = a;
+  haptic(4);
+  paintFundAmount();
+}
+function validateFund() {
+  if (fund.card !== undefined && $("#fe-card")) fund.card = $("#fe-card").value;
+  if ($("#fe-iban")) fund.iban = $("#fe-iban").value;
+  const v = fundAmount();
+  const m = fundMethod();
+  if (v < FUNDING.min) return `Bitte mindestens ${eur(FUNDING.min)} eingeben.`;
+  if (fund.dir === "out") {
+    if (v > broker.buyingPower() + 1e-6) return `Du kannst höchstens ${eur(broker.buyingPower())} auszahlen.`;
+    if (!ibanValid(fund.iban)) return "Bitte eine gültige IBAN für dein Referenzkonto eingeben.";
+    return null;
+  }
+  if (m.instant && instantToday() + v > FUNDING.instantDailyLimit) return `Sofort-Einzahlungen sind auf ${eur(FUNDING.instantDailyLimit)} pro Tag begrenzt. Für größere Beträge nutze die Überweisung.`;
+  if (m.id === "card" && account.state.method?.type !== "card") {
+    const n = fund.card.replace(/\D/g, "");
+    const tc = TEST_CARDS[n];
+    if (!luhn(n)) return "Bitte eine gültige Kartennummer eingeben.";
+    if (!tc) return "Demo: Bitte nur Testkarten verwenden (z. B. 4242 4242 4242 4242).";
+    if (tc.result === "declined") return "Die Bank hat die Zahlung abgelehnt (Testkarte „abgelehnt“).";
+    if (tc.result === "funds") return "Nicht genügend Deckung (Testkarte).";
+  }
+  if (m.id === "sepa" && fund.iban.replace(/\s/g, "").toUpperCase() !== TEST_IBAN) return "Demo: Bitte die Test-IBAN DE89 3704 0044 0532 0130 00 verwenden.";
+  return null;
+}
+async function runFund() {
+  const btn = $("#fund-hold");
+  const v = fundAmount();
+  const m = fundMethod();
+  const label = btn.querySelector(".hp-label");
+  if (fund.dir === "in" && (m.wallet || /3ds/.test(TEST_CARDS[fund.card.replace(/\D/g, "")]?.result || ""))) {
+    label.innerHTML = `<span class="face"><i></i></span> Bestätige …`;
+    const ok = await secureDialog(m.id === "card" ? "card" : m.id, m.id === "card", $("#fund-sheet"));
+    if (!ok) {
+      btn.classList.remove("busy");
+      paintFundAmount(false);
+      return fundError("Die Bestätigung wurde abgebrochen.");
+    }
+  }
+  label.innerHTML = `<span class="spinner sm"></span> ${fund.dir === "in" ? "Geld kommt …" : "Wird ausgezahlt …"}`;
+  await new Promise((r) => setTimeout(r, 650));
+  let title;
+  let sub;
+  if (fund.dir === "out") {
+    const r = broker.withdraw(v, { method: m.id, iban: "•••• " + fund.iban.replace(/\s/g, "").slice(-4) });
+    if (!r.ok) {
+      btn.classList.remove("busy");
+      paintFundAmount(false);
+      return fundError(r.msg);
+    }
+    account.state.refIban = fund.iban.replace(/\s/g, "").toUpperCase();
+    account.save();
+    title = `${eur(v)} unterwegs`;
+    sub = m.id === "instant" ? "Echtzeit-Auszahlung – in wenigen Sekunden auf deinem Konto." : "Standard-Auszahlung – in 1–2 Werktagen auf deinem Konto.";
+  } else if (m.id === "transfer") {
+    const pend = [...(account.state.pendingIn || []), { amount: v, due: Date.now() + 8000 }];
+    account.state.pendingIn = pend;
+    account.save();
+    setTimeout(settlePending, 8200);
+    title = "Überweisung angekündigt";
+    sub = `Sobald ${eur(v)} eingehen, sind sie handelbar (Demo: in wenigen Sekunden).`;
+  } else {
+    broker.deposit(v, { method: m.id });
+    if (m.id === "sepa") {
+      account.state.refIban = account.state.refIban || TEST_IBAN;
+      account.save();
+    }
+    title = `${eur(v)} eingezahlt`;
+    sub = `Per ${m.name} · sofort handelbar · neues Guthaben ${eur(broker.state.cash)}`;
+    confetti();
+  }
+  haptic([10, 40, 20]);
+  $("#fund-sheet").innerHTML = `<div class="ps-success"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg><h2>${esc(title)}</h2><p class="muted">${esc(sub)}</p><div class="co-done-actions">${fund.dir === "in" && m.id !== "transfer" ? `<button class="btn" data-goto-ai-buy>Mit AKYTEX AI investieren</button>` : ""}<button class="btn primary" data-close>Fertig</button></div></div>`;
+  renderTransfers();
+}
+function settlePending() {
+  const pend = account.state.pendingIn || [];
+  const due = pend.filter((p) => p.due <= Date.now());
+  if (!due.length) return;
+  account.state.pendingIn = pend.filter((p) => p.due > Date.now());
+  account.save();
+  for (const p of due) {
+    broker.deposit(p.amount, { method: "transfer" });
+    toast(`${eur(p.amount)} sind auf deinem Depot eingegangen.`, "success", "Überweisung angekommen");
+    notify("Überweisung angekommen", `${eur(p.amount)} sind jetzt handelbar.`);
+  }
+  renderTransfers();
+}
+function fundError(msg) {
+  const e = $("#fund-err");
+  if (!e) return;
+  e.textContent = msg;
+  e.hidden = false;
+  shake($("#fund-sheet"));
+  haptic([30, 40, 30]);
+}
+// Gedrückt halten zum Bestätigen (Maus, Touch oder Leertaste/Enter)
+function bindFundHold(btn, validate, run) {
+  let timer = null;
+  const start = (e) => {
+    if (btn.classList.contains("busy")) return;
+    e.preventDefault();
+    const err = validate();
+    if (err) return fundError(err);
+    $("#fund-err").hidden = true;
+    if (fund.dir === "in" && fundMethod().id === "transfer") {
+      btn.classList.add("busy");
+      return run();
+    }
+    btn.classList.add("holding");
+    haptic(8);
+    timer = setTimeout(() => {
+      btn.classList.remove("holding");
+      btn.classList.add("busy");
+      haptic([12, 30, 12]);
+      run();
+    }, 900);
+  };
+  const cancel = () => {
+    clearTimeout(timer);
+    btn.classList.remove("holding");
+  };
+  btn.addEventListener("pointerdown", start);
+  btn.addEventListener("pointerup", cancel);
+  btn.addEventListener("pointerleave", cancel);
+  btn.addEventListener("keydown", (e) => {
+    if ((e.key === " " || e.key === "Enter") && !e.repeat) start(e);
+  });
+  btn.addEventListener("keyup", cancel);
+}
+function renderTransfers() {
+  const card = $("#transfers-card");
+  if (!card) return;
+  const list = broker.state.transfers || [];
+  const pend = account.state.pendingIn || [];
+  card.hidden = !list.length && !pend.length;
+  if (card.hidden) return;
+  const names = Object.fromEntries([...FUNDING.in, ...FUNDING.out.map((m) => ({ ...m, id: "out-" + m.id }))].map((m) => [m.id, m.name]));
+  $("#transfers-sum").textContent = `Netto eingezahlt ${sEur(broker.state.netDeposits || 0)}`;
+  $("#transfers").innerHTML =
+    pend.map((p) => `<div class="tr-row pending"><span class="tr-ic">⏳</span><div><b>Überweisung unterwegs</b><small>angekündigt</small></div><b>${sEur(p.amount)}</b></div>`).join("") +
+    list
+      .slice(0, 12)
+      .map((t) => `<div class="tr-row ${t.type}"><span class="tr-ic">${t.type === "in" ? "↓" : "↑"}</span><div><b>${t.type === "in" ? "Einzahlung" : "Auszahlung"} · ${esc(names[t.type === "in" ? t.method : "out-" + t.method] || "")}</b><small>${new Date(t.at).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })}${t.iban ? " · " + esc(t.iban) : ""}</small></div><b class="${t.type === "in" ? "up" : ""}">${t.type === "in" ? "+" : "−"}${eur(t.amount)}</b></div>`)
+      .join("");
+}
+function bindFund() {
+  document.addEventListener("click", (e) => {
+    const f = e.target.closest("[data-fund]");
+    if (f) return openFund(f.dataset.fund);
+  });
+  const sheet = $("#fund-sheet");
+  sheet.addEventListener("click", (e) => {
+    const t = e.target;
+    const key = t.closest("[data-key]");
+    if (key) return fundKey(key.dataset.key);
+    const chip = t.closest("[data-fund-chip]");
+    if (chip) {
+      fund.amt = (+chip.dataset.fundChip).toFixed(2).replace(/\.00$/, "").replace(".", ",");
+      haptic(6);
+      return paintFundAmount();
+    }
+    const dir = t.closest("[data-fund-dir]");
+    if (dir && dir.dataset.fundDir !== fund.dir) {
+      fund.dir = dir.dataset.fundDir;
+      fund.method = fund.dir === "in" ? preferredWallet() : "instant";
+      fund.amt = "";
+      fund.open = null;
+      return renderFund();
+    }
+    const tog = t.closest("[data-fund-toggle]");
+    if (tog) {
+      fund.open = fund.open === "method" ? null : "method";
+      return sheet.querySelector('[data-row="method"]').classList.toggle("open", fund.open === "method");
+    }
+    const fm = t.closest("[data-fund-method]");
+    if (fm) {
+      fund.method = fm.dataset.fundMethod;
+      fund.open = null;
+      $$("#fund-sheet .fm").forEach((b) => b.classList.toggle("on", b === fm));
+      const m = fundMethod();
+      $("#fm-cur").innerHTML = `${fundIcon(m)} ${m.name}`;
+      sheet.querySelector('[data-row="method"]').classList.remove("open");
+      $("#fund-err").hidden = true;
+      renderFundExtra();
+      return paintFundAmount(false);
+    }
+    const cp = t.closest("[data-copy]");
+    if (cp) {
+      navigator.clipboard?.writeText(cp.dataset.copy.replace(/\s/g, "")).then(() => toast("IBAN kopiert.", "success"), () => {});
+      return;
+    }
+    if (t.closest("[data-goto-ai-buy]")) {
+      closeModals();
+      setView("ai");
+      setTimeout(() => sendChat("Was soll ich jetzt kaufen?"), 400);
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("#fund-modal").hidden || e.target.matches("input, textarea, select")) return;
+    if (/^[0-9]$/.test(e.key)) fundKey(e.key);
+    else if (e.key === "," || e.key === ".") fundKey(",");
+    else if (e.key === "Backspace") fundKey("⌫");
+    else return;
+    e.preventDefault();
+  });
+  setInterval(settlePending, 3000);
+  settlePending();
+  renderTransfers();
 }
 function bindCheckout() {
   $("#pay-sheet").addEventListener("click", (e) => {
@@ -4703,6 +5256,8 @@ bindAiTabs();
 bindShop();
 bindClips();
 bindCheckout();
+bindFund();
+handleStripeReturn();
 bindCancel();
 bindOnboarding();
 bindAccount();

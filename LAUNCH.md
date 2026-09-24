@@ -8,7 +8,8 @@ Stand der Demo: Die Website ist technisch startklar (SEO, Vorschaubild, Sicherhe
 - [x] PWA: Manifest mit Icons, Screenshots und Shortcuts, Service Worker (offline), Installations-Button
 - [x] `404.html`, Skip-Link, sichtbare Fokus-Rahmen, reduzierte Bewegung (`prefers-reduced-motion`)
 - [ ] `DEINE-DOMAIN.de` in `robots.txt` und `sitemap.xml` ersetzen
-- [ ] Deployment auf Netlify oder Vercel (siehe README), eigene Domain verbinden, HTTPS aktiv
+- [x] Öffentlich auf GitHub Pages (automatisch aus dem Standard-Branch)
+- [ ] Optional: eigene Domain verbinden (Settings → Pages → Custom domain), HTTPS aktiv
 - [ ] Monitoring & Fehler-Tracking (z. B. datenschutzfreundlich selbst gehostet) und Uptime-Überwachung
 
 ## 2. Backend (nötig für echte Kunden)
@@ -16,7 +17,8 @@ Stand der Demo: Die Website ist technisch startklar (SEO, Vorschaubild, Sicherhe
 - [ ] Datenbank für Depots, Orders, Ideen, Clips, Kommentare
 - [ ] Echte Kursdaten (lizenzierter Anbieter, WebSocket-Stream)
 - [ ] Video-Speicher und -Transcoding für Clips (CDN)
-- [ ] Stripe-Anbindung mit Webhooks (siehe `PAYMENTS.md`)
+- [ ] Stripe-Anbindung: Payment Links eintragen (ohne Server möglich), später Webhooks (siehe `PAYMENTS.md`)
+- [ ] Echte Ein- und Auszahlungen: Partnerbank/Wertpapierinstitut mit BaFin-Erlaubnis anbinden
 
 ## 3. Recht & Regulierung
 - [ ] **BaFin**: Wertpapierhandel, Anlageberatung (AKYTEX AI) und Vermögensverwaltung (Autopilot) nur mit Erlaubnis oder lizenziertem Partner/Haftungsdach

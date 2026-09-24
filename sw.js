@@ -1,5 +1,5 @@
 // Service Worker: macht AKYTEX offline nutzbar und installierbar.
-const VERSION = "akytex-v3.0.0";
+const VERSION = "akytex-v3.1.0";
 const ASSETS = [
   "./",
   "./index.html",

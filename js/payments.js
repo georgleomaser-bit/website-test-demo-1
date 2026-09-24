@@ -28,6 +28,39 @@ export const PAYMENT_CONFIG = {
   },
 };
 
+// Ein- und Auszahlungen aufs Depot (wie bei Neobrokern). Im Demo- und Testmodus wird kein echtes Geld bewegt.
+// Echte Einzahlungen brauchen einen lizenzierten Partner (Bank bzw. Wertpapierinstitut), siehe PAYMENTS.md.
+export const FUNDING = {
+  min: 1,
+  max: 100000,
+  instantDailyLimit: 5000, // sofort verfügbare Einzahlungen pro Tag (Karte, Wallets, PayPal)
+  // Bewusst ungültige IBAN, damit niemand echtes Geld überweist
+  demoIban: "DE00 AKYT EX00 DEMO 0000 00",
+  in: [
+    { id: "apple", name: "Apple Pay", icon: "Pay", eta: "sofort", instant: true, wallet: true },
+    { id: "google", name: "Google Pay", icon: "G", eta: "sofort", instant: true, wallet: true },
+    { id: "card", name: "Debit- oder Kreditkarte", icon: "💳", eta: "sofort", instant: true },
+    { id: "instant", name: "Echtzeitüberweisung", icon: "⚡", eta: "in Sekunden", instant: true, wallet: true },
+    { id: "paypal", name: "PayPal", icon: "P", eta: "sofort", instant: true, wallet: true },
+    { id: "sepa", name: "SEPA-Lastschrift", icon: "🏦", eta: "sofort verfügbar · Einzug in 1–3 Tagen", instant: true },
+    { id: "transfer", name: "Überweisung auf deine IBAN", icon: "🧾", eta: "1 Werktag · ohne Limit" },
+  ],
+  out: [
+    { id: "instant", name: "Echtzeit-Auszahlung", icon: "⚡", eta: "in Sekunden auf dein Referenzkonto" },
+    { id: "standard", name: "Standard-Auszahlung", icon: "🏦", eta: "1–2 Werktage" },
+  ],
+};
+
+// IBAN-Prüfsumme (ISO 13616, Modulo 97)
+export function ibanValid(iban) {
+  const s = iban.replace(/\s/g, "").toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(s)) return false;
+  const r = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, (c) => c.charCodeAt(0) - 55);
+  let m = 0;
+  for (const d of r) m = (m * 10 + +d) % 97;
+  return m === 1;
+}
+
 // Offizielle Testnummern (Stripe-Konvention) – echte Karten werden abgelehnt
 export const TEST_CARDS = {
   "4242424242424242": { brand: "visa", result: "ok" },
