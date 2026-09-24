@@ -3398,7 +3398,7 @@ function renderFund() {
   const m = fundMethod();
   const chips = inDir ? [50, 100, 250, 500, 1000].map((v) => `<button data-fund-chip="${v}">${v.toLocaleString("de-DE")} €</button>`).join("") : [[0.25, "25 %"], [0.5, "50 %"], [1, "Alles"]].map(([f, l]) => `<button data-fund-chip="${(Math.floor(broker.buyingPower() * f * 100) / 100).toFixed(2)}">${l}</button>`).join("");
   $("#fund-sheet").innerHTML = `
-    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div>${broker.live ? `<span class="test-chip live">🔒 Echtgeld</span>` : `<span class="test-chip">🧪 Demo-Geld</span>`}<button class="icon-btn" data-close>✕</button></div>
+    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div>${broker.live ? `<span class="test-chip live">🔒 Echtgeld</span>` : `<span class="test-chip">🎮 Spielgeld</span>`}<button class="icon-btn" data-close>✕</button></div>
     <div class="seg fund-seg" role="tablist"><button class="${inDir ? "active" : ""}" data-fund-dir="in">Einzahlen</button><button class="${inDir ? "" : "active"}" data-fund-dir="out">Auszahlen</button><i class="seg-glider" style="transform:translateX(${inDir ? 0 : 100}%)"></i></div>
     <div class="fund-amount"><div class="fa-num" id="fa-num"></div><small id="fa-sub"></small></div>
     <div class="fund-chips">${chips}</div>
@@ -3762,7 +3762,7 @@ function openInvoice(i) {
     </tbody></table>
     <div class="inv-sum"><div><span>Nettobetrag</span><b>${eur(inv.net)}</b></div><div><span>zzgl. 19 % MwSt.</span><b>${eur(inv.vat)}</b></div><div class="co-total"><span>Gesamt</span><b>${eur(inv.total)}</b></div></div>
     <p class="muted small">${esc(inv.note || "")}</p>
-    <p class="test-banner">Testbeleg aus dem Demo-Checkout – es wurde keine Zahlung ausgeführt.</p>`;
+    <p class="test-banner">Testbeleg aus dem Test-Checkout – es wurde keine Zahlung ausgeführt.</p>`;
   openModal("#invoice-modal");
 }
 function openCancel() {
@@ -3971,7 +3971,7 @@ function renderAccount() {
   } else if (acctTab === "security") {
     html = `${tog("twofa", "Zwei-Faktor-Anmeldung", "Zusätzlicher Code bei jeder Anmeldung")}${tog("passkey", "Passkey", "Anmelden mit Face ID, Touch ID oder Windows Hello")}
       <h4 class="ap-h">Aktive Sitzungen</h4><div class="set-row"><div><b>Dieses Gerät</b><small class="muted">${esc(navigator.platform || "Browser")} · jetzt aktiv</small></div><span class="status ok">aktuell</span></div>
-      <p class="muted small">In der Demo sind Sicherheits-Einstellungen Vorschau-Schalter; im Echtbetrieb übernimmt das der Login-Server.</p>`;
+      <p class="muted small">Im Übungsmodus sind Sicherheits-Einstellungen Vorschau-Schalter; im Echtbetrieb übernimmt das der Login-Server.</p>`;
   } else if (acctTab === "data") {
     html = `<div class="set-row"><div><b>Daten exportieren</b><small class="muted">Konto, Depot, Ideen und Einstellungen als JSON (DSGVO Art. 20)</small></div><button class="btn" data-export>Export</button></div>
       <div class="set-row"><div><b>Übungsdepot zurücksetzen</b><small class="muted">Positionen, Orders und Alarme löschen, 100.000 € Startguthaben</small></div><button class="btn" data-goto="portfolio">Zum Depot</button></div>
@@ -4280,7 +4280,7 @@ function liveActivity() {
   ];
   const pill = document.createElement("div");
   pill.className = "act-pill";
-  pill.innerHTML = `<i></i>${kinds[Math.floor(Math.random() * kinds.length)]()} <small>· gerade eben · Demo</small>`;
+  pill.innerHTML = `<i></i>${kinds[Math.floor(Math.random() * kinds.length)]()} <small>· gerade eben · Beispiel</small>`;
   el.prepend(pill);
   requestAnimationFrame(() => pill.classList.add("in"));
   while (el.children.length > 3) el.lastElementChild.remove();
