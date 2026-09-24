@@ -7,13 +7,17 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const IOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Safari (auch als installierte App): Mikrofon nur direkt nach einem Tipp – dort sofort zuhören statt erst zu begrüßen
+const SAFARI = IOS || (/safari/i.test(navigator.userAgent) && !/(chrome|chromium|crios|fxios|edg|android)/i.test(navigator.userAgent));
+const VOICE_KEY = "akytex-jarvis-voice";
 const TRIAL_KEY = "akytex-jarvis-trial";
 const TITLE_KEY = "akytex-jarvis-title";
 export const TRIAL_TURNS = 3;
 
 const J = { deps: null, on: false, state: "off", rec: null, lvl: 0, kick: 0, raf: 0, mic: null, an: null, ctx: null, buf: null, silent: 0, pending: null, rest: "", greeted: false, idleTimer: 0, sayTimer: 0, endTimer: 0, muted: false, thinkGlow: false };
 
-export const jarvisSupported = () => !!SR;
+// Jarvis läuft überall: mit Spracherkennung per Stimme, sonst per Schreiben/Diktieren über die Tastatur
+export const jarvisSupported = () => true;
 export function trialLeft() {
   try {
     return Math.max(0, TRIAL_TURNS - (+localStorage.getItem(TRIAL_KEY) || 0));
@@ -45,17 +49,50 @@ function setTitle(t) {
 }
 
 // ---------- Stimme: bevorzugt eine deutsche Männerstimme ----------
-const MALE = /(markus|yannick|viktor|conrad|killian|florian|bernd|christoph|kasper|ralf|klaus|jonas|stefan|hans|male|mann|männlich|x-deg|de-de-.*-b\b)/i;
+const MALE = /(markus|yannick|martin|viktor|conrad|killian|florian|bernd|christoph|kasper|ralf|klaus|jonas|stefan|hans|eddy|reed|rocko|grandpa|opa|male|mann|männlich|x-deg|-deg-)/i;
 const FEMALE = /(anna|helena|petra|katja|amala|seraphina|katharina|marlene|vicki|hedda|elke|louisa|tanja|gisela|female|frau|x-deb|x-dea|x-nfh)/i;
 let bestVoice = null;
+const germanVoices = () => ("speechSynthesis" in window ? speechSynthesis.getVoices().filter((v) => /^de([-_]|$)/i.test(v.lang)) : []);
+export const hasMaleVoice = () => germanVoices().some((v) => MALE.test(v.name));
 export function pickVoice() {
   if (!("speechSynthesis" in window)) return null;
-  const vs = speechSynthesis.getVoices().filter((v) => /^de([-_]|$)/i.test(v.lang));
+  const vs = germanVoices();
+  let saved = "";
+  try {
+    saved = localStorage.getItem(VOICE_KEY) || "";
+  } catch (_) {
+    /* ohne Speicher */
+  }
+  if (saved && vs.some((v) => v.name === saved)) return (bestVoice = vs.find((v) => v.name === saved));
   const score = (v) => (MALE.test(v.name) ? 8 : 0) - (FEMALE.test(v.name) ? 4 : 0) + (/(premium|enhanced|neural|natural|online)/i.test(v.name) ? 3 : 0) + (v.localService ? 0 : 1);
   bestVoice = vs.sort((a, b) => score(b) - score(a))[0] || null;
   return bestVoice;
 }
 const isMale = (v) => !!v && MALE.test(v.name);
+// Stimme wechseln: geht der Reihe nach durch alle deutschen Stimmen des Geräts (Männerstimmen zuerst)
+function cycleVoice() {
+  const vs = germanVoices().sort((a, b) => MALE.test(b.name) - MALE.test(a.name) || a.name.localeCompare(b.name));
+  if (!vs.length) return J.deps.toast("Auf diesem Gerät ist keine deutsche Stimme installiert.", "info", "🗣 Stimme");
+  const i = (vs.findIndex((v) => v.name === (bestVoice || {}).name) + 1) % vs.length;
+  bestVoice = vs[i];
+  try {
+    localStorage.setItem(VOICE_KEY, bestVoice.name);
+  } catch (_) {
+    /* nur für diese Sitzung */
+  }
+  speechSynthesis.cancel();
+  speakOut(`So klinge ich als ${bestVoice.name.split(/[ (]/)[0]}.`).then(() => J.on && !J.typing && listen());
+}
+// Hinweis, wie man eine Männerstimme installiert (Browser können nur Stimmen des Geräts nutzen)
+function maleHint() {
+  if (hasMaleVoice()) return "";
+  const ua = navigator.userAgent;
+  if (IOS) return "Für eine Männerstimme: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → Deutsch → „Yannick“ oder „Martin“ laden. Danach wählt Jarvis sie automatisch.";
+  if (/Mac/.test(ua)) return "Für eine Männerstimme: Systemeinstellungen → Bedienungshilfen → Gesprochene Inhalte → Systemstimme → Stimme verwalten → Deutsch → „Yannick“ oder „Martin“ laden.";
+  if (/Android/.test(ua)) return "Für eine Männerstimme: Einstellungen → Bedienungshilfen → Text-in-Sprache → Google-Sprachausgabe → Deutsch → eine männliche Stimme wählen.";
+  if (/Windows/.test(ua)) return "Für eine Männerstimme: Microsoft Edge nutzen (dort gibt es „Conrad“ und „Killian“) oder in Windows unter Zeit und Sprache → Sprachausgabe die Stimme „Stefan“ installieren.";
+  return "";
+}
 if ("speechSynthesis" in window) {
   pickVoice();
   speechSynthesis.addEventListener?.("voiceschanged", pickVoice);
@@ -105,12 +142,21 @@ function build() {
     <div class="jv-pill" role="dialog" aria-label="Jarvis – Sprachmodus">
       <canvas class="jv-orb" aria-hidden="true"></canvas>
       <div class="jv-txt"><span class="jv-state">Ich höre zu …</span><span class="jv-you"></span></div>
+      <form class="jv-type" hidden><input type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag Jarvis … (🎤 auf der Tastatur zum Diktieren)" aria-label="Frage an Jarvis" /></form>
+      <button class="jv-btn" data-jv="voice" title="Stimme wechseln" aria-label="Stimme wechseln">🗣</button>
       <button class="jv-btn jv-micbtn" data-jv="mic" title="Mikrofon an/aus" aria-label="Mikrofon an oder aus">🎙</button>
       <button class="jv-btn" data-jv="chat" title="Im Chat weiterlesen" aria-label="Chat öffnen">💬</button>
       <button class="jv-btn jv-end" data-jv="close" title="Jarvis beenden (Esc)" aria-label="Jarvis beenden">✕</button>
     </div>`;
   document.body.appendChild(el);
   el.addEventListener("click", onClick);
+  el.querySelector(".jv-type").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const inp = e.target.querySelector("input");
+    const text = cleanUtterance(inp.value);
+    inp.value = "";
+    if (text) handle(text);
+  });
   return el;
 }
 const root = () => $("#jv") || build();
@@ -118,7 +164,7 @@ function setState(s, label) {
   J.state = s;
   const el = root();
   el.dataset.state = s;
-  el.querySelector(".jv-state").textContent = label || { listen: "Ich höre zu …", think: "Einen Moment …", speak: "Jarvis", idle: "Tippe auf die Kugel, um weiterzusprechen", muted: "Mikrofon aus", upsell: "Jarvis" }[s] || "";
+  el.querySelector(".jv-state").textContent = label || { listen: "Ich höre zu …", think: "Einen Moment …", speak: "Jarvis", idle: "Tippe auf die Kugel", muted: "Mikrofon aus", upsell: "Jarvis" }[s] || "";
 }
 function onClick(e) {
   const b = e.target.closest("[data-jv], [data-jv-act]");
@@ -132,6 +178,7 @@ function onClick(e) {
     return J.deps.upsell();
   }
   if (b?.dataset.jv === "mic") return toggleMute();
+  if (b?.dataset.jv === "voice") return cycleVoice();
   if (b?.dataset.jvAct != null) {
     const a = J.actions?.[+b.dataset.jvAct];
     if (a) J.deps.runAction(a, b);
@@ -144,7 +191,20 @@ function onClick(e) {
     listen();
   }
 }
+// Schreib-/Diktiermodus: ohne Spracherkennung (Firefox, In-App-Browser) oder bei stummem Mikro
+function typeMode(on) {
+  J.typing = on;
+  const f = root().querySelector(".jv-type");
+  f.hidden = !on;
+  root().querySelector(".jv-txt").hidden = on;
+  root().classList.toggle("typing", on);
+  if (on) {
+    setState("type", "Schreib oder diktiere deine Frage");
+    setTimeout(() => f.querySelector("input").focus(), 80);
+  }
+}
 function toggleMute() {
+  if (!SR) return typeMode(true);
   J.muted = !J.muted;
   root().querySelector(".jv-micbtn").classList.toggle("off", J.muted);
   if (J.muted) {
@@ -154,8 +214,11 @@ function toggleMute() {
       /* schon aus */
     }
     J.rec = null;
-    setState("muted");
-  } else listen();
+    typeMode(true);
+  } else {
+    typeMode(false);
+    listen();
+  }
 }
 const showYou = (t) => (root().querySelector(".jv-you").textContent = t ? `„${t}“` : "");
 function showSay(text) {
@@ -337,11 +400,15 @@ export function initJarvis(deps) {
 export async function startJarvis() {
   const d = J.deps;
   if (J.on) return stopJarvis();
-  if (!SR) {
-    d.toast("Der Sprachmodus braucht Spracherkennung – nutze Chrome, Edge oder Safari. Du kannst Jarvis im Chat auch schreiben.", "info", "🎙 Jarvis");
-    return d.openChat();
-  }
   if (!d.allowed() && !trialLeft()) return upsellCard(true);
+  // Sprachausgabe im Moment des Tippens freischalten (iOS/Safari spielen sonst später nichts ab)
+  try {
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  } catch (_) {
+    /* ohne Sprachausgabe */
+  }
   Object.assign(J, { on: true, silent: 0, muted: false, rest: "", pending: null });
   const el = root();
   el.hidden = false;
@@ -358,8 +425,26 @@ export async function startJarvis() {
   const hi = !J.greeted ? `${h < 5 ? "Noch wach" : h < 11 ? "Guten Morgen" : h < 18 ? "Hey" : "Guten Abend"}, ${title}. ${d.quickStatus?.() || ""} Was kann ich für dich tun?` : `Ja, ${title}?`;
   J.greeted = true;
   const trial = !d.allowed() ? ` Du hast ${trialLeft()} Gratis-Fragen.` : "";
+  const hint = maleHint();
+  const greet = (hi + trial).replace(/\s+/g, " ").trim();
+  typeMode(!SR);
+  if (!SR) {
+    showSay(greet + (hint ? " " + hint : ""));
+    revealTo(1e9);
+    return;
+  }
+  if (SAFARI) {
+    // Safari: sofort zuhören (noch im Tipp), Begrüßung nur als Text
+    showSay(greet + (hint ? " " + hint : ""));
+    revealTo(1e9);
+    return listen();
+  }
   startMeter();
-  await speakOut((hi + trial).replace(/\s+/g, " ").trim());
+  await speakOut(greet);
+  if (hint) {
+    showSay(hint);
+    revealTo(1e9);
+  }
   if (J.on) listen();
 }
 export function stopJarvis() {
@@ -408,6 +493,7 @@ function listen() {
     }, ms);
   };
   rec.onsoundstart = () => (J.kick = 0.6);
+  rec.onstart = () => (J.heard = true);
   rec.onresult = (e) => {
     interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -423,8 +509,11 @@ function listen() {
   };
   rec.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      J.deps.toast("Bitte erlaube den Zugriff aufs Mikrofon, damit Jarvis dich hören kann.", "error", "🎙 Mikrofon");
-      stopJarvis();
+      // Schon einmal zugehört? Dann will der Browser nur einen neuen Tipp (Safari) – sonst fehlt die Erlaubnis
+      if (J.heard) return idle();
+      J.deps.toast("Bitte erlaube den Zugriff aufs Mikrofon – oder schreib Jarvis einfach.", "error", "🎙 Mikrofon");
+      J.rec = null;
+      typeMode(true);
     }
   };
   rec.onend = () => {
@@ -448,10 +537,12 @@ function listen() {
   try {
     rec.start();
   } catch (_) {
-    setTimeout(listen, 300);
+    J.rec = null;
+    idle();
   }
 }
 function idle() {
+  if (J.typing) return;
   setState("idle");
   clearTimeout(J.idleTimer);
   J.idleTimer = setTimeout(stopJarvis, 30000);
@@ -464,6 +555,7 @@ const BYE = /^(stopp?|danke( dir| schön)?( jarvis)?|tschüss|tschau|ciao|ende|b
 // Was per Sprache bestätigt werden darf: nichts, was Geld bewegt oder handelt
 export const voiceSafe = (a) => !!a && !(a.side || a.fund || a.schedule || a.plan || /kauf|verkauf|order|zahl|einzahl|auszahl|abo|bestell|handel|ausführ/i.test(a.label || ""));
 
+const next = () => (J.typing ? setState("type", "Schreib oder diktiere deine Frage") : listen());
 async function handle(text) {
   const d = J.deps;
   const t = text.toLowerCase().trim();
@@ -477,13 +569,13 @@ async function handle(text) {
     const nt = call[1].replace(/[^\p{L}\p{N} .-]/gu, "").trim().replace(/^./, (ch) => ch.toUpperCase());
     setTitle(nt);
     await speakOut(`Alles klar, ${nt}. So nenne ich dich ab jetzt.`);
-    return J.on && listen();
+    return J.on && next();
   }
   if (J.rest && !J.pending && MORE.test(t)) {
     const { text: part, rest } = toSpeech(J.rest);
     J.rest = rest;
     await speakOut(part + (rest ? " Soll ich weitererzählen?" : ""));
-    return J.on && listen();
+    return J.on && next();
   }
   if (J.pending && YES.test(t)) {
     const a = J.pending;
@@ -491,13 +583,13 @@ async function handle(text) {
     const btn = root().querySelector(`[data-jv-act="${J.actions.indexOf(a)}"]`) || document.createElement("button");
     d.runAction(a, btn);
     await speakOut(`Erledigt, ${title}.`);
-    return J.on && listen();
+    return J.on && next();
   }
   if ((J.pending || J.rest) && NO.test(t)) {
     J.pending = null;
     J.rest = "";
     await speakOut("Alles klar.");
-    return J.on && listen();
+    return J.on && next();
   }
   J.pending = null;
   J.rest = "";
@@ -526,6 +618,7 @@ async function handle(text) {
   await speakOut(said + tail);
   if (!J.on) return;
   if (free && !trialLeft()) return upsellCard(false);
+  if (J.typing) return setState("type", "Schreib oder diktiere deine Frage");
   listen();
 }
 
