@@ -10,6 +10,7 @@ import { AkytexAI, STRATEGIES } from "./ai.js";
 import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
+import * as cloud from "./cloud.js";
 import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
@@ -1725,7 +1726,7 @@ function bindGrowth() {
     if (fl) {
       const on = community.toggleFollow(fl.dataset.follow);
       haptic(8);
-      toast(on ? `Du folgst jetzt @${community.trader(fl.dataset.follow)?.handle || "trader"}.` : "Nicht mehr gefolgt.", on ? "success" : "info");
+      toast(on ? `Du folgst jetzt @${community.trader(fl.dataset.follow)?.handle || clipList.find((x) => x.author === fl.dataset.follow)?.handle || "trader"}.` : "Nicht mehr gefolgt.", on ? "success" : "info");
       $$(`#clips-feed [data-follow="${fl.dataset.follow}"]`).forEach((x) => {
         x.classList.toggle("on", on);
         x.textContent = on ? "✓" : "+";
@@ -4077,6 +4078,7 @@ const LEGAL = {
     <h3>2. Kurz gesagt</h3><ul><li>Kein Tracking, keine Werbe-Cookies, keine Analyse-Tools, keine Social-Media-Plugins.</li><li>Profil, Depot, Einstellungen, Ideen und Chatverlauf speichert die App <b>nur lokal in deinem Browser</b> (Local Storage/IndexedDB). Das ist für die Funktion unbedingt erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG) und wird nicht an uns übertragen. Du kannst es jederzeit im Konto exportieren oder löschen.</li><li>Schriften und Programmbibliotheken liefern wir selbst aus – es gibt keine Verbindung zu Google Fonts oder anderen Drittanbietern.</li></ul>
     <h3>3. Hosting</h3><p>Die Website wird über GitHub Pages (GitHub, Inc., USA) ausgeliefert. Beim Aufruf verarbeitet GitHub technisch notwendige Verbindungsdaten wie IP-Adresse, Zeitpunkt und abgerufene Datei, um die Seite auszuliefern und die Sicherheit zu gewährleisten (Art. 6 Abs. 1 lit. f DSGVO). Die Übermittlung in die USA erfolgt auf Grundlage des EU-US Data Privacy Framework bzw. von Standardvertragsklauseln.</p>
     ${LIVEPAY() ? `<h3>4. Zahlungen über Stripe</h3><p>Abos bezahlst du über Stripe (Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Dublin 2, Irland). Deine Zahlungsdaten gibst du direkt bei Stripe ein, wir erhalten sie nicht. Wir erhalten von Stripe Name, E-Mail-Adresse, gewählten Tarif, Zahlungsstatus und Rechnungsdaten zur Vertragsabwicklung (Art. 6 Abs. 1 lit. b DSGVO) und bewahren Rechnungsdaten entsprechend der steuer- und handelsrechtlichen Pflichten auf (bis zu 10 Jahre, Art. 6 Abs. 1 lit. c DSGVO). Stripe kann Daten auch in Drittländern verarbeiten; Details: stripe.com/de/privacy.</p>` : `<h3>4. Zahlungen</h3><p>Der Checkout läuft derzeit im Testmodus; es werden keine Zahlungsdaten gespeichert oder übertragen.</p>`}
+    <h3>Clips auf dem AKYTEX-Server</h3><p>Wenn du AKYTEX über unseren eigenen Server nutzt und einen Clip hochlädst, likest, kommentierst oder meldest, legen wir ein anonymes Konto an: einen frei wählbaren Nutzernamen und einen zufälligen Zugangsschlüssel (gespeichert nur als Hash). Wir speichern deine Videos samt Beschreibung, Likes, Kommentare und Meldungen, um den Clip-Feed für alle Nutzer bereitzustellen (Art. 6 Abs. 1 lit. b DSGVO) und rechtswidrige Inhalte nach dem Digital Services Act zu bearbeiten (Art. 6 Abs. 1 lit. c DSGVO). IP-Adressen verwenden wir nur kurzzeitig im Arbeitsspeicher zum Schutz vor Missbrauch (Rate-Limits) und speichern sie nicht dauerhaft. Clips kannst du jederzeit selbst löschen; für die Löschung des ganzen Kontos schreib uns an ${CO("email", "E-Mail")}.</p>
     <h3>5. KI-Funktionen</h3><p>AKYTEX AI rechnet standardmäßig vollständig in deinem Browser. Nur wenn du die App in einer Claude-Umgebung nutzt, wird deine Chat-Frage samt der dafür nötigen Depotdaten an das Sprachmodell von Anthropic übermittelt (Art. 6 Abs. 1 lit. b DSGVO). Die Sprachausgabe und Spracheingabe nutzen die Funktionen deines Browsers bzw. Betriebssystems.</p>
     <h3>6. Kontakt per E-Mail</h3><p>Schreibst du uns, verarbeiten wir deine Angaben zur Bearbeitung der Anfrage (Art. 6 Abs. 1 lit. b bzw. f DSGVO) und löschen sie, sobald sie nicht mehr erforderlich sind.</p>
     <h3>7. Deine Rechte</h3><p>Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21 DSGVO). Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim Hamburgischen Beauftragten für Datenschutz und Informationsfreiheit.</p>`,
@@ -5062,10 +5064,21 @@ async function loadClips() {
     clipUrls.push(url);
     return { ...c, url };
   });
+  // Geteilte Clips vom AKYTEX-Server (alle Nutzer), falls die Seite dort läuft
+  let remote = [];
+  if (await cloud.cloudReady()) {
+    try {
+      remote = (await cloud.feed()).map((c) => ({ ...c, remote: true, kind: "video", url: cloud.videoUrl(c.id), title: c.caption.replace(/#[\p{L}\p{N}_]+/gu, "").trim() }));
+    } catch (_) {
+      toast("Der Clip-Server ist gerade nicht erreichbar.", "error");
+    }
+  }
   // Nur Clips echter Nutzer – keine KI- oder Bot-Clips im Feed
-  return [...user, ...clipsState.myGen].filter((c) => !clipsState.reported.includes(c.id)).sort((a, b) => b.created - a.created);
+  return [...remote, ...user, ...clipsState.myGen].filter((c) => !clipsState.reported.includes(c.id)).sort((a, b) => b.created - a.created);
 }
+const hueOf = (s) => [...String(s)].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 360, 7);
 function clipAuthor(c) {
+  if (c.remote) return { handle: c.handle, style: c.mine ? "Dein Clip" : "", color: `hsl(${hueOf(c.author)} 70% 60%)`, me: c.mine };
   if (c.author === "me") return { handle: account.state.profile?.name?.replace(/\s+/g, "").toLowerCase() || "du", style: "Dein Clip", color: "#6ea2f2", me: true };
   return community.trader(c.author) || { handle: "trader", style: "", color: "#64748b" };
 }
@@ -5074,18 +5087,18 @@ async function renderClips() {
   clipList = await loadClips();
   resolveTips(true);
   const top = $("#view-clips").getBoundingClientRect().top + scrollY;
-  $("#view-clips").style.setProperty("--clips-top", Math.round(top) + "px");
+  document.body.style.setProperty("--clips-top", Math.round(top) + "px");
   renderTipCard();
   renderTrends();
   const list = clipList
-    .filter((c) => (clipFilter === "mine" ? c.author === "me" : clipFilter === "following" ? community.isFollowing(c.author) : clipFilter === "saved" ? clipsState.saved.includes(c.id) : true))
+    .filter((c) => (clipFilter === "mine" ? c.author === "me" || c.mine : clipFilter === "following" ? community.isFollowing(c.author) : clipFilter === "saved" ? clipsState.saved.includes(c.id) : true))
     .filter((c) => !clipTag || (c.tags || []).some((t) => t.toLowerCase() === clipTag));
   const feed = $("#clips-feed");
   feed.innerHTML = list.length
     ? list
         .map((c) => {
           const a = clipAuthor(c);
-          const liked = clipsState.liked.includes(c.id);
+          const liked = c.remote ? c.liked : clipsState.liked.includes(c.id);
           const q = market.quote(c.sym);
           const nCom = (c.comments || 0) + (clipsState.comments[c.id]?.length || 0);
           const saved = clipsState.saved.includes(c.id);
@@ -5102,7 +5115,7 @@ async function renderClips() {
             </div>
             <div class="clip-rail">
               <div class="rail-av">${avatar(a)}${a.me ? "" : `<button class="rail-follow ${fol ? "on" : ""}" data-follow="${c.author}" aria-label="${fol ? "Gefolgt" : "Folgen"}">${fol ? "✓" : "+"}</button>`}</div>
-              <button class="${liked ? "on" : ""}" data-clip-like="${c.id}" aria-label="Gefällt mir"><span>♥</span><small>${kfmt((c.likes || 0) + (liked ? 1 : 0))}</small></button>
+              <button class="${liked ? "on" : ""}" data-clip-like="${c.id}" aria-label="Gefällt mir"><span>♥</span><small>${kfmt(c.remote ? c.likes : (c.likes || 0) + (liked ? 1 : 0))}</small></button>
               <button data-clip-cmt="${c.id}" aria-label="Kommentare"><span>💬</span><small>${kfmt(nCom)}</small></button>
               <button class="${saved ? "on save" : "save"}" data-clip-save="${c.id}" aria-label="Merken"><span>🔖</span><small>${saved ? "Gemerkt" : "Merken"}</small></button>
               <button data-clip-share="${c.id}" aria-label="Teilen"><span>↗</span><small>Teilen</small></button>
@@ -5166,7 +5179,29 @@ function pauseClips(keepPos = false) {
   clipPausedAt = keepPos ? (performance.now() - clipT0) % CLIP_MS : null;
   if (!keepPos) activeClip = null;
 }
+async function likeRemote(c, burst) {
+  if (burst && c.liked) return;
+  try {
+    await cloud.ensureUser(account.state.profile?.name);
+    const r = await cloud.like(c.id);
+    Object.assign(c, { liked: r.liked, likes: r.likes });
+  } catch (e) {
+    return toast(e.message, "error");
+  }
+  const btn = $(`#clips-feed [data-clip-like="${c.id}"]`);
+  if (!btn) return;
+  btn.classList.remove("on");
+  void btn.offsetWidth;
+  btn.classList.toggle("on", c.liked);
+  btn.querySelector("small").textContent = kfmt(c.likes);
+}
 function likeClip(id, burst = false, x = 0, y = 0) {
+  const rc = clipList.find((x) => x.id === id && x.remote);
+  if (rc) {
+    haptic(10);
+    if (burst) floatHeart($(`#clips-feed [data-clip="${id}"] .clip-stage`), x, y);
+    return likeRemote(rc, burst);
+  }
   const i = clipsState.liked.indexOf(id);
   if (i >= 0 && !burst) clipsState.liked.splice(i, 1);
   else if (i < 0) clipsState.liked.push(id);
@@ -5188,9 +5223,16 @@ function likeClip(id, burst = false, x = 0, y = 0) {
   if (burst && el) floatHeart(el.querySelector(".clip-stage"), x, y);
 }
 let cmtClip = null;
-function openComments(id) {
+async function openComments(id) {
   cmtClip = id;
-  const list = clipsState.comments[id] || [];
+  let list = clipsState.comments[id] || [];
+  if (clipList.find((x) => x.id === id)?.remote) {
+    try {
+      list = await cloud.comments(id);
+    } catch (e) {
+      return toast(e.message, "error");
+    }
+  }
   $("#comments-list").innerHTML = list.length ? list.map((c) => `<div class="cmt"><b>@${esc(c.who)}</b><p>${esc(c.text)}</p><small class="muted">${ago(c.ts)}</small></div>`).join("") : `<p class="muted">Noch keine Kommentare. Schreib den ersten! ✍️</p>`;
   openModal("#comments-modal");
 }
@@ -5201,7 +5243,22 @@ async function recordChartClip() {
   const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#akytex", "#chartcheck"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
   toast("Aufnahme läuft (8 Sekunden) …", "info", "🎬 Chart-Clip");
   try {
-    const blob = await recordClip(clip, market, "@" + clipAuthor(clip).handle);
+    const who = cloud.cloudOn() ? await cloud.ensureUser(account.state.profile?.name).catch(() => null) : null;
+    const blob = await recordClip(clip, market, "@" + (who?.handle || clipAuthor(clip).handle));
+    if (cloud.cloudOn()) {
+      try {
+        await cloud.ensureUser(account.state.profile?.name);
+        await cloud.upload(blob, { caption: `${caps[0]} ${clip.tags.slice(1).join(" ")}`, sym });
+        toast("Dein Chart-Clip ist für alle im Feed.", "success", "🎬 Clip veröffentlicht");
+        clipFilter = "foryou";
+        $$("#clips-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.cf === "foryou"));
+        if (settings.view !== "clips") setView("clips");
+        else renderClips();
+        return;
+      } catch (err) {
+        toast(err.message + " Der Clip wird lokal gespeichert.", "error");
+      }
+    }
     await idbPut({ id: clip.id, kind: "video", blob, author: "me", sym, title: caps[0], caption: caps[0], tags: clip.tags, likes: 0, comments: 0, created: Date.now() });
     toast("Dein Chart-Clip ist als Video gespeichert.", "success", "🎬 Clip veröffentlicht");
   } catch (_) {
@@ -5234,6 +5291,8 @@ function bindClips() {
     pendingFile = null;
     $("#clip-drop-inner").innerHTML = `<b>Video auswählen</b><span class="muted small">MP4, WebM oder MOV · max. 60 MB · Hochformat empfohlen</span>`;
     $("#clip-caption").value = "";
+    $("#clip-rights").checked = false;
+    $("#clip-scope").textContent = cloud.cloudOn() ? "Dein Clip ist danach für alle AKYTEX-Nutzer sichtbar." : "Dein Clip wird in diesem Browser gespeichert.";
     $("#clip-sym").innerHTML = STOCKS.map((s) => `<option value="${s.s}" ${s.s === settings.symbol ? "selected" : ""}>${s.s} – ${esc(s.n)}</option>`).join("");
     openModal("#clip-modal");
   });
@@ -5255,6 +5314,28 @@ function bindClips() {
     if (!pendingFile) return shake($("#clip-drop"));
     const cap = $("#clip-caption").value.trim();
     const tags = cap.match(/#[\wäöüß]+/gi) || [];
+    if (!$("#clip-rights").checked) return shake($("#clip-rights").closest("label"));
+    if (cloud.cloudOn()) {
+      const btn = $("#clip-submit");
+      btn.disabled = true;
+      btn.textContent = "Wird hochgeladen …";
+      try {
+        await cloud.ensureUser(account.state.profile?.name);
+        await cloud.upload(pendingFile, { caption: cap, sym: $("#clip-sym").value });
+        closeModals();
+        confetti();
+        toast("Dein Clip ist jetzt für alle im Feed zu sehen.", "success", "🎬 Veröffentlicht");
+        clipFilter = "foryou";
+        $$("#clips-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.cf === "foryou"));
+        renderClips();
+      } catch (err) {
+        toast(err.message, "error", "Hochladen fehlgeschlagen");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Veröffentlichen";
+      }
+      return;
+    }
     try {
       await idbPut({ id: "u" + Date.now(), kind: "video", blob: pendingFile, author: "me", sym: $("#clip-sym").value, title: cap.replace(/#[\wäöüß]+/gi, "").trim(), caption: cap, tags, likes: 0, comments: 0, created: Date.now() });
       closeModals();
@@ -5267,10 +5348,24 @@ function bindClips() {
       toast("Speichern nicht möglich (Browser-Speicher voll oder gesperrt).", "error");
     }
   });
-  $("#comment-form").addEventListener("submit", (e) => {
+  $("#comment-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const v = $("#comment-input").value.trim();
     if (!v || !cmtClip) return;
+    const rc = clipList.find((x) => x.id === cmtClip && x.remote);
+    if (rc) {
+      try {
+        await cloud.ensureUser(account.state.profile?.name);
+        await cloud.comment(rc.id, v);
+      } catch (err) {
+        return toast(err.message, "error");
+      }
+      $("#comment-input").value = "";
+      rc.comments++;
+      const b = $(`#clips-feed [data-clip-cmt="${rc.id}"] small`);
+      if (b) b.textContent = kfmt(rc.comments);
+      return openComments(rc.id);
+    }
     (clipsState.comments[cmtClip] ||= []).push({ who: clipAuthor({ author: "me" }).handle, text: v, ts: Date.now() });
     saveClips();
     $("#comment-input").value = "";
@@ -5365,6 +5460,14 @@ function bindClips() {
     }
     const rp = t.closest("[data-clip-report]");
     if (rp) {
+      if (clipList.find((x) => x.id === rp.dataset.clipReport)?.remote) {
+        try {
+          await cloud.ensureUser(account.state.profile?.name);
+          await cloud.report(rp.dataset.clipReport, "In der App gemeldet");
+        } catch (err) {
+          return toast(err.message, "error");
+        }
+      }
       clipsState.reported.push(rp.dataset.clipReport);
       saveClips();
       toast("Danke für deine Meldung. Der Clip wird geprüft und ist für dich ausgeblendet.", "info", "⚑ Gemeldet");
@@ -5373,6 +5476,16 @@ function bindClips() {
     const dl = t.closest("[data-clip-del]");
     if (dl) {
       const id = dl.dataset.clipDel;
+      if (!confirm("Diesen Clip endgültig löschen?")) return;
+      if (clipList.find((x) => x.id === id)?.remote) {
+        try {
+          await cloud.remove(id);
+        } catch (err) {
+          return toast(err.message, "error");
+        }
+        toast("Dein Clip wurde gelöscht.", "info");
+        return renderClips();
+      }
       await idbDel(id).catch(() => {});
       clipsState.myGen = clipsState.myGen.filter((x) => x.id !== id);
       saveClips();
@@ -5636,6 +5749,13 @@ async function share() {
 }
 
 // ---------- Start ----------
+cloud.cloudReady().then(async (on) => {
+  if (!on) return;
+  await cloud.loadMe();
+  const n = $(".clips-note");
+  if (n) n.textContent = "Hier laufen nur Videos echter Nutzer, gespeichert auf dem AKYTEX-Server: keine Bots, keine KI-Clips, keine gekauften Likes. Unangemessenes bitte mit ⚑ melden. Keine Anlageberatung.";
+  if (settings.view === "clips") renderClips();
+});
 community.ready.then(() => {
   if (settings.view === "ideas") renderIdeas();
 });
