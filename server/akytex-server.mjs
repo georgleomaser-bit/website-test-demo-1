@@ -7,6 +7,7 @@
 //   DATA_DIR     Ordner für Datenbank und Videos (Standard ./data)
 //   ADMIN_TOKEN  Geheimes Passwort für die Moderation (mindestens 24 Zeichen, Pflicht für /api/admin)
 //   TRUST_PROXY  "1", wenn der Server hinter Cloudflare/Nginx läuft (echte IP aus X-Forwarded-For)
+//   ALLOWED_HOSTS Weitere eigene Adressen für den Herkunfts-Check, z. B. "akytex.org"
 import http from "node:http";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
@@ -175,7 +176,8 @@ async function api(req, res, url) {
     } catch (_) {
       /* ungültig */
     }
-    const own = [req.headers.host, TRUST_PROXY && req.headers["x-forwarded-host"]].filter(Boolean);
+    // ALLOWED_HOSTS: öffentliche Adresse(n), z. B. vom Cloudflare Tunnel (wird von start-public.mjs gesetzt)
+    const own = [req.headers.host, TRUST_PROXY && req.headers["x-forwarded-host"], ...(process.env.ALLOWED_HOSTS || "").split(",")].filter(Boolean);
     if (!own.includes(host)) return fail(res, 403, "Fremde Herkunft.");
   }
   const p = url.pathname.replace(/^\/api/, "");

@@ -9,6 +9,18 @@ Läuft die App über diesen Server, sieht jeder Nutzer die Clips aller anderen N
 
 Der Server braucht nur **Node.js 20 oder neuer**, keine weiteren Pakete.
 
+## ⚡ Einfachster Start: Doppelklick
+1. **Node.js** installieren: https://nodejs.org → „LTS“, einmalig.
+2. Den Code herunterladen: auf GitHub den Branch `claude/aktex-stock-trading-demo-j0lgog` wählen → **Code** → **Download ZIP** → entpacken.
+3. Starten:
+   - **Windows:** `AKYTEX-starten.bat` doppelklicken.
+   - **Mac:** `AKYTEX-starten.command` doppelklicken. Beim ersten Mal: Rechtsklick → **Öffnen**, weil macOS unbekannte Skripte blockiert.
+4. Warten, bis **„✅ AKYTEX ist LIVE“** mit einem Link `https://….trycloudflare.com` erscheint. Der Browser öffnet sich automatisch. Diesen Link an Freunde schicken.
+
+Das Skript lädt beim ersten Start den Cloudflare Tunnel (offizielles Programm, ca. 40 MB) und erzeugt ein Moderations-Passwort in `data/admin-token.txt`. Der Link gilt, solange das Fenster offen und der Rechner an ist. Bei jedem Neustart gibt es einen neuen Link. Eine feste Adresse wie `akytex.org` geht über einen benannten Tunnel (siehe unten, Weg A).
+
+Tipp: Energiesparen am Rechner ausschalten, damit er nicht einschläft.
+
 ## Sicherheit (schon eingebaut)
 - Öffentlich sind nur Website-Dateien. Server-Code, Datenbank und Dokumente sind nicht abrufbar, Pfad-Tricks (`../`) werden blockiert.
 - Sicherheits-Header: CSP, kein Einbetten in fremde Seiten, nosniff, HSTS hinter HTTPS.
@@ -92,6 +104,7 @@ Ihr seid für die Inhalte auf eurem Server mitverantwortlich. Meldungen müsst i
 ```bash
 export AKYTEX_URL=https://akytex.org ADMIN_TOKEN=...
 npm run admin reports          # gemeldete Clips mit Gründen
+npm run admin user-reports     # gemeldete Personen aus der Lounge
 npm run admin hide <clipId>    # sofort ausblenden
 npm run admin restore <clipId> # nach Prüfung wieder freigeben
 npm run admin delete <clipId>  # endgültig löschen

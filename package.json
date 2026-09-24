@@ -6,6 +6,7 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server/akytex-server.mjs",
+    "public": "node server/start-public.mjs",
     "admin": "node server/admin.mjs"
   }
 }
