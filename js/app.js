@@ -37,7 +37,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.4"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.5"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -4871,7 +4871,7 @@ function renderShop() {
   if (settings.view !== "shop") return;
   const bs = shop.baskets();
   const top = bs[0];
-  const amt = (b) => basketAmt[b.id] || 1000;
+  const amt = (b) => basketAmt[b.id] || 2500;
   const bsSpark = (b, w = 320, h = 90) => spark(b.series, w, h, b.d20 >= 0 ? "#22c55e" : "#ef4444");
   $("#spot").innerHTML = `
     <div class="spot-main">
@@ -4894,7 +4894,7 @@ function renderShop() {
     <div class="spot-side">${bs.slice(1, 3).map((b) => `<button class="spot-mini" data-shopcat="basket"><span class="spot-ic sm">${b.icon}</span><div><b>${b.name}</b><small class="${cls(b.d5)}">${pct(b.d5)} in 5 Tagen</small></div>${spark(b.series, 120, 40, b.d5 >= 0 ? "#22c55e" : "#ef4444")}</button>`).join("")}
       <button class="spot-mini gold" data-shop-add="r-picks"><span class="spot-ic sm">📑</span><div><b>Top 10 AI-Picks von heute</b><small>Report · ${eur(4.99)}</small></div></button></div>`;
   $("#shop-cats").innerHTML = Object.entries(CATS).map(([k, l]) => `<button class="${shopCat === k ? "active" : ""}" data-shopcat="${k}">${l}</button>`).join("");
-  const basketCard = (b, i) => `<article class="p-card basket" style="--k:${i}"><div class="b-head"><span class="spot-ic sm">${b.icon}</span><div><b>${b.name}</b><small class="muted">${b.syms.join(" · ")}</small></div>${i === 0 ? '<span class="hot">🔥 #1</span>' : ""}</div>${bsSpark(b, 300, 70)}<div class="spot-perf sm"><div><span>5T</span><b class="${cls(b.d5)}">${pct(b.d5)}</b></div><div><span>20T</span><b class="${cls(b.d20)}">${pct(b.d20)}</b></div></div><div class="amt-row sm">${[500, 1000, 2500].map((a) => `<button class="${amt(b) === a ? "on" : ""}" data-bamt="${b.id}" data-v="${a}">${a.toLocaleString("de-DE")} €</button>`).join("")}</div><button class="btn primary" data-binvest="${b.id}">Investieren</button></article>`;
+  const basketCard = (b, i) => `<article class="p-card basket" style="--k:${i}"><div class="b-head"><span class="spot-ic sm">${b.icon}</span><div><b>${b.name}</b><small class="muted">${b.syms.join(" · ")}</small></div>${i === 0 ? '<span class="hot">🔥 #1</span>' : ""}</div>${bsSpark(b, 300, 70)}<div class="spot-perf sm"><div><span>5T</span><b class="${cls(b.d5)}">${pct(b.d5)}</b></div><div><span>20T</span><b class="${cls(b.d20)}">${pct(b.d20)}</b></div></div><div class="amt-row sm">${[1000, 2500, 5000, 10000].map((a) => `<button class="${amt(b) === a ? "on" : ""}" data-bamt="${b.id}" data-v="${a}">${a.toLocaleString("de-DE")} €</button>`).join("")}</div><button class="btn primary" data-binvest="${b.id}">Mit Übungsgeld investieren</button><small class="muted b-free">Kostenlos · ${b.syms.length} Aktien gleich verteilt · virtuelles Geld</small></article>`;
   const prodCard = (p, i) => {
     const owned = shop.owns(p.id);
     const inCart = shop.state.cart.some((c) => c.id === p.id);
@@ -4943,27 +4943,28 @@ function shopComplete(items, T, method, address) {
   if (order.codes.length) setTimeout(() => toast(order.codes.map((c) => `${c.code} (${eur(c.value)})`).join(" · "), "success", "🎁 Deine Geschenkcodes"), 1200);
   return order;
 }
+// Themen-Paket kaufen: kostenlos mit dem Übungsgeld des Depots – jede Aktie mindestens einmal
 function investBasket(id) {
   const b = BASKETS.find((x) => x.id === id);
-  const amount = basketAmt[id] || 1000;
+  const amount = basketAmt[id] || 2500;
   const per = amount / b.syms.length;
   let ok = 0;
+  let spent = 0;
   const fails = [];
   for (const sym of b.syms) {
     const q = market.quote(sym);
-    const qty = Math.floor(per / q.ask);
-    if (qty < 1) {
-      fails.push(sym);
-      continue;
-    }
+    const qty = Math.max(1, Math.floor(per / q.ask));
     const r = broker.placeOrder({ symbol: sym, side: "buy", type: "market", qty });
-    if (r.ok) ok++;
-    else fails.push(sym);
+    if (r.ok) {
+      ok++;
+      spent += qty * q.ask;
+    } else fails.push(sym);
   }
+  renderRightPanel?.();
   if (ok) {
     confetti();
-    toast(`${ok} von ${b.syms.length} Aktien gekauft${fails.length ? ` (${fails.join(", ")}: Betrag zu klein oder Kaufkraft fehlt)` : ""}.`, "success", `${b.icon} ${b.name} im Depot`);
-  } else toast("Betrag zu klein oder nicht genug Kaufkraft.", "error");
+    toast(`${ok} von ${b.syms.length} Aktien für rund ${eur(spent)} Übungsgeld gekauft${fails.length ? ` – für ${fails.join(", ")} reicht das Guthaben nicht` : ""}.`, "success", `${b.icon} ${b.name} im Depot`);
+  } else toast("Dafür reicht dein Übungsgeld gerade nicht. Verkaufe etwas oder wähle einen kleineren Betrag.", "error", b.name);
 }
 const LESSON_TEXT = {
   "Was ist eine Aktie?": "Eine Aktie ist ein Anteil an einem Unternehmen. Steigt der Wert des Unternehmens oder schüttet es Gewinne aus, profitierst du anteilig – sinkt er, verlierst du.",
