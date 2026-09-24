@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- DEINE-DOMAIN.de durch die echte Adresse ersetzen -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://DEINE-DOMAIN.de/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://georgleomaser-bit.github.io/website-test-demo-1/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>
 </urlset>

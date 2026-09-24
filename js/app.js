@@ -3015,6 +3015,11 @@ function handleStripeReturn() {
   const billing = q.get("billing") === "yearly" ? "yearly" : "monthly";
   if (st !== "success" || !planId || !PLANS.some((p) => p.id === planId)) return;
   account.subscribe(quote({ planId, billing, addons: [] }), { type: "stripe", label: "Stripe" });
+  // Kaufnummer von Stripe merken – damit lässt sich das Abo später eindeutig prüfen (Support, Server-Abgleich)
+  if (q.get("session_id")) {
+    account.state.sub.stripeSession = q.get("session_id");
+    account.save();
+  }
   settings.billing = billing;
   saveSettings();
   setPlan(planId, true);

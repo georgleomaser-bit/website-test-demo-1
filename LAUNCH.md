@@ -7,7 +7,7 @@ Stand der Demo: Die Website ist technisch startklar (SEO, Vorschaubild, Sicherhe
 - [x] SEO: Titel, Beschreibung, Open-Graph/Twitter-Karten, `og-image.png` (1200×630), strukturierte Daten (JSON-LD), `robots.txt`, `sitemap.xml`
 - [x] PWA: Manifest mit Icons, Screenshots und Shortcuts, Service Worker (offline), Installations-Button
 - [x] `404.html`, Skip-Link, sichtbare Fokus-Rahmen, reduzierte Bewegung (`prefers-reduced-motion`)
-- [ ] `DEINE-DOMAIN.de` in `robots.txt` und `sitemap.xml` ersetzen
+- [x] Adresse in `robots.txt` und `sitemap.xml` eingetragen (bei eigener Domain erneut anpassen)
 - [x] Öffentlich auf GitHub Pages (automatisch aus dem Standard-Branch)
 - [ ] Optional: eigene Domain verbinden (Settings → Pages → Custom domain), HTTPS aktiv
 - [ ] Monitoring & Fehler-Tracking (z. B. datenschutzfreundlich selbst gehostet) und Uptime-Überwachung
