@@ -19,6 +19,7 @@ import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { initAI, aiReady, aiChat } from "./ai.mjs";
 import { billingOn, billingView, planOf, refreshPlan, verifyCheckout } from "./billing.mjs";
+import * as league from "./league.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = +process.env.PORT || 8080;
@@ -37,13 +38,14 @@ const MAX_JSON = 16 * 1024;
 const UPLOADS_PER_DAY = 10;
 const HIDE_AFTER_REPORTS = 3;
 const PAGE = 20;
+const DAY_MS = 86400000;
 const AI_PLANS = new Set(["ai", "aiprem", "ultra"]);
 const FREE_AI_DAILY = +process.env.FREE_AI_DAILY || 15;
 const PAID_AI_DAILY = +process.env.PAID_AI_DAILY || 400;
 
 // ---------- Datenbank (JSON-Datei, atomar geschrieben) ----------
 fs.mkdirSync(VIDEOS, { recursive: true });
-let db = { users: {}, clips: {}, comments: {}, likes: {}, reports: {}, purchases: {} };
+let db = { users: {}, clips: {}, comments: {}, likes: {}, reports: {}, purchases: {}, leagues: {} };
 try {
   db = { ...db, ...JSON.parse(fs.readFileSync(DB_FILE, "utf8")) };
 } catch (_) {
@@ -254,6 +256,7 @@ async function api(req, res, url) {
     for (const c of Object.values(db.clips)) if (c.author === me.id) await removeClip(c);
     for (const list of Object.values(db.comments)) for (let i = list.length - 1; i >= 0; i--) if (list[i].author === me.id) list.splice(i, 1);
     for (const l of Object.values(db.likes)) delete l[me.id];
+    for (const l of league.myLeagues(db, me)) league.leaveLeague(db, me, l);
     for (const [k, v] of Object.entries(db.purchases)) if (v.user === me.id) delete db.purchases[k]; // Kauf kann auf ein neues Konto
     delete db.users[me.id];
     save();
@@ -416,6 +419,47 @@ async function api(req, res, url) {
       return send(res, 200, { ok: true });
     }
   }
+  // ---------- Liga: gemeinsamer Server-Markt, Depots und Rangliste auf dem Server ----------
+  if (p === "/league/quotes" && req.method === "GET") return send(res, 200, { ok: true, quotes: league.quotes(), at: Date.now() });
+  if (p.startsWith("/leagues")) {
+    if (!me) return fail(res, 401, "Bitte zuerst anmelden.");
+    if (p === "/leagues" && req.method === "GET") return send(res, 200, { ok: true, leagues: league.myLeagues(db, me).map((l) => league.leagueView(db, me, l)) });
+    if (p === "/leagues" && req.method === "POST") {
+      if (limited("league-new:" + ip, 10, DAY_MS)) return fail(res, 429, "Zu viele neue Ligen von dieser Verbindung.");
+      const b = await readJson(req);
+      const l = league.createLeague(db, me, clean(b.name, 40));
+      save();
+      return send(res, 201, { ok: true, league: league.leagueView(db, me, l, true) });
+    }
+    if (p === "/leagues/join" && req.method === "POST") {
+      if (limited("league-join:" + ip, 30, 600000)) return fail(res, 429, "Zu viele Versuche – bitte kurz warten.");
+      const b = await readJson(req);
+      const l = league.joinLeague(db, me, clean(b.code, 12));
+      save();
+      return send(res, 200, { ok: true, league: league.leagueView(db, me, l, true) });
+    }
+    if ((m = /^\/leagues\/([A-Za-z0-9_-]{6,12})(?:\/(trade|leave|season))?$/.exec(p))) {
+      const l = league.getLeague(db, me, m[1]);
+      if (!m[2] && req.method === "GET") return send(res, 200, { ok: true, league: league.leagueView(db, me, l, true), quotes: league.quotes() });
+      if (m[2] === "trade" && req.method === "POST") {
+        if (limited("league-trade:" + me.id, 120, 600000)) return fail(res, 429, "Sehr viele Orders – kurz durchatmen.");
+        const fill = league.trade(l, me, await readJson(req));
+        save();
+        return send(res, 200, { ok: true, fill, league: league.leagueView(db, me, l, true) });
+      }
+      if (m[2] === "leave" && req.method === "POST") {
+        league.leaveLeague(db, me, l);
+        save();
+        return send(res, 200, { ok: true });
+      }
+      if (m[2] === "season" && req.method === "POST") {
+        league.newSeason(db, me, l);
+        save();
+        return send(res, 200, { ok: true, league: league.leagueView(db, me, l, true) });
+      }
+    }
+  }
+
   return fail(res, 404, "Unbekannte Anfrage.");
 }
 async function removeClip(c) {
@@ -473,4 +517,5 @@ const server = http.createServer(async (req, res) => {
 server.requestTimeout = 10 * 60000; // große Uploads über langsame Leitungen
 server.headersTimeout = 30000;
 const aiOn = await initAI(DATA);
+league.initLeagueMarket(DATA);
 server.listen(PORT, HOST, () => console.log(`AKYTEX-Server läuft auf http://localhost:${PORT}  (Daten: ${DATA}${ADMIN_TOKEN.length >= 24 ? ", Moderation aktiv" : ", Moderation AUS – ADMIN_TOKEN setzen"}${aiOn ? ", KI aktiv" : ", KI aus – ANTHROPIC_API_KEY setzen"}${billingOn() ? ", Kaufprüfung aktiv" : ""})`));
