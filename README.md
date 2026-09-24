@@ -71,7 +71,7 @@ python3 -m http.server 8000
 ```
 
 ## Launch
-Siehe [`LAUNCH.md`](LAUNCH.md) für die Checkliste zum öffentlichen Start (Technik, Backend, Recht, Vertrauen).
+Siehe [`GO-LIVE.md`](GO-LIVE.md) für den Weg in den Echtbetrieb (alle Einträge in `js/config.js`) und [`LAUNCH.md`](LAUNCH.md) für die Checkliste.
 
 ## Online stellen (Link zum Teilen)
 
