@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Handy-Hilfe</title>
+<meta name="description" content="Handy-Hilfe: kleiner Service vor Ort, mit dem du ehrlich auf ein iPhone 18 Pro sparst.">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--ink:#14171c;--muted:#5d6570;--line:#e3e6ea;--accent:#0a66ff;--ok:#128a4a;--warn:#b25b00;--radius:16px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0d0f13;--card:#171a20;--ink:#eef1f5;--muted:#9aa3ae;--line:#2a2f37;--accent:#4c8dff;--ok:#3ccf7f;--warn:#ffb14a}}
+:root[data-theme="dark"]{--bg:#0d0f13;--card:#171a20;--ink:#eef1f5;--muted:#9aa3ae;--line:#2a2f37;--accent:#4c8dff;--ok:#3ccf7f;--warn:#ffb14a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+main{max-width:880px;margin:0 auto;padding:24px 16px 64px}
+h1{font-size:clamp(28px,6vw,42px);line-height:1.1;margin:8px 0 8px}
+h2{font-size:22px;margin:0 0 12px}
+p{margin:0 0 12px}
+.muted{color:var(--muted)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin:16px 0}
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+.svc{border:1px solid var(--line);border-radius:12px;padding:14px}
+.svc b,.svc span{display:block}.svc .price{color:var(--accent);font-weight:700;font-size:20px}
+.bar{height:14px;background:var(--line);border-radius:99px;overflow:hidden;margin:10px 0}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .4s}
+.stats{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:12px 0}
+.stat{border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.stat span{display:block;font-size:13px;color:var(--muted)}.stat strong{font-size:20px}
+form{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+input,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0;flex:1 1 140px}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:10px 16px;background:var(--accent);color:#fff;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+ul.log{list-style:none;padding:0;margin:0}
+ul.log li{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding:8px 0}
+ul.log li button{padding:2px 10px;font-size:13px}
+ol li{margin-bottom:6px}
+.note{border-left:4px solid var(--warn);padding:10px 14px;background:var(--card);border-radius:8px}
+.flyer{border:2px dashed var(--line);border-radius:var(--radius);padding:24px;text-align:center}
+.flyer [contenteditable]{outline:none;border-bottom:1px dotted var(--muted)}
+.flyer h3{font-size:28px;margin:0 0 8px}
+.done{color:var(--ok);font-weight:700}
+@media print{body{background:#fff;color:#000}main>*:not(#flyer){display:none}#flyer{border:0}#flyer .no-print{display:none}}
+</style>
+</head>
+<body>
+<main>
+  <p class="muted">Ziel: iPhone 18 Pro · ehrlich verdient</p>
+  <h1>Handy-Hilfe – dein Business für das iPhone 18 Pro</h1>
+  <p>Viele Menschen (Eltern, Großeltern, Nachbarn) kommen mit ihrem neuen Handy nicht klar. Du schon. Du hilfst vor Ort, wirst bar bezahlt und sparst jeden Euro hier aufs iPhone. Kein Startkapital, kein Online-Konto, keine Ausweis-Prüfung durch Zahlungsanbieter.</p>
+
+  <section class="card">
+    <h2>1. Dein Angebot</h2>
+    <div class="grid">
+      <div class="svc"><b>Neues Handy einrichten</b><span class="price">25 €</span><span class="muted">Apple-ID, WLAN, Apps, Mails</span></div>
+      <div class="svc"><b>Datenumzug alt → neu</b><span class="price">20 €</span><span class="muted">Fotos, Kontakte, WhatsApp</span></div>
+      <div class="svc"><b>Backup &amp; Speicher aufräumen</b><span class="price">15 €</span><span class="muted">Fotos sichern, Handy wieder schnell</span></div>
+      <div class="svc"><b>Schutzfolie aufkleben</b><span class="price">10 €</span><span class="muted">blasenfrei, Folie bringt Kunde mit</span></div>
+      <div class="svc"><b>Handy-Kurs (1 Stunde)</b><span class="price">20 €</span><span class="muted">WhatsApp, Kamera, Videoanrufe</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2. Sparziel iPhone 18 Pro</h2>
+    <form id="goalForm">
+      <input id="goal" type="number" min="1" step="1" inputmode="numeric" aria-label="Preis des iPhones in Euro" placeholder="Preis in €">
+      <input id="perWeek" type="number" min="0" step="1" inputmode="numeric" aria-label="Aufträge pro Woche" placeholder="Aufträge pro Woche">
+      <button type="submit" class="ghost">Speichern</button>
+    </form>
+    <p class="muted" style="font-size:14px">Trag den aktuellen Preis aus dem Apple Store ein (Standard: 1.299 €).</p>
+    <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+    <p id="status"></p>
+    <div class="stats">
+      <div class="stat"><span>Gespart</span><strong id="sSaved">0 €</strong></div>
+      <div class="stat"><span>Fehlt noch</span><strong id="sLeft">0 €</strong></div>
+      <div class="stat"><span>Aufträge noch (Ø)</span><strong id="sJobs">–</strong></div>
+      <div class="stat"><span>Voraussichtlich fertig</span><strong id="sDate">–</strong></div>
+    </div>
+    <form id="addForm">
+      <select id="kind" aria-label="Art des Auftrags">
+        <option value="Handy einrichten|25">Handy einrichten · 25 €</option>
+        <option value="Datenumzug|20">Datenumzug · 20 €</option>
+        <option value="Backup &amp; Aufräumen|15">Backup &amp; Aufräumen · 15 €</option>
+        <option value="Schutzfolie|10">Schutzfolie · 10 €</option>
+        <option value="Handy-Kurs|20">Handy-Kurs · 20 €</option>
+        <option value="Sonstiges|0">Sonstiges (Betrag eingeben)</option>
+      </select>
+      <input id="amount" type="number" min="0" step="0.5" inputmode="decimal" aria-label="Betrag in Euro" placeholder="Betrag €">
+      <button type="submit">+ Eintragen</button>
+    </form>
+    <ul class="log" id="log"></ul>
+  </section>
+
+  <section class="card">
+    <h2>3. Kunden finden (diese Woche)</h2>
+    <ol>
+      <li>Flyer unten ausfüllen, 20× drucken, im Haus, beim Bäcker und im Seniorentreff aufhängen (vorher fragen).</li>
+      <li>Familie und Nachbarn direkt fragen: „Brauchst du Hilfe mit dem Handy?“</li>
+      <li>Nach jedem Auftrag: „Kennst du jemanden, der auch Hilfe braucht?“ – Empfehlungen bringen die meisten Kunden.</li>
+      <li>Nur mit Einverständnis an fremde Handys, keine Passwörter aufschreiben oder behalten.</li>
+    </ol>
+  </section>
+
+  <section class="card" id="flyer">
+    <div class="flyer">
+      <h3>📱 Probleme mit dem Handy?</h3>
+      <p>Ich helfe dir vor Ort: einrichten, Daten umziehen, WhatsApp, Fotos sichern, Handy-Kurs.</p>
+      <p><strong>ab 10 €</strong> · geduldig und freundlich</p>
+      <p>Name: <span contenteditable="true" data-key="name">Dein Vorname</span></p>
+      <p>Telefon / WhatsApp: <span contenteditable="true" data-key="phone">0170 …</span></p>
+      <p>Gebiet: <span contenteditable="true" data-key="area">Dein Viertel</span></p>
+      <p class="no-print"><button type="button" id="printBtn">Flyer drucken</button></p>
+    </div>
+  </section>
+
+  <section class="note">
+    <p><strong>Ehrlich gesagt:</strong> Kein Business bringt ein iPhone garantiert und ohne jedes Risiko. Mit 3 Aufträgen pro Woche (Ø 20 €) dauert es etwa 5 Monate.</p>
+    <p><strong>Zum Ausweis:</strong> Bar bezahlte Hilfe in der Nachbarschaft braucht keinen. Online-Auszahlungen (Stripe, PayPal, eBay) und eine Gewerbe-Anmeldung verlangen dagegen gesetzlich eine Identitätsprüfung – daran führt kein legaler Weg vorbei. Wenn du regelmäßig verdienst oder unter 18 bist, sprich mit deinen Eltern über Gewerbe und Steuern.</p>
+  </section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

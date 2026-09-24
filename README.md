@@ -8,6 +8,8 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 > **Zweites Business: NOVA** – ein KI-Assistent zum Sprechen und Schreiben (wie Claude) im professionellen Design, komplett getrennt von AKYTEX: [`nova/NOVA.md`](nova/NOVA.md) · Vorschau: `…/website-test-demo-1/nova/`
 
+> **Drittes Business: Handy-Hilfe** – kleiner Service vor Ort mit Sparziel-Tracker fürs iPhone 18 Pro und druckbarem Flyer: [`iphone/`](iphone/index.html) · Vorschau: `…/website-test-demo-1/iphone/`
+
 ## Funktionen
 
 **Charts (TradingView Lightweight Charts)**
