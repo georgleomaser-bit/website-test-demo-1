@@ -2425,3 +2425,46 @@ html[data-theme="dark"] .fu-hero, html[data-theme="dark"] .future-box { --fu-a: 
 html[data-theme] .lg-trade .btn.buy { background: #16a34a; color: #fff; border-color: transparent; font-weight: 700; }
 html[data-theme] .lg-trade .btn.sell { background: #dc2626; color: #fff; border-color: transparent; font-weight: 700; }
 .lg-trade > * { min-width: 0; }
+/* =====================================================================
+   GELD-AKADEMIE · Streak, Level, Lektion, Quiz, Challenges, Abzeichen
+   ===================================================================== */
+.ac-home { display: flex; justify-content: center; }
+.ac-hero { width: min(920px, 100%); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 14px; padding: clamp(28px, 5vw, 56px) clamp(18px, 4vw, 48px); border-radius: 32px; background: radial-gradient(ellipse 80% 70% at 50% 0%, rgba(255, 110, 60, 0.18), transparent 70%), color-mix(in srgb, var(--panel) 90%, transparent); border: 1px solid rgba(255, 130, 70, 0.3); box-shadow: 0 30px 90px rgba(255, 110, 50, 0.14); }
+.ac-hero h2 { margin: 0; font-size: clamp(28px, 5vw, 48px); }
+.ac-hero .sec-lead { margin: 0; max-width: 640px; }
+.ac-mini { margin: 0; font-weight: 600; }
+.academy-box { width: min(640px, 96vw); max-height: 90vh; }
+.ac-body { display: flex; flex-direction: column; gap: 14px; padding: 14px 18px 20px; overflow-y: auto; }
+.ac-top { display: flex; align-items: center; gap: 14px; }
+.ac-flame { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 74px; height: 74px; border-radius: 22px; background: var(--panel-2); border: 1px solid var(--border); filter: grayscale(1); opacity: 0.7; transition: filter 0.4s, opacity 0.4s; }
+.ac-flame.lit { filter: none; opacity: 1; background: radial-gradient(circle at 50% 70%, rgba(255, 120, 40, 0.35), rgba(255, 80, 40, 0.08)); border-color: rgba(255, 130, 60, 0.7); box-shadow: 0 0 24px rgba(255, 110, 40, 0.35); }
+.ac-flame b { font: 700 26px/1 var(--font-display); }
+.ac-flame span { font-size: 11px; }
+.ac-lv { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ac-bar { height: 8px; border-radius: 99px; background: var(--panel-2); overflow: hidden; }
+.ac-bar i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #ff8a3d, #ffd166); transition: width 0.6s cubic-bezier(0.2, 0.9, 0.2, 1); }
+.ac-tabs { align-self: center; }
+.ac-tabs button { padding: 7px 14px; }
+.ac-tabs button.active { background: var(--panel); color: var(--text); }
+.ac-lesson { display: flex; flex-direction: column; gap: 6px; }
+.ac-lesson h3 { margin: 4px 0; font-size: 22px; }
+.ac-lesson p { margin: 0; line-height: 1.55; }
+.ac-icon { font-size: 44px; }
+.ac-done { align-items: center; text-align: center; }
+.ac-quiz { display: flex; flex-direction: column; gap: 10px; }
+.ac-quiz h3 { margin: 0; font-size: 20px; }
+.ac-ans { text-align: left; padding: 14px 16px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel-2); color: var(--text); font-weight: 600; font-size: 15px; cursor: pointer; transition: transform 0.12s, border-color 0.2s, background-color 0.2s; }
+.ac-ans:hover:not(:disabled) { border-color: #ff8a3d; }
+.ac-ans:active:not(:disabled) { transform: scale(0.98); }
+.ac-ans.right { background: rgba(22, 163, 74, 0.18); border-color: #16a34a; }
+.ac-ans.wrong { background: rgba(220, 38, 38, 0.16); border-color: #dc2626; }
+.ac-ch { display: flex; flex-direction: column; gap: 8px; }
+.ac-chal { display: grid; grid-template-columns: 40px 1fr auto; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--panel-2); }
+.ac-chal > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ac-chal.done { border-color: rgba(22, 163, 74, 0.6); }
+.ac-ci { font-size: 26px; text-align: center; }
+.ac-ok { font-size: 20px; color: #16a34a; font-weight: 800; }
+.ac-badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.ac-badge { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 8px; border-radius: 16px; border: 1px solid var(--border); background: var(--panel-2); text-align: center; filter: grayscale(1); opacity: 0.45; }
+.ac-badge span { font-size: 32px; }
+.ac-badge.on { filter: none; opacity: 1; border-color: rgba(255, 170, 60, 0.7); box-shadow: 0 0 18px rgba(255, 160, 50, 0.2); }

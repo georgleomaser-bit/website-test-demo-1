@@ -13,6 +13,7 @@ import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
 import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle, jarvisPersona, jarvisMood } from "./jarvis.js";
 import * as future from "./future.js";
+import * as academy from "./academy.js";
 import { drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
 import { CONFIG, LIVE } from "./config.js";
 import { connectMarket, connectBroker, loginUrl } from "./live.js";
@@ -36,7 +37,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.2"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.3"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2953,6 +2954,7 @@ function bindAI() {
     if (t.closest("[data-jarvis-try]")) return startJarvis();
     if (t.closest("[data-future-open]")) return openFuture();
     if (t.closest("[data-league-open]")) return openLeague();
+    if (t.closest("[data-academy-open]")) return openAcademy();
     if (t.closest("[data-plan-ultra]")) {
       openPlans("AKYTEX Ultra: alles aus AI Premium plus Jarvis, der Sprachmodus.");
       return setTimeout(() => $("#modal-plans .ai-plan.ultra")?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
@@ -4277,6 +4279,7 @@ function cmdItems(q) {
     { icon: "✦", label: "Jarvis-Sprachmodus starten", run: () => startJarvis() },
     { icon: "🔮", label: "Zukunfts-Ich treffen", run: () => openFuture() },
     { icon: "🏆", label: "Liga öffnen", run: () => openLeague() },
+    { icon: "📚", label: "Geld-Akademie: Lektion des Tages", run: () => openAcademy("today") },
     { icon: "🧬", label: "Trader-DNA ansehen", run: () => (openAssistant(false), sendChat("Analysiere mich")) },
     { icon: "✦", label: "AKYTEX Ultra abonnieren (Checkout)", run: () => openCheckout("ultra") },
     { icon: "🛍️", label: "Warenkorb öffnen", run: () => openCart() },
@@ -6436,6 +6439,7 @@ function dnaBrief() {
 }
 function dnaReport() {
   const d = traderDNA();
+  acCount("dnaViews");
   const title = esc(jarvisTitle());
   if (d.n < 3)
     return `<p>🧬 Für deine Trader-DNA brauche ich mindestens <b>3 abgeschlossene Trades</b>, ${title} – bisher sind es ${d.n}. Kauf und verkauf ein paar Aktien im Übungsdepot, dann sage ich dir genau, was du gut machst und wo Geld liegen bleibt.</p>`;
@@ -6516,6 +6520,7 @@ async function shareCardBlob(make, name, text) {
   try {
     const blob = await make(url);
     const r = await future.shareImage(blob, name, text, url);
+    if (r !== "aborted") acCount("shares");
     if (r.startsWith("downloaded")) toast(r.endsWith("copied") ? "Bild gespeichert und Link kopiert – ab in deine Story! 🚀" : "Bild gespeichert – ab in deine Story! 🚀", "success", "📲 Karte bereit");
   } catch (e) {
     toast("Die Karte konnte gerade nicht erstellt werden.", "error");
@@ -6533,6 +6538,7 @@ function shareDna() {
 // Fenster „Dein Zukunfts-Ich“
 let fuShown = 0;
 function openFuture() {
+  acCount("futureVisits");
   renderFuture();
   openModal("#future-modal");
 }
@@ -6732,6 +6738,8 @@ async function lgTrade(side, sym, qty) {
     haptic(12);
     toast(`${r.fill.qty} × ${r.fill.sym} zu ${num(r.fill.price)} €`, side === "buy" ? "success" : "sell", side === "buy" ? "🏆 Liga-Kauf" : "🏆 Liga-Verkauf");
     lg.data = r.league;
+    acCount("leagueTrades");
+    if (r.league.rank === 1 && r.league.members > 1) ac.s.leagueFirst = true;
     paintLeague(false);
   } catch (e) {
     lgFail(e);
@@ -6830,6 +6838,177 @@ function bindLeague() {
   }
 }
 bindLeague(); // hier, weil „lg“ erst oben angelegt wird
+// ---------- Geld-Akademie: Lektion des Tages, Streak, XP, Wochen-Challenges, Abzeichen ----------
+const ac = { s: academy.rollWeek(academy.load()), quiz: null, tab: "today" };
+const acSave = () => academy.save(ac.s);
+function acCount(k) {
+  academy.bump(ac.s, k);
+  if (k === "futureVisits") ac.s.futureEver = true;
+  acSave();
+  acAward();
+}
+function acCtx() {
+  const since = academy.weekStart();
+  const hist = broker.state.orderHistory || [];
+  const fills = broker.state.fills || [];
+  const secs = new Set(Object.keys(broker.state.positions || {}).map((sym) => STOCKS.find((x) => x.s === sym)?.sec));
+  const now = Date.now();
+  return {
+    trades: fills.length,
+    buysWithStop: hist.filter((o) => o.side === "buy" && o.sl != null && o.status === "ausgeführt" && (o.closed || 0) >= since).length,
+    sectors: secs.size,
+    heldTwoDays: Object.values(broker.state.positions || {}).some((p) => now - (p.opened || now) >= 2 * 86400000) ? 1 : 0,
+    winsWeek: fills.filter((f) => f.side === "sell" && f.pnl > 0 && f.ts >= since).length,
+    dnaScore: traderDNA().score,
+    leagueFirst: !!ac.s.leagueFirst,
+  };
+}
+function acAward() {
+  const fresh = academy.award(ac.s, acCtx());
+  if (!fresh.length) return;
+  acSave();
+  for (const b of fresh) toast(`${b.icon} ${b.t} · +25 XP`, "success", "Neues Abzeichen");
+  confetti();
+}
+function openAcademy(tab) {
+  academy.rollWeek(ac.s);
+  if (tab) ac.tab = tab;
+  openModal("#academy-modal");
+  renderAcademy();
+}
+function acHeader() {
+  const lv = academy.level(ac.s.xp);
+  const today = academy.doneToday(ac.s);
+  return `<div class="ac-top"><div class="ac-flame ${today ? "lit" : ""}"><b>${ac.s.streak}</b><span>🔥 Tage</span></div>
+    <div class="ac-lv"><b>Level ${lv.n} · ${lv.name}</b><div class="ac-bar"><i style="width:${Math.round(lv.pct * 100)}%"></i></div><small class="muted">${lv.xp} XP${lv.to ? ` · noch ${lv.to - lv.xp} bis Level ${lv.n + 1}` : ""}</small></div>
+    <button class="btn small" data-ac-share>📲 Teilen</button></div>
+    <div class="seg ac-tabs">${[["today", "Heute"], ["challenges", "Challenges"], ["badges", "Abzeichen"]].map(([k, l]) => `<button class="${ac.tab === k ? "active" : ""}" data-ac-tab="${k}">${l}</button>`).join("")}</div>`;
+}
+function renderAcademy() {
+  const body = $("#ac-body");
+  let html = acHeader();
+  if (ac.tab === "today") {
+    const l = ac.quiz?.lesson || academy.todays(ac.s);
+    if (!ac.quiz) {
+      const done = academy.doneToday(ac.s);
+      html += `<div class="ac-lesson"><div class="ac-icon">${l.icon}</div><h3>${esc(l.t)}</h3>${l.body.map((p) => `<p>${esc(p)}</p>`).join("")}
+        <div class="btn-row"><button class="btn primary big" data-ac-quiz>${done ? "Nochmal üben" : "Quiz starten · 3 Min."}</button><button class="btn big" data-ac-listen>🔊 Jarvis erklärt es</button></div>
+        <p class="muted small">${done ? "✅ Heute erledigt – dein Streak ist sicher. Morgen wartet die nächste Lektion." : "Schließe das Quiz ab, damit dein Streak weiterläuft."} · ${ac.s.done.length}/${academy.LESSONS.length} Lektionen</p></div>`;
+    } else {
+      const q = ac.quiz;
+      if (q.i < l.q.length) {
+        const [question, answers] = l.q[q.i];
+        const order = q.order[q.i];
+        html += `<div class="ac-quiz"><small class="muted">Frage ${q.i + 1} von ${l.q.length}</small><h3>${esc(question)}</h3>${order.map((a) => `<button class="ac-ans ${q.picked != null ? (a === l.q[q.i][2] ? "right" : a === q.picked ? "wrong" : "") : ""}" data-ac-ans="${a}" ${q.picked != null ? "disabled" : ""}>${esc(answers[a])}</button>`).join("")}
+          ${q.picked != null ? `<button class="btn primary" data-ac-next>${q.i + 1 < l.q.length ? "Weiter" : "Fertig"}</button>` : ""}</div>`;
+      } else {
+        html += `<div class="ac-lesson ac-done"><div class="ac-icon">🎉</div><h3>${q.correct} von ${l.q.length} richtig · +${q.xp} XP</h3><p>🔥 Streak: <b>${ac.s.streak} ${ac.s.streak === 1 ? "Tag" : "Tage"}</b>. Morgen geht's weiter – brich die Serie nicht!</p>
+          <div class="btn-row"><button class="btn primary" data-ac-share>📲 Streak teilen</button><button class="btn" data-ac-close-quiz>Zurück</button></div></div>`;
+      }
+    }
+  } else if (ac.tab === "challenges") {
+    const list = academy.challengeState(ac.s, acCtx());
+    html += `<p class="muted">Jede Woche drei neue Aufgaben – für alle gleich. Montag geht's von vorn los.</p><div class="ac-ch">${list
+      .map((c) => `<div class="ac-chal ${c.done ? "done" : ""}"><span class="ac-ci">${c.icon}</span><div><b>${esc(c.t)}</b><div class="ac-bar"><i style="width:${Math.round((c.v / c.goal) * 100)}%"></i></div><small class="muted">${c.v}/${c.goal} · +${c.xp} XP</small></div>${c.claimed ? `<span class="ac-ok">✓</span>` : c.done ? `<button class="btn primary small" data-ac-claim="${c.id}">Abholen</button>` : ""}</div>`)
+      .join("")}</div>`;
+  } else {
+    html += `<div class="ac-badges">${academy.BADGES.map((b) => `<div class="ac-badge ${ac.s.badges.includes(b.id) ? "on" : ""}"><span>${b.icon}</span><small>${esc(b.t)}</small></div>`).join("")}</div>`;
+  }
+  body.innerHTML = html;
+}
+function acStartQuiz() {
+  const lesson = academy.todays(ac.s);
+  // Antworten mischen, richtige Antwort bleibt über ihren Index erkennbar
+  const order = lesson.q.map((q) => q[1].map((_, i) => i).sort(() => Math.random() - 0.5));
+  ac.quiz = { lesson, i: 0, correct: 0, picked: null, order, xp: 0 };
+  renderAcademy();
+}
+async function acShare() {
+  const lv = academy.level(ac.s.xp);
+  const url = inviteUrl();
+  const text = `🔥 ${ac.s.streak} Tage Geld-Streak · Level ${lv.n} ${lv.name} bei AKYTEX. Schaffst du mehr?`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "AKYTEX", text, url });
+      acCount("shares");
+      return;
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    acCount("shares");
+    toast("Kopiert – ab in die Story oder den Gruppenchat! 🚀", "success", "📲 Teilen");
+  } catch (_) {
+    toast(url, "info", "Link zum Teilen");
+  }
+}
+function bindAcademy() {
+  $("#ac-body").addEventListener("click", (e) => {
+    const t = e.target;
+    const tab = t.closest("[data-ac-tab]");
+    if (tab) {
+      ac.tab = tab.dataset.acTab;
+      ac.quiz = null;
+      return renderAcademy();
+    }
+    if (t.closest("[data-ac-share]")) return acShare();
+    if (t.closest("[data-ac-quiz]")) return acStartQuiz();
+    if (t.closest("[data-ac-listen]")) {
+      const l = academy.todays(ac.s);
+      closeModals();
+      return startJarvis({ say: `${l.t}. ${l.body.join(" ")} Jetzt du: Mach das Quiz, und dein Streak läuft weiter.`, free: true, label: "LEHRER", acts: [{ label: "📝 Quiz starten", primary: true, run: () => (openAcademy("today"), acStartQuiz()) }] });
+    }
+    const ans = t.closest("[data-ac-ans]");
+    if (ans && ac.quiz && ac.quiz.picked == null) {
+      const q = ac.quiz;
+      q.picked = +ans.dataset.acAns;
+      const ok = q.picked === q.lesson.q[q.i][2];
+      if (ok) q.correct++;
+      haptic(ok ? 12 : [20, 40, 20]);
+      return renderAcademy();
+    }
+    if (t.closest("[data-ac-next]")) {
+      const q = ac.quiz;
+      q.i++;
+      q.picked = null;
+      if (q.i >= q.lesson.q.length) {
+        q.xp = academy.finishLesson(ac.s, q.lesson, q.correct, q.lesson.q.length);
+        acSave();
+        confetti();
+        acAward();
+      }
+      return renderAcademy();
+    }
+    if (t.closest("[data-ac-close-quiz]")) {
+      ac.quiz = null;
+      return renderAcademy();
+    }
+    const cl = t.closest("[data-ac-claim]");
+    if (cl) {
+      const c = academy.challengeState(ac.s, acCtx()).find((x) => x.id === cl.dataset.acClaim);
+      const xp = c ? academy.claim(ac.s, c) : 0;
+      if (xp) {
+        acSave();
+        confetti();
+        toast(`${c.icon} ${c.t} · +${xp} XP`, "success", "Challenge geschafft");
+        acAward();
+      }
+      return renderAcademy();
+    }
+  });
+  // Startseite: Streak anzeigen
+  paintAcademyMini();
+  setTimeout(acAward, 4000);
+}
+function paintAcademyMini() {
+  const el = $("#ac-mini");
+  if (!el) return;
+  const lv = academy.level(ac.s.xp);
+  el.innerHTML = `🔥 <b>${ac.s.streak}</b> ${ac.s.streak === 1 ? "Tag" : "Tage"} · Level ${lv.n} ${lv.name} · ${academy.doneToday(ac.s) ? "heute erledigt ✅" : "Lektion wartet"}`;
+}
+bindAcademy();
 // Stimmung für Jarvis’ Auto-Modus: Tagesveränderung von Depot und Markt (in %)
 function jarvisMoodHint() {
   const eq = broker.equity() || 1;
@@ -6876,6 +7055,8 @@ function appCommand(text) {
   if (/((dna|trader).?karte|teil\w* (meine )?dna)/.test(t)) return done(`<p>📲 Deine DNA-Karte wird erstellt …</p>`, () => shareDna());
   if (/(trader.?dna|meine dna|analysier\w* mich|mein(e)? (trading.?)?(profil|stil)|was mache ich falsch|wie gut bin ich|meine (fehler|schwächen|stärken)|coach mich|bewerte mich)/.test(t))
     return done(dnaReport(), null, ["Profit-Modus an", "Wie steht mein Depot?", "Triff mein Zukunfts-Ich"], traderDNA().n >= 3 ? [{ label: "📲 DNA-Karte teilen", primary: true, run: () => shareDna() }] : []);
+  // Akademie: „Lektion“, „Mein Streak“, „Challenges“
+  if (/\b(lektion|akademie|quiz|streak|challenges?|abzeichen|lernen)\b/.test(t)) return done(`<p>📚 Deine Geld-Akademie: 🔥 ${ac.s.streak} Tage Streak, Level ${academy.level(ac.s.xp).n}. ${academy.doneToday(ac.s) ? "Heute schon erledigt – stark!" : `Heute dran: <b>${esc(academy.todays(ac.s).t)}</b>.`}</p>`, () => openAcademy(/challenge/.test(t) ? "challenges" : /abzeichen/.test(t) ? "badges" : "today"));
   // Liga: „Öffne die Liga“, „Wie stehe ich in der Liga?“
   if (/\b(liga|rangliste|league|klassen.?wettbewerb)\b/.test(t)) return done(`<p>🏆 Ich öffne deine Liga – dort siehst du deinen Platz, die Rangliste und kannst am gemeinsamen Markt handeln.</p>`, () => openLeague());
   // Zukunfts-Ich: „Triff mein Zukunfts-Ich“, „Was habe ich mit 40?“, „Wie reich bin ich mit 60?“
