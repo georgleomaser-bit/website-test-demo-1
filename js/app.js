@@ -35,7 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "4.7"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "4.8"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};

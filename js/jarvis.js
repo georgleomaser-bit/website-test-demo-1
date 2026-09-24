@@ -80,8 +80,7 @@ function cycleVoice() {
   } catch (_) {
     /* nur für diese Sitzung */
   }
-  speechSynthesis.cancel();
-  speakOut(`So klinge ich als ${bestVoice.name.split(/[ (]/)[0]}.`).then(() => J.on && !J.typing && listen());
+  speakOut(`So klinge ich als ${bestVoice.name.split(/[ (]/)[0]}.`).then(() => J.on && !J.typing && !J.rec && listen());
 }
 // Hinweis, wie man eine Männerstimme installiert (Browser können nur Stimmen des Geräts nutzen)
 function maleHint() {
@@ -169,7 +168,7 @@ function build() {
   return el;
 }
 const root = () => $("#jv") || build();
-const LABELS = { listen: "HÖRE ZU", think: "ANALYSIERE", speak: "JARVIS", idle: "BEREIT · TIPPE AUF DEN KERN", muted: "MIKROFON AUS", upsell: "JARVIS", type: "SCHREIB ODER DIKTIERE" };
+const LABELS = { listen: "HÖRE ZU", think: "ANALYSIERE", speak: "JARVIS", idle: "TIPPE AUF DEN KERN UND SPRICH", muted: "MIKROFON AUS", upsell: "JARVIS", type: "SCHREIB ODER DIKTIERE" };
 function setState(s, label) {
   J.state = s;
   const el = root();
@@ -214,7 +213,38 @@ function chime(up) {
     /* ohne Web Audio kein Ton */
   }
 }
+// Sprachausgabe im Moment eines Tipps freischalten (iOS/Safari sprechen sonst später nicht)
+function unlockVoice() {
+  try {
+    const u = new SpeechSynthesisUtterance(" ");
+    u.volume = 0;
+    speechSynthesis.speak(u);
+  } catch (_) {
+    /* ohne Sprachausgabe */
+  }
+}
+// iOS/Safari: zum Sprechen den Lautsprecher nutzen (sonst landet die Stimme nach dem Zuhören leise im Hörer),
+// fürs Zuhören wieder dem Browser die Wahl lassen
+function audioMode(type) {
+  try {
+    if (navigator.audioSession && navigator.audioSession.type !== type) navigator.audioSession.type = type;
+  } catch (_) {
+    /* ältere Browser */
+  }
+}
+function stopRec() {
+  const r = J.rec;
+  if (!r) return;
+  J.rec = null;
+  clearTimeout(J.endTimer);
+  try {
+    r.abort();
+  } catch (_) {
+    /* schon beendet */
+  }
+}
 function onClick(e) {
+  if (!J.voiceOk) unlockVoice();
   const b = e.target.closest("[data-jv], [data-jv-act]");
   if (b?.dataset.jv === "close") return stopJarvis();
   if (b?.dataset.jv === "chat") {
@@ -234,9 +264,11 @@ function onClick(e) {
   }
   // Kern oder Text antippen: unterbrechen und zuhören
   if (e.target.closest(".jv-core, .jv-txt, .jv-say") && ["speak", "idle"].includes(J.state)) {
+    // Sprechen beenden (die laufende Antwort gilt als fertig) und sofort zuhören – noch im Tipp
+    J.speakToken = (J.speakToken || 0) + 1;
     speechSynthesis?.cancel();
-    clearTimeout(J.sayTimer);
-    listen();
+    listen(true);
+    J.finishSpeak?.();
   }
 }
 // Schreib-/Diktiermodus: ohne Spracherkennung (Firefox, In-App-Browser) oder bei stummem Mikro
@@ -534,19 +566,14 @@ export async function startJarvis() {
   const d = J.deps;
   if (J.on) return stopJarvis();
   if (!d.allowed() && !trialLeft()) return upsellCard(true);
-  // Sprachausgabe und Töne im Moment des Tippens freischalten (iOS/Safari spielen sonst später nichts ab)
-  try {
-    J.ac ||= new (window.AudioContext || window.webkitAudioContext)();
-    J.ac.resume?.();
-  } catch (_) {
-    /* ohne Web Audio */
-  }
-  try {
-    const u = new SpeechSynthesisUtterance(" ");
-    u.volume = 0;
-    speechSynthesis.speak(u);
-  } catch (_) {
-    /* ohne Sprachausgabe */
+  // Töne nur außerhalb von iOS (dort würde Web Audio die Sprachausgabe stumm schalten)
+  if (!IOS) {
+    try {
+      J.ac ||= new (window.AudioContext || window.webkitAudioContext)();
+      J.ac.resume?.();
+    } catch (_) {
+      /* ohne Web Audio */
+    }
   }
   Object.assign(J, { on: true, silent: 0, muted: false, rest: "", pending: null });
   const el = root();
@@ -562,42 +589,46 @@ export async function startJarvis() {
   d.haptic?.([10, 40, 10]);
   const title = jarvisTitle();
   const h = new Date().getHours();
-  const hi = !J.greeted ? `${h < 5 ? "Noch wach" : h < 11 ? "Guten Morgen" : h < 18 ? "Willkommen zurück" : "Guten Abend"}, ${title}. Alle Systeme online. ${d.quickStatus?.() || ""} Was kann ich für dich tun?` : `Zu Diensten, ${title}.`;
+  const daypart = h < 5 ? "Noch wach" : h < 11 ? "Guten Morgen" : h < 18 ? "Willkommen zurück" : "Guten Abend";
+  const first = !J.greeted;
+  const hi = first ? `${daypart}, ${title}. Alle Systeme online. ${d.quickStatus?.() || ""} Was kann ich für dich tun?` : `Zu Diensten, ${title}.`;
   J.greeted = true;
   const trial = !d.allowed() ? ` Du hast ${trialLeft()} Gratis-Fragen.` : "";
   const hint = maleHint();
   const greet = (hi + trial).replace(/\s+/g, " ").trim();
+  const showHint = () => {
+    if (!hint || !J.on) return;
+    showSay(hint);
+    revealTo(1e9);
+  };
+  // Die Begrüßung startet noch im Tipp – so dürfen iPhone und Safari danach sprechen
   typeMode(!SR);
   if (!SR) {
-    showSay(greet + (hint ? " " + hint : ""));
-    revealTo(1e9);
-    return;
+    await speakOut(greet);
+    if (J.on && J.typing) setState("type");
+    return showHint();
   }
   if (SAFARI) {
-    // Safari: sofort zuhören (noch im Tipp), Begrüßung nur als Text
-    showSay(greet + (hint ? " " + hint : ""));
-    revealTo(1e9);
-    return listen();
+    // Safari/iPhone: kurz begrüßen, dann zuhören (klappt das ohne neuen Tipp nicht, reicht ein Tipp auf den Kern)
+    await speakOut(first ? `${daypart}, ${title}. Was kann ich für dich tun?${trial}` : `Ja, ${title}?`);
+    showHint();
+    if (J.on && !J.rec) listen();
+    return;
   }
   startMeter();
   await speakOut(greet);
-  if (hint) {
-    showSay(hint);
-    revealTo(1e9);
-  }
-  if (J.on) listen();
+  showHint();
+  if (J.on && !J.rec) listen();
 }
 export function stopJarvis() {
   if (!J.on) return;
   J.on = false;
-  try {
-    J.rec?.abort();
-  } catch (_) {
-    /* schon beendet */
-  }
-  J.rec = null;
+  stopRec();
+  J.speakToken = (J.speakToken || 0) + 1;
   speechSynthesis?.cancel();
-  for (const k of ["sayTimer", "idleTimer", "endTimer"]) clearTimeout(J[k]);
+  J.finishSpeak?.();
+  audioMode("auto");
+  for (const k of ["sayTimer", "idleTimer", "endTimer", "voiceDog"]) clearTimeout(J[k]);
   stopMeter();
   const el = root();
   el.classList.remove("on");
@@ -610,9 +641,10 @@ export function stopJarvis() {
 }
 
 // Zuhören: lässt dich ausreden (kurze Pause beendet) und wählt die sinnvollste Erkennungs-Variante
-function listen() {
+function listen(fromTap = false) {
   if (!J.on || J.muted) return;
   clearTimeout(J.idleTimer);
+  audioMode("auto");
   setState("listen");
   const finals = [];
   const alts = [];
@@ -652,8 +684,12 @@ function listen() {
   };
   rec.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
-      // Schon einmal zugehört? Dann will der Browser nur einen neuen Tipp (Safari) – sonst fehlt die Erlaubnis
-      if (J.heard) return idle();
+      // Schon einmal zugehört oder ohne Tipp gestartet? Dann will der Browser nur einen neuen Tipp (Safari) –
+      // erst wenn es auch direkt nach einem Tipp nicht klappt, fehlt wirklich die Erlaubnis
+      if (J.heard || (SAFARI && !fromTap)) {
+        if (J.rec === rec) J.rec = null;
+        return idle();
+      }
       J.deps.toast("Bitte erlaube den Zugriff aufs Mikrofon – oder schreib Jarvis einfach.", "error", "🎙 Mikrofon");
       J.rec = null;
       typeMode(true);
@@ -760,7 +796,7 @@ async function handle(text) {
   const money = acts.find((a) => !voiceSafe(a));
   const tail = offer ? ` Sag „ja“, und ich mache: ${offer.label}.` : money ? " Bestätige das bitte per Tipp auf den Button." : rest ? " Soll ich mehr erzählen?" : "";
   await speakOut(said + tail);
-  if (!J.on) return;
+  if (!J.on || J.rec) return;
   if (free && !trialLeft()) return upsellCard(false);
   if (J.typing) return setState("type", "Schreib oder diktiere deine Frage");
   listen();
@@ -784,29 +820,50 @@ const ABBR = [
   [/\bTsd\./g, "Tausend"],
 ];
 const speakable = (t) => ABBR.reduce((s, [re, w]) => s.replace(re, w), t);
-// Sprechen Satz für Satz: natürlichere Pausen, keine Abbrüche bei langen Texten, Untertitel synchron
+// Hinweis, wenn der Browser gar nicht sprechen lässt (einmal pro Sitzung)
+function voiceHint() {
+  if (J.voiceHinted) return;
+  J.voiceHinted = true;
+  J.deps.toast(
+    IOS ? "Ich kann gerade nicht laut sprechen. Stell den Ton lauter und den Stumm-Schalter aus – dann tippe einmal auf den Kern." : "Dein Browser lässt mich gerade nicht sprechen. Tippe einmal auf den Kern oder wechsle mit 🗣 die Stimme.",
+    "info",
+    "🔈 Stimme"
+  );
+}
+// Sprechen Satz für Satz: natürlichere Pausen, keine Abbrüche bei langen Texten, Untertitel synchron.
+// Startet die Stimme nicht (blockiert oder defekte Stimme), versucht Jarvis es mit der Standardstimme
+// und zeigt sonst nur Untertitel – er hängt nie stumm fest.
 function speakOut(text) {
   text = speakable(text);
   return new Promise((resolve) => {
     setState("speak");
     showSay("");
-    clearTimeout(J.sayTimer);
+    for (const k of ["sayTimer", "voiceDog"]) clearTimeout(J[k]);
     clearInterval(J.revealTimer);
+    const token = (J.speakToken = (J.speakToken || 0) + 1);
     let done = false;
     const finish = () => {
       if (done) return;
       done = true;
-      clearTimeout(J.sayTimer);
+      for (const k of ["sayTimer", "voiceDog"]) clearTimeout(J[k]);
       clearInterval(J.revealTimer);
       revealTo(1e9);
       resolve();
     };
-    if (!("speechSynthesis" in window) || !text.trim()) {
+    // Nur Untertitel, im Lesetempo
+    const showAll = () => {
       showSay(text);
       revealTo(1e9);
-      return setTimeout(finish, Math.min(8000, 400 + text.length * 45));
-    }
-    speechSynthesis.cancel();
+    };
+    const captions = () => {
+      showAll();
+      clearTimeout(J.sayTimer);
+      J.sayTimer = setTimeout(finish, Math.min(7000, 400 + text.length * 40));
+    };
+    J.finishSpeak = finish;
+    if (!("speechSynthesis" in window) || !text.trim()) return captions();
+    stopRec();
+    audioMode("playback");
     // Sätze bilden, sehr kurze Stücke an den nächsten Satz hängen
     // Satzende nur bei . ! ? mit folgendem Leerzeichen – „1.500“ oder „3,5.“ bleiben ganz
     const parts = [];
@@ -822,39 +879,102 @@ function speakOut(text) {
     };
     for (let i = 0; i < text.length; i++) if (".!?".includes(text[i]) && (i + 1 === text.length || /\s/.test(text[i + 1]))) push(i + 1);
     push(text.length);
+
+    const attempt = (v, canRetry) => {
+      const run = (J.speakRun = (J.speakRun || 0) + 1);
+      const live = () => !done && token === J.speakToken && run === J.speakRun;
+      let left = parts.length;
+      let started = false;
+      let bounded = false;
+      const fallback = () => {
+        if (!live()) return;
+        J.speakRun++;
+        clearTimeout(J.voiceDog);
+        try {
+          speechSynthesis.cancel();
+        } catch (_) {
+          /* nichts zu stoppen */
+        }
+        showAll(); // während des zweiten Versuchs schon mitlesen
+        if (canRetry && v) {
+          J.badVoice = v.name;
+          return setTimeout(() => token === J.speakToken && !done && attempt(null, false), 120);
+        }
+        J.voiceFailed = true;
+        voiceHint();
+        captions();
+      };
+      // Referenzen halten: Chrome verliert sonst Ereignisse von Äußerungen, die der Speicher schon aufgeräumt hat
+      J.utts = parts.map((p) => {
+        const u = new SpeechSynthesisUtterance(p.text.trim());
+        u.lang = v?.lang || "de-DE";
+        try {
+          if (v) u.voice = v;
+        } catch (_) {
+          /* Stimme nicht mehr vorhanden: Standardstimme */
+        }
+        u.pitch = isMale(v) ? 0.95 : 0.72; // ohne Männerstimme im System: vorhandene Stimme tiefer
+        u.rate = 1.02;
+        // Untertitel wie im Film: nur der Satz, der gerade gesprochen wird
+        u.onstart = () => {
+          if (!live()) return;
+          started = true;
+          J.voiceOk = true;
+          J.voiceFailed = false;
+          clearTimeout(J.voiceDog);
+          J.kick = 0.7;
+          J.partStart = performance.now();
+          showSay(p.text.trim());
+          revealTo(0);
+        };
+        u.onboundary = (e) => {
+          if (!live()) return;
+          bounded = true;
+          J.kick = 0.85;
+          revealTo(e.charIndex);
+        };
+        u.onend = () => {
+          if (!live()) return;
+          revealTo(1e9);
+          if (--left <= 0) finish();
+        };
+        u.onerror = (e) => {
+          if (!live()) return;
+          // Vor dem ersten Wort gescheitert (blockiert, Stimme fehlt): anders versuchen
+          if (!started && !/interrupted|canceled/.test(e.error || "")) return fallback();
+          u.onend();
+        };
+        return u;
+      });
+      const go = () => {
+        if (!live()) return;
+        try {
+          speechSynthesis.resume?.(); // Chrome bleibt sonst manchmal pausiert
+          for (const u of J.utts) speechSynthesis.speak(u);
+        } catch (_) {
+          fallback();
+        }
+      };
+      // Läuft noch etwas, erst stoppen – direkt danach „speak“ verschlucken manche Browser
+      if (speechSynthesis.speaking || speechSynthesis.pending) {
+        speechSynthesis.cancel();
+        setTimeout(go, 80);
+      } else go();
+      // Wachhund: kommt kein Ton, nicht stumm hängen bleiben
+      J.voiceDog = setTimeout(() => !started && fallback(), 1800);
+      // Ohne Wort-Ereignisse der Stimme: Untertitel im Sprechtempo einblenden
+      clearInterval(J.revealTimer);
+      J.revealTimer = setInterval(() => {
+        if (bounded || !started) return bounded && clearInterval(J.revealTimer);
+        revealTo(((performance.now() - (J.partStart || performance.now())) / 1000) * 15); // ca. 15 Zeichen pro Sekunde
+      }, 110);
+      clearTimeout(J.sayTimer);
+      J.sayTimer = setTimeout(() => live() && finish(), 5500 + text.length * 85); // Sicherheitsnetz, falls „end“ nie kommt
+    };
+    // Klappte die Stimme zuletzt gar nicht, gleich mitlesen lassen; eine defekte Stimme nicht noch einmal versuchen
+    if (J.voiceFailed) showAll();
     const v = bestVoice || pickVoice();
-    let left = parts.length;
-    let bounded = false;
-    for (const p of parts) {
-      const u = new SpeechSynthesisUtterance(p.text.trim());
-      u.lang = "de-DE";
-      u.voice = v;
-      u.pitch = isMale(v) ? 0.95 : 0.72; // ohne Männerstimme im System: vorhandene Stimme tiefer
-      u.rate = 1.02;
-      // Untertitel wie im Film: nur der Satz, der gerade gesprochen wird
-      u.onstart = () => {
-        J.kick = 0.7;
-        J.partStart = performance.now();
-        showSay(p.text.trim());
-        revealTo(0);
-      };
-      u.onboundary = (e) => {
-        bounded = true;
-        J.kick = 0.85;
-        revealTo(e.charIndex);
-      };
-      u.onend = u.onerror = () => {
-        revealTo(1e9);
-        if (--left <= 0) finish();
-      };
-      speechSynthesis.speak(u);
-    }
-    // Ohne Wort-Ereignisse der Stimme: Untertitel im Sprechtempo einblenden
-    J.revealTimer = setInterval(() => {
-      if (bounded) return clearInterval(J.revealTimer);
-      revealTo(((performance.now() - (J.partStart || performance.now())) / 1000) * 15); // ca. 15 Zeichen pro Sekunde
-    }, 110);
-    J.sayTimer = setTimeout(finish, 3000 + text.length * 85); // Sicherheitsnetz, falls „end“ nie kommt
+    attempt(v && v.name !== J.badVoice ? v : null, !J.voiceFailed);
   });
 }
 
