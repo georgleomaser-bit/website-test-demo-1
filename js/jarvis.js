@@ -278,21 +278,30 @@ function build() {
       <p class="jv-say" aria-live="polite"></p>
       <div class="jv-acts"></div>
     </div>
-    <div class="jv-moodbox" hidden role="dialog" aria-label="Emotionen von Jarvis">
+    <div class="jv-moodbox" hidden role="dialog" aria-label="Emotionen und Stimme von Jarvis">
       <p class="jv-mb-h">STIMMUNG</p><div class="jv-mb-row" data-mb="mood"></div>
       <p class="jv-mb-h">EMOTIONEN ZEIGEN</p><div class="jv-mb-row" data-mb="react"></div>
+      <p class="jv-mb-h">STIMME</p><div class="jv-mb-row jv-voices" data-mb="voice"></div>
+      <div class="jv-sliders"><label>TEMPO<input type="range" min="0.8" max="1.3" step="0.02" data-vp="rate"></label><label>TONHÖHE<input type="range" min="0.6" max="1.4" step="0.02" data-vp="pitch"></label></div>
     </div>
     <p class="jv-keys" aria-hidden="true">LEERTASTE · SPRECHEN &nbsp; ESC · BEENDEN &nbsp; ALT+J · JARVIS</p>
     <div class="jv-controls">
       <form class="jv-type" hidden><input type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag Jarvis … (🎤 auf der Tastatur zum Diktieren)" aria-label="Frage an Jarvis" /></form>
       <button class="jv-btn" data-jv="mood" title="Emotionen wählen" aria-label="Emotionen wählen">🎭</button>
-      <button class="jv-btn" data-jv="voice" title="Stimme wechseln" aria-label="Stimme wechseln">🗣</button>
+      <button class="jv-btn" data-jv="voice" title="Stimme wählen" aria-label="Stimme wählen">🗣</button>
       <button class="jv-btn jv-micbtn" data-jv="mic" title="Mikrofon an/aus" aria-label="Mikrofon an oder aus">🎙</button>
       <button class="jv-btn" data-jv="chat" title="Im Chat weiterlesen" aria-label="Chat öffnen">💬</button>
       <button class="jv-btn jv-end" data-jv="close" title="Jarvis beenden (Esc)" aria-label="Jarvis beenden">✕</button>
     </div>`;
   document.body.appendChild(el);
   el.addEventListener("click", onClick);
+  // Tempo/Tonhöhe: nach dem Loslassen speichern und vorführen
+  el.addEventListener("change", (e) => {
+    const k = e.target.dataset?.vp;
+    if (!k) return;
+    keep(VP_KEY, { ...voicePrefs(), [k]: +e.target.value });
+    speakOut(k === "rate" ? "So schnell spreche ich jetzt." : "So klingt meine Stimme jetzt.").then(() => J.on && !J.typing && !J.rec && listen());
+  });
   el.querySelector(".jv-type").addEventListener("submit", (e) => {
     e.preventDefault();
     const inp = e.target.querySelector("input");
@@ -344,6 +353,40 @@ function updateMoodBox() {
   box.querySelector('[data-mb="react"]').innerHTML = Object.entries(REACTIONS)
     .map(([k, v]) => `<button class="jv-mchip ${r[k] ? "on" : ""}" data-react="${k}" aria-pressed="${!!r[k]}" title="${v.label} ${v.desc}"><i>${v.icon}</i>${v.label}</button>`)
     .join("");
+  paintVoices(box);
+}
+// Stimme wählen wie bei Siri: alle deutschen Stimmen des Geräts, Probehören, Tempo und Tonhöhe
+const VP_KEY = "akytex-jarvis-voiceprefs";
+const voicePrefs = () => ({ rate: 1, pitch: 1, ...load(VP_KEY, {}) });
+const HD = /(premium|enhanced|neural|natural|online)/i;
+function chooseVoice(name) {
+  const v = germanVoices().find((x) => x.name === name);
+  if (!v) return;
+  bestVoice = v;
+  try {
+    localStorage.setItem(VOICE_KEY, v.name);
+  } catch (_) {
+    /* nur für diese Sitzung */
+  }
+  updateMoodBox();
+  updateHud();
+  speakOut(`Hallo ${jarvisTitle()}, so klinge ich als ${v.name.split(/[ (]/)[0]}.`).then(() => J.on && !J.typing && !J.rec && listen());
+}
+function paintVoices(box) {
+  const row = box.querySelector('[data-mb="voice"]');
+  const vs = germanVoices().sort((a, b) => isMale(b) - isMale(a) || HD.test(b.name) - HD.test(a.name) || a.name.localeCompare(b.name));
+  const cur = (bestVoice || pickVoice())?.name;
+  const short = (n) => n.replace(/\s*\(.*\)$/, "").replace(/^(Microsoft|Google)\s+/, "").slice(0, 22);
+  row.innerHTML = vs.length
+    ? vs.map((v) => `<button class="jv-mchip ${v.name === cur ? "on" : ""}" data-voice="${esc(v.name)}" title="${esc(v.name)}"><i>▶</i>${esc(short(v.name))}${HD.test(v.name) ? " <em>HD</em>" : isMale(v) ? " <em>♂</em>" : ""}</button>`).join("")
+    : `<small class="muted">Auf diesem Gerät ist keine deutsche Stimme installiert.</small>`;
+  const hint = maleHint();
+  if (hint) row.insertAdjacentHTML("beforeend", `<small class="jv-vhint">${esc(hint)}</small>`);
+  const vp = voicePrefs();
+  for (const k of ["rate", "pitch"]) {
+    const inp = box.querySelector(`[data-vp="${k}"]`);
+    if (inp && document.activeElement !== inp) inp.value = vp[k];
+  }
 }
 function toggleMoodBox(show) {
   const box = root().querySelector(".jv-moodbox");
@@ -425,7 +468,12 @@ function onClick(e) {
     return J.deps.upsell();
   }
   if (b?.dataset.jv === "mic") return toggleMute();
-  if (b?.dataset.jv === "voice") return cycleVoice();
+  if (b?.dataset.jv === "voice") {
+    toggleMoodBox(true);
+    return root().querySelector(".jv-voices")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+  const vc = e.target.closest("[data-voice]");
+  if (vc) return chooseVoice(vc.dataset.voice);
   if (b?.dataset.jv === "mood") return toggleMoodBox();
   const mc = e.target.closest("[data-mood], [data-react]");
   if (mc?.dataset.mood) return previewMood(mc.dataset.mood);
@@ -1109,6 +1157,10 @@ async function handle(text) {
     await speakOut(`Wähle meine Stimmung: ${Object.values(MOODS).map((m) => m.label).join(", ")} oder Auto. Darunter legst du fest, welche Gefühle ich zeige.`);
     return J.on && next();
   }
+  if (/(andere|nächste|neue) stimme|stimme (wechseln|ändern|tauschen)/.test(t)) {
+    toggleMoodBox(true);
+    return cycleVoice();
+  }
   const rx = reactFromSpeech(t);
   if (rx) {
     setReactions(rx.r);
@@ -1302,8 +1354,9 @@ function speakOut(text) {
         } catch (_) {
           /* Stimme nicht mehr vorhanden: Standardstimme */
         }
-        u.pitch = Math.max(0.3, (isMale(v) ? 0.95 : 0.72) + md.pitch + mod.pitch); // ohne Männerstimme im System: vorhandene Stimme tiefer
-        u.rate = Math.min(1.4, 1.02 * md.rate * mod.rate);
+        const vp = voicePrefs();
+        u.pitch = Math.min(2, Math.max(0.3, ((isMale(v) ? 0.95 : 0.72) + md.pitch + mod.pitch) * vp.pitch)); // ohne Männerstimme im System: vorhandene Stimme tiefer
+        u.rate = Math.min(1.6, 1.02 * md.rate * mod.rate * vp.rate);
         // Untertitel wie im Film: nur der Satz, der gerade gesprochen wird
         u.onstart = () => {
           if (!live()) return;
