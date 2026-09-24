@@ -3,6 +3,7 @@
 `server/akytex-server.mjs` ist euer eigener Server. Er macht zwei Dinge:
 1. **Liefert die komplette Website aus**, also dieselbe App wie auf GitHub Pages.
 2. **Betreibt den Clip-Feed für alle:** Videos hochladen und abspielen, Likes, Kommentare, Meldungen und Moderation.
+3. **Betreibt die Lounge:** Warteraum, Freunde adden, Sprach- und Videocalls.
 
 Läuft die App über diesen Server, sieht jeder Nutzer die Clips aller anderen Nutzer. Auf GitHub Pages bleibt alles wie bisher: Clips werden dort nur lokal im Browser gespeichert. Die App erkennt automatisch, welcher Fall vorliegt.
 
@@ -62,6 +63,29 @@ docker build -t akytex .
 docker run -d --restart=always -p 8080:8080 -v akytex-data:/data -e ADMIN_TOKEN=... -e TRUST_PROXY=1 akytex
 ```
 Davor einen Reverse-Proxy mit HTTPS setzen, z. B. Caddy mit der Zeile `akytex.org { reverse_proxy localhost:8080 }`, oder wieder den Cloudflare Tunnel nutzen.
+
+## Lounge (Warteraum, Freunde, Calls)
+Die Lounge läuft automatisch mit, sobald die App über diesen Server aufgerufen wird. Das bietet sie:
+- Warteraum mit Anwesenheit
+- Freundschaftsanfragen, Blockieren und Melden
+- Calls mit Sprache, Video und Bildschirm teilen, bis 8 Personen pro Call
+- Einladungen, die überall in der App klingeln
+
+Datenschutz: Audio und Video laufen per WebRTC **direkt zwischen den Geräten**, verschlüsselt. Der Server vermittelt nur den Verbindungsaufbau und zeichnet nichts auf.
+
+- **Wer darf was?**
+  - Offene Calls sieht jeder im Warteraum.
+  - Private Calls sehen nur Freunde und Eingeladene.
+  - Einladen kann man nur Freunde.
+  - Wer den Call leitet, kann Personen entfernen (🚪).
+  - Blockierte Personen sehen sich nicht mehr und können sich nicht adden, einladen oder verbinden.
+- **Verbindungsprobleme:** Manche Mobilfunk- und Firmennetze blockieren direkte Verbindungen. Dafür gibt es TURN-Server als Umleitung, z. B. `coturn` auf eurem VPS oder ein TURN-Dienst:
+  ```bash
+  TURN_URLS="turn:turn.akytex.org:3478" TURN_USER="akytex" TURN_PASS="geheim" npm start
+  ```
+  Ohne TURN funktionieren die meisten Calls trotzdem, über den STUN-Server von Cloudflare. Einen anderen STUN-Server stellt ihr mit `STUN_URLS` ein.
+- Die Seite muss über **HTTPS** laufen, sonst erlauben Browser weder Mikrofon noch Kamera. Mit Cloudflare Tunnel oder Caddy ist das automatisch so.
+- Nutzer-Meldungen aus der Lounge: `npm run admin user-reports`. Sperren mit `npm run admin ban <userId>` wirft die Person sofort aus allen Calls.
 
 ## 3. Moderieren
 Ihr seid für die Inhalte auf eurem Server mitverantwortlich. Meldungen müsst ihr zügig prüfen (Digital Services Act).
