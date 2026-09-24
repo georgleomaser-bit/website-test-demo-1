@@ -2032,3 +2032,7 @@ body[data-view="ai"] .jarvis-hint { bottom: calc(18px + env(safe-area-inset-bott
 }
 .clips-empty-cta { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
 .clips-feed > .clips-empty { max-width: 420px; padding: 24px; text-align: center; }
+.clip-check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; line-height: 1.45; }
+.clip-check input { margin-top: 3px; width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); }
+/* Im Clips-Feed auf dem Handy: KI-Knopf nach oben, damit er die Clip-Leiste nicht verdeckt */
+@media (max-width: 900px) { body[data-view="clips"] .jarvis-fab { bottom: auto; top: calc(var(--clips-top, 120px) + 118px); transform: scale(0.8); } }

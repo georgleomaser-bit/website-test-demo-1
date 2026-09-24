@@ -1,0 +1,11 @@
+{
+  "name": "akytex",
+  "private": true,
+  "type": "module",
+  "description": "AKYTEX – Website und eigener Server für den Clip-Feed",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server/akytex-server.mjs",
+    "admin": "node server/admin.mjs"
+  }
+}

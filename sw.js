@@ -1,5 +1,5 @@
 // Service Worker: macht AKYTEX offline nutzbar und installierbar.
-const VERSION = "akytex-v3.8.0";
+const VERSION = "akytex-v3.9.0";
 const ASSETS = [
   "./",
   "./index.html",
@@ -32,6 +32,7 @@ const ASSETS = [
   "./js/scheduler.js",
   "./js/shop.js",
   "./js/clips.js",
+  "./js/cloud.js",
   "./404.html",
   "./icons/og-image.png",
   "./js/vendor/lightweight-charts.standalone.production.js",
@@ -57,7 +58,9 @@ self.addEventListener("activate", (e) => {
 // Netzwerk zuerst (immer aktuell), bei Offline aus dem Cache
 self.addEventListener("fetch", (e) => {
   const req = e.request;
-  if (req.method !== "GET" || new URL(req.url).origin !== location.origin) return;
+  const u = new URL(req.url);
+  // Server-API (Clips, Videos) nie cachen – immer live vom AKYTEX-Server
+  if (req.method !== "GET" || u.origin !== location.origin || u.pathname.includes("/api/")) return;
   e.respondWith(
     fetch(req)
       .then((res) => {

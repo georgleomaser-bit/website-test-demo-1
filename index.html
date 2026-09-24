@@ -884,7 +884,8 @@
         <div class="clip-drop" id="clip-drop"><input type="file" id="clip-file" accept="video/mp4,video/webm,video/quicktime" hidden /><div id="clip-drop-inner"><b>Video auswählen</b><span class="muted small">MP4, WebM oder MOV · max. 60 MB · Hochformat empfohlen</span></div></div>
         <label class="field"><span>Beschreibung</span><input type="text" id="clip-caption" maxlength="150" placeholder="Worum geht's? #hashtags" required /></label>
         <label class="field"><span>Aktie verknüpfen</span><select id="clip-sym"></select></label>
-        <p class="muted small">Mit dem Hochladen bestätigst du, dass du die Rechte am Video hast und es keine Anlageberatung darstellt.</p>
+        <label class="clip-check"><input type="checkbox" id="clip-rights" /> <span class="small">Ich habe die Rechte an Video und Musik, alle erkennbaren Personen sind einverstanden, und der Clip ist keine Anlageberatung. Es gelten die <a href="#legal" data-legal="terms">AGB</a>.</span></label>
+        <p class="muted small" id="clip-scope"></p>
         <button class="btn primary" id="clip-submit">Veröffentlichen</button>
       </form>
     </div>
