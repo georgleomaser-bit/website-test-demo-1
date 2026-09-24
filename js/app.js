@@ -1295,6 +1295,28 @@ function openPlans(reason) {
   }
   openModal("#plans-modal");
 }
+// Gründer-Deal: Einmalzahlung für 12 Monate, ehrlich als Monatspreis verglichen
+function renderFounderDeal() {
+  const f = CONFIG.stripe.founder;
+  if (PAYMENT_CONFIG.mode !== "live" || !f?.pro?.link) return;
+  const reg = { pro: planById("pro").monthly, ai: planById("ai").monthly };
+  const html = (compact) => `<div class="fd-head"><span class="fd-badge">Gründer-Deal</span><b>Nur für die ersten ${f.spots} Mitglieder – Einmalzahlung, kein Abo</b></div>
+    <div class="fd-offers">${[["pro", "Pro"], ["ai", "AKYTEX AI"]].map(([id, name]) => `<a class="fd-offer ${id}" href="${esc(f[id].link)}" data-founder="${id}"><span>${name} · 12 Monate</span><b>${eur(f[id].price)}</b><small>entspricht ${eur(f[id].price / 12)}/Monat statt ${eur(reg[id])} im Monatsabo</small></a>`).join("")}</div>
+    ${compact ? "" : `<small class="muted">Sofort nutzbar, endet automatisch nach 12 Monaten. Sichere Zahlung über Stripe. Der Handel läuft mit virtuellem Geld.</small>`}`;
+  for (const [id, compact] of [["#founder-deal", false], ["#founder-deal-plans", true]]) {
+    const el = $(id);
+    if (!el) continue;
+    el.innerHTML = html(compact);
+    el.hidden = false;
+  }
+}
+document.addEventListener("click", (e) => {
+  const a = e.target.closest("[data-founder]");
+  if (!a) return;
+  // E-Mail und Kunden-Referenz wie bei den Abos vorbelegen
+  e.preventDefault();
+  location.href = stripeUrl(a.getAttribute("href"));
+});
 function applyPromoInput() {
   const code = $("#plans-promo-input").value.trim().toUpperCase().replace(/[^A-Z0-9-]/g, "");
   promoCode = code;
@@ -3012,9 +3034,18 @@ function handleStripeReturn() {
   history.replaceState(null, "", location.pathname + location.hash);
   if (st === "cancel") return toast("Der Bezahlvorgang wurde abgebrochen. Es wurde nichts berechnet.", "info", "Abgebrochen");
   const planId = q.get("plan");
-  const billing = q.get("billing") === "yearly" ? "yearly" : "monthly";
+  const billing = q.get("billing") === "yearly" ? "yearly" : "monthly"; // "founder" = Einmalzahlung (siehe unten)
   if (st !== "success" || !planId || !PLANS.some((p) => p.id === planId)) return;
-  account.subscribe(quote({ planId, billing, addons: [] }), { type: "stripe", label: "Stripe" });
+  if (billing === "yearly" || q.get("billing") !== "founder") account.subscribe(quote({ planId, billing, addons: [] }), { type: "stripe", label: "Stripe" });
+  else {
+    // Gründer-Deal: Einmalzahlung, 12 Monate, keine Verlängerung
+    const now = Date.now();
+    const f = CONFIG.stripe.founder[planId] || { price: 0 };
+    const ends = now + 365 * 86400000;
+    account.state.sub = { plan: planId, billing: "founder", status: "founder", started: now, trialEnds: now, renews: ends, cancelAt: ends, perMonth: f.price / 12, total: f.price, promo: null };
+    account.state.method = { type: "stripe", label: "Stripe (Einmalzahlung)" };
+    account.save();
+  }
   // Kaufnummer von Stripe merken – damit lässt sich das Abo später eindeutig prüfen (Support, Server-Abgleich)
   if (q.get("session_id")) {
     account.state.sub.stripeSession = q.get("session_id");
@@ -3025,7 +3056,7 @@ function handleStripeReturn() {
   setPlan(planId, true);
   syncAccountUI();
   confetti();
-  toast(`Dein Abo ${planTitle(planById(planId))} ist aktiv. Den Beleg schickt dir Stripe per E-Mail.`, "success", "Zahlung erfolgreich");
+  toast(q.get("billing") === "founder" ? `Willkommen als Gründer-Mitglied! ${planTitle(planById(planId))} ist 12 Monate aktiv. Die Rechnung schickt dir Stripe per E-Mail.` : `Dein Abo ${planTitle(planById(planId))} ist aktiv. Den Beleg schickt dir Stripe per E-Mail.`, "success", "Zahlung erfolgreich");
 }
 function openPay(order) {
   const saved = account.state.method;
@@ -3781,7 +3812,7 @@ function bindCancel() {
 function checkSubscription() {
   const sub = account.state.sub;
   if (!sub) return;
-  if (sub.status === "canceled" && Date.now() >= sub.cancelAt) {
+  if ((sub.status === "canceled" || sub.status === "founder") && Date.now() >= sub.cancelAt) {
     account.state.sub = null;
     account.save();
     setPlan("free", true);
@@ -3919,9 +3950,9 @@ function renderAccount() {
       : `<div class="empty-state"><div class="orb small"><i></i><i></i><i></i></div><h3>Noch kein Konto</h3><p class="muted">Erstelle ein kostenloses Profil – in 30 Sekunden.</p><button class="btn primary" data-onboard>Konto erstellen</button></div>`;
   } else if (acctTab === "billing") {
     const p = plan();
-    html = `<div class="bill-card ${p.group ? "ai" : ""}"><div><span class="usp-eyebrow">Dein Tarif</span><h2>${planTitle(p)}</h2><p class="muted">${sub ? `${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"} · ${sub.billing === "yearly" ? "jährlich" : "monatlich"}` : p.monthly ? "Direkt aktiviert (ohne Checkout)" : "Kostenlos"}</p></div>
-        ${sub ? `<span class="status-pill ${sub.status}">${{ trial: "Testphase", active: "Aktiv", canceled: "Gekündigt" }[sub.status]}</span>` : ""}</div>
-      ${sub ? `<div class="kv"><div><span>${sub.status === "trial" ? "Testphase bis" : sub.status === "canceled" ? "Endet am" : "Nächste Abbuchung"}</span><b>${new Date(sub.status === "canceled" ? sub.cancelAt : sub.status === "trial" ? sub.trialEnds : sub.renews).toLocaleDateString("de-DE")}</b></div><div><span>Zahlungsmethode</span><b>${esc(account.state.method?.label || "–")}</b></div><div><span>Gutschein</span><b>${sub.promo || "–"}</b></div></div>` : ""}
+    html = `<div class="bill-card ${p.group ? "ai" : ""}"><div><span class="usp-eyebrow">Dein Tarif</span><h2>${planTitle(p)}</h2><p class="muted">${sub?.billing === "founder" ? `${eur(sub.total)} einmalig · 12 Monate, keine Verlängerung` : sub ? `${eur(sub.total)} ${sub.billing === "yearly" ? "pro Jahr" : "pro Monat"} · ${sub.billing === "yearly" ? "jährlich" : "monatlich"}` : p.monthly ? "Direkt aktiviert (ohne Checkout)" : "Kostenlos"}</p></div>
+        ${sub ? `<span class="status-pill ${sub.status}">${{ trial: "Testphase", active: "Aktiv", canceled: "Gekündigt", founder: "Gründer-Mitglied" }[sub.status]}</span>` : ""}</div>
+      ${sub ? `<div class="kv"><div><span>${sub.status === "trial" ? "Testphase bis" : sub.status === "canceled" || sub.status === "founder" ? "Endet am" : "Nächste Abbuchung"}</span><b>${new Date(sub.status === "canceled" || sub.status === "founder" ? sub.cancelAt : sub.status === "trial" ? sub.trialEnds : sub.renews).toLocaleDateString("de-DE")}</b></div><div><span>Zahlungsmethode</span><b>${esc(account.state.method?.label || "–")}</b></div><div><span>Gutschein</span><b>${sub.promo || "–"}</b></div></div>` : ""}
       <div class="btn-row"><button class="btn primary" data-open-plans>Tarif wechseln</button>${sub ? `<button class="btn" data-change-method>Zahlungsmethode ändern</button>` : ""}${PAYMENT_CONFIG.stripePortal ? `<a class="btn" href="${PAYMENT_CONFIG.stripePortal}" target="_blank" rel="noopener">Kundenportal</a>` : ""}</div>
       <div class="cancel-zone"><div><b>Kündigen</b><small class="muted">Jederzeit zum Ende der Laufzeit – ohne Umwege.</small></div><button class="btn danger" data-cancel-open>Verträge hier kündigen</button></div>`;
   } else if (acctTab === "invoices") {
@@ -5537,6 +5568,7 @@ function startLive() {
     });
     $("#reset-btn")?.remove();
   }
+  renderFounderDeal();
   // Direktlinks auf Rechtstexte, z. B. #legal-privacy (für Stripe und E-Mails)
   const legalHash = () => {
     const m = location.hash.match(/^#legal-(impressum|privacy|terms|withdrawal|risk)$/);

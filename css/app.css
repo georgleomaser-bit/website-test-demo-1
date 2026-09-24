@@ -1931,3 +1931,17 @@ body[data-view="ai"] .jarvis-hint { bottom: calc(18px + env(safe-area-inset-bott
   .jarvis-hint { bottom: calc(142px + env(safe-area-inset-bottom)); }
 }
 @media (prefers-reduced-motion: reduce) { .mic-btn.rec { animation: none; } }
+
+/* Gründer-Deal */
+.founder-deal { display: flex; flex-direction: column; gap: 10px; margin: 18px 0 6px; padding: 14px; border-radius: 18px; border: 1px solid rgba(255, 207, 110, 0.45); background: linear-gradient(135deg, rgba(255, 207, 110, 0.12), rgba(124, 92, 255, 0.1) 60%, transparent), var(--panel); max-width: 560px; }
+.founder-deal.compact { max-width: none; margin: 0 0 12px; }
+.fd-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+.fd-badge { font: 800 10.5px/1 var(--font-display); letter-spacing: 0.08em; text-transform: uppercase; padding: 5px 9px; border-radius: 999px; color: #1a1205; background: linear-gradient(100deg, #ffcf6e, #ffb347); }
+.fd-offers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.fd-offer { display: flex; flex-direction: column; gap: 2px; padding: 12px; border-radius: 14px; border: 1px solid var(--border); background: var(--panel-2); color: inherit; text-decoration: none; transition: transform 0.45s var(--spring), border-color 0.25s, box-shadow 0.3s; }
+.fd-offer:hover { transform: translateY(-2px); border-color: #ffcf6e; box-shadow: 0 10px 30px rgba(255, 207, 110, 0.18); }
+.fd-offer span { font-size: 12.5px; color: var(--text-2); }
+.fd-offer b { font-family: var(--font-display); font-size: 24px; letter-spacing: -0.02em; }
+.fd-offer small { font-size: 11.5px; color: var(--muted); }
+.fd-offer.ai { background: linear-gradient(135deg, rgba(124, 156, 255, 0.16), rgba(255, 207, 110, 0.08)), var(--panel-2); }
+@media (max-width: 520px) { .fd-offers { grid-template-columns: 1fr; } }
