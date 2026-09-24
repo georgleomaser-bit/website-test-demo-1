@@ -35,7 +35,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "4.6"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "4.7"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -6517,6 +6517,11 @@ function initAssistant() {
     upsell: () => openPlans("Jarvis, der Sprachmodus, ist Teil von AKYTEX Ultra."),
     score: jarvisScore,
     quickStatus: jarvisQuickStatus,
+    hud: () => ({
+      depot: eur(broker.equity()),
+      market: `${STOCKS.filter((x) => market.quote(x.s).changePct > 0).length}/${STOCKS.length} ▲`,
+      mode: profitOn() ? "PROFIT" : aiEngine.state.config.enabled ? "AUTOPILOT" : "BEREIT",
+    }),
   });
   $("#jv-start").addEventListener("click", () => startJarvis());
   // Λ-Knopf: antippen = Chat, gedrückt halten und loslassen = Jarvis.

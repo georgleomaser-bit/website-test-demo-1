@@ -130,18 +130,27 @@ export function cleanUtterance(t) {
     .trim();
 }
 
-// ---------- Oberfläche ----------
+// ---------- Oberfläche: HUD wie im Film ----------
 function build() {
   const el = document.createElement("div");
   el.className = "jv";
   el.id = "jv";
   el.hidden = true;
-  el.innerHTML = `<div class="jv-shade" aria-hidden="true"></div>
-    <div class="jv-edge" aria-hidden="true"></div><div class="jv-edge jv-soft" aria-hidden="true"></div><div class="jv-edge jv-wide" aria-hidden="true"></div>
-    <div class="jv-card" role="status" aria-live="polite"><p class="jv-say"></p><div class="jv-acts"></div></div>
-    <div class="jv-pill" role="dialog" aria-label="Jarvis – Sprachmodus">
-      <canvas class="jv-orb" aria-hidden="true"></canvas>
-      <div class="jv-txt"><span class="jv-state">Ich höre zu …</span><span class="jv-you"></span></div>
+  el.innerHTML = `<div class="jv-edge" aria-hidden="true"></div><div class="jv-edge jv-soft" aria-hidden="true"></div><div class="jv-edge jv-wide" aria-hidden="true"></div>
+    <div class="jv-hud" aria-hidden="true">
+      <i class="jv-fr tl"></i><i class="jv-fr tr"></i><i class="jv-fr bl"></i><i class="jv-fr br"></i>
+      <div class="jv-top"><span class="jv-brand">J.A.R.V.I.S. <em>· AKYTEX</em></span><span class="jv-meter">${"<i></i>".repeat(24)}</span><span class="jv-clock" data-hud="clock"></span></div>
+      <div class="jv-side jv-left"><p>DEPOT<b data-hud="depot">–</b></p><p>MARKT<b data-hud="market">–</b></p><p>MODUS<b data-hud="mode">–</b></p></div>
+      <div class="jv-side jv-right"><p>STIMME<b data-hud="voice">–</b></p><p>ANREDE<b data-hud="title">–</b></p><p>STATUS<b data-hud="state">ONLINE</b></p></div>
+      <i class="jv-reticle"></i>
+    </div>
+    <div class="jv-stage" role="dialog" aria-label="Jarvis – Sprachmodus">
+      <div class="jv-core"><canvas class="jv-orb" aria-hidden="true"></canvas></div>
+      <div class="jv-txt"><span class="jv-state" aria-live="polite">HÖRE ZU</span><span class="jv-you"></span></div>
+      <p class="jv-say" aria-live="polite"></p>
+      <div class="jv-acts"></div>
+    </div>
+    <div class="jv-controls">
       <form class="jv-type" hidden><input type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag Jarvis … (🎤 auf der Tastatur zum Diktieren)" aria-label="Frage an Jarvis" /></form>
       <button class="jv-btn" data-jv="voice" title="Stimme wechseln" aria-label="Stimme wechseln">🗣</button>
       <button class="jv-btn jv-micbtn" data-jv="mic" title="Mikrofon an/aus" aria-label="Mikrofon an oder aus">🎙</button>
@@ -160,11 +169,50 @@ function build() {
   return el;
 }
 const root = () => $("#jv") || build();
+const LABELS = { listen: "HÖRE ZU", think: "ANALYSIERE", speak: "JARVIS", idle: "BEREIT · TIPPE AUF DEN KERN", muted: "MIKROFON AUS", upsell: "JARVIS", type: "SCHREIB ODER DIKTIERE" };
 function setState(s, label) {
   J.state = s;
   const el = root();
   el.dataset.state = s;
-  el.querySelector(".jv-state").textContent = label || { listen: "Ich höre zu …", think: "Einen Moment …", speak: "Jarvis", idle: "Tippe auf die Kugel", muted: "Mikrofon aus", upsell: "Jarvis" }[s] || "";
+  el.querySelector(".jv-state").textContent = label ? label.toUpperCase() : LABELS[s] || "";
+  const st = el.querySelector('[data-hud="state"]');
+  if (st) st.textContent = { listen: "HÖRT", think: "RECHNET", speak: "SPRICHT", idle: "BEREIT", type: "TEXT", muted: "STUMM" }[s] || "ONLINE";
+}
+// HUD-Anzeigen: Uhr, Depot, Markt, Modus – einmal pro Sekunde
+function updateHud() {
+  const el = root();
+  const set = (k, v) => {
+    const n = el.querySelector(`[data-hud="${k}"]`);
+    if (n && n.textContent !== v) n.textContent = v;
+  };
+  set("clock", new Date().toLocaleTimeString("de-DE"));
+  const h = J.deps?.hud?.() || {};
+  set("depot", h.depot || "–");
+  set("market", h.market || "–");
+  set("mode", h.mode || "BEREIT");
+  set("voice", ((bestVoice || pickVoice())?.name || "System").split(/[ (]/)[0].toUpperCase());
+  set("title", jarvisTitle().toUpperCase());
+}
+// Leiser Ton wie bei einem Assistenten: hoch = ich höre, runter = verstanden
+function chime(up) {
+  if (IOS || !J.ac) return;
+  try {
+    const c = J.ac;
+    const t = c.currentTime;
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(up ? 520 : 820, t);
+    o.frequency.exponentialRampToValueAtTime(up ? 880 : 460, t + 0.14);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.05, t + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+    o.connect(g).connect(c.destination);
+    o.start(t);
+    o.stop(t + 0.22);
+  } catch (_) {
+    /* ohne Web Audio kein Ton */
+  }
 }
 function onClick(e) {
   const b = e.target.closest("[data-jv], [data-jv-act]");
@@ -184,8 +232,8 @@ function onClick(e) {
     if (a) J.deps.runAction(a, b);
     return;
   }
-  // Kugel oder Text antippen: unterbrechen und zuhören
-  if (e.target.closest(".jv-orb, .jv-txt, .jv-say") && ["speak", "idle"].includes(J.state)) {
+  // Kern oder Text antippen: unterbrechen und zuhören
+  if (e.target.closest(".jv-core, .jv-txt, .jv-say") && ["speak", "idle"].includes(J.state)) {
     speechSynthesis?.cancel();
     clearTimeout(J.sayTimer);
     listen();
@@ -196,10 +244,9 @@ function typeMode(on) {
   J.typing = on;
   const f = root().querySelector(".jv-type");
   f.hidden = !on;
-  root().querySelector(".jv-txt").hidden = on;
   root().classList.toggle("typing", on);
   if (on) {
-    setState("type", "Schreib oder diktiere deine Frage");
+    setState("type");
     setTimeout(() => f.querySelector("input").focus(), 80);
   }
 }
@@ -244,77 +291,159 @@ function showActions(actions) {
   J.actions = actions || [];
   root().querySelector(".jv-acts").innerHTML = J.actions
     .slice(0, 3)
-    .map((a, i) => `<button class="${a.primary ? "btn primary small" : "mini-btn"}" data-jv-act="${i}">${esc(a.label)}</button>`)
+    .map((a, i) => `<button class="jv-chip ${a.primary ? "primary" : ""}" data-jv-act="${i}">${esc(a.label)}</button>`)
     .join("");
 }
 
-// ---------- Schillernde Kugel (Canvas, 60 fps, bildratenunabhängig) ----------
-const PAL = {
-  listen: [
-    [90, 170, 255],
-    [175, 110, 255],
-    [60, 230, 255],
-  ],
-  think: [
-    [255, 170, 90],
-    [255, 90, 130],
-    [190, 120, 255],
-  ],
-  speak: [
-    [190, 120, 255],
-    [255, 110, 180],
-    [110, 150, 255],
-  ],
-  idle: [
-    [120, 140, 190],
-    [160, 140, 210],
-    [110, 170, 210],
-  ],
-};
-PAL.muted = PAL.idle;
-PAL.upsell = PAL.speak;
-let cur = PAL.listen.map((c) => [...c]);
+// ---------- Der Kern: goldene Partikel-Kugel in 3D (Canvas, 60 fps) ----------
+const MOBILE = matchMedia("(max-width: 700px)").matches;
+const N = MOBILE ? 700 : 1100;
+const GOLD = Math.PI * (3 - Math.sqrt(5));
+// Partikel einmal erzeugen: Hülle (Fibonacci-Kugel), leuchtende Bänder, innere Wirbel und Umlaufbahnen
+const BANDS = [
+  [0.5, 0.2],
+  [-0.6, 1.1],
+  [1.2, 2.2],
+  [0.15, 2.9],
+  [-1.1, 0.6],
+];
+const PTS = Array.from({ length: N }, (_, i) => {
+  const m = i % 20;
+  const kind = m < 9 ? 0 : m < 15 ? 3 : m < 18 ? 1 : 2;
+  const seed = (i * 12.9898) % 6.283;
+  let x;
+  let y;
+  let z;
+  if (kind === 3) {
+    // Punkt auf einem geneigten Großkreis (wie die Bögen im Film)
+    const [tx, ty] = BANDS[i % BANDS.length];
+    const a = (i * 0.61803) % 6.283;
+    const j = 0.04 * Math.sin(i * 7.1);
+    const x0 = Math.cos(a);
+    const z0 = Math.sin(a);
+    const y1 = j * Math.cos(tx) - z0 * Math.sin(tx);
+    const z1 = j * Math.sin(tx) + z0 * Math.cos(tx);
+    x = x0 * Math.cos(ty) + z1 * Math.sin(ty);
+    z = -x0 * Math.sin(ty) + z1 * Math.cos(ty);
+    y = y1;
+  } else {
+    y = 1 - (2 * (i + 0.5)) / N;
+    const r = Math.sqrt(1 - y * y);
+    const ph = i * GOLD;
+    x = Math.cos(ph) * r;
+    z = Math.sin(ph) * r;
+  }
+  return { kind, x, y, z, rad: kind === 0 ? 0.9 + ((i * 37) % 19) / 100 : kind === 3 ? 0.97 + ((i * 11) % 9) / 100 : kind === 1 ? 0.2 + ((i * 53) % 50) / 100 : 1.12 + ((i * 29) % 30) / 100, seed, sp: 0.3 + ((i * 7) % 10) / 12 };
+});
+// Leuchtpunkte in festen Größen vorrendern – ohne Skalierung zeichnet der Browser sie am schnellsten
+const SPRITES = [3, 5, 7, 10, 14].map((n) => {
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const g = c.getContext("2d");
+  const h = n / 2;
+  const gr = g.createRadialGradient(h, h, 0, h, h, h);
+  gr.addColorStop(0, "rgba(255,246,222,1)");
+  gr.addColorStop(0.25, "rgba(255,196,100,0.95)");
+  gr.addColorStop(0.6, "rgba(255,140,40,0.3)");
+  gr.addColorStop(1, "rgba(255,110,0,0)");
+  g.fillStyle = gr;
+  g.fillRect(0, 0, n, n);
+  return { n, c };
+});
+const spriteFor = (size) => SPRITES[size < 4 ? 0 : size < 6 ? 1 : size < 8.5 ? 2 : size < 12 ? 3 : 4];
+const ARCS = Array.from({ length: 7 }, (_, i) => ({ r: 1.02 + i * 0.045, len: 0.5 + ((i * 3) % 5) * 0.28, off: i * 1.7, sp: (i % 2 ? -1 : 1) * (0.2 + i * 0.07), w: i % 3 === 0 ? 2.2 : 1.1 }));
+let heat = [255, 176, 72]; // Grundfarbe: Gold/Bernstein
+const HEAT = { listen: [255, 186, 90], think: [255, 150, 50], speak: [255, 200, 110], idle: [210, 150, 80], muted: [170, 120, 70], upsell: [255, 190, 100], type: [230, 170, 90] };
 function drawOrb(t, dt) {
   const cv = root().querySelector(".jv-orb");
   if (!cv || root().classList.contains("glow-only")) return;
-  const dpr = Math.min(2, devicePixelRatio || 1);
-  const css = cv.clientWidth || 44;
+  const dpr = Math.min(MOBILE ? 1.5 : 1.35, devicePixelRatio || 1);
+  const css = cv.clientWidth || 300;
   const S = Math.round(css * dpr);
   if (cv.width !== S) cv.width = cv.height = S;
   const x = cv.getContext("2d");
-  const k = 1 - Math.pow(0.03, dt);
-  const target = PAL[J.state] || PAL.listen;
-  cur = cur.map((c, i) => c.map((v, j) => v + (target[i][j] - v) * k));
-  const c = S / 2;
-  const R = S / 2;
+  const k = 1 - Math.pow(0.05, dt);
+  const target = HEAT[J.state] || HEAT.listen;
+  heat = heat.map((v, i) => v + (target[i] - v) * k);
+  const [hr, hg, hb] = heat.map((v) => v | 0);
   const L = J.lvl;
+  const c = S / 2;
+  const R = S * 0.3;
+  const spin = J.state === "think" ? 1.4 : J.state === "speak" ? 0.7 : 0.4;
+  J.ay = (J.ay || 0) + dt * (spin + L * 0.8);
+  const ax = 0.42 + 0.12 * Math.sin(t * 0.33);
+  const cy = Math.cos(J.ay);
+  const sy = Math.sin(J.ay);
+  const cx = Math.cos(ax);
+  const sx = Math.sin(ax);
   x.clearRect(0, 0, S, S);
-  x.save();
-  x.beginPath();
-  x.arc(c, c, R * (0.9 + 0.1 * L), 0, Math.PI * 2);
-  x.clip();
-  x.fillStyle = "#0b0d1a";
+  // weiches Glühen hinter der Kugel
+  const glow = x.createRadialGradient(c, c, 0, c, c, R * (1.7 + 0.4 * L));
+  glow.addColorStop(0, `rgba(${hr},${hg},${hb},${0.28 + 0.3 * L})`);
+  glow.addColorStop(0.45, `rgba(${hr},${(hg * 0.7) | 0},${(hb * 0.5) | 0},${0.1 + 0.12 * L})`);
+  glow.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = glow;
   x.fillRect(0, 0, S, S);
   x.globalCompositeOperation = "lighter";
-  for (let i = 0; i < 3; i++) {
-    const [r, g, b] = cur[i];
-    const a = t * (0.9 + i * 0.35 + L * 1.4) + i * 2.1;
-    const px = c + Math.cos(a) * R * (0.28 + 0.12 * Math.sin(t * 0.7 + i));
-    const py = c + Math.sin(a * 1.13) * R * (0.28 + 0.12 * Math.cos(t * 0.6 + i));
-    const gr = x.createRadialGradient(px, py, 0, px, py, R * (0.85 + 0.25 * L));
-    gr.addColorStop(0, `rgba(${r | 0},${g | 0},${b | 0},0.95)`);
-    gr.addColorStop(1, `rgba(${r | 0},${g | 0},${b | 0},0)`);
-    x.fillStyle = gr;
-    x.fillRect(0, 0, S, S);
+  // Partikel
+  const f = 3.2;
+  for (let i = 0; i < N; i++) {
+    const p = PTS[i];
+    const wob = 1 + L * 0.14 * Math.sin(p.seed * 3 + t * (2 + p.sp * 3)) + (p.kind === 1 ? 0.08 * Math.sin(t * p.sp + p.seed) : 0);
+    let px = p.x;
+    let py = p.y;
+    let pz = p.z;
+    if (p.kind === 2) {
+      // Umlaufbahn: flache Ringe um den Äquator
+      const a = p.seed + t * p.sp * 0.5;
+      px = Math.cos(a);
+      pz = Math.sin(a);
+      py = 0.08 * Math.sin(p.seed * 5);
+    }
+    const r = p.rad * wob;
+    const X = px * cy + pz * sy;
+    const Z0 = -px * sy + pz * cy;
+    const Y = py * cx - Z0 * sx;
+    const Z = py * sx + Z0 * cx;
+    const s = f / (f + Z * r);
+    const sxp = c + X * r * R * s;
+    const syp = c + Y * r * R * s;
+    const depth = (1 - Z) / 2;
+    const a = (p.kind === 1 ? 0.5 : p.kind === 3 ? 0.4 : 0.22) + 0.6 * depth * (0.6 + 0.4 * L);
+    const size = (p.kind === 3 ? 4.2 : p.kind === 1 ? 5 : 3.2) * (0.55 + 0.9 * depth) * dpr * (0.9 + 0.45 * L);
+    const sp = spriteFor(size);
+    x.globalAlpha = a > 1 ? 1 : a;
+    x.drawImage(sp.c, (sxp - sp.n / 2) | 0, (syp - sp.n / 2) | 0);
+  }
+  x.globalAlpha = 1;
+  // Bögen um die Kugel
+  x.lineCap = "round";
+  for (const A of ARCS) {
+    const from = A.off + t * A.sp * (1 + L);
+    x.strokeStyle = `rgba(${hr},${(hg * 0.85) | 0},${(hb * 0.6) | 0},${0.22 + 0.35 * L})`;
+    x.lineWidth = A.w * dpr;
+    x.beginPath();
+    x.ellipse(c, c, R * A.r, R * A.r * (0.94 + 0.06 * Math.sin(t + A.off)), ax * 0.2, from, from + A.len + L * 0.6);
+    x.stroke();
+  }
+  // heller Kern mit Wirbel
+  const core = x.createRadialGradient(c, c, 0, c, c, R * (0.42 + 0.22 * L));
+  core.addColorStop(0, `rgba(255,248,225,${0.85 + 0.15 * L})`);
+  core.addColorStop(0.35, `rgba(${hr},${hg},${(hb * 0.8) | 0},${0.55 + 0.3 * L})`);
+  core.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = core;
+  x.beginPath();
+  x.arc(c, c, R * (0.42 + 0.22 * L), 0, Math.PI * 2);
+  x.fill();
+  for (let j = 0; j < 3; j++) {
+    const a0 = t * (1.1 + j * 0.4) * (j % 2 ? -1 : 1) + j * 2.1;
+    x.strokeStyle = `rgba(255,${200 + j * 15},${120 + j * 30},${0.35 + 0.4 * L})`;
+    x.lineWidth = (1.2 + L * 1.5) * dpr;
+    x.beginPath();
+    x.ellipse(c, c, R * (0.2 + j * 0.07), R * (0.09 + j * 0.05), a0, 0, Math.PI * (1.1 + L * 0.6));
+    x.stroke();
   }
   x.globalCompositeOperation = "source-over";
-  // Glanzlicht wie bei einer Glaskugel
-  const hl = x.createRadialGradient(c - R * 0.35, c - R * 0.4, 0, c - R * 0.35, c - R * 0.4, R * 0.7);
-  hl.addColorStop(0, "rgba(255,255,255,0.55)");
-  hl.addColorStop(1, "rgba(255,255,255,0)");
-  x.fillStyle = hl;
-  x.fillRect(0, 0, S, S);
-  x.restore();
 }
 function loop(now) {
   J.raf = requestAnimationFrame(loop);
@@ -341,6 +470,10 @@ function loop(now) {
   root().style.setProperty("--lvl", J.lvl.toFixed(3));
   if (!REDUCED || !J.drawn) drawOrb(t, dt);
   J.drawn = true;
+  if (J.on && now - (J.hudAt || 0) > 1000) {
+    J.hudAt = now;
+    updateHud();
+  }
 }
 function startLoop() {
   if (!J.raf) {
@@ -401,7 +534,13 @@ export async function startJarvis() {
   const d = J.deps;
   if (J.on) return stopJarvis();
   if (!d.allowed() && !trialLeft()) return upsellCard(true);
-  // Sprachausgabe im Moment des Tippens freischalten (iOS/Safari spielen sonst später nichts ab)
+  // Sprachausgabe und Töne im Moment des Tippens freischalten (iOS/Safari spielen sonst später nichts ab)
+  try {
+    J.ac ||= new (window.AudioContext || window.webkitAudioContext)();
+    J.ac.resume?.();
+  } catch (_) {
+    /* ohne Web Audio */
+  }
   try {
     const u = new SpeechSynthesisUtterance(" ");
     u.volume = 0;
@@ -418,11 +557,12 @@ export async function startJarvis() {
   requestAnimationFrame(() => el.classList.add("on"));
   showYou("");
   showActions([]);
+  updateHud();
   startLoop();
   d.haptic?.([10, 40, 10]);
   const title = jarvisTitle();
   const h = new Date().getHours();
-  const hi = !J.greeted ? `${h < 5 ? "Noch wach" : h < 11 ? "Guten Morgen" : h < 18 ? "Hey" : "Guten Abend"}, ${title}. ${d.quickStatus?.() || ""} Was kann ich für dich tun?` : `Ja, ${title}?`;
+  const hi = !J.greeted ? `${h < 5 ? "Noch wach" : h < 11 ? "Guten Morgen" : h < 18 ? "Willkommen zurück" : "Guten Abend"}, ${title}. Alle Systeme online. ${d.quickStatus?.() || ""} Was kann ich für dich tun?` : `Zu Diensten, ${title}.`;
   J.greeted = true;
   const trial = !d.allowed() ? ` Du hast ${trialLeft()} Gratis-Fragen.` : "";
   const hint = maleHint();
@@ -493,7 +633,10 @@ function listen() {
     }, ms);
   };
   rec.onsoundstart = () => (J.kick = 0.6);
-  rec.onstart = () => (J.heard = true);
+  rec.onstart = () => {
+    J.heard = true;
+    chime(true);
+  };
   rec.onresult = (e) => {
     interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -505,7 +648,7 @@ function listen() {
     }
     J.kick = 1;
     showYou((finals.join(" ") + " " + interim).replace(/\s+/g, " ").trim());
-    armEnd(interim ? 1700 : 1150);
+    armEnd(interim ? 1400 : 850);
   };
   rec.onerror = (e) => {
     if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -527,6 +670,7 @@ function listen() {
     text = cleanUtterance(text);
     if (text) {
       J.silent = 0;
+      chime(false);
       return handle(text);
     }
     if (++J.silent >= 2) return idle();
@@ -622,47 +766,72 @@ async function handle(text) {
   listen();
 }
 
+// Sprechen Satz für Satz: natürlichere Pausen, keine Abbrüche bei langen Texten, Untertitel synchron
 function speakOut(text) {
   return new Promise((resolve) => {
     setState("speak");
-    showSay(text);
+    showSay("");
     clearTimeout(J.sayTimer);
+    clearInterval(J.revealTimer);
+    let done = false;
     const finish = () => {
+      if (done) return;
+      done = true;
       clearTimeout(J.sayTimer);
       clearInterval(J.revealTimer);
       revealTo(1e9);
       resolve();
     };
-    if (!("speechSynthesis" in window)) {
+    if (!("speechSynthesis" in window) || !text.trim()) {
+      showSay(text);
       revealTo(1e9);
-      return setTimeout(resolve, Math.min(8000, 600 + text.length * 45));
+      return setTimeout(finish, Math.min(8000, 400 + text.length * 45));
     }
     speechSynthesis.cancel();
-    const u = new SpeechSynthesisUtterance(text);
+    // Sätze bilden, sehr kurze Stücke an den nächsten Satz hängen
+    const parts = [];
+    const re = /[^.!?]+[.!?]*\s*/g;
+    let m;
+    while ((m = re.exec(text))) {
+      const t = m[0];
+      if (!t.trim()) continue;
+      const last = parts[parts.length - 1];
+      if (last && last.text.length < 40) last.text += t;
+      else parts.push({ text: t, at: m.index });
+    }
     const v = bestVoice || pickVoice();
-    u.lang = "de-DE";
-    u.voice = v;
-    // Ohne Männerstimme im System: vorhandene Stimme tiefer stellen
-    u.pitch = isMale(v) ? 0.95 : 0.72;
-    u.rate = 1.04;
+    let left = parts.length;
     let bounded = false;
-    u.onboundary = (e) => {
-      bounded = true;
-      J.kick = 0.8;
-      revealTo(e.charIndex);
-    };
-    u.onend = finish;
-    u.onerror = finish;
+    for (const p of parts) {
+      const u = new SpeechSynthesisUtterance(p.text.trim());
+      u.lang = "de-DE";
+      u.voice = v;
+      u.pitch = isMale(v) ? 0.95 : 0.72; // ohne Männerstimme im System: vorhandene Stimme tiefer
+      u.rate = 1.02;
+      // Untertitel wie im Film: nur der Satz, der gerade gesprochen wird
+      u.onstart = () => {
+        J.kick = 0.7;
+        J.partStart = performance.now();
+        showSay(p.text.trim());
+        revealTo(0);
+      };
+      u.onboundary = (e) => {
+        bounded = true;
+        J.kick = 0.85;
+        revealTo(e.charIndex);
+      };
+      u.onend = u.onerror = () => {
+        revealTo(1e9);
+        if (--left <= 0) finish();
+      };
+      speechSynthesis.speak(u);
+    }
     // Ohne Wort-Ereignisse der Stimme: Untertitel im Sprechtempo einblenden
-    let ci = 0;
-    clearInterval(J.revealTimer);
     J.revealTimer = setInterval(() => {
       if (bounded) return clearInterval(J.revealTimer);
-      ci += 7;
-      revealTo(ci);
-    }, 120);
-    speechSynthesis.speak(u);
-    J.sayTimer = setTimeout(finish, 2500 + text.length * 85); // Sicherheitsnetz, falls „end“ nie kommt
+      revealTo(((performance.now() - (J.partStart || performance.now())) / 1000) * 15); // ca. 15 Zeichen pro Sekunde
+    }, 110);
+    J.sayTimer = setTimeout(finish, 3000 + text.length * 85); // Sicherheitsnetz, falls „end“ nie kommt
   });
 }
 
