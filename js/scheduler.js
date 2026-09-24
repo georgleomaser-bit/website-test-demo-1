@@ -1,9 +1,9 @@
-// AKTEX AI Zeitplan: zeitgesteuerte Orders, Sparpläne und Wenn-Dann-Regeln
+// AKYTEX AI Zeitplan: zeitgesteuerte Orders, Sparpläne und Wenn-Dann-Regeln
 import * as ind from "./indicators.js";
 import { aggregate } from "./market.js";
 import { analyze } from "./analysis.js";
 
-const KEY = "aktex-v2-schedule";
+const KEY = "akytex-v2-schedule";
 const uid = () => Math.random().toString(36).slice(2, 9);
 const f2 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

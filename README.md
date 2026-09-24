@@ -1,4 +1,4 @@
-# ΛKTEX – Trading-Plattform (Demo)
+# ΛKYTEX – Trading-Plattform (Demo)
 
 *Markets move. Ideas stay.*
 
@@ -29,16 +29,16 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 **Geschäftsmodell & Community**
 - Startseite (Landingpage) mit Live-Kursen, Features, Preisen und FAQ – ideal für geteilte Links
 - Tarife Free / Pro / Elite mit Ordergebühren (1 € im Free-Tarif, 0 € im Abo) und Funktionslimits
-- **AKTEX AI:** technische Bewertung jeder Aktie (Tachometer, 16 Signale, Marken, Trade-Setup mit 1 %-Risiko)
+- **AKYTEX AI:** technische Bewertung jeder Aktie (Tachometer, 16 Signale, Marken, Trade-Setup mit 1 %-Risiko)
 - **Ideen:** Community-Feed mit Trading-Ideen (eigene Ideen inkl. Chart-Screenshot teilen), Likes, Folgen
 - **Rangliste & Copy-Trading:** Top-Trader-Ranking (inkl. eigenem Depot), Portfolios mit einem Klick kopieren
 - **Ideen-Börse (USP):** versiegelte Ideen (SHA-256), live gemessene Performance, verifizierte Trefferquoten, 1-Klick-Handel mit Stop & Ziel, Royalties für Autoren
-- **Preismodell:** Free · Plus · Pro · Elite, AKTEX AI (99 €) und AI Premium (249 €), monatlich/jährlich, Add-ons, Preis- und Leistungsverzeichnis, volle Kostenaufstellung vor jeder Order
-- **AKTEX AI:** Berater-Chat (lokal oder mit Claude, wo verfügbar), Meldungen, Depot-Doktor, Chancen-Scan und **Autopilot** (Vorschläge oder selbstständig in deinen Limits, mit Protokoll und Not-Aus)
+- **Preismodell:** Free · Plus · Pro · Elite, AKYTEX AI (99 €) und AI Premium (249 €), monatlich/jährlich, Add-ons, Preis- und Leistungsverzeichnis, volle Kostenaufstellung vor jeder Order
+- **AKYTEX AI:** Berater-Chat (lokal oder mit Claude, wo verfügbar), Meldungen, Depot-Doktor, Chancen-Scan und **Autopilot** (Vorschläge oder selbstständig in deinen Limits, mit Protokoll und Not-Aus)
 - **Business-Dashboard:** Umsatz- und Bewertungsmodell mit Reglern, Umsatz nach Quelle, 5-Jahres-Pfad, Funnel
 - Geschäftsplan: siehe [`BUSINESS.md`](BUSINESS.md)
 
-**AKTEX AI – 50 Funktionen** (Tab „✦ 50 Features“ in der AI-Ansicht)
+**AKYTEX AI – 50 Funktionen** (Tab „✦ 50 Features“ in der AI-Ansicht)
 - Cockpit: Berater-Chat mit Kontext-Gedächtnis, Slash-Befehlen (`/prognose`, `/backtest`, `/risiko`, `/plan` …), Vorlesen, Limit-Orders und Alarme per Chat
 - **Zeitplan:** zeitgesteuerte Orders („Kaufe 10 SAP um 15:30“), Sparpläne (täglich/werktags/wöchentlich/monatlich), Wenn-Dann-Regeln (Kurs, RSI, Rating, Tagesänderung) mit Zeitfenster, Live-Countdowns und Verlauf
 - **Autopilot:** 5 Strategie-Presets, Handelszeiten, Tagesverlust-Notbremse, Konfidenz-Schwelle, ATR-Smart-Stops, Schattenmodus, Trade-Journal, Performance
@@ -46,11 +46,11 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 **Shop & Clips**
 - **Store mit Spotlight:** Themen-Pakete, die live nach Momentum rotieren (mit einem Klick investieren), Autopilot-Strategien, Academy-Kurse, AI-Reports, Merch, Geschenkkarten, Warenkorb und Bestellungen
-- **AKTEX Clips:** vertikaler Video-Feed (Doppeltipp = Like, Kommentare, Teilen, „Handeln“, Melden), eigene Videos hochladen, Chart-Clips aufnehmen
+- **AKYTEX Clips:** vertikaler Video-Feed (Doppeltipp = Like, Kommentare, Teilen, „Handeln“, Melden), eigene Videos hochladen, Chart-Clips aufnehmen
 
 **Konto & Bezahlsystem**
 - Onboarding (Profil, Erfahrung, Ziel, Risiko) mit Tarif-Empfehlung
-- **AKTEX Pay:** ein Bezahl-Sheet mit aufklappbaren Zeilen und „Zum Bezahlen halten“, gespeicherte Zahlungsmethode für Ein-Griff-Zahlungen
+- **AKYTEX Pay:** ein Bezahl-Sheet mit aufklappbaren Zeilen und „Zum Bezahlen halten“, gespeicherte Zahlungsmethode für Ein-Griff-Zahlungen
 - Checkout im Testmodus: Tarif, Laufzeit, Add-ons, Gutscheine, MwSt., Karte mit 3-D Secure, PayPal, Apple/Google Pay, SEPA, Klarna – nur Testdaten
 - Konto-Bereich: Profil, Abo & Zahlung, Rechnungen, Benachrichtigungen, Sicherheit, Datenexport (DSGVO)
 - „Verträge hier kündigen“, Rechtliches (Impressum, Datenschutz, AGB, Widerruf, Risikohinweise als Vorlagen)
@@ -58,7 +58,7 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 **App & Design**
 - Installierbar als App auf PC, Mac, Android und iPhone („App installieren“-Button)
-- Animierter Startbildschirm mit dem AKTEX-Logo, Federanimationen, Bottom-Sheets, Dynamic-Island-Meldungen
+- Animierter Startbildschirm mit dem AKYTEX-Logo, Federanimationen, Bottom-Sheets, Dynamic-Island-Meldungen
 - Hell/Dunkel-Modus, Befehlspalette (Strg/⌘ + K), Mitteilungszentrale, Tastenkürzel (Alt+T/H/F Zeichnen, Strg+Z, Esc)
 - 3D-Neigung und Spotlight auf Karten, Rollziffern beim Kurs, Live-Aktivität auf der Startseite
 - **Teilen per Link:** Der Teilen-Button erzeugt einen Link wie `…/?symbol=SAP&tf=1h`, der genau diese Ansicht öffnet
@@ -79,7 +79,7 @@ Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch
 
 1. Repository → **Settings → Pages** → Source: **GitHub Actions** wählen.
    (GitHub Pages ist für private Repositories nur mit einem kostenpflichtigen Plan verfügbar – sonst das Repository auf *public* stellen.)
-2. Workflow **Deploy AKTEX to GitHub Pages** erneut ausführen (Actions → Run workflow).
+2. Workflow **Deploy AKYTEX to GitHub Pages** erneut ausführen (Actions → Run workflow).
 3. Die Adresse lautet dann `https://georgleomaser-bit.github.io/website-test-demo-1/` – diesen Link kann man verschicken und die App von dort installieren.
 
 ## Aufbau
@@ -91,10 +91,10 @@ Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch
 | `js/market.js` | Marktsimulation (Historie + Live-Ticks, Orderbuch) |
 | `js/indicators.js` | Technische Indikatoren |
 | `js/broker.js` | Demo-Broker: Orders, Positionen, Gebühren, Alarme |
-| `js/analysis.js` | AKTEX AI – technische Analyse |
+| `js/analysis.js` | AKYTEX AI – technische Analyse |
 | `js/community.js` | Community: Trader, Ideen, Rangliste |
 | `js/plans.js` | Tarife, Add-ons & Limits |
-| `js/ai.js` | AKTEX AI: Scan, Depot-Doktor, Berater, Meldungen, Autopilot |
+| `js/ai.js` | AKYTEX AI: Scan, Depot-Doktor, Berater, Meldungen, Autopilot |
 | `js/payments.js` | Checkout, Testkarten, Abo, Rechnungen, Stripe-Anbindung |
 | `js/ailab.js` | AI-Labor: Prognosen, Muster, Backtests, Risiko, Portfolio-Werkzeuge |
 | `js/scheduler.js` | Zeitplan: Timer, Sparpläne, Wenn-Dann-Regeln |
@@ -103,6 +103,6 @@ Der Workflow `.github/workflows/pages.yml` veröffentlicht die Seite automatisch
 | `js/chart.js` | Chart, Indikatoren, Zeichenwerkzeuge |
 | `js/app.js` | UI-Logik, Views, Teilen, Installation |
 | `manifest.webmanifest`, `sw.js` | App-Installation & Offline-Modus |
-| `icons/` | AKTEX-Logo (SVG/PNG) |
+| `icons/` | AKYTEX-Logo (SVG/PNG) |
 
 Chart-Bibliothek: [TradingView Lightweight Charts™](https://github.com/tradingview/lightweight-charts) (Apache-2.0, siehe `js/vendor/`).

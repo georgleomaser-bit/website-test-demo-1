@@ -1,4 +1,4 @@
-// AKTEX Bezahlsystem: Checkout, Abo-Verwaltung, Rechnungen.
+// AKYTEX Bezahlsystem: Checkout, Abo-Verwaltung, Rechnungen.
 // Standard ist der TESTMODUS: Es fließt kein Geld, und es werden nur Testkarten/Test-IBANs angenommen,
 // damit niemand echte Zahlungsdaten eingibt. Für echte Zahlungen Stripe-Zahlungslinks eintragen (siehe PAYMENTS.md).
 import { planById, planPrice, ADDONS } from "./plans.js";
@@ -22,7 +22,7 @@ export const PAYMENT_CONFIG = {
   },
   stripePortal: "", // Stripe-Kundenportal (Zahlungsmethode ändern, kündigen)
   promos: {
-    AKTEX20: { pct: 0.2, label: "20 % Rabatt im ersten Jahr" },
+    AKYTEX20: { pct: 0.2, label: "20 % Rabatt im ersten Jahr" },
     START: { freeMonths: 1, label: "1 zusätzlicher Monat gratis" },
     FOUNDER: { pct: 0.5, label: "50 % Gründer-Rabatt (Demo)" },
   },
@@ -68,7 +68,7 @@ export function formatCard(num) {
 export function quote({ planId, billing, addons = [], promo = null }) {
   const p = planById(planId);
   const months = billing === "yearly" ? 12 : 1;
-  const lines = [{ label: `AKTEX ${p.name} (${billing === "yearly" ? "jährlich" : "monatlich"})`, amount: planPrice(p, billing) * months }];
+  const lines = [{ label: `AKYTEX ${p.name} (${billing === "yearly" ? "jährlich" : "monatlich"})`, amount: planPrice(p, billing) * months }];
   for (const id of addons) {
     const a = ADDONS.find((x) => x.id === id);
     if (a && !a.includedIn.includes(p.id)) lines.push({ label: `Add-on ${a.name}`, amount: a.price * months });
@@ -87,7 +87,7 @@ export function quote({ planId, billing, addons = [], promo = null }) {
 export const stripeLinkFor = (planId, billing) => PAYMENT_CONFIG.stripeLinks[`${planId}-${billing}`] || "";
 
 // Konto, Profil, Abo und Rechnungen (lokal im Browser)
-const KEY = "aktex-v2-account-profile";
+const KEY = "akytex-v2-account-profile";
 export class AccountStore {
   constructor() {
     this.state = this.load();

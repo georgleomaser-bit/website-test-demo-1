@@ -1,5 +1,5 @@
-// AKTEX Store: Spotlight-Themenpakete (live nach Momentum), digitale Produkte, Merch, Geschenkkarten
-const KEY = "aktex-v2-shop";
+// AKYTEX Store: Spotlight-Themenpakete (live nach Momentum), digitale Produkte, Merch, Geschenkkarten
+const KEY = "akytex-v2-shop";
 
 export const BASKETS = [
   { id: "b-ai", name: "KI & Chips", icon: "🤖", syms: ["NVDA", "AMD", "ASML", "AVGO", "IFX"], desc: "Die Schaufeln des KI-Goldrauschs" },
@@ -19,11 +19,11 @@ export const PRODUCTS = [
   { id: "s-defensive", cat: "strategy", name: "Dividenden-Autopilot", price: 14, icon: "🛡️", grad: ["#f59e0b", "#ef4444"], desc: "Autopilot-Preset: ruhige Werte, kleine Positionen, defensive Stops.", unlock: { strategy: "conservative", minConf: 55 } },
   { id: "c-basics", cat: "course", name: "Börse in 7 Tagen", price: 49, icon: "🎓", grad: ["#22c55e", "#0ea5e9"], desc: "7 Lektionen: Aktien, Orders, Gebühren, Risiko, Depotaufbau.", lessons: ["Was ist eine Aktie?", "Orderarten: Market, Limit, Stopp", "Kosten verstehen: Spread & Gebühren", "Risiko begrenzen mit Stop-Loss", "Diversifikation richtig", "Sparpläne und Zinseszins", "Dein erster Plan"] },
   { id: "c-charts", cat: "course", name: "Chartanalyse Masterclass", price: 99, icon: "📊", grad: ["#b36bff", "#ec4899"], desc: "Trends, Kerzenmuster, Indikatoren und Setups wie ein Profi lesen.", lessons: ["Trends und Zeitebenen", "Unterstützung & Widerstand", "Kerzenmuster", "RSI, MACD & Bollinger", "Ausbrüche und Fehlausbrüche", "Chance-Risiko-Verhältnis", "Das perfekte Setup"] },
-  { id: "c-ai", cat: "course", name: "Trading mit AKTEX AI", price: 39, icon: "🧠", grad: ["#7c9cff", "#ffcf6e"], desc: "Autopilot, Zeitpläne und das AI-Labor gezielt einsetzen.", lessons: ["Wie AKTEX AI denkt", "Konfidenz & Multi-Timeframe", "Zeitpläne und Regeln", "Autopilot sicher einstellen", "Backtests lesen", "Risiko mit Monte Carlo"] },
+  { id: "c-ai", cat: "course", name: "Trading mit AKYTEX AI", price: 39, icon: "🧠", grad: ["#7c9cff", "#ffcf6e"], desc: "Autopilot, Zeitpläne und das AI-Labor gezielt einsetzen.", lessons: ["Wie AKYTEX AI denkt", "Konfidenz & Multi-Timeframe", "Zeitpläne und Regeln", "Autopilot sicher einstellen", "Backtests lesen", "Risiko mit Monte Carlo"] },
   { id: "r-picks", cat: "report", name: "Top 10 AI-Picks (heute)", price: 4.99, icon: "📑", grad: ["#ffcf6e", "#f97316"], desc: "Die zehn stärksten Signale des Tages mit Begründung, Ziel und Stop.", report: "picks" },
   { id: "r-outlook", cat: "report", name: "Marktausblick", price: 9.99, icon: "🔭", grad: ["#0ea5e9", "#7c9cff"], desc: "Sentiment, Sektor-Rotation, Anomalien und Szenarien auf einen Blick.", report: "outlook" },
-  { id: "m-hoodie", cat: "merch", name: "ΛKTEX Hoodie „Orbit“", price: 69, icon: "hoodie", grad: ["#0b1a36", "#3b5bdb"], desc: "Schwerer Bio-Baumwoll-Hoodie mit gesticktem Λ-Logo.", physical: true },
-  { id: "m-cap", cat: "merch", name: "ΛKTEX Cap", price: 29, icon: "cap", grad: ["#111827", "#7c5cff"], desc: "Sechs-Panel-Cap, gestickt, verstellbar.", physical: true },
+  { id: "m-hoodie", cat: "merch", name: "ΛKYTEX Hoodie „Orbit“", price: 69, icon: "hoodie", grad: ["#0b1a36", "#3b5bdb"], desc: "Schwerer Bio-Baumwoll-Hoodie mit gesticktem Λ-Logo.", physical: true },
+  { id: "m-cap", cat: "merch", name: "ΛKYTEX Cap", price: 29, icon: "cap", grad: ["#111827", "#7c5cff"], desc: "Sechs-Panel-Cap, gestickt, verstellbar.", physical: true },
   { id: "m-mug", cat: "merch", name: "Tasse „Markets move“", price: 19, icon: "mug", grad: ["#1e1b4b", "#b36bff"], desc: "Keramik, 350 ml, spülmaschinenfest.", physical: true },
   { id: "m-note", cat: "merch", name: "Trading-Journal (Notizbuch)", price: 24, icon: "note", grad: ["#172554", "#ffcf6e"], desc: "Gebunden, 192 Seiten mit Trade-Vorlagen.", physical: true },
   { id: "g-25", cat: "gift", name: "Geschenkkarte 25 €", price: 25, icon: "🎁", grad: ["#ec4899", "#b36bff"], desc: "Für Abos, Kurse und den Store. Code sofort per E-Mail.", gift: 25 },

@@ -2,7 +2,7 @@
 import { nowSec } from "./market.js";
 
 export const START_CASH = 100000;
-const KEY = "aktex-v2-account";
+const KEY = "akytex-v2-account";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 

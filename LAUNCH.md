@@ -1,4 +1,4 @@
-# Launch-Checkliste – AKTEX öffentlich machen
+# Launch-Checkliste – AKYTEX öffentlich machen
 
 Stand der Demo: Die Website ist technisch startklar (SEO, Vorschaubild, Sicherheits-Header, 404-Seite, PWA, Barrierefreiheits-Grundlagen). Für einen **öffentlichen Start mit echten Kunden** fehlen die Punkte unten, die nur du bzw. dein Unternehmen erledigen kann.
 
@@ -19,7 +19,7 @@ Stand der Demo: Die Website ist technisch startklar (SEO, Vorschaubild, Sicherhe
 - [ ] Stripe-Anbindung mit Webhooks (siehe `PAYMENTS.md`)
 
 ## 3. Recht & Regulierung
-- [ ] **BaFin**: Wertpapierhandel, Anlageberatung (AKTEX AI) und Vermögensverwaltung (Autopilot) nur mit Erlaubnis oder lizenziertem Partner/Haftungsdach
+- [ ] **BaFin**: Wertpapierhandel, Anlageberatung (AKYTEX AI) und Vermögensverwaltung (Autopilot) nur mit Erlaubnis oder lizenziertem Partner/Haftungsdach
 - [ ] Impressum, Datenschutzerklärung, AGB, Widerrufsbelehrung, Risikohinweise ausfüllen (Vorlagen unter *Rechtliches*) und anwaltlich prüfen
 - [ ] **Clips & Ideen = nutzergenerierte Inhalte**: Melde-Funktion ist eingebaut; zusätzlich Moderationsprozess, Kontaktstelle und Transparenzangaben nach dem Digital Services Act (DSA), Jugendschutz prüfen
 - [ ] Finfluencer-Regeln: Ideen und Clips mit Anlagebezug müssen als Meinung gekennzeichnet sein, Interessenkonflikte offenlegen (MAR)

@@ -1,4 +1,4 @@
-// Aktex – App-Steuerung (UI, Views, Order-Ticket, PWA)
+// Akytex – App-Steuerung (UI, Views, Order-Ticket, PWA)
 import { STOCKS, DEFAULT_WATCHLIST } from "./data.js";
 import { Market, TIMEFRAMES, tickStep, toLocalSec, aggregate } from "./market.js";
 import { Broker, START_CASH } from "./broker.js";
@@ -6,7 +6,7 @@ import { ChartView, CHART_TYPES, INDICATORS } from "./chart.js";
 import { analyze } from "./analysis.js";
 import { PLANS, ADDONS, planById, planPrice } from "./plans.js";
 import { Community } from "./community.js";
-import { AktexAI, STRATEGIES } from "./ai.js";
+import { AkytexAI, STRATEGIES } from "./ai.js";
 import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
@@ -30,7 +30,7 @@ const dateTime = (ms) => new Date(ms).toLocaleString("de-DE", { day: "2-digit", 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const roundTo = (v, step) => Math.round(v / step) * step;
 
-const SETTINGS_KEY = "aktex-v2-settings";
+const SETTINGS_KEY = "akytex-v2-settings";
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -100,8 +100,8 @@ const settings = {
 const community = new Community(market);
 broker.feeFn = () => planById(settings.plan).fee;
 const plan = () => planById(settings.plan);
-const planTitle = (p) => (p.name.startsWith("AKTEX") ? p.name : "AKTEX " + p.name);
-const aiEngine = new AktexAI(market, broker);
+const planTitle = (p) => (p.name.startsWith("AKYTEX") ? p.name : "AKYTEX " + p.name);
+const aiEngine = new AkytexAI(market, broker);
 const aiMode = () => plan().limits.ai || null; // null | "assist" | "auto"
 const scheduler = new Scheduler(market, broker);
 const shop = new Shop(market);
@@ -194,7 +194,7 @@ function buildToolbar() {
   $("#shot-btn").addEventListener("click", () => {
     const canvas = chart.screenshot();
     const a = document.createElement("a");
-    a.download = `aktex-${settings.symbol}-${settings.tf}.png`;
+    a.download = `akytex-${settings.symbol}-${settings.tf}.png`;
     a.href = canvas.toDataURL("image/png");
     a.click();
   });
@@ -213,7 +213,7 @@ function syncToolbar() {
   $$("#tf-group [data-tf]").forEach((b) => b.classList.toggle("active", b.dataset.tf === settings.tf));
   $("#chart-type").value = settings.type;
   $("#sym-label").textContent = settings.symbol;
-  document.title = `${settings.symbol} ${num(market.get(settings.symbol).price)} · Aktex`;
+  document.title = `${settings.symbol} ${num(market.get(settings.symbol).price)} · Akytex`;
 }
 
 function setTimeframe(tf) {
@@ -1051,7 +1051,7 @@ broker.on("fill", (f) => {
   const pnl = f.pnl != null ? ` · G/V ${sEur(f.pnl)}` : "";
   toast(`${f.qty} × ${f.symbol} zu ${num(f.price)}${pnl}`, f.side === "buy" ? "success" : "sell", `${verb} (${{ market: "Market", limit: "Limit", stop: "Stopp" }[f.type]})`);
   beep(f.side === "buy" ? 880 : 660);
-  if (f.type !== "market") notify(`Aktex: Order ausgeführt`, `${verb}: ${f.qty} × ${f.symbol} zu ${num(f.price)} €`);
+  if (f.type !== "market") notify(`Akytex: Order ausgeführt`, `${verb}: ${f.qty} × ${f.symbol} zu ${num(f.price)} €`);
 });
 broker.on("placed", (o) => toast(`${o.side === "buy" ? "Kauf" : "Verkauf"} ${o.qty} × ${o.symbol} @ ${num(o.limitPrice ?? o.stopPrice)}`, "info", `${o.type === "limit" ? "Limit" : "Stopp"}-Order platziert`));
 broker.on("reject", (o) => toast(`${o.symbol}: ${o.status}`, "error", "Order abgelehnt"));
@@ -1060,7 +1060,7 @@ broker.on("alert", (a) => {
   toast(msg, "warn", "⏰ Alarm ausgelöst");
   beep(1046, 0.15);
   setTimeout(() => beep(1318, 0.2), 180);
-  notify("Aktex Alarm", msg);
+  notify("Akytex Alarm", msg);
 });
 broker.on("change", () => {
   chart.refreshOverlays();
@@ -1103,7 +1103,7 @@ market.onTick(() => {
 });
 function syncTitle() {
   const q = market.quote(settings.symbol);
-  document.title = `${settings.symbol} ${num(q.price)} ${pct(q.changePct)} · Aktex`;
+  document.title = `${settings.symbol} ${num(q.price)} ${pct(q.changePct)} · Akytex`;
 }
 
 // ---------- Tastatur ----------
@@ -1157,7 +1157,7 @@ function setupInstall() {
   window.addEventListener("appinstalled", () => {
     installEvent = null;
     btn.hidden = true;
-    toast("Aktex wurde als App installiert.", "success");
+    toast("Akytex wurde als App installiert.", "success");
   });
   btn.addEventListener("click", async () => {
     if (installEvent) {
@@ -1172,12 +1172,12 @@ function setupInstall() {
     const safariMac = /safari/i.test(ua) && !/chrome|chromium|edg/i.test(ua) && !ios;
     let html;
     if (ios)
-      html = `<ol><li>Tippe in Safari unten auf <b>Teilen</b> <span class="kbd">⬆︎</span>.</li><li>Wähle <b>„Zum Home-Bildschirm“</b>.</li><li>Tippe auf <b>Hinzufügen</b> – Aktex erscheint als App-Symbol.</li></ol>`;
+      html = `<ol><li>Tippe in Safari unten auf <b>Teilen</b> <span class="kbd">⬆︎</span>.</li><li>Wähle <b>„Zum Home-Bildschirm“</b>.</li><li>Tippe auf <b>Hinzufügen</b> – Akytex erscheint als App-Symbol.</li></ol>`;
     else if (android)
       html = `<ol><li>Öffne das Browser-Menü <span class="kbd">⋮</span>.</li><li>Wähle <b>„App installieren“</b> bzw. <b>„Zum Startbildschirm hinzufügen“</b>.</li></ol>`;
     else if (safariMac) html = `<ol><li>Klicke in Safari auf <b>Ablage → Zum Dock hinzufügen…</b></li><li>Bestätige mit <b>Hinzufügen</b>.</li></ol>`;
     else
-      html = `<ol><li>In <b>Chrome</b> oder <b>Edge</b>: Klicke auf das Installieren-Symbol <span class="kbd">⊕</span> rechts in der Adressleiste<br>oder Menü <span class="kbd">⋮</span> → <b>„Aktex installieren“</b>.</li><li>Aktex startet danach in einem eigenen Fenster, mit Desktop-Symbol und funktioniert auch offline.</li></ol><p class="muted">Firefox unterstützt die Installation am Desktop nicht – bitte Chrome oder Edge verwenden.</p>`;
+      html = `<ol><li>In <b>Chrome</b> oder <b>Edge</b>: Klicke auf das Installieren-Symbol <span class="kbd">⊕</span> rechts in der Adressleiste<br>oder Menü <span class="kbd">⋮</span> → <b>„Akytex installieren“</b>.</li><li>Akytex startet danach in einem eigenen Fenster, mit Desktop-Symbol und funktioniert auch offline.</li></ol><p class="muted">Firefox unterstützt die Installation am Desktop nicht – bitte Chrome oder Edge verwenden.</p>`;
     if (location.protocol === "file:") html = `<p>Die App-Installation benötigt einen Webserver (https oder localhost). Starte z. B. <code>python3 -m http.server</code> im Projektordner und öffne <code>http://localhost:8000</code>.</p>`;
     $("#install-help").innerHTML = html;
     openModal("#install-modal");
@@ -1222,7 +1222,7 @@ function renderPlans(el) {
       </div>`;
     }).join("")}</div>
     <div class="ai-plans">
-      <div class="ai-plans-head"><span class="spark-ic">✦</span><div><h4>AKTEX AI</h4><p class="muted">Dein KI-Berater – und auf Wunsch der Autopilot für dein Depot.</p></div></div>
+      <div class="ai-plans-head"><span class="spark-ic">✦</span><div><h4>AKYTEX AI</h4><p class="muted">Dein KI-Berater – und auf Wunsch der Autopilot für dein Depot.</p></div></div>
       <div class="ai-plan-cards">${PLANS.filter((p) => p.group === "ai").map((p) => {
         const price = planPrice(p, billing);
         const isCur = p.id === settings.plan;
@@ -1322,7 +1322,7 @@ function confetti() {
   }
 }
 
-// ---------- AKTEX AI ----------
+// ---------- AKYTEX AI ----------
 let aiLast = 0;
 function gaugeSvg() {
   const seg = (i, color) => {
@@ -1344,7 +1344,7 @@ function renderAI(force = false) {
   aiLast = Date.now();
   const el = $("#ai");
   if (!el.dataset.ready) {
-    el.innerHTML = `<div class="ai-head"><b>AKTEX AI</b><span class="ai-badge">Echtzeit</span></div><div class="gauge">${gaugeSvg()}</div><div id="ai-body"></div>`;
+    el.innerHTML = `<div class="ai-head"><b>AKYTEX AI</b><span class="ai-badge">Echtzeit</span></div><div class="gauge">${gaugeSvg()}</div><div id="ai-body"></div>`;
     el.dataset.ready = "1";
   }
   const a = analyze(chart.raw);
@@ -1627,7 +1627,7 @@ function updateCopyHint() {
   const n = community.trader(ui.copyTrader).favs.length;
   $("#copy-hint").innerHTML = plan().limits.copy
     ? `${n} Market-Orders über insgesamt ca. ${eur(amt)} (Gebühren: ${eur(plan().fee * n)}).`
-    : `🔒 Copy-Trading ist Teil von <b>AKTEX Elite</b>.`;
+    : `🔒 Copy-Trading ist Teil von <b>AKYTEX Elite</b>.`;
 }
 function bindGrowth() {
   syncPlan();
@@ -1706,7 +1706,7 @@ function bindGrowth() {
     e.preventDefault();
     if (!plan().limits.copy) {
       closeModals();
-      setTimeout(() => openPlans("Copy-Trading ist Teil von AKTEX Elite."), 330);
+      setTimeout(() => openPlans("Copy-Trading ist Teil von AKYTEX Elite."), 330);
       return;
     }
     const t = community.trader(ui.copyTrader);
@@ -1796,7 +1796,7 @@ function openIdeaModal() {
   openModal("#idea-modal");
   setTimeout(() => $("#idea-title").focus(), 50);
 }
-// Einstieg/Ziel/Stop aus der AKTEX-AI-Analyse vorschlagen
+// Einstieg/Ziel/Stop aus der AKYTEX-AI-Analyse vorschlagen
 function fillIdeaLevels() {
   const sym = $("#idea-sym").value;
   const st = market.get(sym);
@@ -1904,7 +1904,7 @@ function checkSignals() {
   if (lastRatings[key] && lastRatings[key] !== r.key) {
     toast(`${settings.symbol} (${TIMEFRAMES.find((t) => t.id === settings.tf).label}) wechselt auf „${r.label}“.`, r.key.includes("buy") ? "success" : r.key.includes("sell") ? "sell" : "info", "⚡ AI-Signal");
     beep(990, 0.1);
-    notify("AKTEX AI-Signal", `${settings.symbol}: ${r.label}`);
+    notify("AKYTEX AI-Signal", `${settings.symbol}: ${r.label}`);
   }
   lastRatings[key] = r.key;
 }
@@ -2030,7 +2030,7 @@ function renderBusiness(full = false) {
   const unicorn = Math.log10(1e9) / 11;
   $("#biz-bill").innerHTML = `
     <div class="uni-bar"><i style="width:${prog * 100}%"></i><span class="uni-mark" style="left:${unicorn * 100}%">🦄 1 Mrd.</span></div>
-    <p>${m.valuation >= 1e9 ? `<b class="up">Unicorn-Status erreicht.</b> ` : ""}Für 1 Mrd. € Bewertung braucht AKTEX bei diesen Annahmen <b>${compact(Math.round(need))} Nutzer</b>.</p>`;
+    <p>${m.valuation >= 1e9 ? `<b class="up">Unicorn-Status erreicht.</b> ` : ""}Für 1 Mrd. € Bewertung braucht AKYTEX bei diesen Annahmen <b>${compact(Math.round(need))} Nutzer</b>.</p>`;
   $("#biz-kpis").innerHTML = [
     ["Jahresumsatz (ARR)", bigEur(m.arr)],
     ["Monatsumsatz (MRR)", bigEur(m.mrr)],
@@ -2084,7 +2084,7 @@ function renderBusiness(full = false) {
     .join("");
 }
 
-// ---------- AKTEX AI: Ansicht, Chat, Autopilot ----------
+// ---------- AKYTEX AI: Ansicht, Chat, Autopilot ----------
 let llm = null; // Sprachmodell (nur in Claude-Umgebungen verfügbar)
 let llmOff = false;
 let chatCtl = null;
@@ -2115,8 +2115,8 @@ function renderAIHeader() {
   $("#ai-chips").innerHTML = `
     <span class="chip-s ${mode ? "on" : ""}">${mode ? "✓ " + plan().name : "🔒 Nicht im Tarif " + plan().name}</span>
     <span class="chip-s ${c.enabled && mode ? "live" : ""}"><i></i>${ap}</span>
-    <span class="chip-s">${llm && !llmOff ? "🧠 Sprachmodell: Claude" : "⚙️ AKTEX Engine (lokal)"}</span>`;
-  $("#ai-model").textContent = llm && !llmOff ? "antwortet mit Claude" : "lokale AKTEX Engine";
+    <span class="chip-s">${llm && !llmOff ? "🧠 Sprachmodell: Claude" : "⚙️ AKYTEX Engine (lokal)"}</span>`;
+  $("#ai-model").textContent = llm && !llmOff ? "antwortet mit Claude" : "lokale AKYTEX Engine";
   const n = aiEngine.state.unread;
   $("#ai-badge").hidden = !n || !mode;
   $("#ai-badge").textContent = n > 9 ? "9+" : n;
@@ -2134,10 +2134,10 @@ function renderAIView(full = false) {
   $("#ai-doctor-card").classList.toggle("is-locked", !mode);
   $$('.ai-pane[data-aipane="plan"], .ai-pane[data-aipane="lab"]').forEach((p) => p.classList.toggle("is-locked", !mode));
   if (!mode) {
-    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
+    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKYTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKYTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
   }
   if (full && !chat.length) {
-    chat.push({ role: "assistant", html: `<p>Hallo! Ich bin <b>AKTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>` });
+    chat.push({ role: "assistant", html: `<p>Hallo! Ich bin <b>AKYTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>` });
   }
   if (aiTab !== "cockpit") {
     if (aiTab === "plan") renderPlanPane();
@@ -2198,7 +2198,7 @@ function renderChat() {
 async function sendChat(text) {
   text = text.trim();
   if (!text) return;
-  if (!aiMode()) return openPlans("Der Berater-Chat ist Teil von AKTEX AI.");
+  if (!aiMode()) return openPlans("Der Berater-Chat ist Teil von AKYTEX AI.");
   chat.push({ role: "user", text });
   const msg = { role: "assistant", html: "", pending: true };
   chat.push(msg);
@@ -2232,7 +2232,7 @@ async function sendChat(text) {
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- ").
+  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- ").
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -2311,7 +2311,7 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
         const mc = lab.monteCarlo(broker, market, 252, 300);
         return { var95: Math.round(v.var95), var99: Math.round(v.var99), es95: Math.round(v.es95), mcP5: Math.round(mc.p5), mcMedian: Math.round(mc.p50), mcP95: Math.round(mc.p95), lossProbability: +mc.lossProb.toFixed(2) };
       } },
-    { name: "market_overview", description: "Marktüberblick: AKTEX Sentiment-Index (Angst & Gier), Sektor-Rotation und Anomalien.", execute: () => ({ sentiment: lab.sentimentIndex(market), sectors: lab.sectorRotation(market).map((x) => ({ name: x.name, d5: +(x.d5 * 100).toFixed(1), d20: +(x.d20 * 100).toFixed(1), phase: x.phase })), anomalies: lab.anomalies(market).map((x) => x.sym) }) },
+    { name: "market_overview", description: "Marktüberblick: AKYTEX Sentiment-Index (Angst & Gier), Sektor-Rotation und Anomalien.", execute: () => ({ sentiment: lab.sentimentIndex(market), sectors: lab.sectorRotation(market).map((x) => ({ name: x.name, d5: +(x.d5 * 100).toFixed(1), d20: +(x.d20 * 100).toFixed(1), phase: x.phase })), anomalies: lab.anomalies(market).map((x) => x.sym) }) },
     {
       name: "propose_schedule",
       description: "Schlägt einen zeitgesteuerten Auftrag, Sparplan oder eine Wenn-Dann-Regel vor (Beschreibung in natürlicher Sprache, z. B. 'Kaufe 10 SAP um 15:30', 'Sparplan 200 € ASML monatlich', 'Verkaufe TSLA wenn über 260'). Der Nutzer bestätigt per Button.",
@@ -2562,7 +2562,7 @@ function bindAI() {
       return renderAIView();
     }
     if (t.closest("#ap-toggle")) {
-      if (!aiMode()) return openPlans("Der Autopilot ist Teil von AKTEX AI.");
+      if (!aiMode()) return openPlans("Der Autopilot ist Teil von AKYTEX AI.");
       const c = aiEngine.state.config;
       c.enabled = !c.enabled;
       aiEngine.save();
@@ -2573,7 +2573,7 @@ function bindAI() {
     }
     const md = t.closest("[data-apmode]");
     if (md) {
-      if (md.dataset.apmode === "auto" && aiMode() !== "auto") return openPlans("Selbstständiges Handeln ist Teil von AKTEX AI Premium.");
+      if (md.dataset.apmode === "auto" && aiMode() !== "auto") return openPlans("Selbstständiges Handeln ist Teil von AKYTEX AI Premium.");
       aiEngine.state.config.mode = md.dataset.apmode;
       aiEngine.save();
       return renderAIView();
@@ -2645,7 +2645,7 @@ function choosePlan(id) {
   }
   openCheckout(id);
 }
-// ---------- AKTEX Pay ----------
+// ---------- AKYTEX Pay ----------
 // Ein elegantes Bezahl-Sheet für Abos, Shop-Bestellungen und Zahlungsmethoden (Testmodus)
 let pay = null;
 function openCheckout(planId, startStep = 0) {
@@ -2702,8 +2702,8 @@ function renderPay() {
   const row = (key, label, value, body) => `<div class="ps-row ${pay.open === key ? "open" : ""}" data-row="${key}"><button class="ps-head" data-ps-toggle="${key}"><span>${label}</span><b>${value}</b><i>›</i></button><div class="ps-body"><div>${body}</div></div></div>`;
   let hero;
   if (pay.kind === "sub") hero = `<div class="ps-product ${p.group ? "ai" : ""}"><div class="orb tiny spin"><i></i><i></i><i></i></div><div><b>${planTitle(p)}</b><small>${pay.billing === "yearly" ? "Jahresabo" : "Monatsabo"} · ${PAYMENT_CONFIG.trialDays} Tage gratis</small></div></div><div class="ps-amount"><span>Heute</span><b>0,00 €</b><small>danach ${eur(T.after)} ${pay.billing === "yearly" ? "pro Jahr" : "pro Monat"} ab ${trialEnd}</small></div>`;
-  else if (pay.kind === "shop") hero = `<div class="ps-product"><div class="ps-cart-ic">🛍️</div><div><b>AKTEX Store</b><small>${pay.items.reduce((s, i) => s + i.qty, 0)} Artikel</small></div></div><div class="ps-amount"><span>Gesamt</span><b>${eur(T.due)}</b><small>inkl. ${eur(T.vat)} MwSt.</small></div>`;
-  else hero = `<div class="ps-product"><div class="ps-cart-ic">💳</div><div><b>Zahlungsmethode</b><small>für dein AKTEX-Abo</small></div></div>`;
+  else if (pay.kind === "shop") hero = `<div class="ps-product"><div class="ps-cart-ic">🛍️</div><div><b>AKYTEX Store</b><small>${pay.items.reduce((s, i) => s + i.qty, 0)} Artikel</small></div></div><div class="ps-amount"><span>Gesamt</span><b>${eur(T.due)}</b><small>inkl. ${eur(T.vat)} MwSt.</small></div>`;
+  else hero = `<div class="ps-product"><div class="ps-cart-ic">💳</div><div><b>Zahlungsmethode</b><small>für dein AKYTEX-Abo</small></div></div>`;
 
   const rows = [];
   if (pay.kind === "sub") {
@@ -2724,7 +2724,7 @@ function renderPay() {
   }
   if (pay.kind === "shop") rows.push(row("items", "Warenkorb", `${pay.items.length} Position${pay.items.length > 1 ? "en" : ""}`, `<ul class="ps-items">${pay.items.map((i) => `<li><span>${i.icon || "•"}</span><div><b>${esc(i.name)}</b><small>${i.qty} × ${eur(i.price)}</small></div><b>${eur(i.qty * i.price)}</b></li>`).join("")}</ul>`));
   if (pay.kind !== "method") {
-    rows.push(row("promo", "Gutschein", pay.promo ? `✓ ${pay.promo}` : "Hinzufügen", `<div class="promo"><input type="text" id="ps-promo" placeholder="z. B. AKTEX20" value="${pay.promo || ""}" /><button class="btn" data-ps-promo>Einlösen</button></div>`));
+    rows.push(row("promo", "Gutschein", pay.promo ? `✓ ${pay.promo}` : "Hinzufügen", `<div class="promo"><input type="text" id="ps-promo" placeholder="z. B. AKYTEX20" value="${pay.promo || ""}" /><button class="btn" data-ps-promo>Einlösen</button></div>`));
     rows.push(
       row(
         "contact",
@@ -2758,7 +2758,7 @@ function renderPay() {
   );
   const sumRows = `${T.lines.map((l) => `<div><span>${esc(l.label)}</span><b>${eur(l.amount)}</b></div>`).join("")}${T.discount ? `<div class="up"><span>Gutschein ${pay.promo}</span><b>−${eur(T.discount)}</b></div>` : ""}<div class="muted"><span>enthaltene MwSt. (19 %)</span><span>${eur(T.vat)}</span></div>`;
   $("#pay-sheet").innerHTML = `
-    <div class="ps-top"><div class="ps-brand">ΛKTEX <span>Pay</span></div><span class="test-chip">🧪 Testmodus</span><button class="icon-btn" data-close>✕</button></div>
+    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div><span class="test-chip">🧪 Testmodus</span><button class="icon-btn" data-close>✕</button></div>
     <div class="ps-hero">${hero}</div>
     <div class="ps-rows">${rows.join("")}</div>
     ${pay.kind !== "method" ? `<details class="ps-sum"><summary>Kostenübersicht</summary><div class="co-sum">${sumRows}</div></details>` : ""}
@@ -2990,7 +2990,7 @@ function bindCheckout() {
       const code = $("#ps-promo").value.trim().toUpperCase();
       if (!PAYMENT_CONFIG.promos[code] || (pay.kind === "shop" && !PAYMENT_CONFIG.promos[code].pct)) {
         shake($("#pay-sheet .promo"));
-        return toast(`Der Code „${code}“ ist hier nicht gültig. Probier AKTEX20.`, "error", "Gutschein");
+        return toast(`Der Code „${code}“ ist hier nicht gültig. Probier AKYTEX20.`, "error", "Gutschein");
       }
       pay.promo = code;
       pay.open = account.state.method ? null : "method";
@@ -3038,7 +3038,7 @@ function openInvoice(i) {
   if (!inv) return;
   const pr = account.state.profile;
   $("#invoice").innerHTML = `
-    <div class="inv-head"><div><img src="icons/icon.svg" alt="" width="36" height="36"/><b>ΛKTEX</b><small>[Firmenname] · [Straße Nr.] · [PLZ Ort]<br>USt-IdNr. [DE…]</small></div>
+    <div class="inv-head"><div><img src="icons/icon.svg" alt="" width="36" height="36"/><b>ΛKYTEX</b><small>[Firmenname] · [Straße Nr.] · [PLZ Ort]<br>USt-IdNr. [DE…]</small></div>
       <div class="inv-meta"><b>Rechnung ${inv.no}</b><span>Datum: ${new Date(inv.date).toLocaleDateString("de-DE")}</span><span>Kunde: ${esc(pr?.name || "–")}</span></div></div>
     <table class="grid inv-table"><thead><tr><th>Leistung</th><th class="num">Betrag</th></tr></thead><tbody>
       ${inv.lines.map((l) => `<tr><td>${esc(l.label)}</td><td class="num">${eur(l.amount)}</td></tr>`).join("")}
@@ -3112,7 +3112,7 @@ function renderOnboarding(dir = 1) {
   const opt = (key, val, icon, title, text) => `<button class="ob-opt ${ob[key] === val ? "on" : ""}" data-ob="${key}" data-val="${val}"><span>${icon}</span><b>${title}</b><small>${text}</small></button>`;
   let html = "";
   if (ob.step === 0)
-    html = `<div class="co-narrow"><div class="ob-hero"><img src="icons/logo.svg" alt="" width="96" height="96"/><h2>Willkommen bei ΛKTEX</h2><p class="muted">In 30 Sekunden richten wir die App auf dich ein.</p></div>
+    html = `<div class="co-narrow"><div class="ob-hero"><img src="icons/logo.svg" alt="" width="96" height="96"/><h2>Willkommen bei ΛKYTEX</h2><p class="muted">In 30 Sekunden richten wir die App auf dich ein.</p></div>
       <label class="field"><span>Wie heißt du?</span><input type="text" id="ob-name" maxlength="60" value="${esc(ob.name)}" autocomplete="given-name" /></label>
       <label class="field"><span>E-Mail (optional)</span><input type="email" id="ob-email" maxlength="120" value="${esc(ob.email)}" autocomplete="email" /></label>
       <p class="muted small">Wird nur in diesem Browser gespeichert.</p>
@@ -3239,7 +3239,7 @@ function renderAccount() {
       ? os.map((o) => `<div class="order"><div class="order-h"><b>${o.no}</b><span class="muted">${new Date(o.date).toLocaleString("de-DE")}</span><span class="status ok">${esc(o.status)}</span><b>${eur(o.total)}</b></div><ul>${o.items.map((i) => `<li>${i.qty}× ${esc(i.name)}</li>`).join("")}</ul>${o.codes.length ? `<p>🎁 ${o.codes.map((c) => `<code>${c.code}</code> (${eur(c.value)})`).join(" · ")}</p>` : ""}${o.address ? `<small class="muted">Lieferung an ${esc(o.address.street)}, ${esc(o.address.zip)} ${esc(o.address.city)}</small>` : ""}</div>`).join("")
       : `<div class="empty">Noch keine Bestellungen. <button class="link-btn" data-goto="shop">Zum Store</button></div>`;
   } else if (acctTab === "notify") {
-    html = `${tog("push", "Push-Benachrichtigungen", "Order-Ausführungen und Alarme als System-Mitteilung")}${tog("fills", "Order-Bestätigungen", "Meldung bei jeder Ausführung")}${tog("ai", "AKTEX AI-Meldungen", "Signalwechsel, Risiken, Autopilot-Entscheidungen")}${tog("email", "Wochenreport per E-Mail", "Zusammenfassung deines Depots (im Echtbetrieb)")}
+    html = `${tog("push", "Push-Benachrichtigungen", "Order-Ausführungen und Alarme als System-Mitteilung")}${tog("fills", "Order-Bestätigungen", "Meldung bei jeder Ausführung")}${tog("ai", "AKYTEX AI-Meldungen", "Signalwechsel, Risiken, Autopilot-Entscheidungen")}${tog("email", "Wochenreport per E-Mail", "Zusammenfassung deines Depots (im Echtbetrieb)")}
       <button class="btn" data-perm>Browser-Benachrichtigungen erlauben</button>`;
   } else if (acctTab === "security") {
     html = `${tog("twofa", "Zwei-Faktor-Anmeldung", "Zusätzlicher Code bei jeder Anmeldung")}${tog("passkey", "Passkey", "Anmelden mit Face ID, Touch ID oder Windows Hello")}
@@ -3331,9 +3331,9 @@ const PH = (t) => `<mark class="ph">[${t}]</mark>`;
 const LEGAL = {
   impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${PH("Firmenname und Rechtsform")}<br>${PH("Straße Hausnummer")}<br>${PH("PLZ Ort")}</p><p><b>Vertreten durch:</b> ${PH("Geschäftsführung")}<br><b>Kontakt:</b> ${PH("E-Mail")} · ${PH("Telefon")}<br><b>Registereintrag:</b> ${PH("Registergericht, HRB-Nummer")}<br><b>USt-IdNr.:</b> ${PH("DE…")}</p><p><b>Aufsicht:</b> Im Echtbetrieb ${PH("Bundesanstalt für Finanzdienstleistungsaufsicht (BaFin) bzw. lizenzierter Partner")}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${PH("Name, Anschrift")}</p>`,
   privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung für diese Demo</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li><li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li><li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${PH("Name, Anschrift, Kontakt")} · Datenschutzbeauftragter: ${PH("Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
-  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKTEX von ${PH("Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
+  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKYTEX von ${PH("Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKYTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
   withdrawal: () => `<h2>Widerrufsbelehrung (Vorlage)</h2><p><b>Widerrufsrecht:</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${PH("Name, Anschrift, E-Mail")}) mittels einer eindeutigen Erklärung über deinen Entschluss informieren.</p><p><b>Folgen des Widerrufs:</b> Wir erstatten alle Zahlungen unverzüglich, spätestens binnen vierzehn Tagen. ${PH("Regelung bei vorzeitigem Leistungsbeginn anwaltlich prüfen")}</p>`,
-  risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
+  risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKYTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
 };
 function renderLegal() {
   $$("#legal-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.legal === legalTab));
@@ -3372,7 +3372,7 @@ function togglePopover(id, render) {
 let cmdIdx = 0;
 function cmdItems(q) {
   const items = [
-    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["ai", "AKTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
+    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["ai", "AKYTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
     { icon: "✦", label: "Tarife ansehen", run: () => openPlans() },
     { icon: "💳", label: "Pro abonnieren (Checkout)", run: () => openCheckout("pro") },
     { icon: "🤖", label: "AI Premium abonnieren (Checkout)", run: () => openCheckout("aiprem") },
@@ -3391,7 +3391,7 @@ function cmdItems(q) {
   ];
   const t = q.trim().toLowerCase();
   let res = t ? items.filter((i) => i.label.toLowerCase().includes(t)) : items.slice(0, 14);
-  if (t.length > 2) res.push({ icon: "✦", label: `AKTEX AI fragen: „${q.trim()}“`, run: () => (setView("ai"), setTimeout(() => sendChat(q.trim()), 350)) });
+  if (t.length > 2) res.push({ icon: "✦", label: `AKYTEX AI fragen: „${q.trim()}“`, run: () => (setView("ai"), setTimeout(() => sendChat(q.trim()), 350)) });
   return res.slice(0, 14);
 }
 function renderCmd() {
@@ -3467,9 +3467,9 @@ function bindShell() {
 // Globale Fußzeile auf allen Seiten
 function injectFooters() {
   const foot = `<footer class="site-foot">
-    <div class="sf-brand"><img src="icons/icon.svg" alt="" width="30" height="30"/><div><b>ΛKTEX</b><small>Markets move. Ideas stay.</small></div></div>
+    <div class="sf-brand"><img src="icons/icon.svg" alt="" width="30" height="30"/><div><b>ΛKYTEX</b><small>Markets move. Ideas stay.</small></div></div>
     <div class="sf-cols">
-      <div><b>Produkt</b><button data-goto="chart">Chart</button><button data-goto="ideas">Ideen-Börse</button><button data-goto="ai">AKTEX AI</button><button data-open-plans>Preise</button></div>
+      <div><b>Produkt</b><button data-goto="chart">Chart</button><button data-goto="ideas">Ideen-Börse</button><button data-goto="ai">AKYTEX AI</button><button data-open-plans>Preise</button></div>
       <div><b>Konto</b><button data-goto="account" data-acct-tab="billing">Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">Rechnungen</button><button data-cancel-open class="sf-cancel">Verträge hier kündigen</button></div>
       <div><b>Rechtliches</b><button data-legal-open="impressum">Impressum</button><button data-legal-open="privacy">Datenschutz</button><button data-legal-open="terms">AGB</button><button data-legal-open="risk">Risikohinweise</button></div>
     </div>
@@ -3543,7 +3543,7 @@ function odometer(el, text) {
   for (const ch of text) if (/\d/.test(ch)) cols[k++].style.transform = `translateY(-${+ch * 10}%)`;
 }
 
-// ---------- AKTEX AI: Tabs, Zeitplan, Labor, Features ----------
+// ---------- AKYTEX AI: Tabs, Zeitplan, Labor, Features ----------
 let aiTab = "cockpit";
 let labSym = "NVDA";
 let labFocus = null;
@@ -3660,7 +3660,7 @@ function renderLab() {
     card("montecarlo", "🎲 Monte-Carlo-Depot", "500 Szenarien · 1 Jahr", `${mcSvg}<div class="lab-kv"><div><span>Median</span><b>${eur(mc.p50)}</b></div><div><span>Schlecht (5 %)</span><b class="down">${eur(mc.p5)}</b></div><div><span>Gut (95 %)</span><b class="up">${eur(mc.p95)}</b></div><div><span>Verlust-Wahrsch.</span><b>${Math.round(mc.lossProb * 100)} %</b></div></div>`),
     card("risk", "🛡️ Risiko-Kennzahlen", "Historische Simulation", `<div class="lab-kv big"><div><span>VaR 95 % (1 Tag)</span><b class="down">−${eur(vr.var95)}</b></div><div><span>VaR 99 % (1 Tag)</span><b class="down">−${eur(vr.var99)}</b></div><div><span>Expected Shortfall</span><b class="down">−${eur(vr.es95)}</b></div><div><span>Drawdown vom Hoch</span><b class="${ddw.dd < 0 ? "down" : ""}">${pct(ddw.dd)}</b></div></div>`),
     card("corr", "🧩 Korrelations-Matrix", corrSyms.length ? corrSyms.join(" · ") : "–", `<div class="corr" style="--n:${corrSyms.length}"><span></span>${corrSyms.map((s) => `<span class="ch">${s}</span>`).join("")}${cm.m.map((row, i) => `<span class="ch">${corrSyms[i]}</span>${row.map((c) => `<span class="cc" style="background:${c >= 0 ? `rgba(239,68,68,${c * 0.8})` : `rgba(79,140,255,${-c * 0.8})`}" title="${nf2.format(c)}">${c.toFixed(1).replace(".", ",")}</span>`).join("")}`).join("")}</div><p class="muted small">Rot = laufen zusammen (Klumpenrisiko), Blau = gleichen sich aus.</p>`),
-    card("sentiment", "🌡️ AKTEX Sentiment-Index", si.label, `<div class="si">${gaugeSmall(si.value, si.label)}</div><div class="lab-kv"><div><span>Marktbreite</span><b>${Math.round(si.parts.breadth * 100)} %</b></div><div><span>Momentum 5T</span><b class="${cls(si.parts.mom)}">${pct(si.parts.mom)}</b></div><div><span>Ø RSI</span><b>${nf2.format(si.parts.rsi)}</b></div><div><span>Community ${sym}</span><b>${cs.n ? Math.round(cs.bull * 100) + " % bullisch" : "–"}</b></div></div>`),
+    card("sentiment", "🌡️ AKYTEX Sentiment-Index", si.label, `<div class="si">${gaugeSmall(si.value, si.label)}</div><div class="lab-kv"><div><span>Marktbreite</span><b>${Math.round(si.parts.breadth * 100)} %</b></div><div><span>Momentum 5T</span><b class="${cls(si.parts.mom)}">${pct(si.parts.mom)}</b></div><div><span>Ø RSI</span><b>${nf2.format(si.parts.rsi)}</b></div><div><span>Community ${sym}</span><b>${cs.n ? Math.round(cs.bull * 100) + " % bullisch" : "–"}</b></div></div>`),
     card("sectors", "🔄 Sektor-Rotation", "5 Tage", bars(rot.map((x) => ({ label: `${x.name} · ${x.phase}`, v: x.d5 * 100 })), { fmt: (v) => (v > 0 ? "+" : "") + nf2.format(v) + " %" })),
     card("anomalies", "📡 Anomalie-Radar", "Ungewöhnliche Bewegungen", `<ul class="lab-list">${an.map((x) => `<li><button class="sym-chip" data-open-sym="${x.sym}">${x.sym}</button> ${pct(x.chg)} · ${nf2.format(x.z)} σ · Volumen ${nf2.format(x.volX)}×</li>`).join("") || "<li class='muted'>Alles ruhig.</li>"}</ul>`),
     card("similar", "🧬 Ähnliche Setups & Relative Stärke", sym, `<ul class="lab-list">${sim.map((x) => `<li><button class="sym-chip" data-lab-sym="${x.sym}">${x.sym}</button> ${Math.round(x.similarity * 100)} % ähnlich</li>`).join("")}</ul><div class="lab-kv"><div><span>20T ${sym}</span><b class="${cls(rs.own)}">${pct(rs.own)}</b></div><div><span>20T Markt</span><b class="${cls(rs.market)}">${pct(rs.market)}</b></div><div><span>Rang</span><b>${rs.rank} / ${rs.of}</b></div></div>`),
@@ -3761,7 +3761,7 @@ scheduler.on((e) => {
   if (e.kind === "run") {
     toast(e.run.msg, e.run.ok ? "success" : "error", "⏱ Zeitplan");
     beep(e.run.ok ? 1180 : 300, 0.1);
-    notify("AKTEX Zeitplan", e.run.msg);
+    notify("AKYTEX Zeitplan", e.run.msg);
   }
   if (settings.view === "ai" && aiTab === "plan") renderSchedList();
 });
@@ -3799,7 +3799,7 @@ function bindAiTabs() {
   });
   $("#sched-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    if (!aiMode()) return openPlans("Zeitpläne und Regeln sind Teil von AKTEX AI.");
+    if (!aiMode()) return openPlans("Zeitpläne und Regeln sind Teil von AKYTEX AI.");
     const t = schedFromForm();
     if (!(t.action.value > 0)) return shake($("#sc-val"));
     if (t.type === "once" && !(t.at > Date.now())) return toast("Bitte einen Zeitpunkt in der Zukunft wählen.", "error");
@@ -3862,7 +3862,7 @@ function bindAiTabs() {
     }
     const lb = e.target.closest("[data-lab-buy]");
     if (lb) {
-      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKTEX AI.");
+      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKYTEX AI.");
       const v = aiEngine.scan(lb.dataset.labBuy);
       const step = tickStep(v.price);
       const r = broker.placeOrder({ symbol: lb.dataset.labBuy, side: "buy", type: "market", qty: +lb.dataset.qty, sl: roundTo(v.h.setup.sl, step), tp: roundTo(v.h.setup.tp, step) });
@@ -3870,7 +3870,7 @@ function bindAiTabs() {
       return;
     }
     if (e.target.closest("[data-lab-rebal]")) {
-      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKTEX AI.");
+      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKYTEX AI.");
       const rb = lab.rebalance(broker, market, "equal");
       let ok = 0;
       for (const t of rb.trades) if (broker.placeOrder({ symbol: t.sym, side: t.side, type: "market", qty: t.qty }).ok) ok++;
@@ -3885,7 +3885,7 @@ function bindAiTabs() {
   });
 }
 
-// Die 50 neuen AKTEX-AI-Funktionen
+// Die 50 neuen AKYTEX-AI-Funktionen
 const ask = (q) => () => {
   setAiTab("cockpit");
   setTimeout(() => sendChat(q), 250);
@@ -3965,7 +3965,7 @@ function speak(text) {
   }
 }
 
-// ---------- AKTEX Store ----------
+// ---------- AKYTEX Store ----------
 let shopCat = "all";
 const basketAmt = {};
 const MERCH_SVG = {
@@ -4042,10 +4042,10 @@ function renderCart() {
   $("#cart-body").innerHTML = items.length
     ? `<ul class="cart-list">${items.map((i) => `<li><div class="cart-art">${productArt(i)}</div><div><b>${esc(i.name)}</b><small class="muted">${eur(i.price)}</small>${i.physical || i.gift ? `<div class="qty-step"><button data-cart-q="${i.id}" data-d="-1">−</button><span>${i.qty}</span><button data-cart-q="${i.id}" data-d="1">+</button></div>` : ""}</div><div class="cart-r"><b>${eur(i.price * i.qty)}</b><button class="link-btn" data-cart-rm="${i.id}">Entfernen</button></div></li>`).join("")}</ul>
       <div class="co-sum"><div><span>Zwischensumme</span><b>${eur(sub)}</b></div>${physical ? `<div><span>Versand</span><b>${sub >= 50 ? "kostenlos" : eur(4.9)}</b></div>` : ""}<div class="co-total"><span>Gesamt</span><b>${eur(sub + (physical && sub < 50 ? 4.9 : 0))}</b></div><div class="muted small"><span>inkl. 19 % MwSt.</span></div></div>
-      <button class="hold-pay static" data-cart-checkout><span class="hp-label">Zur Kasse mit ΛKTEX Pay</span></button>`
+      <button class="hold-pay static" data-cart-checkout><span class="hp-label">Zur Kasse mit ΛKYTEX Pay</span></button>`
     : `<div class="empty-state"><div class="spot-ic">🛍️</div><h3>Dein Warenkorb ist leer</h3><p class="muted">Entdecke Strategien, Kurse und Merch im Store.</p><button class="btn primary" data-goto="shop" data-close-drawer>Zum Store</button></div>`;
 }
-// Wird von AKTEX Pay nach erfolgreicher (Test-)Zahlung aufgerufen
+// Wird von AKYTEX Pay nach erfolgreicher (Test-)Zahlung aufgerufen
 function shopComplete(items, T, method, address) {
   const order = shop.complete(items, T.due, method, address);
   account.addInvoice({ date: Date.now(), lines: T.lines.concat(T.discount ? [{ label: `Gutschein ${pay.promo}`, amount: -T.discount }] : []), total: T.due, note: `Bestellung ${order.no}${order.codes.length ? " · Geschenkcodes: " + order.codes.map((c) => c.code).join(", ") : ""}` });
@@ -4080,7 +4080,7 @@ function investBasket(id) {
 const LESSON_TEXT = {
   "Was ist eine Aktie?": "Eine Aktie ist ein Anteil an einem Unternehmen. Steigt der Wert des Unternehmens oder schüttet es Gewinne aus, profitierst du anteilig – sinkt er, verlierst du.",
   "Orderarten: Market, Limit, Stopp": "Market kauft sofort zum aktuellen Kurs. Limit kauft nur zu deinem Wunschpreis oder besser. Stopp wird zur Market-Order, sobald eine Schwelle erreicht ist – ideal zum Absichern.",
-  "Kosten verstehen: Spread & Gebühren": "Der Spread ist die Differenz zwischen Kauf- und Verkaufskurs. Dazu kommen Ordergebühren. AKTEX zeigt dir vor jeder Order alle Kosten.",
+  "Kosten verstehen: Spread & Gebühren": "Der Spread ist die Differenz zwischen Kauf- und Verkaufskurs. Dazu kommen Ordergebühren. AKYTEX zeigt dir vor jeder Order alle Kosten.",
   "Risiko begrenzen mit Stop-Loss": "Lege vor dem Kauf fest, wie viel du maximal verlieren willst – etwa 1 % des Depots pro Trade – und setze den Stop entsprechend.",
   "Diversifikation richtig": "Verteile dein Geld auf mehrere Aktien und Branchen. Mehr als 20 % in einer Aktie erhöht das Klumpenrisiko deutlich.",
   "Sparpläne und Zinseszins": "Regelmäßig kleine Beträge investieren glättet Einstiegskurse. Über Jahre wirkt der Zinseszins – Gewinne erzeugen weitere Gewinne.",
@@ -4088,10 +4088,10 @@ const LESSON_TEXT = {
 };
 function openContent(p) {
   let html = "";
-  if (p.lessons) html = `<ol class="lessons">${p.lessons.map((l, i) => `<li><details ${i === 0 ? "open" : ""}><summary><span>${i + 1}</span>${esc(l)}</summary><p>${esc(LESSON_TEXT[l] || "In dieser Lektion lernst du die Grundlagen zu „" + l + "“ Schritt für Schritt – mit Beispielen aus dem AKTEX-Chart und einer kurzen Übung im Demo-Depot.")}</p></details></li>`).join("")}</ol>`;
+  if (p.lessons) html = `<ol class="lessons">${p.lessons.map((l, i) => `<li><details ${i === 0 ? "open" : ""}><summary><span>${i + 1}</span>${esc(l)}</summary><p>${esc(LESSON_TEXT[l] || "In dieser Lektion lernst du die Grundlagen zu „" + l + "“ Schritt für Schritt – mit Beispielen aus dem AKYTEX-Chart und einer kurzen Übung im Demo-Depot.")}</p></details></li>`).join("")}</ol>`;
   else if (p.report === "picks") {
     const top = aiEngine.scanAll(STOCKS.map((s) => s.s)).slice(0, 10);
-    html = `<p class="muted small">Stand ${new Date().toLocaleString("de-DE")} · automatisch von AKTEX AI berechnet · keine Anlageberatung</p><ol class="report-list">${top.map((v) => `<li><div><b>${v.sym}</b> <span class="muted">${esc(v.name)}</span></div><div class="up">${v.rating.label} · Konfidenz ${lab.confidence(market, v.sym)} %</div><small>${esc(v.reason)} · Ziel ${num(v.h.setup.tp)} · Stop ${num(v.h.setup.sl)}</small></li>`).join("")}</ol>`;
+    html = `<p class="muted small">Stand ${new Date().toLocaleString("de-DE")} · automatisch von AKYTEX AI berechnet · keine Anlageberatung</p><ol class="report-list">${top.map((v) => `<li><div><b>${v.sym}</b> <span class="muted">${esc(v.name)}</span></div><div class="up">${v.rating.label} · Konfidenz ${lab.confidence(market, v.sym)} %</div><small>${esc(v.reason)} · Ziel ${num(v.h.setup.tp)} · Stop ${num(v.h.setup.sl)}</small></li>`).join("")}</ol>`;
   } else if (p.report === "outlook") {
     const si = lab.sentimentIndex(market);
     const rot = lab.sectorRotation(market);
@@ -4167,8 +4167,8 @@ function bindShop() {
   syncCart();
 }
 
-// ---------- AKTEX Clips ----------
-const CLIPS_KEY = "aktex-v2-clips";
+// ---------- AKYTEX Clips ----------
+const CLIPS_KEY = "akytex-v2-clips";
 const clipsState = (() => {
   try {
     return { liked: [], comments: {}, reported: [], myGen: [], ...JSON.parse(localStorage.getItem(CLIPS_KEY) || "{}") };
@@ -4324,8 +4324,8 @@ function openComments(id) {
 async function recordChartClip() {
   const sym = settings.symbol;
   const a = analyze(aggregate(market.get(sym).m1.slice(-60 * 24 * 7), "1h"));
-  const caps = [`${sym}: mein Blick auf den Chart`, `${a.rating.label} laut AKTEX AI`, `Ziel ${num(a.setup.tp)} · Stop ${num(a.setup.sl)}`];
-  const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#aktex"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
+  const caps = [`${sym}: mein Blick auf den Chart`, `${a.rating.label} laut AKYTEX AI`, `Ziel ${num(a.setup.tp)} · Stop ${num(a.setup.sl)}`];
+  const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#akytex"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
   toast("Aufnahme läuft (8 Sekunden) …", "info", "🎬 Chart-Clip");
   try {
     const blob = await recordClip(clip, market, "@" + clipAuthor(clip).handle);
@@ -4659,7 +4659,7 @@ window.addEventListener("hashchange", () => {
 async function share() {
   const url = shareUrl();
   const q = market.quote(settings.symbol);
-  const data = { title: `AKTEX · ${settings.symbol}`, text: `${q.name} (${settings.symbol}) ${num(q.price)} € ${pct(q.changePct)} – schau dir das auf AKTEX an:`, url };
+  const data = { title: `AKYTEX · ${settings.symbol}`, text: `${q.name} (${settings.symbol}) ${num(q.price)} € ${pct(q.changePct)} – schau dir das auf AKYTEX an:`, url };
   haptic(10);
   if (navigator.share && !embedded) {
     try {

@@ -1,4 +1,4 @@
-// AKTEX AI Labor: erweiterte Analysefunktionen (Muster, Prognosen, Risiko, Backtests, Portfolio-Werkzeuge)
+// AKYTEX AI Labor: erweiterte Analysefunktionen (Muster, Prognosen, Risiko, Backtests, Portfolio-Werkzeuge)
 import { analyze, rating } from "./analysis.js";
 import * as ind from "./indicators.js";
 import { aggregate } from "./market.js";
@@ -186,7 +186,7 @@ export function sectorRotation(market) {
     .sort((a, b) => b.d5 - a.d5);
 }
 
-// 12 · AKTEX Sentiment-Index (Angst & Gier)
+// 12 · AKYTEX Sentiment-Index (Angst & Gier)
 export function sentimentIndex(market) {
   const qs = market.list.map((s) => market.quote(s.s));
   const breadth = qs.filter((q) => q.changePct > 0).length / qs.length;
@@ -496,7 +496,7 @@ export function draftIdea(market, sym) {
   const tp = long ? st.price + 2 * u : st.price - 2 * u;
   const sl = long ? st.price - u : st.price + u;
   const reasons = [a.text[0], pat[0] ? `Muster: ${pat[0].name}` : null, dv ? dv.text : null].filter(Boolean);
-  return { dir: long ? "long" : "short", tp, sl, title: `${sym}: ${long ? "Long-Chance" : "Short-Setup"} laut AKTEX AI (${a.rating.label})`, body: `${reasons.join(" ")} Ziel ${f2(tp)}, Stop ${f2(sl)}.` };
+  return { dir: long ? "long" : "short", tp, sl, title: `${sym}: ${long ? "Long-Chance" : "Short-Setup"} laut AKYTEX AI (${a.rating.label})`, body: `${reasons.join(" ")} Ziel ${f2(tp)}, Stop ${f2(sl)}.` };
 }
 
 // 44/49 · Depot-Drawdown

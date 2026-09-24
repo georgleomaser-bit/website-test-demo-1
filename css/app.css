@@ -595,7 +595,7 @@ body:not([data-view="chart"]) .chart-only { display: none; }
 /* Konfetti */
 .confetti { position: fixed; top: 70vh; width: 9px; height: 14px; border-radius: 2px; z-index: 90; pointer-events: none; }
 
-/* AKTEX AI */
+/* AKYTEX AI */
 .ai { padding: 12px 14px 16px; }
 .ai-head { display: flex; justify-content: space-between; align-items: center; }
 .ai-head b { font-size: 13px; letter-spacing: 0.08em; }
@@ -783,7 +783,7 @@ body:not([data-view="chart"]) .chart-only { display: none; }
 .btn.danger-armed { border-color: var(--down); color: var(--down); background: var(--down-bg); animation: sent 0.5s var(--spring); }
 
 /* =====================================================================
-   Preismodell, Ideen-Börse, Business, AKTEX AI
+   Preismodell, Ideen-Börse, Business, AKYTEX AI
    ===================================================================== */
 /* Tarife */
 .plans { display: block; padding: 4px 16px 18px; }
@@ -948,7 +948,7 @@ input[type="range"]::-moz-range-thumb { width: 18px; height: 18px; border-radius
 .tax-grid b.up { color: var(--up); }
 .tax-grid b.down { color: var(--down); }
 
-/* ---------- AKTEX AI ---------- */
+/* ---------- AKYTEX AI ---------- */
 .nav-badge { display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px; margin-left: 4px; border-radius: 8px; background: var(--down); color: #fff; font-size: 10px; font-weight: 800; animation: starPop 0.6s var(--spring); }
 .ai-hero { position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 26px; align-items: center; padding: 26px; border-radius: 24px; overflow: hidden; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
   background: radial-gradient(60% 120% at 0% 50%, rgba(79, 140, 255, 0.25), transparent 70%), radial-gradient(50% 100% at 100% 0%, rgba(167, 139, 250, 0.2), transparent 70%), var(--panel); }
@@ -1328,7 +1328,7 @@ mark.ph { background: rgba(234, 179, 8, 0.18); color: var(--warn); border-radius
 .co-stage { overflow-x: hidden; }
 .co-grid > div { min-width: 0; }
 
-/* ---------- AKTEX AI: Tabs, Zeitplan, Labor, Features ---------- */
+/* ---------- AKYTEX AI: Tabs, Zeitplan, Labor, Features ---------- */
 .ai-tabs { align-self: flex-start; position: sticky; top: 8px; z-index: 5; box-shadow: var(--shadow); }
 .ai-tabs button { padding: 8px 16px; }
 .ai-pane { display: flex; flex-direction: column; gap: 16px; animation: viewIn 0.5s var(--ease-ios) both; }
@@ -1416,7 +1416,7 @@ mark.ph { background: rgba(234, 179, 8, 0.18); color: var(--warn); border-radius
 .lab-svg .ax { font-size: 12px; }
 .cd-ring .ring-bg { stroke: var(--border); }
 
-/* ---------- AKTEX Pay ---------- */
+/* ---------- AKYTEX Pay ---------- */
 .modal-box.pay-box { width: 460px; max-height: 92vh; border-radius: 28px; overflow: hidden; background: color-mix(in srgb, var(--panel) 90%, transparent); backdrop-filter: blur(30px) saturate(170%); -webkit-backdrop-filter: blur(30px) saturate(170%); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); box-shadow: 0 40px 120px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.03) inset; }
 .pay-sheet { position: relative; overflow-y: auto; padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; max-height: 92vh; }
 .ps-top { display: flex; align-items: center; gap: 10px; }

@@ -1,4 +1,4 @@
-name: Deploy AKTEX to GitHub Pages
+name: Deploy AKYTEX to GitHub Pages
 
 on:
   push:
