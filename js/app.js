@@ -36,7 +36,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.1"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.2"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2952,6 +2952,7 @@ function bindAI() {
     }
     if (t.closest("[data-jarvis-try]")) return startJarvis();
     if (t.closest("[data-future-open]")) return openFuture();
+    if (t.closest("[data-league-open]")) return openLeague();
     if (t.closest("[data-plan-ultra]")) {
       openPlans("AKYTEX Ultra: alles aus AI Premium plus Jarvis, der Sprachmodus.");
       return setTimeout(() => $("#modal-plans .ai-plan.ultra")?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
@@ -4275,6 +4276,7 @@ function cmdItems(q) {
     { icon: "🎬", label: "Chart-Clip aufnehmen", run: () => recordChartClip() },
     { icon: "✦", label: "Jarvis-Sprachmodus starten", run: () => startJarvis() },
     { icon: "🔮", label: "Zukunfts-Ich treffen", run: () => openFuture() },
+    { icon: "🏆", label: "Liga öffnen", run: () => openLeague() },
     { icon: "🧬", label: "Trader-DNA ansehen", run: () => (openAssistant(false), sendChat("Analysiere mich")) },
     { icon: "✦", label: "AKYTEX Ultra abonnieren (Checkout)", run: () => openCheckout("ultra") },
     { icon: "🛍️", label: "Warenkorb öffnen", run: () => openCart() },
@@ -6629,6 +6631,205 @@ function paintFutureMini() {
   if (document.activeElement !== mo) mo.value = plan.monthly;
   box.innerHTML = `Mit ${plan.until}: <b>≈ ${future.money(future.project(plan).value)}</b>`;
 }
+// ---------- Liga: Freunde & Schulklassen treten mit Übungsgeld gegeneinander an (Server) ----------
+const lg = { cur: null, data: null, quotes: {}, timer: 0, pendingCode: "" };
+const lgHandle = () => account.state.profile?.name || "";
+function openLeague(id = null) {
+  lg.cur = id;
+  openModal("#league-modal");
+  renderLeague();
+  clearInterval(lg.timer);
+  lg.timer = setInterval(() => {
+    if ($("#league-modal").hidden) return clearInterval(lg.timer);
+    if (lg.cur) refreshLeague(true);
+  }, 5000);
+}
+function lgFail(e) {
+  toast(e?.message || "Das hat nicht geklappt.", "error", "🏆 Liga");
+}
+const lgPct = (v) => `<b class="${v >= 0 ? "up" : "down"}">${pct(v)}</b>`;
+const lgDays = (end) => {
+  const d = Math.ceil((end - Date.now()) / 86400000);
+  return d > 1 ? `noch ${d} Tage` : d === 1 ? "letzter Tag" : "Saison beendet";
+};
+async function renderLeague() {
+  const body = $("#lg-body");
+  if (!(await cloud.cloudReady())) {
+    body.innerHTML = `<div class="lg-empty"><div class="lg-trophy">🏆</div><h3>Die Liga läuft auf dem AKYTEX-Server</h3>
+      <p class="muted">Damit alle am selben Markt handeln und niemand schummeln kann, liegen Kurse, Depots und Rangliste auf dem Server. Auf dieser Vorschau-Seite gibt es keinen – auf eurer eigenen AKYTEX-Adresse ist die Liga sofort da.</p></div>`;
+    return;
+  }
+  if (lg.cur) return refreshLeague(false);
+  body.innerHTML = `<p class="muted">Lädt …</p>`;
+  let list = [];
+  try {
+    list = await cloud.leagues();
+  } catch (e) {
+    return lgFail(e);
+  }
+  body.innerHTML = `<p class="muted lg-lead">Jeder startet mit ${eur(100000)} Übungsgeld am selben Markt. ${4} Wochen, eine Rangliste – wer holt am meisten raus?</p>
+    ${list.length ? `<div class="lg-list">${list.map((l) => `<button class="lg-card" data-lg-open="${esc(l.id)}"><span class="lg-rank">${l.rank ? `#${l.rank}` : "–"}<small>von ${l.members}</small></span><span class="lg-info"><b>${esc(l.name)}</b><small>${l.leader ? `Vorne: @${esc(l.leader.handle)} ${pct(l.leader.pct)}` : ""} · ${lgDays(l.seasonEnd)}</small></span><span class="lg-me">${l.pct != null ? lgPct(l.pct) : ""}</span></button>`).join("")}</div>` : `<div class="lg-empty"><div class="lg-trophy">🏆</div><h3>Fordere deine Freunde heraus</h3><p class="muted">Erstelle eine Liga für deine Clique oder Klasse – oder tritt mit einem Code bei.</p></div>`}
+    <div class="lg-forms">
+      <form class="lg-form" data-lg-form="create"><label class="field"><span>Neue Liga</span><input type="text" maxlength="40" placeholder="z. B. Klasse 10b oder Die Wölfe" required></label><button class="btn primary">Liga erstellen</button></form>
+      <form class="lg-form" data-lg-form="join"><label class="field"><span>Code einer Liga</span><input type="text" maxlength="8" placeholder="ABC234" autocapitalize="characters" value="${esc(lg.pendingCode)}" required></label><button class="btn">Beitreten</button></form>
+    </div>
+    <p class="muted small">Übungsgeld, simulierte Kurse – kein echtes Geld, keine Anlageberatung. In der Rangliste erscheint nur dein Nutzername.</p>`;
+}
+async function refreshLeague(quiet) {
+  let r;
+  try {
+    r = await cloud.leagueGet(lg.cur);
+  } catch (e) {
+    if (!quiet) {
+      lg.cur = null;
+      lgFail(e);
+      renderLeague();
+    }
+    return;
+  }
+  lg.data = r.league;
+  lg.quotes = r.quotes || lg.quotes;
+  paintLeague(quiet);
+}
+function paintLeague(quiet) {
+  const l = lg.data;
+  const body = $("#lg-body");
+  const sel = body.querySelector("[data-lg-sym]")?.value || lg.sym || "NVDA";
+  const qty = body.querySelector("[data-lg-qty]")?.value || lg.qty || "10";
+  const focus = document.activeElement?.matches?.("#lg-body [data-lg-qty], #lg-body [data-lg-sym]");
+  if (quiet && focus) return paintLeagueNumbers(); // beim Tippen nichts umbauen
+  const q = lg.quotes[sel] || { p: 0, chg: 0 };
+  body.innerHTML = `<div class="lg-head"><button class="icon-btn" data-lg-back aria-label="Zurück">←</button><div><h3>${esc(l.name)}</h3><small class="muted">Saison ${l.season} · ${lgDays(l.seasonEnd)} · ${l.members} ${l.members === 1 ? "Mitglied" : "Mitglieder"}</small></div><button class="lg-code" data-lg-invite title="Einladen">Code <b>${esc(l.code)}</b> · Einladen</button></div>
+    <div class="lg-stats"><div><span>Dein Platz</span><b>${l.rank ? `#${l.rank}` : "–"}</b></div><div><span>Depot</span><b data-lg-val>${eur(l.depot.value)}</b></div><div><span>Seit Start</span><b data-lg-pct>${lgPct(l.pct || 0)}</b></div><div><span>Guthaben</span><b>${eur(l.depot.cash)}</b></div></div>
+    ${l.ended ? `<p class="lg-over">🏁 Saison beendet – Sieger: <b>@${esc(l.board[0]?.handle || "–")}</b> ${l.board[0] ? pct(l.board[0].pct) : ""}. ${l.owner ? "" : "Die Liga-Leitung kann eine neue Saison starten."}</p>` : `
+    <form class="lg-trade" data-lg-form="trade">
+      <select data-lg-sym aria-label="Aktie">${STOCKS.map((x) => `<option value="${x.s}" ${x.s === sel ? "selected" : ""}>${x.s} · ${esc(x.n)}</option>`).join("")}</select>
+      <input type="number" min="1" step="1" inputmode="numeric" value="${esc(qty)}" data-lg-qty aria-label="Stück">
+      <span class="lg-px" data-lg-px>${num(q.p)} € <em class="${q.chg >= 0 ? "up" : "down"}">${pct(q.chg)}</em></span>
+      <button class="btn buy" data-lg-side="buy">Kaufen</button><button class="btn sell" data-lg-side="sell">Verkaufen</button>
+    </form>`}
+    ${l.depot.pos.length ? `<div class="lg-pos">${l.depot.pos.map((x) => `<div><b>${esc(x.sym)}</b><span>${x.qty} Stk.</span><span>${lgPct(x.price / x.avg - 1)}</span><span>${eur(x.qty * x.price)}</span>${l.ended ? "" : `<button class="link-btn" data-lg-sellall="${esc(x.sym)}" data-qty="${x.qty}">Alles verkaufen</button>`}</div>`).join("")}</div>` : ""}
+    <h4 class="lg-h">Rangliste</h4>
+    <ol class="lg-board">${l.board.map((r) => `<li class="${r.me ? "me" : ""}"><span class="lg-pl">${r.rank <= 3 ? ["🥇", "🥈", "🥉"][r.rank - 1] : r.rank}</span><span class="lg-who">@${esc(r.handle)}${r.me ? " (du)" : ""}</span><span>${lgPct(r.pct)}</span><span class="muted">${eur(r.value)}</span></li>`).join("")}</ol>
+    ${l.champions.length ? `<p class="muted small">🏆 Ruhmeshalle: ${l.champions.map((c) => `Saison ${c.season}: @${esc(c.handle)} ${pct(c.pct)}`).join(" · ")}</p>` : ""}
+    <div class="btn-row">${l.owner && l.ended ? `<button class="btn primary" data-lg-season>Neue Saison starten</button>` : ""}<button class="btn danger" data-lg-leave>Liga verlassen</button></div>`;
+}
+function paintLeagueNumbers() {
+  const l = lg.data;
+  const body = $("#lg-body");
+  const v = body.querySelector("[data-lg-val]");
+  if (v) v.textContent = eur(l.depot.value);
+  const pc = body.querySelector("[data-lg-pct]");
+  if (pc) pc.innerHTML = lgPct(l.pct || 0);
+  const sym = body.querySelector("[data-lg-sym]")?.value;
+  const q = lg.quotes[sym];
+  const px = body.querySelector("[data-lg-px]");
+  if (q && px) px.innerHTML = `${num(q.p)} € <em class="${q.chg >= 0 ? "up" : "down"}">${pct(q.chg)}</em>`;
+}
+async function lgTrade(side, sym, qty) {
+  try {
+    const r = await cloud.leagueTrade(lg.cur, { sym, side, qty });
+    haptic(12);
+    toast(`${r.fill.qty} × ${r.fill.sym} zu ${num(r.fill.price)} €`, side === "buy" ? "success" : "sell", side === "buy" ? "🏆 Liga-Kauf" : "🏆 Liga-Verkauf");
+    lg.data = r.league;
+    paintLeague(false);
+  } catch (e) {
+    lgFail(e);
+  }
+}
+async function lgInvite() {
+  const url = `${shareUrl().split("#")[0]}?liga=${lg.data.code}`;
+  const text = `Tritt meiner AKYTEX-Liga „${lg.data.name}“ bei – wer macht am meisten aus 100.000 € Übungsgeld? 🏆 Code ${lg.data.code}:`;
+  if (navigator.share) {
+    try {
+      return await navigator.share({ title: "AKYTEX-Liga", text, url });
+    } catch (e) {
+      if (e?.name === "AbortError") return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(`${text} ${url}`);
+    toast("Einladung kopiert – ab in den Gruppenchat! 🚀", "success", "🏆 Liga");
+  } catch (_) {
+    toast(`Code ${lg.data.code} · ${url}`, "info", "🏆 Einladung");
+  }
+}
+function bindLeague() {
+  const body = $("#lg-body");
+  body.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = e.target.closest("[data-lg-form]");
+    const kind = f?.dataset.lgForm;
+    if (kind === "trade") return;
+    const val = f.querySelector("input").value.trim();
+    if (!val) return;
+    try {
+      const l = kind === "create" ? await cloud.leagueCreate(val, lgHandle()) : await cloud.leagueJoin(val, lgHandle());
+      lg.pendingCode = "";
+      toast(kind === "create" ? `Liga steht! Teile den Code ${l.code} mit deinen Freunden.` : `Willkommen in „${l.name}“ – viel Erfolg!`, "success", "🏆 Liga");
+      confetti();
+      lg.cur = l.id;
+      refreshLeague(false);
+    } catch (err) {
+      lgFail(err);
+    }
+  });
+  body.addEventListener("click", async (e) => {
+    const t = e.target;
+    const open = t.closest("[data-lg-open]");
+    if (open) {
+      lg.cur = open.dataset.lgOpen;
+      return refreshLeague(false);
+    }
+    if (t.closest("[data-lg-back]")) {
+      lg.cur = null;
+      return renderLeague();
+    }
+    if (t.closest("[data-lg-invite]")) return lgInvite();
+    const side = t.closest("[data-lg-side]");
+    if (side) {
+      e.preventDefault();
+      lg.sym = body.querySelector("[data-lg-sym]").value;
+      lg.qty = body.querySelector("[data-lg-qty]").value;
+      return lgTrade(side.dataset.lgSide, lg.sym, +lg.qty);
+    }
+    const sa = t.closest("[data-lg-sellall]");
+    if (sa) return lgTrade("sell", sa.dataset.lgSellall, +sa.dataset.qty);
+    if (t.closest("[data-lg-season]")) {
+      try {
+        lg.data = (await cloud.leagueSeason(lg.cur)).league;
+        confetti();
+        return paintLeague(false);
+      } catch (err) {
+        return lgFail(err);
+      }
+    }
+    if (t.closest("[data-lg-leave]")) {
+      if (!confirm(`„${lg.data.name}“ wirklich verlassen? Dein Liga-Depot wird gelöscht.`)) return;
+      try {
+        await cloud.leagueLeave(lg.cur);
+        lg.cur = null;
+        renderLeague();
+      } catch (err) {
+        lgFail(err);
+      }
+    }
+  });
+  body.addEventListener("change", (e) => {
+    if (e.target.matches("[data-lg-sym]")) paintLeagueNumbers();
+  });
+  // Einladungslink ?liga=CODE: Fenster mit vorausgefülltem Code öffnen
+  const q = new URLSearchParams(location.search);
+  const code = (q.get("liga") || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  if (code) {
+    q.delete("liga");
+    history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q : "") + location.hash);
+    lg.pendingCode = code;
+    // erst nach Splash/Start-Ansicht öffnen (die schließen offene Fenster)
+    setTimeout(() => openLeague(), 2600);
+  }
+}
+bindLeague(); // hier, weil „lg“ erst oben angelegt wird
 // Stimmung für Jarvis’ Auto-Modus: Tagesveränderung von Depot und Markt (in %)
 function jarvisMoodHint() {
   const eq = broker.equity() || 1;
@@ -6675,6 +6876,8 @@ function appCommand(text) {
   if (/((dna|trader).?karte|teil\w* (meine )?dna)/.test(t)) return done(`<p>📲 Deine DNA-Karte wird erstellt …</p>`, () => shareDna());
   if (/(trader.?dna|meine dna|analysier\w* mich|mein(e)? (trading.?)?(profil|stil)|was mache ich falsch|wie gut bin ich|meine (fehler|schwächen|stärken)|coach mich|bewerte mich)/.test(t))
     return done(dnaReport(), null, ["Profit-Modus an", "Wie steht mein Depot?", "Triff mein Zukunfts-Ich"], traderDNA().n >= 3 ? [{ label: "📲 DNA-Karte teilen", primary: true, run: () => shareDna() }] : []);
+  // Liga: „Öffne die Liga“, „Wie stehe ich in der Liga?“
+  if (/\b(liga|rangliste|league|klassen.?wettbewerb)\b/.test(t)) return done(`<p>🏆 Ich öffne deine Liga – dort siehst du deinen Platz, die Rangliste und kannst am gemeinsamen Markt handeln.</p>`, () => openLeague());
   // Zukunfts-Ich: „Triff mein Zukunfts-Ich“, „Was habe ich mit 40?“, „Wie reich bin ich mit 60?“
   const fuAge = t.match(/(?:mit|bis|in meinen) (\d{2})\b/);
   if (/(zukunfts.?ich|future.?(me|self)|was habe ich mit \d{2}|wie reich bin ich|wie viel (habe|hab) ich mit|zinseszins.?rechner|sparplan.?rechner)/.test(t) || (fuAge && /(ich|mich|mir)\b.*(mit|bis) \d{2}/.test(t) && /(reich|geld|habe|hab|sparen|spar)/.test(t))) {

@@ -124,6 +124,22 @@ export async function verifyPurchase(sessionId) {
   return call("POST", "billing/verify", { sessionId });
 }
 export const serverBilling = () => call("GET", "billing");
+// Liga: gemeinsamer Server-Markt, Depots und Rangliste liegen auf dem Server
+export const hasToken = () => !!token();
+export const leagueQuotes = async () => (await call("GET", "league/quotes")).quotes;
+export const leagues = async () => (token() ? (await call("GET", "leagues")).leagues : []);
+export const leagueGet = (id) => call("GET", `leagues/${encodeURIComponent(id)}`);
+export async function leagueCreate(name, handle) {
+  await ensureUser(handle);
+  return (await call("POST", "leagues", { name })).league;
+}
+export async function leagueJoin(code, handle) {
+  await ensureUser(handle);
+  return (await call("POST", "leagues/join", { code })).league;
+}
+export const leagueTrade = (id, order) => call("POST", `leagues/${encodeURIComponent(id)}/trade`, order);
+export const leagueLeave = (id) => call("POST", `leagues/${encodeURIComponent(id)}/leave`);
+export const leagueSeason = (id) => call("POST", `leagues/${encodeURIComponent(id)}/season`);
 export const renameMe = async (handle) => (me = (await call("PATCH", "me", { handle })).user);
 export async function deleteMe() {
   await call("DELETE", "me");

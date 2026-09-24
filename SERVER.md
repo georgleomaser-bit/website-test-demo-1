@@ -24,6 +24,9 @@ Später:
 - `journalctl -u akytex -f` zeigt die Logs.
 - Einstellungen stehen in `/etc/akytex.env`. Danach `systemctl restart akytex`.
 
+## 🏆 Liga
+Die Liga läuft nur über den Server: Er berechnet einen gemeinsamen Markt (40 Aktien, alle 5 Sekunden neue Kurse) und führt die Liga-Depots und die Rangliste. So handeln alle zu denselben Kursen, und niemand kann seinen Stand fälschen. Eine Saison dauert 4 Wochen, danach kann die Liga-Leitung eine neue starten, und der Sieger kommt in die Ruhmeshalle. Eingeladen wird mit einem 6-stelligen Code oder dem Link `…/?liga=CODE`.
+
 ## 🔒 Käufe prüfen lassen (Stripe-Schlüssel)
 Ohne diesen Schlüssel glaubt die App dem Rückkehr-Link von Stripe. Wer den Link nachbaut, könnte sich dann einen Tarif „freischalten“. Mit dem Schlüssel fragt der Server bei jedem Kauf direkt bei Stripe nach. Nur was dort wirklich bezahlt ist, wird aktiv, und gekündigte Abos laufen automatisch aus.
 
