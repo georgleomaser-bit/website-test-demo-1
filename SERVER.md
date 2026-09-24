@@ -8,6 +8,22 @@ Läuft die App über diesen Server, sieht jeder Nutzer die Clips aller anderen N
 
 Der Server braucht nur **Node.js 20 oder neuer**, keine weiteren Pakete.
 
+## 🚀 Empfohlen: eigener Server mit einem Befehl (läuft rund um die Uhr)
+Ein kleiner Mietserver (z. B. Hetzner CX22, ca. 4–5 € im Monat) mit Ubuntu 24.04. Im Terminal des Servers eingeben:
+```bash
+curl -fsSL https://raw.githubusercontent.com/georgleomaser-bit/website-test-demo-1/HEAD/server/install.sh | sudo bash
+```
+Das Skript fragt nach einer Domain und optional nach dem Anthropic-Schlüssel und richtet dann alles ein:
+- Node.js
+- AKYTEX als Dienst, der sich nach Absturz oder Neustart selbst wieder startet
+- **HTTPS automatisch** über Caddy, ohne Domain unter der kostenlosen Adresse `1-2-3-4.sslip.io`
+- Firewall und tägliche Backups (14 Tage)
+
+Später:
+- `akytex-update` holt die neueste Version.
+- `journalctl -u akytex -f` zeigt die Logs.
+- Einstellungen stehen in `/etc/akytex.env`. Danach `systemctl restart akytex`.
+
 ## ⚡ Einfachster Start: Doppelklick
 1. **Node.js** installieren: https://nodejs.org → „LTS“, einmalig.
 2. Den Code herunterladen: auf GitHub den Branch `claude/aktex-stock-trading-demo-j0lgog` wählen → **Code** → **Download ZIP** → entpacken.

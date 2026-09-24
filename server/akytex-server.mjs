@@ -23,6 +23,9 @@ const VIDEOS = path.join(DATA, "videos");
 const DB_FILE = path.join(DATA, "db.json");
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
 const TRUST_PROXY = process.env.TRUST_PROXY === "1";
+// Aus welcher Kopfzeile die echte Besucher-IP kommt: Caddy/Nginx → x-forwarded-for, Cloudflare → cf-connecting-ip.
+// Nur diese eine wird ausgewertet, damit Besucher ihre IP nicht über andere Kopfzeilen fälschen können.
+const IP_HEADER = (process.env.PROXY_IP_HEADER || "x-forwarded-for").toLowerCase();
 
 const MAX_VIDEO = 60 * 1024 * 1024;
 const MAX_JSON = 16 * 1024;
@@ -65,7 +68,7 @@ setInterval(() => {
   const t = now();
   for (const [k, b] of buckets) if (t > b.reset) buckets.delete(k);
 }, 60000).unref();
-const ipOf = (req) => (TRUST_PROXY && (req.headers["cf-connecting-ip"] || String(req.headers["x-forwarded-for"] || "").split(",")[0].trim())) || req.socket.remoteAddress || "?";
+const ipOf = (req) => (TRUST_PROXY && String(req.headers[IP_HEADER] || "").split(",")[0].trim()) || req.socket.remoteAddress || "?";
 
 // ---------- Hilfen ----------
 const SECURITY = {

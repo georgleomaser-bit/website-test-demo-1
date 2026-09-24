@@ -23,6 +23,7 @@ const tokenFile = path.join(DATA, "admin-token.txt");
 if (!fs.existsSync(tokenFile)) fs.writeFileSync(tokenFile, crypto.randomBytes(24).toString("hex"), { mode: 0o600 });
 process.env.ADMIN_TOKEN ||= fs.readFileSync(tokenFile, "utf8").trim();
 process.env.TRUST_PROXY = "1";
+process.env.PROXY_IP_HEADER ||= "cf-connecting-ip"; // Cloudflare-Tunnel liefert die echte IP hier
 process.env.PORT = String(PORT);
 process.env.DATA_DIR = DATA;
 
