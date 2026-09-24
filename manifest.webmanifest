@@ -1,7 +1,7 @@
 {
   "id": "./",
-  "name": "AKTEX – Trading-Plattform",
-  "short_name": "AKTEX",
+  "name": "AKYTEX – Trading-Plattform",
+  "short_name": "AKYTEX",
   "description": "Profi-Charts, KI-Autopilot, Ideen-Börse und Clips. Markets move. Ideas stay.",
   "lang": "de",
   "start_url": "./?source=pwa",
@@ -50,7 +50,7 @@
       "url": "./#chart"
     },
     {
-      "name": "AKTEX AI",
+      "name": "AKYTEX AI",
       "url": "./#ai"
     },
     {
@@ -68,14 +68,14 @@
       "sizes": "1280x720",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "AKTEX Startseite"
+      "label": "AKYTEX Startseite"
     },
     {
       "src": "icons/screenshot-narrow.png",
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "AKTEX Chart auf dem Handy"
+      "label": "AKYTEX Chart auf dem Handy"
     }
   ]
 }

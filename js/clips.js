@@ -1,4 +1,4 @@
-// AKTEX Clips: Kurzvideo-Feed für Trader.
+// AKYTEX Clips: Kurzvideo-Feed für Trader.
 // Community-Clips werden live aus Kursdaten gerendert (Canvas), eigene Videos liegen in IndexedDB.
 import { analyze } from "./analysis.js";
 import { aggregate } from "./market.js";
@@ -9,7 +9,7 @@ export const CLIP_MS = 12000;
 // ---------- IndexedDB ----------
 function db() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open("aktex", 1);
+    const r = indexedDB.open("akytex", 1);
     r.onupgradeneeded = () => r.result.createObjectStore("clips", { keyPath: "id" });
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
@@ -66,7 +66,7 @@ export function demoClips(market, traders) {
       sym,
       title: caps[0],
       captions: caps,
-      tags: ["#" + sym.toLowerCase(), i % 2 ? "#trading" : "#aktien", i % 3 ? "#charttechnik" : "#aktex"],
+      tags: ["#" + sym.toLowerCase(), i % 2 ? "#trading" : "#aktien", i % 3 ? "#charttechnik" : "#akytex"],
       likes: Math.round(300 + ((i * 7919) % 9000)),
       comments: 12 + ((i * 131) % 180),
       created: Date.now() - (i + 1) * 47 * 60000,
@@ -198,7 +198,7 @@ export function drawClip(ctx, W, H, clip, market, t, authorLabel) {
   ctx.font = `300 ${W * 0.035}px system-ui, sans-serif`;
   ctx.fillStyle = "rgba(255,255,255,.6)";
   ctx.textAlign = "right";
-  ctx.fillText("ΛKTEX", W * 0.92, H * 0.075);
+  ctx.fillText("ΛKYTEX", W * 0.92, H * 0.075);
   if (authorLabel) {
     ctx.font = `600 ${W * 0.03}px system-ui, sans-serif`;
     ctx.fillText(authorLabel, W * 0.92, H * 0.105);

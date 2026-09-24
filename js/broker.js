@@ -2,7 +2,7 @@
 import { nowSec } from "./market.js";
 
 export const START_CASH = 100000;
-const KEY = "aktex-v2-account";
+const KEY = "akytex-v2-account";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -276,6 +276,29 @@ export class Broker {
     this.state.royalties = (this.state.royalties || 0) + amount;
     this.save();
     this.emit("change", { credit: amount, note });
+  }
+
+  // Ein- und Auszahlungen: verändern das Guthaben, zählen aber nicht zur Rendite
+  deposit(amount, meta = {}) {
+    this.state.cash += amount;
+    this.state.netDeposits = (this.state.netDeposits || 0) + amount;
+    this.state.transfers = [{ id: uid(), type: "in", amount, at: Date.now(), ...meta }, ...(this.state.transfers || [])].slice(0, 100);
+    this.save();
+    this.emit("change", { deposit: amount });
+  }
+  withdraw(amount, meta = {}) {
+    if (!(amount > 0)) return { ok: false, msg: "Bitte einen Betrag eingeben." };
+    if (amount > this.buyingPower() + 1e-6) return { ok: false, msg: `Verfügbar sind höchstens ${this.buyingPower().toLocaleString("de-DE", { style: "currency", currency: "EUR" })}. Offene Orders reservieren Guthaben.` };
+    this.state.cash -= amount;
+    this.state.netDeposits = (this.state.netDeposits || 0) - amount;
+    this.state.transfers = [{ id: uid(), type: "out", amount, at: Date.now(), ...meta }, ...(this.state.transfers || [])].slice(0, 100);
+    this.save();
+    this.emit("change", { withdraw: amount });
+    return { ok: true };
+  }
+  // Eingesetztes Kapital: Startguthaben plus Einzahlungen minus Auszahlungen
+  invested() {
+    return START_CASH + (this.state.netDeposits || 0);
   }
 
   // ---------- Alarme ----------

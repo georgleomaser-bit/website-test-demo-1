@@ -1,4 +1,4 @@
-// Aktex – App-Steuerung (UI, Views, Order-Ticket, PWA)
+// Akytex – App-Steuerung (UI, Views, Order-Ticket, PWA)
 import { STOCKS, DEFAULT_WATCHLIST } from "./data.js";
 import { Market, TIMEFRAMES, tickStep, toLocalSec, aggregate } from "./market.js";
 import { Broker, START_CASH } from "./broker.js";
@@ -6,12 +6,12 @@ import { ChartView, CHART_TYPES, INDICATORS } from "./chart.js";
 import { analyze } from "./analysis.js";
 import { PLANS, ADDONS, planById, planPrice } from "./plans.js";
 import { Community } from "./community.js";
-import { AktexAI, STRATEGIES } from "./ai.js";
+import { AkytexAI, STRATEGIES } from "./ai.js";
 import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import { demoClips, drawClip, recordClip, idbAll, idbPut, idbDel, CLIP_MS } from "./clips.js";
-import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
+import { PAYMENT_CONFIG, TEST_CARDS, TEST_IBAN, FUNDING, ibanValid, cardBrand, luhn, formatCard, quote, stripeLinkFor, AccountStore } from "./payments.js";
 
 // ---------- Hilfsfunktionen ----------
 const $ = (s, root = document) => root.querySelector(s);
@@ -30,7 +30,7 @@ const dateTime = (ms) => new Date(ms).toLocaleString("de-DE", { day: "2-digit", 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const roundTo = (v, step) => Math.round(v / step) * step;
 
-const SETTINGS_KEY = "aktex-v2-settings";
+const SETTINGS_KEY = "akytex-v2-settings";
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -100,8 +100,8 @@ const settings = {
 const community = new Community(market);
 broker.feeFn = () => planById(settings.plan).fee;
 const plan = () => planById(settings.plan);
-const planTitle = (p) => (p.name.startsWith("AKTEX") ? p.name : "AKTEX " + p.name);
-const aiEngine = new AktexAI(market, broker);
+const planTitle = (p) => (p.name.startsWith("AKYTEX") ? p.name : "AKYTEX " + p.name);
+const aiEngine = new AkytexAI(market, broker);
 const aiMode = () => plan().limits.ai || null; // null | "assist" | "auto"
 const scheduler = new Scheduler(market, broker);
 const shop = new Shop(market);
@@ -194,7 +194,7 @@ function buildToolbar() {
   $("#shot-btn").addEventListener("click", () => {
     const canvas = chart.screenshot();
     const a = document.createElement("a");
-    a.download = `aktex-${settings.symbol}-${settings.tf}.png`;
+    a.download = `akytex-${settings.symbol}-${settings.tf}.png`;
     a.href = canvas.toDataURL("image/png");
     a.click();
   });
@@ -213,7 +213,7 @@ function syncToolbar() {
   $$("#tf-group [data-tf]").forEach((b) => b.classList.toggle("active", b.dataset.tf === settings.tf));
   $("#chart-type").value = settings.type;
   $("#sym-label").textContent = settings.symbol;
-  document.title = `${settings.symbol} ${num(market.get(settings.symbol).price)} · Aktex`;
+  document.title = `${settings.symbol} ${num(market.get(settings.symbol).price)} · Akytex`;
 }
 
 function setTimeframe(tf) {
@@ -349,11 +349,11 @@ function updateQuoteCard() {
   }
 }
 
+// Kurs-Aufblitzen ohne erzwungenes Layout (kein offsetWidth-Trick): Klasse im nächsten Frame neu setzen
 function flash(el, price, prev) {
   if (price === prev) return;
   el.classList.remove("fl-up", "fl-down");
-  void el.offsetWidth;
-  el.classList.add(price > prev ? "fl-up" : "fl-down");
+  requestAnimationFrame(() => el.classList.add(price > prev ? "fl-up" : "fl-down"));
 }
 
 // ---------- Watchlist ----------
@@ -559,13 +559,14 @@ function bindTicket() {
 function renderAccountBar() {
   const eq = broker.equity();
   const un = broker.unrealized();
-  const total = eq - START_CASH;
+  const total = eq - broker.invested();
   $("#acct").innerHTML = `
     <span>Gesamtwert <b>${eur(eq)}</b></span>
     <span>Guthaben <b>${eur(broker.state.cash)}</b></span>
     <span>Kaufkraft <b>${eur(broker.buyingPower())}</b></span>
     <span>Unreal. G/V <b class="${cls(un)}">${sEur(un)}</b></span>
-    <span>Gesamt <b class="${cls(total)}">${pct(total / START_CASH)}</b></span>`;
+    <span>Gesamt <b class="${cls(total)}">${pct(total / broker.invested())}</b></span>
+    <span class="acct-fund"><button class="mini-btn" data-fund="in">＋ Einzahlen</button><button class="mini-btn" data-fund="out">Auszahlen</button></span>`;
   $("#cnt-pos").textContent = Object.keys(broker.state.positions).length;
   $("#cnt-ord").textContent = broker.state.orders.length;
   $("#cnt-al").textContent = broker.state.alerts.filter((a) => a.active).length;
@@ -1008,10 +1009,10 @@ function renderPortfolio(full = false) {
   const eq = broker.equity();
   const un = broker.unrealized();
   const st = broker.stats();
-  const total = eq - START_CASH;
+  const total = eq - broker.invested();
   $("#kpis").innerHTML = [
     ["Gesamtwert", eur(eq), ""],
-    ["Gesamtrendite", `${sEur(total)} <small>${pct(total / START_CASH)}</small>`, cls(total)],
+    ["Gesamtrendite", `${sEur(total)} <small>${pct(total / broker.invested())}</small>`, cls(total)],
     ["Guthaben", eur(broker.state.cash), ""],
     ["Positionswert", eur(broker.positionsValue()), ""],
     ["Unrealisiert", sEur(un), cls(un)],
@@ -1024,6 +1025,7 @@ function renderPortfolio(full = false) {
   ]
     .map(([k, v, c]) => `<div class="kpi"><span>${k}</span><b class="${c}">${v}</b></div>`)
     .join("");
+  if (full) renderTransfers();
 
   // Aufteilung
   const parts = Object.entries(broker.state.positions).map(([s, p]) => ({ s, v: p.qty * market.get(s).price }));
@@ -1051,7 +1053,7 @@ broker.on("fill", (f) => {
   const pnl = f.pnl != null ? ` · G/V ${sEur(f.pnl)}` : "";
   toast(`${f.qty} × ${f.symbol} zu ${num(f.price)}${pnl}`, f.side === "buy" ? "success" : "sell", `${verb} (${{ market: "Market", limit: "Limit", stop: "Stopp" }[f.type]})`);
   beep(f.side === "buy" ? 880 : 660);
-  if (f.type !== "market") notify(`Aktex: Order ausgeführt`, `${verb}: ${f.qty} × ${f.symbol} zu ${num(f.price)} €`);
+  if (f.type !== "market") notify(`Akytex: Order ausgeführt`, `${verb}: ${f.qty} × ${f.symbol} zu ${num(f.price)} €`);
 });
 broker.on("placed", (o) => toast(`${o.side === "buy" ? "Kauf" : "Verkauf"} ${o.qty} × ${o.symbol} @ ${num(o.limitPrice ?? o.stopPrice)}`, "info", `${o.type === "limit" ? "Limit" : "Stopp"}-Order platziert`));
 broker.on("reject", (o) => toast(`${o.symbol}: ${o.status}`, "error", "Order abgelehnt"));
@@ -1060,7 +1062,7 @@ broker.on("alert", (a) => {
   toast(msg, "warn", "⏰ Alarm ausgelöst");
   beep(1046, 0.15);
   setTimeout(() => beep(1318, 0.2), 180);
-  notify("Aktex Alarm", msg);
+  notify("Akytex Alarm", msg);
 });
 broker.on("change", () => {
   chart.refreshOverlays();
@@ -1103,7 +1105,7 @@ market.onTick(() => {
 });
 function syncTitle() {
   const q = market.quote(settings.symbol);
-  document.title = `${settings.symbol} ${num(q.price)} ${pct(q.changePct)} · Aktex`;
+  document.title = `${settings.symbol} ${num(q.price)} ${pct(q.changePct)} · Akytex`;
 }
 
 // ---------- Tastatur ----------
@@ -1157,7 +1159,7 @@ function setupInstall() {
   window.addEventListener("appinstalled", () => {
     installEvent = null;
     btn.hidden = true;
-    toast("Aktex wurde als App installiert.", "success");
+    toast("Akytex wurde als App installiert.", "success");
   });
   btn.addEventListener("click", async () => {
     if (installEvent) {
@@ -1172,12 +1174,12 @@ function setupInstall() {
     const safariMac = /safari/i.test(ua) && !/chrome|chromium|edg/i.test(ua) && !ios;
     let html;
     if (ios)
-      html = `<ol><li>Tippe in Safari unten auf <b>Teilen</b> <span class="kbd">⬆︎</span>.</li><li>Wähle <b>„Zum Home-Bildschirm“</b>.</li><li>Tippe auf <b>Hinzufügen</b> – Aktex erscheint als App-Symbol.</li></ol>`;
+      html = `<ol><li>Tippe in Safari unten auf <b>Teilen</b> <span class="kbd">⬆︎</span>.</li><li>Wähle <b>„Zum Home-Bildschirm“</b>.</li><li>Tippe auf <b>Hinzufügen</b> – Akytex erscheint als App-Symbol.</li></ol>`;
     else if (android)
       html = `<ol><li>Öffne das Browser-Menü <span class="kbd">⋮</span>.</li><li>Wähle <b>„App installieren“</b> bzw. <b>„Zum Startbildschirm hinzufügen“</b>.</li></ol>`;
     else if (safariMac) html = `<ol><li>Klicke in Safari auf <b>Ablage → Zum Dock hinzufügen…</b></li><li>Bestätige mit <b>Hinzufügen</b>.</li></ol>`;
     else
-      html = `<ol><li>In <b>Chrome</b> oder <b>Edge</b>: Klicke auf das Installieren-Symbol <span class="kbd">⊕</span> rechts in der Adressleiste<br>oder Menü <span class="kbd">⋮</span> → <b>„Aktex installieren“</b>.</li><li>Aktex startet danach in einem eigenen Fenster, mit Desktop-Symbol und funktioniert auch offline.</li></ol><p class="muted">Firefox unterstützt die Installation am Desktop nicht – bitte Chrome oder Edge verwenden.</p>`;
+      html = `<ol><li>In <b>Chrome</b> oder <b>Edge</b>: Klicke auf das Installieren-Symbol <span class="kbd">⊕</span> rechts in der Adressleiste<br>oder Menü <span class="kbd">⋮</span> → <b>„Akytex installieren“</b>.</li><li>Akytex startet danach in einem eigenen Fenster, mit Desktop-Symbol und funktioniert auch offline.</li></ol><p class="muted">Firefox unterstützt die Installation am Desktop nicht – bitte Chrome oder Edge verwenden.</p>`;
     if (location.protocol === "file:") html = `<p>Die App-Installation benötigt einen Webserver (https oder localhost). Starte z. B. <code>python3 -m http.server</code> im Projektordner und öffne <code>http://localhost:8000</code>.</p>`;
     $("#install-help").innerHTML = html;
     openModal("#install-modal");
@@ -1222,7 +1224,7 @@ function renderPlans(el) {
       </div>`;
     }).join("")}</div>
     <div class="ai-plans">
-      <div class="ai-plans-head"><span class="spark-ic">✦</span><div><h4>AKTEX AI</h4><p class="muted">Dein KI-Berater – und auf Wunsch der Autopilot für dein Depot.</p></div></div>
+      <div class="ai-plans-head"><span class="spark-ic">✦</span><div><h4>AKYTEX AI</h4><p class="muted">Dein KI-Berater – und auf Wunsch der Autopilot für dein Depot.</p></div></div>
       <div class="ai-plan-cards">${PLANS.filter((p) => p.group === "ai").map((p) => {
         const price = planPrice(p, billing);
         const isCur = p.id === settings.plan;
@@ -1322,7 +1324,7 @@ function confetti() {
   }
 }
 
-// ---------- AKTEX AI ----------
+// ---------- AKYTEX AI ----------
 let aiLast = 0;
 function gaugeSvg() {
   const seg = (i, color) => {
@@ -1344,7 +1346,7 @@ function renderAI(force = false) {
   aiLast = Date.now();
   const el = $("#ai");
   if (!el.dataset.ready) {
-    el.innerHTML = `<div class="ai-head"><b>AKTEX AI</b><span class="ai-badge">Echtzeit</span></div><div class="gauge">${gaugeSvg()}</div><div id="ai-body"></div>`;
+    el.innerHTML = `<div class="ai-head"><b>AKYTEX AI</b><span class="ai-badge">Echtzeit</span></div><div class="gauge">${gaugeSvg()}</div><div id="ai-body"></div>`;
     el.dataset.ready = "1";
   }
   const a = analyze(chart.raw);
@@ -1597,7 +1599,7 @@ function renderIdeas() {
 }
 function renderLeaderboard() {
   if (settings.view !== "ideas") return;
-  const me = { id: "me", handle: "du", style: "Dein Demo-Depot", color: "#6ea2f2", me: true, ret1y: broker.equity() / START_CASH - 1, winRate: broker.stats().winRate ?? 0, followers: 0 };
+  const me = { id: "me", handle: "du", style: "Dein Demo-Depot", color: "#6ea2f2", me: true, ret1y: broker.equity() / broker.invested() - 1, winRate: broker.stats().winRate ?? 0, followers: 0 };
   const rows = [...community.traders, me].sort((a, b) => b.ret1y - a.ret1y);
   const medal = ["🥇", "🥈", "🥉"];
   $("#leaderboard").innerHTML = rows
@@ -1627,7 +1629,7 @@ function updateCopyHint() {
   const n = community.trader(ui.copyTrader).favs.length;
   $("#copy-hint").innerHTML = plan().limits.copy
     ? `${n} Market-Orders über insgesamt ca. ${eur(amt)} (Gebühren: ${eur(plan().fee * n)}).`
-    : `🔒 Copy-Trading ist Teil von <b>AKTEX Elite</b>.`;
+    : `🔒 Copy-Trading ist Teil von <b>AKYTEX Elite</b>.`;
 }
 function bindGrowth() {
   syncPlan();
@@ -1706,7 +1708,7 @@ function bindGrowth() {
     e.preventDefault();
     if (!plan().limits.copy) {
       closeModals();
-      setTimeout(() => openPlans("Copy-Trading ist Teil von AKTEX Elite."), 330);
+      setTimeout(() => openPlans("Copy-Trading ist Teil von AKYTEX Elite."), 330);
       return;
     }
     const t = community.trader(ui.copyTrader);
@@ -1796,7 +1798,7 @@ function openIdeaModal() {
   openModal("#idea-modal");
   setTimeout(() => $("#idea-title").focus(), 50);
 }
-// Einstieg/Ziel/Stop aus der AKTEX-AI-Analyse vorschlagen
+// Einstieg/Ziel/Stop aus der AKYTEX-AI-Analyse vorschlagen
 function fillIdeaLevels() {
   const sym = $("#idea-sym").value;
   const st = market.get(sym);
@@ -1904,7 +1906,7 @@ function checkSignals() {
   if (lastRatings[key] && lastRatings[key] !== r.key) {
     toast(`${settings.symbol} (${TIMEFRAMES.find((t) => t.id === settings.tf).label}) wechselt auf „${r.label}“.`, r.key.includes("buy") ? "success" : r.key.includes("sell") ? "sell" : "info", "⚡ AI-Signal");
     beep(990, 0.1);
-    notify("AKTEX AI-Signal", `${settings.symbol}: ${r.label}`);
+    notify("AKYTEX AI-Signal", `${settings.symbol}: ${r.label}`);
   }
   lastRatings[key] = r.key;
 }
@@ -2030,7 +2032,7 @@ function renderBusiness(full = false) {
   const unicorn = Math.log10(1e9) / 11;
   $("#biz-bill").innerHTML = `
     <div class="uni-bar"><i style="width:${prog * 100}%"></i><span class="uni-mark" style="left:${unicorn * 100}%">🦄 1 Mrd.</span></div>
-    <p>${m.valuation >= 1e9 ? `<b class="up">Unicorn-Status erreicht.</b> ` : ""}Für 1 Mrd. € Bewertung braucht AKTEX bei diesen Annahmen <b>${compact(Math.round(need))} Nutzer</b>.</p>`;
+    <p>${m.valuation >= 1e9 ? `<b class="up">Unicorn-Status erreicht.</b> ` : ""}Für 1 Mrd. € Bewertung braucht AKYTEX bei diesen Annahmen <b>${compact(Math.round(need))} Nutzer</b>.</p>`;
   $("#biz-kpis").innerHTML = [
     ["Jahresumsatz (ARR)", bigEur(m.arr)],
     ["Monatsumsatz (MRR)", bigEur(m.mrr)],
@@ -2084,11 +2086,20 @@ function renderBusiness(full = false) {
     .join("");
 }
 
-// ---------- AKTEX AI: Ansicht, Chat, Autopilot ----------
+// ---------- AKYTEX AI: Ansicht, Chat, Autopilot ----------
 let llm = null; // Sprachmodell (nur in Claude-Umgebungen verfügbar)
 let llmOff = false;
 let chatCtl = null;
-const chat = []; // { role: "user"|"assistant", text, html, actions }
+const CHAT_KEY = "akytex-v2-chat";
+// { role: "user"|"assistant", text, html, actions, follow } – die letzten 40 Nachrichten bleiben gespeichert
+const chat = (() => {
+  try {
+    const c = JSON.parse(localStorage.getItem(CHAT_KEY) || "[]");
+    return Array.isArray(c) ? c.slice(-40) : [];
+  } catch (_) {
+    return [];
+  }
+})();
 const aiActions = new Map();
 try {
   window.claude?.use?.("sample")?.then((s) => {
@@ -2105,6 +2116,19 @@ function ring(value, label, size = 86, color = "#6ea2f2") {
   const C = 2 * Math.PI * r;
   return `<div class="ring" style="--s:${size}px"><svg viewBox="0 0 80 80"><circle cx="40" cy="40" r="${r}" class="ring-bg"/><circle cx="40" cy="40" r="${r}" class="ring-fg" stroke="${color}" stroke-dasharray="${(value / 100) * C} ${C}" transform="rotate(-90 40 40)"/></svg><b>${value}</b><span>${label}</span></div>`;
 }
+// Ring an Ort und Stelle aktualisieren, damit er weich zum neuen Wert gleitet statt neu zu erscheinen
+function setRing(host, value, label, size, color) {
+  const fg = host.querySelector(".ring-fg");
+  if (!fg) {
+    host.innerHTML = ring(0, label, size, color);
+    requestAnimationFrame(() => requestAnimationFrame(() => setRing(host, value, label, size, color)));
+    return;
+  }
+  const C = 2 * Math.PI * 34;
+  fg.setAttribute("stroke-dasharray", `${(value / 100) * C} ${C}`);
+  fg.setAttribute("stroke", color);
+  host.querySelector(".ring b").textContent = value;
+}
 const scoreColor = (v) => (v >= 70 ? "#22c55e" : v >= 45 ? "#f59e0b" : "#ef4444");
 
 function renderAIHeader() {
@@ -2115,8 +2139,8 @@ function renderAIHeader() {
   $("#ai-chips").innerHTML = `
     <span class="chip-s ${mode ? "on" : ""}">${mode ? "✓ " + plan().name : "🔒 Nicht im Tarif " + plan().name}</span>
     <span class="chip-s ${c.enabled && mode ? "live" : ""}"><i></i>${ap}</span>
-    <span class="chip-s">${llm && !llmOff ? "🧠 Sprachmodell: Claude" : "⚙️ AKTEX Engine (lokal)"}</span>`;
-  $("#ai-model").textContent = llm && !llmOff ? "antwortet mit Claude" : "lokale AKTEX Engine";
+    <span class="chip-s">${llm && !llmOff ? "🧠 Sprachmodell: Claude" : "⚙️ AKYTEX Engine (lokal)"}</span>`;
+  $("#ai-model").textContent = llm && !llmOff ? "antwortet mit Claude" : "lokale AKYTEX Engine";
   const n = aiEngine.state.unread;
   $("#ai-badge").hidden = !n || !mode;
   $("#ai-badge").textContent = n > 9 ? "9+" : n;
@@ -2127,18 +2151,16 @@ function renderAIView(full = false) {
   const mode = aiMode();
   renderAIHeader();
   const doc = aiEngine.doctor();
-  $("#ai-score").innerHTML = ring(doc.score, "Depot-Score", 128, scoreColor(doc.score));
+  setRing($("#ai-score"), doc.score, "Depot-Score", 128, scoreColor(doc.score));
   $("#ai-locked").hidden = !!mode;
   $("#ai-main").classList.toggle("is-locked", !mode);
   $("#ai-opps-card").classList.toggle("is-locked", !mode);
   $("#ai-doctor-card").classList.toggle("is-locked", !mode);
   $$('.ai-pane[data-aipane="plan"], .ai-pane[data-aipane="lab"]').forEach((p) => p.classList.toggle("is-locked", !mode));
   if (!mode) {
-    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
+    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKYTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKYTEX AI</b> (ab 79 €/Monat) und <b>AI Premium</b> mit selbstständig handelndem Autopilot.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
   }
-  if (full && !chat.length) {
-    chat.push({ role: "assistant", html: `<p>Hallo! Ich bin <b>AKTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>` });
-  }
+  if (full && !chat.length) greetChat();
   if (aiTab !== "cockpit") {
     if (aiTab === "plan") renderPlanPane();
     if (aiTab === "lab" && full) renderLab();
@@ -2177,31 +2199,209 @@ function fmtLLM(text) {
   return html + (inList ? "</ul>" : "");
 }
 
+// Chat-Darstellung: jede Nachricht bekommt ein festes DOM-Element und wird nur neu gezeichnet,
+// wenn sie sich ändert (m.v). So spielen Animationen nur einmal, und Streaming bleibt flüssig.
+const LAMBDA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 19 L12 5.5 L18.5 19"/></svg>';
+const chatEls = new WeakMap();
+let chatStick = true;
+let chatFollowRaf = 0;
+const bump = (m, patch = {}) => {
+  Object.assign(m, patch);
+  m.v = (m.v || 0) + 1;
+};
+function saveChat() {
+  try {
+    localStorage.setItem(CHAT_KEY, JSON.stringify(chat.filter((m) => !m.pending && !m.streaming).slice(-40).map(({ role, text, html, plain, follow }) => ({ role, text, html, plain, follow }))));
+  } catch (_) {
+    /* ignorieren */
+  }
+}
+function followChat() {
+  const log = $("#chat-log");
+  if (!log || !chatStick) return (chatFollowRaf = 0);
+  const target = log.scrollHeight - log.clientHeight;
+  const d = target - log.scrollTop;
+  if (Math.abs(d) < 1) {
+    log.scrollTop = target;
+    return (chatFollowRaf = 0);
+  }
+  log.scrollTop += d * 0.2;
+  chatFollowRaf = requestAnimationFrame(followChat);
+}
+function kickChatScroll() {
+  if (!chatFollowRaf) chatFollowRaf = requestAnimationFrame(followChat);
+}
+function thinkingHTML(m) {
+  return `<span class="think"><span class="think-label">${esc(m.status || "Denkt nach")}</span><span class="think-dots"><i></i><i></i><i></i></span></span>`;
+}
+// Wörter nacheinander einblenden (nur Opacity/Transform – läuft auf der GPU)
+function revealWords(root) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return 0;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  while (walker.nextNode()) if (walker.currentNode.nodeValue.trim()) nodes.push(walker.currentNode);
+  const total = nodes.reduce((a, n) => a + n.nodeValue.split(/\s+/).filter(Boolean).length, 0);
+  const step = Math.max(5, Math.min(24, 1100 / Math.max(1, total)));
+  let i = 0;
+  for (const n of nodes) {
+    const frag = document.createDocumentFragment();
+    for (const part of n.nodeValue.split(/(\s+)/)) {
+      if (!part) continue;
+      if (/^\s+$/.test(part)) {
+        frag.appendChild(document.createTextNode(part));
+        continue;
+      }
+      const s = document.createElement("span");
+      s.className = "w";
+      s.style.setProperty("--d", Math.round(i++ * step) + "ms");
+      s.textContent = part;
+      frag.appendChild(s);
+    }
+    n.replaceWith(frag);
+  }
+  return Math.round(i * step);
+}
+function paintMsg(el, m, k) {
+  el._v = m.v;
+  if (m.role === "user") {
+    el.querySelector(".bubble").textContent = m.text;
+    return;
+  }
+  el.querySelector(".msg-av").classList.toggle("busy", !!(m.pending || m.streaming));
+  const body = el.querySelector(".msg-body");
+  if (m.pending) body.innerHTML = thinkingHTML(m);
+  else if (m.streaming) body.innerHTML = streamHTML(m);
+  else {
+    body.innerHTML = m.html ?? esc(m.text || "");
+    const dur = m.reveal ? revealWords(body) : 0;
+    m.reveal = false;
+    el.style.setProperty("--rev", dur + "ms");
+  }
+  const done = !m.pending && !m.streaming;
+  el.querySelector(".speak").hidden = !done || k === 0;
+  el.querySelector(".speak").dataset.speak = k;
+  const acts = (done && m.actions) || [];
+  el.querySelector(".msg-acts").innerHTML = acts
+    .map((a) => {
+      const id = "a" + k + "_" + Math.random().toString(36).slice(2, 7);
+      aiActions.set(id, a);
+      return `<button class="${a.primary ? "btn primary small" : "mini-btn"}" data-ai-act="${id}" ${a.done ? "disabled" : ""}>${a.done ? "✓ " : ""}${esc(a.label)}</button>`;
+    })
+    .join("");
+  const follow = (done && k === chat.length - 1 && m.follow) || [];
+  el.querySelector(".msg-follow").innerHTML = follow.map((f) => `<button data-ask="${esc(f)}">${esc(f)}</button>`).join("");
+}
 function renderChat() {
   const log = $("#chat-log");
   if (!log) return;
-  log.innerHTML = chat
-    .map((m, k) => {
-      const acts = (m.actions || [])
-        .map((a) => {
-          const id = "a" + k + "_" + Math.random().toString(36).slice(2, 7);
-          aiActions.set(id, a);
-          return `<button class="${a.primary ? "btn primary small" : "mini-btn"}" data-ai-act="${id}" ${a.done ? "disabled" : ""}>${a.done ? "✓ " : ""}${esc(a.label)}</button>`;
-        })
-        .join("");
-      return `<div class="msg ${m.role}">${m.role === "assistant" ? '<span class="msg-av">✦</span>' : ""}<div class="bubble">${m.role === "assistant" && !m.pending && k > 0 ? `<button class="speak" data-speak="${k}" title="Vorlesen">🔊</button>` : ""}${m.html ?? esc(m.text)}${m.pending ? '<span class="typing"><i></i><i></i><i></i></span>' : ""}${acts ? `<div class="msg-acts">${acts}</div>` : ""}</div></div>`;
-    })
-    .join("");
-  log.scrollTop = log.scrollHeight;
+  chat.forEach((m, k) => {
+    let el = chatEls.get(m);
+    if (!el || !el.isConnected) {
+      el = document.createElement("div");
+      el.className = "msg " + m.role;
+      el.innerHTML = m.role === "assistant" ? `<span class="msg-av">${LAMBDA}</span><div class="msg-col"><div class="bubble"><button class="speak" title="Vorlesen" hidden>🔊</button><div class="msg-body"></div><div class="msg-acts"></div></div><div class="msg-follow"></div></div>` : `<div class="bubble"></div>`;
+      el._v = -1;
+      log.appendChild(el);
+      chatEls.set(m, el);
+    }
+    if (el._v !== m.v) paintMsg(el, m, k);
+  });
+  // Folgefragen nur unter der letzten Antwort
+  const fs = log.querySelectorAll(".msg-follow");
+  fs.forEach((f, i) => {
+    if (i < fs.length - 1 && f.childElementCount) f.innerHTML = "";
+  });
+  kickChatScroll();
 }
+// Streaming: Text läuft mit gleichmäßiger Geschwindigkeit ein, egal wie ruckartig er ankommt
+function streamHTML(m) {
+  const html = fmtLLM(m.target.slice(0, Math.floor(m.shown)));
+  const caret = '<i class="caret"></i>';
+  return /<\/(p|li)>(<\/ul>)?$/.test(html) ? html.replace(/(<\/(p|li)>)(<\/ul>)?$/, caret + "$1$3") : html + caret;
+}
+function streamTo(m, full) {
+  m.target = full;
+  if (!m.streaming) {
+    m.streaming = true;
+    m.shown = m.shown || 0;
+    bump(m, { pending: false });
+    renderChat();
+  }
+  if (m.raf) return;
+  let last = performance.now();
+  const step = (now) => {
+    const dt = Math.min(64, now - last);
+    last = now;
+    const backlog = m.target.length - m.shown;
+    if (backlog > 0) {
+      m.shown = Math.min(m.target.length, m.shown + ((50 + backlog * 3.5) * dt) / 1000);
+      const el = chatEls.get(m);
+      if (el) el.querySelector(".msg-body").innerHTML = streamHTML(m);
+      kickChatScroll();
+    }
+    if (m.shown < m.target.length || !m.finished) m.raf = requestAnimationFrame(step);
+    else {
+      m.raf = 0;
+      m.streaming = false;
+      m.onDone?.();
+    }
+  };
+  m.raf = requestAnimationFrame(step);
+}
+function finishStream(m, patch) {
+  return new Promise((resolve) => {
+    const end = () => {
+      bump(m, { streaming: false, pending: false, ...patch });
+      renderChat();
+      saveChat();
+      resolve();
+    };
+    if (!m.streaming) return end();
+    m.finished = true;
+    m.onDone = end;
+  });
+}
+function newChat() {
+  chat.length = 0;
+  chatAbort();
+  $("#chat-log").innerHTML = "";
+  aiEngine.lastSym = null;
+  saveChat();
+  greetChat();
+  renderChat();
+}
+function greetChat() {
+  const h = new Date().getHours();
+  const hi = h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
+  const name = account.state.profile?.name?.split(" ")[0];
+  chat.push({ role: "assistant", reveal: true, html: `<p>${hi}${name ? " " + esc(name) : ""}! Ich bin <b>AKYTEX AI</b>. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend und helfe dir bei Entscheidungen. Frag mich etwas – oder tippe auf einen Vorschlag.</p>`, follow: ["Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Tagesplan"] });
+}
+function chatAbort() {
+  chatCtl?.abort();
+}
+
+function chatStatus(text) {
+  const sym = aiEngine.findSymbols(text)[0];
+  const t = text.toLowerCase();
+  if (sym) return `Analysiere ${sym}`;
+  if (/depot|portfolio|wie steh/.test(t)) return "Prüfe dein Depot";
+  if (/risiko|var\b|monte/.test(t)) return "Berechne dein Risiko";
+  if (/kauf|chance|empfehl|beste|top/.test(t)) return `Scanne ${STOCKS.length} Aktien`;
+  if (/markt|lage|stimmung|sektor/.test(t)) return "Lese den Markt";
+  if (/plan/.test(t)) return "Erstelle deinen Plan";
+  return "Denkt nach";
+}
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function sendChat(text) {
   text = text.trim();
   if (!text) return;
-  if (!aiMode()) return openPlans("Der Berater-Chat ist Teil von AKTEX AI.");
+  if (!aiMode()) return openPlans("Der Berater-Chat ist Teil von AKYTEX AI.");
+  if (chat.some((m) => m.pending || m.streaming)) return toast("Einen Moment – AKYTEX AI antwortet noch.", "info");
   chat.push({ role: "user", text });
-  const msg = { role: "assistant", html: "", pending: true };
+  const msg = { role: "assistant", pending: true, status: chatStatus(text) };
   chat.push(msg);
+  chatStick = true;
   renderChat();
   haptic(6);
   if (llm && !llmOff) {
@@ -2210,29 +2410,36 @@ async function sendChat(text) {
       return;
     } catch (e) {
       if (e?.code === "cancelled") {
-        msg.pending = false;
-        msg.html = msg.html || "<p class='muted'>Abgebrochen.</p>";
-        renderChat();
+        const partial = msg.target ? fmtLLM(msg.target.slice(0, Math.floor(msg.shown))) : "";
+        cancelAnimationFrame(msg.raf);
+        msg.raf = 0;
+        await finishStream(msg, { streaming: false, html: partial + "<p class='muted'>Abgebrochen.</p>" });
         return;
       }
       if (["not_granted", "sampling_disabled", "tools_unavailable", "not_declared", "capability_disabled", "capability_removed"].includes(e?.code)) llmOff = true;
       msg.note = e?.code === "rate_limited" ? "Das Sprachmodell ist gerade ausgelastet – ich antworte mit der lokalen Engine." : "";
+      cancelAnimationFrame(msg.raf);
+      Object.assign(msg, { raf: 0, streaming: false, finished: false, target: "", shown: 0 });
+      bump(msg, { pending: true, status: "Wechsle auf die lokale Engine" });
+      renderChat();
       renderAIHeader();
     } finally {
       $("#chat-stop").hidden = true;
     }
   }
-  // Lokale Engine: kurze „Denkpause“, dann Antwort
-  await new Promise((r) => setTimeout(r, 450 + Math.random() * 500));
-  const ans = aiEngine.answer(text, { universe: aiUniverse(), scheduler, community });
-  msg.pending = false;
-  msg.html = (msg.note ? `<p class="muted">${msg.note}</p>` : "") + ans.html;
-  msg.actions = ans.actions;
+  // Lokale Engine: kurze „Denkpause“ mit sichtbaren Schritten, dann Antwort
+  await wait(260 + Math.random() * 220);
+  bump(msg, { status: "Formuliere Antwort" });
   renderChat();
+  await wait(200 + Math.random() * 180);
+  const ans = aiEngine.answer(text, { universe: aiUniverse(), scheduler, community });
+  bump(msg, { pending: false, reveal: true, html: (msg.note ? `<p class="muted">${msg.note}</p>` : "") + ans.html, actions: ans.actions, follow: ans.follow });
+  renderChat();
+  saveChat();
 }
 
 async function llmAnswer(text, msg) {
-  const rules = `Du bist AKTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- ").
+  const rules = `Du bist AKYTEX AI, der KI-Berater und Quant-Analyst der Trading-App AKYTEX. Denke wie ein erfahrener Portfoliomanager: prüfe mehrere Werkzeuge (Analyse, Muster, Prognose, Backtest, Risiko), bevor du urteilst, und begründe knapp mit Zahlen. Wichtig: Es ist eine Demo mit simulierten Kursen in EUR und virtuellem Geld. Antworte auf Deutsch, freundlich und konkret, höchstens 150 Wörter. Hole dir Zahlen immer über die Tools, bevor du sie nennst, und erfinde keine. Du führst niemals selbst Orders aus: Wenn du einen Kauf oder Verkauf empfiehlst, rufe propose_trade auf – der Nutzer bestätigt per Button. Nenne bei Empfehlungen kurz das Risiko und dass es keine Anlageberatung ist. Formatiere nur mit kurzen Absätzen und Aufzählungen ("- "). Beende die Antwort ohne Rückfrage-Floskel – die App zeigt passende Folgefragen an. Ton: ruhig, präzise, freundlich – wie ein erfahrener Trader, der die Dinge einfach erklärt.
 Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: ${settings.watchlist.join(", ")}. Verfügbare Symbole: ${STOCKS.map((s) => s.s).join(", ")}.`;
   const history = chat
     .slice(0, -2)
@@ -2311,7 +2518,7 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
         const mc = lab.monteCarlo(broker, market, 252, 300);
         return { var95: Math.round(v.var95), var99: Math.round(v.var99), es95: Math.round(v.es95), mcP5: Math.round(mc.p5), mcMedian: Math.round(mc.p50), mcP95: Math.round(mc.p95), lossProbability: +mc.lossProb.toFixed(2) };
       } },
-    { name: "market_overview", description: "Marktüberblick: AKTEX Sentiment-Index (Angst & Gier), Sektor-Rotation und Anomalien.", execute: () => ({ sentiment: lab.sentimentIndex(market), sectors: lab.sectorRotation(market).map((x) => ({ name: x.name, d5: +(x.d5 * 100).toFixed(1), d20: +(x.d20 * 100).toFixed(1), phase: x.phase })), anomalies: lab.anomalies(market).map((x) => x.sym) }) },
+    { name: "market_overview", description: "Marktüberblick: AKYTEX Sentiment-Index (Angst & Gier), Sektor-Rotation und Anomalien.", execute: () => ({ sentiment: lab.sentimentIndex(market), sectors: lab.sectorRotation(market).map((x) => ({ name: x.name, d5: +(x.d5 * 100).toFixed(1), d20: +(x.d20 * 100).toFixed(1), phase: x.phase })), anomalies: lab.anomalies(market).map((x) => x.sym) }) },
     {
       name: "propose_schedule",
       description: "Schlägt einen zeitgesteuerten Auftrag, Sparplan oder eine Wenn-Dann-Regel vor (Beschreibung in natürlicher Sprache, z. B. 'Kaufe 10 SAP um 15:30', 'Sparplan 200 € ASML monatlich', 'Verkaufe TSLA wenn über 260'). Der Nutzer bestätigt per Button.",
@@ -2331,27 +2538,33 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
       } },
     { name: "get_autopilot", description: "Status und Einstellungen des Autopiloten sowie die letzten Entscheidungen.", execute: () => ({ ...aiEngine.state.config, tier: aiMode(), lastDecisions: aiEngine.state.log.slice(0, 5).map((l) => `${l.side} ${l.qty} ${l.sym}: ${l.why}`) }) },
   ];
+  // Sichtbare Denkschritte: jedes Werkzeug meldet, was gerade passiert
+  const toolStatus = { get_portfolio: "Lese dein Depot", analyze_stock: (i) => `Analysiere ${i.symbol}`, scan_market: `Scanne ${STOCKS.length} Aktien`, forecast: (i) => `Rechne Prognose für ${i.symbol}`, backtest: (i) => `Backtest ${i.symbol}`, patterns: (i) => `Suche Muster bei ${i.symbol}`, portfolio_risk: "Simuliere dein Risiko", market_overview: "Lese den Markt", daily_plan: "Erstelle deinen Tagesplan", propose_trade: "Bereite Order vor", propose_schedule: "Plane Auftrag", get_autopilot: "Prüfe den Autopiloten" };
+  for (const t of tools) {
+    const ex = t.execute;
+    t.execute = (i = {}) => {
+      const st = toolStatus[t.name];
+      if (msg.pending) {
+        bump(msg, { status: typeof st === "function" ? st(i) : st || "Arbeite" });
+        renderChat();
+      }
+      return ex(i);
+    };
+  }
   chatCtl = new AbortController();
   $("#chat-stop").hidden = false;
   const { text: out } = await llm(turns, {
     tools,
     modelTier: "quick",
     signal: chatCtl.signal,
-    onText: ({ text: t }) => {
-      msg.pending = false;
-      msg.html = fmtLLM(t);
-      renderChat();
-    },
+    onText: ({ text: t }) => streamTo(msg, t),
   });
-  msg.pending = false;
-  msg.plain = out;
-  msg.html = fmtLLM(out);
-  msg.actions = proposals;
-  renderChat();
+  await finishStream(msg, { plain: out, html: fmtLLM(out), reveal: !msg.target, actions: proposals, follow: aiEngine.followUps(text, aiEngine.findSymbols(out)[0]) });
 }
 
 function runAiAction(a, btn) {
   if (a.open) return setSymbol(a.open);
+  if (a.fund) return openFund(a.fund, a.amount);
   const done = () => {
     a.done = true;
     btn.disabled = true;
@@ -2526,6 +2739,19 @@ function bindAI() {
     sendChat(v);
   });
   $("#chat-stop").addEventListener("click", () => chatCtl?.abort());
+  $("#chat-new")?.addEventListener("click", newChat);
+  const log = $("#chat-log");
+  // Automatisch mitscrollen, außer der Nutzer scrollt selbst nach oben
+  const userScroll = (up) => {
+    if (up) chatStick = false;
+  };
+  log.addEventListener("wheel", (e) => userScroll(e.deltaY < 0), { passive: true });
+  let ty = 0;
+  log.addEventListener("touchstart", (e) => (ty = e.touches[0].clientY), { passive: true });
+  log.addEventListener("touchmove", (e) => userScroll(e.touches[0].clientY > ty + 4), { passive: true });
+  log.addEventListener("scroll", () => {
+    if (log.scrollHeight - log.scrollTop - log.clientHeight < 40) chatStick = true;
+  }, { passive: true });
   $("#feed-clear").addEventListener("click", () => {
     aiEngine.state.unread = 0;
     aiEngine.save();
@@ -2562,7 +2788,7 @@ function bindAI() {
       return renderAIView();
     }
     if (t.closest("#ap-toggle")) {
-      if (!aiMode()) return openPlans("Der Autopilot ist Teil von AKTEX AI.");
+      if (!aiMode()) return openPlans("Der Autopilot ist Teil von AKYTEX AI.");
       const c = aiEngine.state.config;
       c.enabled = !c.enabled;
       aiEngine.save();
@@ -2573,7 +2799,7 @@ function bindAI() {
     }
     const md = t.closest("[data-apmode]");
     if (md) {
-      if (md.dataset.apmode === "auto" && aiMode() !== "auto") return openPlans("Selbstständiges Handeln ist Teil von AKTEX AI Premium.");
+      if (md.dataset.apmode === "auto" && aiMode() !== "auto") return openPlans("Selbstständiges Handeln ist Teil von AKYTEX AI Premium.");
       aiEngine.state.config.mode = md.dataset.apmode;
       aiEngine.save();
       return renderAIView();
@@ -2630,7 +2856,7 @@ setInterval(() => {
   if (settings.view === "ai") {
     renderOpps();
     renderDoctor(aiEngine.doctor());
-    $("#ai-score").innerHTML = ring(aiEngine.doctor().score, "Depot-Score", 128, scoreColor(aiEngine.doctor().score));
+    setRing($("#ai-score"), aiEngine.doctor().score, "Depot-Score", 128, scoreColor(aiEngine.doctor().score));
   }
 }, 25000);
 
@@ -2645,17 +2871,48 @@ function choosePlan(id) {
   }
   openCheckout(id);
 }
-// ---------- AKTEX Pay ----------
+// ---------- AKYTEX Pay ----------
 // Ein elegantes Bezahl-Sheet für Abos, Shop-Bestellungen und Zahlungsmethoden (Testmodus)
 let pay = null;
 function openCheckout(planId, startStep = 0) {
   if (startStep === 2) return openPay({ kind: "method" });
   const link = stripeLinkFor(planId, settings.billing);
   if (link && PAYMENT_CONFIG.mode === "live") {
-    location.href = link;
+    location.href = stripeUrl(link);
     return;
   }
   openPay({ kind: "sub", planId, billing: settings.billing, addons: settings.addons.slice() });
+}
+// Stripe Payment Link mit Kundendaten vorbelegen; die Rückkehr wird in handleStripeReturn() ausgewertet
+function stripeUrl(link, promo) {
+  const u = new URL(link);
+  if (!account.state.ref) {
+    account.state.ref = "akx_" + Math.random().toString(36).slice(2, 12);
+    account.save();
+  }
+  u.searchParams.set("client_reference_id", account.state.ref);
+  u.searchParams.set("locale", "de");
+  if (account.state.profile?.email) u.searchParams.set("prefilled_email", account.state.profile.email);
+  if (promo) u.searchParams.set("prefilled_promo_code", promo);
+  return u.toString();
+}
+// Erfolgs-URL in Stripe: https://DEINE-DOMAIN/?checkout=success&plan=pro&billing=monthly
+function handleStripeReturn() {
+  const q = new URLSearchParams(location.search);
+  const st = q.get("checkout");
+  if (!st) return;
+  history.replaceState(null, "", location.pathname + location.hash);
+  if (st === "cancel") return toast("Der Bezahlvorgang wurde abgebrochen. Es wurde nichts berechnet.", "info", "Abgebrochen");
+  const planId = q.get("plan");
+  const billing = q.get("billing") === "yearly" ? "yearly" : "monthly";
+  if (st !== "success" || !planId || !PLANS.some((p) => p.id === planId)) return;
+  account.subscribe(quote({ planId, billing, addons: [] }), { type: "stripe", label: "Stripe" });
+  settings.billing = billing;
+  saveSettings();
+  setPlan(planId, true);
+  syncAccountUI();
+  confetti();
+  toast(`Dein Abo ${planTitle(planById(planId))} ist aktiv. Den Beleg schickt dir Stripe per E-Mail.`, "success", "Zahlung erfolgreich");
 }
 function openPay(order) {
   const saved = account.state.method;
@@ -2702,8 +2959,8 @@ function renderPay() {
   const row = (key, label, value, body) => `<div class="ps-row ${pay.open === key ? "open" : ""}" data-row="${key}"><button class="ps-head" data-ps-toggle="${key}"><span>${label}</span><b>${value}</b><i>›</i></button><div class="ps-body"><div>${body}</div></div></div>`;
   let hero;
   if (pay.kind === "sub") hero = `<div class="ps-product ${p.group ? "ai" : ""}"><div class="orb tiny spin"><i></i><i></i><i></i></div><div><b>${planTitle(p)}</b><small>${pay.billing === "yearly" ? "Jahresabo" : "Monatsabo"} · ${PAYMENT_CONFIG.trialDays} Tage gratis</small></div></div><div class="ps-amount"><span>Heute</span><b>0,00 €</b><small>danach ${eur(T.after)} ${pay.billing === "yearly" ? "pro Jahr" : "pro Monat"} ab ${trialEnd}</small></div>`;
-  else if (pay.kind === "shop") hero = `<div class="ps-product"><div class="ps-cart-ic">🛍️</div><div><b>AKTEX Store</b><small>${pay.items.reduce((s, i) => s + i.qty, 0)} Artikel</small></div></div><div class="ps-amount"><span>Gesamt</span><b>${eur(T.due)}</b><small>inkl. ${eur(T.vat)} MwSt.</small></div>`;
-  else hero = `<div class="ps-product"><div class="ps-cart-ic">💳</div><div><b>Zahlungsmethode</b><small>für dein AKTEX-Abo</small></div></div>`;
+  else if (pay.kind === "shop") hero = `<div class="ps-product"><div class="ps-cart-ic">🛍️</div><div><b>AKYTEX Store</b><small>${pay.items.reduce((s, i) => s + i.qty, 0)} Artikel</small></div></div><div class="ps-amount"><span>Gesamt</span><b>${eur(T.due)}</b><small>inkl. ${eur(T.vat)} MwSt.</small></div>`;
+  else hero = `<div class="ps-product"><div class="ps-cart-ic">💳</div><div><b>Zahlungsmethode</b><small>für dein AKYTEX-Abo</small></div></div>`;
 
   const rows = [];
   if (pay.kind === "sub") {
@@ -2724,7 +2981,7 @@ function renderPay() {
   }
   if (pay.kind === "shop") rows.push(row("items", "Warenkorb", `${pay.items.length} Position${pay.items.length > 1 ? "en" : ""}`, `<ul class="ps-items">${pay.items.map((i) => `<li><span>${i.icon || "•"}</span><div><b>${esc(i.name)}</b><small>${i.qty} × ${eur(i.price)}</small></div><b>${eur(i.qty * i.price)}</b></li>`).join("")}</ul>`));
   if (pay.kind !== "method") {
-    rows.push(row("promo", "Gutschein", pay.promo ? `✓ ${pay.promo}` : "Hinzufügen", `<div class="promo"><input type="text" id="ps-promo" placeholder="z. B. AKTEX20" value="${pay.promo || ""}" /><button class="btn" data-ps-promo>Einlösen</button></div>`));
+    rows.push(row("promo", "Gutschein", pay.promo ? `✓ ${pay.promo}` : "Hinzufügen", `<div class="promo"><input type="text" id="ps-promo" placeholder="z. B. AKYTEX20" value="${pay.promo || ""}" /><button class="btn" data-ps-promo>Einlösen</button></div>`));
     rows.push(
       row(
         "contact",
@@ -2758,7 +3015,7 @@ function renderPay() {
   );
   const sumRows = `${T.lines.map((l) => `<div><span>${esc(l.label)}</span><b>${eur(l.amount)}</b></div>`).join("")}${T.discount ? `<div class="up"><span>Gutschein ${pay.promo}</span><b>−${eur(T.discount)}</b></div>` : ""}<div class="muted"><span>enthaltene MwSt. (19 %)</span><span>${eur(T.vat)}</span></div>`;
   $("#pay-sheet").innerHTML = `
-    <div class="ps-top"><div class="ps-brand">ΛKTEX <span>Pay</span></div><span class="test-chip">🧪 Testmodus</span><button class="icon-btn" data-close>✕</button></div>
+    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div><span class="test-chip">🧪 Testmodus</span><button class="icon-btn" data-close>✕</button></div>
     <div class="ps-hero">${hero}</div>
     <div class="ps-rows">${rows.join("")}</div>
     ${pay.kind !== "method" ? `<details class="ps-sum"><summary>Kostenübersicht</summary><div class="co-sum">${sumRows}</div></details>` : ""}
@@ -2939,16 +3196,16 @@ function payComplete(method) {
   syncAccountUI();
   $("#pay-sheet").innerHTML = `<div class="ps-success"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg><h2>${esc(title)}</h2><p class="muted">${esc(sub)}</p><div class="co-done-actions">${actions}</div></div>`;
 }
-function secureDialog(m, is3ds) {
+function secureDialog(m, is3ds, host = $("#pay-sheet")) {
   return new Promise((resolve) => {
     const d = document.createElement("div");
     d.className = "secure-sheet";
-    const title = is3ds ? "3-D Secure" : { paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna" }[m];
+    const title = is3ds ? "3-D Secure" : { paypal: "PayPal", apple: "Apple Pay", google: "Google Pay", klarna: "Klarna", instant: "Deine Bank" }[m];
     d.innerHTML = `<div class="ss-box"><div class="ss-logo ${m}">${title}</div>
       <p>${is3ds ? "Deine Bank bittet um Bestätigung. Öffne deine Banking-App (simuliert) oder bestätige hier." : "Bestätige die Zahlung über " + title + " (simuliert)."}</p>
       <div class="ss-face" ${m === "apple" ? "" : "hidden"}><span></span></div>
       <div class="ss-actions"><button class="btn ghost" data-ss="0">Abbrechen</button><button class="btn primary" data-ss="1">${m === "apple" ? "Mit Face ID bestätigen" : "Bestätigen"}</button></div></div>`;
-    $("#pay-sheet").appendChild(d);
+    host.appendChild(d);
     requestAnimationFrame(() => d.classList.add("open"));
     d.addEventListener("click", (e) => {
       const b = e.target.closest("[data-ss]");
@@ -2965,6 +3222,302 @@ function secureDialog(m, is3ds) {
       } else finish();
     });
   });
+}
+// ---------- Ein- und Auszahlungen (wie bei Neobrokern) ----------
+let fund = null;
+const fundMethods = () => FUNDING[fund.dir];
+const fundMethod = () => fundMethods().find((m) => m.id === fund.method) || fundMethods()[0];
+const fundAmount = () => parseFloat((fund.amt || "0").replace(",", ".")) || 0;
+function preferredWallet() {
+  if (window.ApplePaySession) return "apple";
+  if (/Android/i.test(navigator.userAgent)) return "google";
+  return account.state.method?.type === "card" ? "card" : "instant";
+}
+function instantToday() {
+  const d0 = new Date().setHours(0, 0, 0, 0);
+  return (broker.state.transfers || []).filter((t) => t.type === "in" && t.at >= d0 && t.method !== "transfer").reduce((a, t) => a + t.amount, 0);
+}
+function openFund(dir = "in", amount = 0) {
+  fund = { dir, amt: amount ? String(amount).replace(".", ",") : "", method: dir === "in" ? preferredWallet() : "instant", open: null, card: "", iban: account.state.refIban || "" };
+  closeModals();
+  setTimeout(() => {
+    renderFund();
+    openModal("#fund-modal");
+  }, 330);
+}
+function fundIcon(m) {
+  return `<span class="fm-ic ${m.id}">${m.icon}</span>`;
+}
+function renderFund() {
+  const inDir = fund.dir === "in";
+  const m = fundMethod();
+  const chips = inDir ? [50, 100, 250, 500, 1000].map((v) => `<button data-fund-chip="${v}">${v.toLocaleString("de-DE")} €</button>`).join("") : [[0.25, "25 %"], [0.5, "50 %"], [1, "Alles"]].map(([f, l]) => `<button data-fund-chip="${(Math.floor(broker.buyingPower() * f * 100) / 100).toFixed(2)}">${l}</button>`).join("");
+  $("#fund-sheet").innerHTML = `
+    <div class="ps-top"><div class="ps-brand">ΛKYTEX <span>Pay</span></div><span class="test-chip">🧪 Demo-Geld</span><button class="icon-btn" data-close>✕</button></div>
+    <div class="seg fund-seg" role="tablist"><button class="${inDir ? "active" : ""}" data-fund-dir="in">Einzahlen</button><button class="${inDir ? "" : "active"}" data-fund-dir="out">Auszahlen</button><i class="seg-glider" style="transform:translateX(${inDir ? 0 : 100}%)"></i></div>
+    <div class="fund-amount"><div class="fa-num" id="fa-num"></div><small id="fa-sub"></small></div>
+    <div class="fund-chips">${chips}</div>
+    <div class="keypad" id="keypad">${["1", "2", "3", "4", "5", "6", "7", "8", "9", ",", "0", "⌫"].map((k) => `<button data-key="${k}" aria-label="${k === "⌫" ? "Löschen" : k}">${k}</button>`).join("")}</div>
+    <div class="ps-rows">
+      <div class="ps-row ${fund.open === "method" ? "open" : ""}" data-row="method">
+        <button class="ps-head" data-fund-toggle="method"><span>${inDir ? "Zahlart" : "Auszahlung"}</span><b id="fm-cur">${fundIcon(m)} ${m.name}</b><i>›</i></button>
+        <div class="ps-body"><div class="fm-list">${fundMethods().map((x) => `<button class="fm ${x.id === m.id ? "on" : ""}" data-fund-method="${x.id}">${fundIcon(x)}<div><b>${x.name}</b><small>${x.eta}</small></div><i></i></button>`).join("")}</div></div>
+      </div>
+    </div>
+    <div class="fund-extra" id="fund-extra"></div>
+    <p class="co-err" id="fund-err" hidden></p>
+    <button class="hold-pay" id="fund-hold"><span class="hp-fill"></span><span class="hp-label" id="fund-label"></span></button>
+    <p class="ps-foot">🔒 Demo: Es wird kein echtes Geld bewegt. Echte Ein- und Auszahlungen gibt es erst mit einem lizenzierten Bankpartner.</p>`;
+  renderFundExtra();
+  paintFundAmount(false);
+  bindFundHold($("#fund-hold"), validateFund, runFund);
+}
+function renderFundExtra() {
+  const m = fundMethod();
+  let h = "";
+  if (fund.dir === "in" && m.id === "card") h = account.state.method?.type === "card" ? `<p class="fe-note">💳 Gespeicherte Karte: <b>${esc(account.state.method.label)}</b></p>` : `<label class="field"><span>Kartennummer (Testkarte)</span><input id="fe-card" inputmode="numeric" autocomplete="off" placeholder="4242 4242 4242 4242" value="${esc(fund.card)}" /></label>`;
+  if (fund.dir === "in" && m.id === "sepa") h = `<label class="field"><span>Deine IBAN (Lastschriftmandat)</span><input id="fe-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" value="${esc(fund.iban)}" /></label><p class="fe-note">Das Geld ist sofort handelbar. Wir ziehen es in 1–3 Bankarbeitstagen ein.</p>`;
+  if (fund.dir === "in" && m.id === "transfer") h = `<div class="fe-bank"><div><span>Empfänger</span><b>${esc(account.state.profile?.name || "Dein Name")} · AKYTEX</b></div><div><span>IBAN</span><b>${FUNDING.demoIban}</b><button class="mini-btn" data-copy="${FUNDING.demoIban}">Kopieren</button></div><div><span>Verwendungszweck</span><b>AKYTEX ${broker.state.created.toString(36).toUpperCase().slice(-6)}</b></div></div><p class="fe-note">Demo-IBAN – bitte nichts Echtes überweisen. In der Demo ist das Geld nach wenigen Sekunden da statt nach einem Werktag.</p>`;
+  if (fund.dir === "out") h = `<label class="field"><span>Referenzkonto (IBAN)</span><input id="fe-iban" autocomplete="off" placeholder="DE89 3704 0044 0532 0130 00" value="${esc(fund.iban)}" /></label><p class="fe-note">Auszahlungen gehen nur auf ein Konto auf deinen Namen. Verfügbar: <b>${eur(broker.buyingPower())}</b>.</p>`;
+  const ex = $("#fund-extra");
+  ex.innerHTML = h;
+  ex.animate([{ opacity: 0, transform: "translateY(6px)" }, { opacity: 1, transform: "none" }], { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" });
+}
+function paintFundAmount(pop = true) {
+  const v = fundAmount();
+  const [int, dec] = (fund.amt || "0").split(",");
+  const intF = (+int || 0).toLocaleString("de-DE");
+  const num = $("#fa-num");
+  num.innerHTML = `${intF}${dec !== undefined ? `<span class="fa-dec">,${dec}</span>` : ""}<span class="fa-cur"> €</span>`;
+  num.classList.toggle("empty", !fund.amt);
+  if (pop) num.animate([{ transform: "scale(1.045)" }, { transform: "scale(1)" }], { duration: 220, easing: "cubic-bezier(.2,.9,.3,1.2)" });
+  const inDir = fund.dir === "in";
+  $("#fa-sub").textContent = inDir ? `Guthaben danach ${eur(broker.state.cash + v)}` : `Verfügbar ${eur(broker.buyingPower())}`;
+  const m = fundMethod();
+  $("#fund-label").innerHTML = inDir ? (m.id === "transfer" ? `Ich habe ${v ? eur(v) : ""} überwiesen` : `Zum Einzahlen halten${v ? " · " + eur(v) : ""}`) : `Zum Auszahlen halten${v ? " · " + eur(v) : ""}`;
+  $$("#fund-sheet [data-fund-chip]").forEach((c) => c.classList.toggle("on", Math.abs(+c.dataset.fundChip - v) < 0.005));
+}
+function fundKey(k) {
+  let a = fund.amt || "";
+  if (k === "⌫") a = a.slice(0, -1);
+  else if (k === ",") a = a.includes(",") ? a : (a || "0") + ",";
+  else {
+    if (a.includes(",") && a.split(",")[1].length >= 2) return shake($("#fa-num"));
+    if (a === "0") a = "";
+    a += k;
+    if (parseFloat(a.replace(",", ".")) > FUNDING.max) return shake($("#fa-num"));
+  }
+  fund.amt = a;
+  haptic(4);
+  paintFundAmount();
+}
+function validateFund() {
+  if (fund.card !== undefined && $("#fe-card")) fund.card = $("#fe-card").value;
+  if ($("#fe-iban")) fund.iban = $("#fe-iban").value;
+  const v = fundAmount();
+  const m = fundMethod();
+  if (v < FUNDING.min) return `Bitte mindestens ${eur(FUNDING.min)} eingeben.`;
+  if (fund.dir === "out") {
+    if (v > broker.buyingPower() + 1e-6) return `Du kannst höchstens ${eur(broker.buyingPower())} auszahlen.`;
+    if (!ibanValid(fund.iban)) return "Bitte eine gültige IBAN für dein Referenzkonto eingeben.";
+    return null;
+  }
+  if (m.instant && instantToday() + v > FUNDING.instantDailyLimit) return `Sofort-Einzahlungen sind auf ${eur(FUNDING.instantDailyLimit)} pro Tag begrenzt. Für größere Beträge nutze die Überweisung.`;
+  if (m.id === "card" && account.state.method?.type !== "card") {
+    const n = fund.card.replace(/\D/g, "");
+    const tc = TEST_CARDS[n];
+    if (!luhn(n)) return "Bitte eine gültige Kartennummer eingeben.";
+    if (!tc) return "Demo: Bitte nur Testkarten verwenden (z. B. 4242 4242 4242 4242).";
+    if (tc.result === "declined") return "Die Bank hat die Zahlung abgelehnt (Testkarte „abgelehnt“).";
+    if (tc.result === "funds") return "Nicht genügend Deckung (Testkarte).";
+  }
+  if (m.id === "sepa" && fund.iban.replace(/\s/g, "").toUpperCase() !== TEST_IBAN) return "Demo: Bitte die Test-IBAN DE89 3704 0044 0532 0130 00 verwenden.";
+  return null;
+}
+async function runFund() {
+  const btn = $("#fund-hold");
+  const v = fundAmount();
+  const m = fundMethod();
+  const label = btn.querySelector(".hp-label");
+  if (fund.dir === "in" && (m.wallet || /3ds/.test(TEST_CARDS[fund.card.replace(/\D/g, "")]?.result || ""))) {
+    label.innerHTML = `<span class="face"><i></i></span> Bestätige …`;
+    const ok = await secureDialog(m.id === "card" ? "card" : m.id, m.id === "card", $("#fund-sheet"));
+    if (!ok) {
+      btn.classList.remove("busy");
+      paintFundAmount(false);
+      return fundError("Die Bestätigung wurde abgebrochen.");
+    }
+  }
+  label.innerHTML = `<span class="spinner sm"></span> ${fund.dir === "in" ? "Geld kommt …" : "Wird ausgezahlt …"}`;
+  await new Promise((r) => setTimeout(r, 650));
+  let title;
+  let sub;
+  if (fund.dir === "out") {
+    const r = broker.withdraw(v, { method: m.id, iban: "•••• " + fund.iban.replace(/\s/g, "").slice(-4) });
+    if (!r.ok) {
+      btn.classList.remove("busy");
+      paintFundAmount(false);
+      return fundError(r.msg);
+    }
+    account.state.refIban = fund.iban.replace(/\s/g, "").toUpperCase();
+    account.save();
+    title = `${eur(v)} unterwegs`;
+    sub = m.id === "instant" ? "Echtzeit-Auszahlung – in wenigen Sekunden auf deinem Konto." : "Standard-Auszahlung – in 1–2 Werktagen auf deinem Konto.";
+  } else if (m.id === "transfer") {
+    const pend = [...(account.state.pendingIn || []), { amount: v, due: Date.now() + 8000 }];
+    account.state.pendingIn = pend;
+    account.save();
+    setTimeout(settlePending, 8200);
+    title = "Überweisung angekündigt";
+    sub = `Sobald ${eur(v)} eingehen, sind sie handelbar (Demo: in wenigen Sekunden).`;
+  } else {
+    broker.deposit(v, { method: m.id });
+    if (m.id === "sepa") {
+      account.state.refIban = account.state.refIban || TEST_IBAN;
+      account.save();
+    }
+    title = `${eur(v)} eingezahlt`;
+    sub = `Per ${m.name} · sofort handelbar · neues Guthaben ${eur(broker.state.cash)}`;
+    confetti();
+  }
+  haptic([10, 40, 20]);
+  $("#fund-sheet").innerHTML = `<div class="ps-success"><svg class="check" viewBox="0 0 80 80"><circle cx="40" cy="40" r="36"/><path d="M24 41 l11 11 l22 -24"/></svg><h2>${esc(title)}</h2><p class="muted">${esc(sub)}</p><div class="co-done-actions">${fund.dir === "in" && m.id !== "transfer" ? `<button class="btn" data-goto-ai-buy>Mit AKYTEX AI investieren</button>` : ""}<button class="btn primary" data-close>Fertig</button></div></div>`;
+  renderTransfers();
+}
+function settlePending() {
+  const pend = account.state.pendingIn || [];
+  const due = pend.filter((p) => p.due <= Date.now());
+  if (!due.length) return;
+  account.state.pendingIn = pend.filter((p) => p.due > Date.now());
+  account.save();
+  for (const p of due) {
+    broker.deposit(p.amount, { method: "transfer" });
+    toast(`${eur(p.amount)} sind auf deinem Depot eingegangen.`, "success", "Überweisung angekommen");
+    notify("Überweisung angekommen", `${eur(p.amount)} sind jetzt handelbar.`);
+  }
+  renderTransfers();
+}
+function fundError(msg) {
+  const e = $("#fund-err");
+  if (!e) return;
+  e.textContent = msg;
+  e.hidden = false;
+  shake($("#fund-sheet"));
+  haptic([30, 40, 30]);
+}
+// Gedrückt halten zum Bestätigen (Maus, Touch oder Leertaste/Enter)
+function bindFundHold(btn, validate, run) {
+  let timer = null;
+  const start = (e) => {
+    if (btn.classList.contains("busy")) return;
+    e.preventDefault();
+    const err = validate();
+    if (err) return fundError(err);
+    $("#fund-err").hidden = true;
+    if (fund.dir === "in" && fundMethod().id === "transfer") {
+      btn.classList.add("busy");
+      return run();
+    }
+    btn.classList.add("holding");
+    haptic(8);
+    timer = setTimeout(() => {
+      btn.classList.remove("holding");
+      btn.classList.add("busy");
+      haptic([12, 30, 12]);
+      run();
+    }, 900);
+  };
+  const cancel = () => {
+    clearTimeout(timer);
+    btn.classList.remove("holding");
+  };
+  btn.addEventListener("pointerdown", start);
+  btn.addEventListener("pointerup", cancel);
+  btn.addEventListener("pointerleave", cancel);
+  btn.addEventListener("keydown", (e) => {
+    if ((e.key === " " || e.key === "Enter") && !e.repeat) start(e);
+  });
+  btn.addEventListener("keyup", cancel);
+}
+function renderTransfers() {
+  const card = $("#transfers-card");
+  if (!card) return;
+  const list = broker.state.transfers || [];
+  const pend = account.state.pendingIn || [];
+  card.hidden = !list.length && !pend.length;
+  if (card.hidden) return;
+  const names = Object.fromEntries([...FUNDING.in, ...FUNDING.out.map((m) => ({ ...m, id: "out-" + m.id }))].map((m) => [m.id, m.name]));
+  $("#transfers-sum").textContent = `Netto eingezahlt ${sEur(broker.state.netDeposits || 0)}`;
+  $("#transfers").innerHTML =
+    pend.map((p) => `<div class="tr-row pending"><span class="tr-ic">⏳</span><div><b>Überweisung unterwegs</b><small>angekündigt</small></div><b>${sEur(p.amount)}</b></div>`).join("") +
+    list
+      .slice(0, 12)
+      .map((t) => `<div class="tr-row ${t.type}"><span class="tr-ic">${t.type === "in" ? "↓" : "↑"}</span><div><b>${t.type === "in" ? "Einzahlung" : "Auszahlung"} · ${esc(names[t.type === "in" ? t.method : "out-" + t.method] || "")}</b><small>${new Date(t.at).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" })}${t.iban ? " · " + esc(t.iban) : ""}</small></div><b class="${t.type === "in" ? "up" : ""}">${t.type === "in" ? "+" : "−"}${eur(t.amount)}</b></div>`)
+      .join("");
+}
+function bindFund() {
+  document.addEventListener("click", (e) => {
+    const f = e.target.closest("[data-fund]");
+    if (f) return openFund(f.dataset.fund);
+  });
+  const sheet = $("#fund-sheet");
+  sheet.addEventListener("click", (e) => {
+    const t = e.target;
+    const key = t.closest("[data-key]");
+    if (key) return fundKey(key.dataset.key);
+    const chip = t.closest("[data-fund-chip]");
+    if (chip) {
+      fund.amt = (+chip.dataset.fundChip).toFixed(2).replace(/\.00$/, "").replace(".", ",");
+      haptic(6);
+      return paintFundAmount();
+    }
+    const dir = t.closest("[data-fund-dir]");
+    if (dir && dir.dataset.fundDir !== fund.dir) {
+      fund.dir = dir.dataset.fundDir;
+      fund.method = fund.dir === "in" ? preferredWallet() : "instant";
+      fund.amt = "";
+      fund.open = null;
+      return renderFund();
+    }
+    const tog = t.closest("[data-fund-toggle]");
+    if (tog) {
+      fund.open = fund.open === "method" ? null : "method";
+      return sheet.querySelector('[data-row="method"]').classList.toggle("open", fund.open === "method");
+    }
+    const fm = t.closest("[data-fund-method]");
+    if (fm) {
+      fund.method = fm.dataset.fundMethod;
+      fund.open = null;
+      $$("#fund-sheet .fm").forEach((b) => b.classList.toggle("on", b === fm));
+      const m = fundMethod();
+      $("#fm-cur").innerHTML = `${fundIcon(m)} ${m.name}`;
+      sheet.querySelector('[data-row="method"]').classList.remove("open");
+      $("#fund-err").hidden = true;
+      renderFundExtra();
+      return paintFundAmount(false);
+    }
+    const cp = t.closest("[data-copy]");
+    if (cp) {
+      navigator.clipboard?.writeText(cp.dataset.copy.replace(/\s/g, "")).then(() => toast("IBAN kopiert.", "success"), () => {});
+      return;
+    }
+    if (t.closest("[data-goto-ai-buy]")) {
+      closeModals();
+      setView("ai");
+      setTimeout(() => sendChat("Was soll ich jetzt kaufen?"), 400);
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    if ($("#fund-modal").hidden || e.target.matches("input, textarea, select")) return;
+    if (/^[0-9]$/.test(e.key)) fundKey(e.key);
+    else if (e.key === "," || e.key === ".") fundKey(",");
+    else if (e.key === "Backspace") fundKey("⌫");
+    else return;
+    e.preventDefault();
+  });
+  setInterval(settlePending, 3000);
+  settlePending();
+  renderTransfers();
 }
 function bindCheckout() {
   $("#pay-sheet").addEventListener("click", (e) => {
@@ -2990,7 +3543,7 @@ function bindCheckout() {
       const code = $("#ps-promo").value.trim().toUpperCase();
       if (!PAYMENT_CONFIG.promos[code] || (pay.kind === "shop" && !PAYMENT_CONFIG.promos[code].pct)) {
         shake($("#pay-sheet .promo"));
-        return toast(`Der Code „${code}“ ist hier nicht gültig. Probier AKTEX20.`, "error", "Gutschein");
+        return toast(`Der Code „${code}“ ist hier nicht gültig. Probier AKYTEX20.`, "error", "Gutschein");
       }
       pay.promo = code;
       pay.open = account.state.method ? null : "method";
@@ -3038,7 +3591,7 @@ function openInvoice(i) {
   if (!inv) return;
   const pr = account.state.profile;
   $("#invoice").innerHTML = `
-    <div class="inv-head"><div><img src="icons/icon.svg" alt="" width="36" height="36"/><b>ΛKTEX</b><small>[Firmenname] · [Straße Nr.] · [PLZ Ort]<br>USt-IdNr. [DE…]</small></div>
+    <div class="inv-head"><div><img src="icons/icon.svg" alt="" width="36" height="36"/><b>ΛKYTEX</b><small>[Firmenname] · [Straße Nr.] · [PLZ Ort]<br>USt-IdNr. [DE…]</small></div>
       <div class="inv-meta"><b>Rechnung ${inv.no}</b><span>Datum: ${new Date(inv.date).toLocaleDateString("de-DE")}</span><span>Kunde: ${esc(pr?.name || "–")}</span></div></div>
     <table class="grid inv-table"><thead><tr><th>Leistung</th><th class="num">Betrag</th></tr></thead><tbody>
       ${inv.lines.map((l) => `<tr><td>${esc(l.label)}</td><td class="num">${eur(l.amount)}</td></tr>`).join("")}
@@ -3112,7 +3665,7 @@ function renderOnboarding(dir = 1) {
   const opt = (key, val, icon, title, text) => `<button class="ob-opt ${ob[key] === val ? "on" : ""}" data-ob="${key}" data-val="${val}"><span>${icon}</span><b>${title}</b><small>${text}</small></button>`;
   let html = "";
   if (ob.step === 0)
-    html = `<div class="co-narrow"><div class="ob-hero"><img src="icons/logo.svg" alt="" width="96" height="96"/><h2>Willkommen bei ΛKTEX</h2><p class="muted">In 30 Sekunden richten wir die App auf dich ein.</p></div>
+    html = `<div class="co-narrow"><div class="ob-hero"><img src="icons/logo.svg" alt="" width="96" height="96"/><h2>Willkommen bei ΛKYTEX</h2><p class="muted">In 30 Sekunden richten wir die App auf dich ein.</p></div>
       <label class="field"><span>Wie heißt du?</span><input type="text" id="ob-name" maxlength="60" value="${esc(ob.name)}" autocomplete="given-name" /></label>
       <label class="field"><span>E-Mail (optional)</span><input type="email" id="ob-email" maxlength="120" value="${esc(ob.email)}" autocomplete="email" /></label>
       <p class="muted small">Wird nur in diesem Browser gespeichert.</p>
@@ -3239,7 +3792,7 @@ function renderAccount() {
       ? os.map((o) => `<div class="order"><div class="order-h"><b>${o.no}</b><span class="muted">${new Date(o.date).toLocaleString("de-DE")}</span><span class="status ok">${esc(o.status)}</span><b>${eur(o.total)}</b></div><ul>${o.items.map((i) => `<li>${i.qty}× ${esc(i.name)}</li>`).join("")}</ul>${o.codes.length ? `<p>🎁 ${o.codes.map((c) => `<code>${c.code}</code> (${eur(c.value)})`).join(" · ")}</p>` : ""}${o.address ? `<small class="muted">Lieferung an ${esc(o.address.street)}, ${esc(o.address.zip)} ${esc(o.address.city)}</small>` : ""}</div>`).join("")
       : `<div class="empty">Noch keine Bestellungen. <button class="link-btn" data-goto="shop">Zum Store</button></div>`;
   } else if (acctTab === "notify") {
-    html = `${tog("push", "Push-Benachrichtigungen", "Order-Ausführungen und Alarme als System-Mitteilung")}${tog("fills", "Order-Bestätigungen", "Meldung bei jeder Ausführung")}${tog("ai", "AKTEX AI-Meldungen", "Signalwechsel, Risiken, Autopilot-Entscheidungen")}${tog("email", "Wochenreport per E-Mail", "Zusammenfassung deines Depots (im Echtbetrieb)")}
+    html = `${tog("push", "Push-Benachrichtigungen", "Order-Ausführungen und Alarme als System-Mitteilung")}${tog("fills", "Order-Bestätigungen", "Meldung bei jeder Ausführung")}${tog("ai", "AKYTEX AI-Meldungen", "Signalwechsel, Risiken, Autopilot-Entscheidungen")}${tog("email", "Wochenreport per E-Mail", "Zusammenfassung deines Depots (im Echtbetrieb)")}
       <button class="btn" data-perm>Browser-Benachrichtigungen erlauben</button>`;
   } else if (acctTab === "security") {
     html = `${tog("twofa", "Zwei-Faktor-Anmeldung", "Zusätzlicher Code bei jeder Anmeldung")}${tog("passkey", "Passkey", "Anmelden mit Face ID, Touch ID oder Windows Hello")}
@@ -3331,9 +3884,9 @@ const PH = (t) => `<mark class="ph">[${t}]</mark>`;
 const LEGAL = {
   impressum: () => `<h2>Impressum</h2><p>Angaben gemäß § 5 DDG</p><p>${PH("Firmenname und Rechtsform")}<br>${PH("Straße Hausnummer")}<br>${PH("PLZ Ort")}</p><p><b>Vertreten durch:</b> ${PH("Geschäftsführung")}<br><b>Kontakt:</b> ${PH("E-Mail")} · ${PH("Telefon")}<br><b>Registereintrag:</b> ${PH("Registergericht, HRB-Nummer")}<br><b>USt-IdNr.:</b> ${PH("DE…")}</p><p><b>Aufsicht:</b> Im Echtbetrieb ${PH("Bundesanstalt für Finanzdienstleistungsaufsicht (BaFin) bzw. lizenzierter Partner")}</p><p>Verantwortlich für den Inhalt nach § 18 Abs. 2 MStV: ${PH("Name, Anschrift")}</p>`,
   privacy: () => `<h2>Datenschutzerklärung</h2><h3>Kurzfassung für diese Demo</h3><ul><li>Alle Daten (Profil, Depot, Einstellungen, Ideen) werden ausschließlich <b>lokal in deinem Browser</b> gespeichert.</li><li>Es gibt keinen Server, kein Tracking und keine Cookies zu Werbezwecken.</li><li>Im Testmodus des Checkouts werden keine Zahlungsdaten gespeichert oder übertragen.</li><li>Nutzt du den Berater-Chat in einer Claude-Umgebung, wird deine Frage samt nötiger Depotdaten an das Sprachmodell übermittelt.</li></ul><h3>Für den Echtbetrieb ergänzen</h3><p>Verantwortlicher: ${PH("Name, Anschrift, Kontakt")} · Datenschutzbeauftragter: ${PH("Kontakt")}</p><p>Zwecke und Rechtsgrundlagen (Art. 6 DSGVO), Auftragsverarbeiter (${PH("Hosting, Zahlungsanbieter, Identifizierung")}), Speicherdauer, Drittlandübermittlung, Betroffenenrechte (Auskunft, Berichtigung, Löschung, Einschränkung, Datenübertragbarkeit, Widerspruch), Beschwerderecht bei der Aufsichtsbehörde.</p>`,
-  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKTEX von ${PH("Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
+  terms: () => `<h2>Allgemeine Geschäftsbedingungen (Vorlage)</h2><ol><li><b>Geltungsbereich:</b> Diese AGB gelten für die Nutzung der Plattform AKYTEX von ${PH("Firmenname")}.</li><li><b>Leistungen:</b> Charts, Analysen, Community-Funktionen und – mit entsprechendem Tarif – AKYTEX AI. In der Demo werden alle Kurse simuliert und es wird mit virtuellem Geld gehandelt.</li><li><b>Tarife und Preise:</b> Es gelten die Preise laut Preis- und Leistungsverzeichnis inkl. gesetzlicher MwSt. Kostenpflichtige Tarife beginnen mit einer ${PAYMENT_CONFIG.trialDays}-tägigen kostenlosen Testphase.</li><li><b>Laufzeit und Kündigung:</b> Monatstarife verlängern sich um jeweils einen Monat, Jahrestarife um ein Jahr, sofern nicht zum Ende der Laufzeit gekündigt wird. Die Kündigung ist jederzeit über „Verträge hier kündigen“ möglich.</li><li><b>Keine Anlageberatung:</b> Inhalte, Ideen und AI-Einschätzungen sind keine Anlageberatung. ${PH("Regelungen für Beratung/Vermögensverwaltung im Echtbetrieb")}</li><li><b>Haftung, Gerichtsstand, Schlussbestimmungen:</b> ${PH("anwaltlich ergänzen")}</li></ol>`,
   withdrawal: () => `<h2>Widerrufsbelehrung (Vorlage)</h2><p><b>Widerrufsrecht:</b> Du hast das Recht, binnen vierzehn Tagen ohne Angabe von Gründen diesen Vertrag zu widerrufen. Die Widerrufsfrist beträgt vierzehn Tage ab dem Tag des Vertragsabschlusses.</p><p>Um dein Widerrufsrecht auszuüben, musst du uns (${PH("Name, Anschrift, E-Mail")}) mittels einer eindeutigen Erklärung über deinen Entschluss informieren.</p><p><b>Folgen des Widerrufs:</b> Wir erstatten alle Zahlungen unverzüglich, spätestens binnen vierzehn Tagen. ${PH("Regelung bei vorzeitigem Leistungsbeginn anwaltlich prüfen")}</p>`,
-  risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
+  risk: () => `<h2>Risikohinweise</h2><ul><li>Der Handel mit Aktien ist mit Risiken verbunden und kann zum <b>Totalverlust</b> des eingesetzten Kapitals führen.</li><li>Vergangene Wertentwicklungen, Ideen-Trefferquoten und AI-Bewertungen sind <b>kein verlässlicher Indikator</b> für künftige Ergebnisse.</li><li>AKYTEX AI und der Autopilot handeln regelbasiert; auch automatische Stops schützen nicht vor Kurslücken.</li><li>Copy-Trading und Ideen-Handel übernehmen fremde Entscheidungen – prüfe sie selbst.</li><li>In dieser Demo sind alle Kurse simuliert, das Geld ist virtuell.</li></ul>`,
 };
 function renderLegal() {
   $$("#legal-tabs button").forEach((b) => b.classList.toggle("active", b.dataset.legal === legalTab));
@@ -3372,7 +3925,7 @@ function togglePopover(id, render) {
 let cmdIdx = 0;
 function cmdItems(q) {
   const items = [
-    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["ai", "AKTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
+    ...[["home", "Start"], ["chart", "Chart"], ["markets", "Märkte"], ["ideas", "Ideen-Börse"], ["clips", "Clips"], ["ai", "AKYTEX AI"], ["shop", "Shop"], ["portfolio", "Depot"], ["business", "Business-Dashboard"], ["account", "Mein Konto"], ["legal", "Rechtliches"]].map(([v, l]) => ({ icon: "↗", label: `Gehe zu ${l}`, run: () => setView(v) })),
     { icon: "✦", label: "Tarife ansehen", run: () => openPlans() },
     { icon: "💳", label: "Pro abonnieren (Checkout)", run: () => openCheckout("pro") },
     { icon: "🤖", label: "AI Premium abonnieren (Checkout)", run: () => openCheckout("aiprem") },
@@ -3391,7 +3944,7 @@ function cmdItems(q) {
   ];
   const t = q.trim().toLowerCase();
   let res = t ? items.filter((i) => i.label.toLowerCase().includes(t)) : items.slice(0, 14);
-  if (t.length > 2) res.push({ icon: "✦", label: `AKTEX AI fragen: „${q.trim()}“`, run: () => (setView("ai"), setTimeout(() => sendChat(q.trim()), 350)) });
+  if (t.length > 2) res.push({ icon: "✦", label: `AKYTEX AI fragen: „${q.trim()}“`, run: () => (setView("ai"), setTimeout(() => sendChat(q.trim()), 350)) });
   return res.slice(0, 14);
 }
 function renderCmd() {
@@ -3467,9 +4020,9 @@ function bindShell() {
 // Globale Fußzeile auf allen Seiten
 function injectFooters() {
   const foot = `<footer class="site-foot">
-    <div class="sf-brand"><img src="icons/icon.svg" alt="" width="30" height="30"/><div><b>ΛKTEX</b><small>Markets move. Ideas stay.</small></div></div>
+    <div class="sf-brand"><img src="icons/icon.svg" alt="" width="30" height="30"/><div><b>ΛKYTEX</b><small>Markets move. Ideas stay.</small></div></div>
     <div class="sf-cols">
-      <div><b>Produkt</b><button data-goto="chart">Chart</button><button data-goto="ideas">Ideen-Börse</button><button data-goto="ai">AKTEX AI</button><button data-open-plans>Preise</button></div>
+      <div><b>Produkt</b><button data-goto="chart">Chart</button><button data-goto="ideas">Ideen-Börse</button><button data-goto="ai">AKYTEX AI</button><button data-open-plans>Preise</button></div>
       <div><b>Konto</b><button data-goto="account" data-acct-tab="billing">Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">Rechnungen</button><button data-cancel-open class="sf-cancel">Verträge hier kündigen</button></div>
       <div><b>Rechtliches</b><button data-legal-open="impressum">Impressum</button><button data-legal-open="privacy">Datenschutz</button><button data-legal-open="terms">AGB</button><button data-legal-open="risk">Risikohinweise</button></div>
     </div>
@@ -3543,7 +4096,7 @@ function odometer(el, text) {
   for (const ch of text) if (/\d/.test(ch)) cols[k++].style.transform = `translateY(-${+ch * 10}%)`;
 }
 
-// ---------- AKTEX AI: Tabs, Zeitplan, Labor, Features ----------
+// ---------- AKYTEX AI: Tabs, Zeitplan, Labor, Features ----------
 let aiTab = "cockpit";
 let labSym = "NVDA";
 let labFocus = null;
@@ -3660,7 +4213,7 @@ function renderLab() {
     card("montecarlo", "🎲 Monte-Carlo-Depot", "500 Szenarien · 1 Jahr", `${mcSvg}<div class="lab-kv"><div><span>Median</span><b>${eur(mc.p50)}</b></div><div><span>Schlecht (5 %)</span><b class="down">${eur(mc.p5)}</b></div><div><span>Gut (95 %)</span><b class="up">${eur(mc.p95)}</b></div><div><span>Verlust-Wahrsch.</span><b>${Math.round(mc.lossProb * 100)} %</b></div></div>`),
     card("risk", "🛡️ Risiko-Kennzahlen", "Historische Simulation", `<div class="lab-kv big"><div><span>VaR 95 % (1 Tag)</span><b class="down">−${eur(vr.var95)}</b></div><div><span>VaR 99 % (1 Tag)</span><b class="down">−${eur(vr.var99)}</b></div><div><span>Expected Shortfall</span><b class="down">−${eur(vr.es95)}</b></div><div><span>Drawdown vom Hoch</span><b class="${ddw.dd < 0 ? "down" : ""}">${pct(ddw.dd)}</b></div></div>`),
     card("corr", "🧩 Korrelations-Matrix", corrSyms.length ? corrSyms.join(" · ") : "–", `<div class="corr" style="--n:${corrSyms.length}"><span></span>${corrSyms.map((s) => `<span class="ch">${s}</span>`).join("")}${cm.m.map((row, i) => `<span class="ch">${corrSyms[i]}</span>${row.map((c) => `<span class="cc" style="background:${c >= 0 ? `rgba(239,68,68,${c * 0.8})` : `rgba(79,140,255,${-c * 0.8})`}" title="${nf2.format(c)}">${c.toFixed(1).replace(".", ",")}</span>`).join("")}`).join("")}</div><p class="muted small">Rot = laufen zusammen (Klumpenrisiko), Blau = gleichen sich aus.</p>`),
-    card("sentiment", "🌡️ AKTEX Sentiment-Index", si.label, `<div class="si">${gaugeSmall(si.value, si.label)}</div><div class="lab-kv"><div><span>Marktbreite</span><b>${Math.round(si.parts.breadth * 100)} %</b></div><div><span>Momentum 5T</span><b class="${cls(si.parts.mom)}">${pct(si.parts.mom)}</b></div><div><span>Ø RSI</span><b>${nf2.format(si.parts.rsi)}</b></div><div><span>Community ${sym}</span><b>${cs.n ? Math.round(cs.bull * 100) + " % bullisch" : "–"}</b></div></div>`),
+    card("sentiment", "🌡️ AKYTEX Sentiment-Index", si.label, `<div class="si">${gaugeSmall(si.value, si.label)}</div><div class="lab-kv"><div><span>Marktbreite</span><b>${Math.round(si.parts.breadth * 100)} %</b></div><div><span>Momentum 5T</span><b class="${cls(si.parts.mom)}">${pct(si.parts.mom)}</b></div><div><span>Ø RSI</span><b>${nf2.format(si.parts.rsi)}</b></div><div><span>Community ${sym}</span><b>${cs.n ? Math.round(cs.bull * 100) + " % bullisch" : "–"}</b></div></div>`),
     card("sectors", "🔄 Sektor-Rotation", "5 Tage", bars(rot.map((x) => ({ label: `${x.name} · ${x.phase}`, v: x.d5 * 100 })), { fmt: (v) => (v > 0 ? "+" : "") + nf2.format(v) + " %" })),
     card("anomalies", "📡 Anomalie-Radar", "Ungewöhnliche Bewegungen", `<ul class="lab-list">${an.map((x) => `<li><button class="sym-chip" data-open-sym="${x.sym}">${x.sym}</button> ${pct(x.chg)} · ${nf2.format(x.z)} σ · Volumen ${nf2.format(x.volX)}×</li>`).join("") || "<li class='muted'>Alles ruhig.</li>"}</ul>`),
     card("similar", "🧬 Ähnliche Setups & Relative Stärke", sym, `<ul class="lab-list">${sim.map((x) => `<li><button class="sym-chip" data-lab-sym="${x.sym}">${x.sym}</button> ${Math.round(x.similarity * 100)} % ähnlich</li>`).join("")}</ul><div class="lab-kv"><div><span>20T ${sym}</span><b class="${cls(rs.own)}">${pct(rs.own)}</b></div><div><span>20T Markt</span><b class="${cls(rs.market)}">${pct(rs.market)}</b></div><div><span>Rang</span><b>${rs.rank} / ${rs.of}</b></div></div>`),
@@ -3761,7 +4314,7 @@ scheduler.on((e) => {
   if (e.kind === "run") {
     toast(e.run.msg, e.run.ok ? "success" : "error", "⏱ Zeitplan");
     beep(e.run.ok ? 1180 : 300, 0.1);
-    notify("AKTEX Zeitplan", e.run.msg);
+    notify("AKYTEX Zeitplan", e.run.msg);
   }
   if (settings.view === "ai" && aiTab === "plan") renderSchedList();
 });
@@ -3799,7 +4352,7 @@ function bindAiTabs() {
   });
   $("#sched-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    if (!aiMode()) return openPlans("Zeitpläne und Regeln sind Teil von AKTEX AI.");
+    if (!aiMode()) return openPlans("Zeitpläne und Regeln sind Teil von AKYTEX AI.");
     const t = schedFromForm();
     if (!(t.action.value > 0)) return shake($("#sc-val"));
     if (t.type === "once" && !(t.at > Date.now())) return toast("Bitte einen Zeitpunkt in der Zukunft wählen.", "error");
@@ -3862,7 +4415,7 @@ function bindAiTabs() {
     }
     const lb = e.target.closest("[data-lab-buy]");
     if (lb) {
-      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKTEX AI.");
+      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKYTEX AI.");
       const v = aiEngine.scan(lb.dataset.labBuy);
       const step = tickStep(v.price);
       const r = broker.placeOrder({ symbol: lb.dataset.labBuy, side: "buy", type: "market", qty: +lb.dataset.qty, sl: roundTo(v.h.setup.sl, step), tp: roundTo(v.h.setup.tp, step) });
@@ -3870,7 +4423,7 @@ function bindAiTabs() {
       return;
     }
     if (e.target.closest("[data-lab-rebal]")) {
-      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKTEX AI.");
+      if (!aiMode()) return openPlans("Das AI-Labor ist Teil von AKYTEX AI.");
       const rb = lab.rebalance(broker, market, "equal");
       let ok = 0;
       for (const t of rb.trades) if (broker.placeOrder({ symbol: t.sym, side: t.side, type: "market", qty: t.qty }).ok) ok++;
@@ -3885,7 +4438,7 @@ function bindAiTabs() {
   });
 }
 
-// Die 50 neuen AKTEX-AI-Funktionen
+// Die 50 neuen AKYTEX-AI-Funktionen
 const ask = (q) => () => {
   setAiTab("cockpit");
   setTimeout(() => sendChat(q), 250);
@@ -3965,7 +4518,7 @@ function speak(text) {
   }
 }
 
-// ---------- AKTEX Store ----------
+// ---------- AKYTEX Store ----------
 let shopCat = "all";
 const basketAmt = {};
 const MERCH_SVG = {
@@ -4042,10 +4595,10 @@ function renderCart() {
   $("#cart-body").innerHTML = items.length
     ? `<ul class="cart-list">${items.map((i) => `<li><div class="cart-art">${productArt(i)}</div><div><b>${esc(i.name)}</b><small class="muted">${eur(i.price)}</small>${i.physical || i.gift ? `<div class="qty-step"><button data-cart-q="${i.id}" data-d="-1">−</button><span>${i.qty}</span><button data-cart-q="${i.id}" data-d="1">+</button></div>` : ""}</div><div class="cart-r"><b>${eur(i.price * i.qty)}</b><button class="link-btn" data-cart-rm="${i.id}">Entfernen</button></div></li>`).join("")}</ul>
       <div class="co-sum"><div><span>Zwischensumme</span><b>${eur(sub)}</b></div>${physical ? `<div><span>Versand</span><b>${sub >= 50 ? "kostenlos" : eur(4.9)}</b></div>` : ""}<div class="co-total"><span>Gesamt</span><b>${eur(sub + (physical && sub < 50 ? 4.9 : 0))}</b></div><div class="muted small"><span>inkl. 19 % MwSt.</span></div></div>
-      <button class="hold-pay static" data-cart-checkout><span class="hp-label">Zur Kasse mit ΛKTEX Pay</span></button>`
+      <button class="hold-pay static" data-cart-checkout><span class="hp-label">Zur Kasse mit ΛKYTEX Pay</span></button>`
     : `<div class="empty-state"><div class="spot-ic">🛍️</div><h3>Dein Warenkorb ist leer</h3><p class="muted">Entdecke Strategien, Kurse und Merch im Store.</p><button class="btn primary" data-goto="shop" data-close-drawer>Zum Store</button></div>`;
 }
-// Wird von AKTEX Pay nach erfolgreicher (Test-)Zahlung aufgerufen
+// Wird von AKYTEX Pay nach erfolgreicher (Test-)Zahlung aufgerufen
 function shopComplete(items, T, method, address) {
   const order = shop.complete(items, T.due, method, address);
   account.addInvoice({ date: Date.now(), lines: T.lines.concat(T.discount ? [{ label: `Gutschein ${pay.promo}`, amount: -T.discount }] : []), total: T.due, note: `Bestellung ${order.no}${order.codes.length ? " · Geschenkcodes: " + order.codes.map((c) => c.code).join(", ") : ""}` });
@@ -4080,7 +4633,7 @@ function investBasket(id) {
 const LESSON_TEXT = {
   "Was ist eine Aktie?": "Eine Aktie ist ein Anteil an einem Unternehmen. Steigt der Wert des Unternehmens oder schüttet es Gewinne aus, profitierst du anteilig – sinkt er, verlierst du.",
   "Orderarten: Market, Limit, Stopp": "Market kauft sofort zum aktuellen Kurs. Limit kauft nur zu deinem Wunschpreis oder besser. Stopp wird zur Market-Order, sobald eine Schwelle erreicht ist – ideal zum Absichern.",
-  "Kosten verstehen: Spread & Gebühren": "Der Spread ist die Differenz zwischen Kauf- und Verkaufskurs. Dazu kommen Ordergebühren. AKTEX zeigt dir vor jeder Order alle Kosten.",
+  "Kosten verstehen: Spread & Gebühren": "Der Spread ist die Differenz zwischen Kauf- und Verkaufskurs. Dazu kommen Ordergebühren. AKYTEX zeigt dir vor jeder Order alle Kosten.",
   "Risiko begrenzen mit Stop-Loss": "Lege vor dem Kauf fest, wie viel du maximal verlieren willst – etwa 1 % des Depots pro Trade – und setze den Stop entsprechend.",
   "Diversifikation richtig": "Verteile dein Geld auf mehrere Aktien und Branchen. Mehr als 20 % in einer Aktie erhöht das Klumpenrisiko deutlich.",
   "Sparpläne und Zinseszins": "Regelmäßig kleine Beträge investieren glättet Einstiegskurse. Über Jahre wirkt der Zinseszins – Gewinne erzeugen weitere Gewinne.",
@@ -4088,10 +4641,10 @@ const LESSON_TEXT = {
 };
 function openContent(p) {
   let html = "";
-  if (p.lessons) html = `<ol class="lessons">${p.lessons.map((l, i) => `<li><details ${i === 0 ? "open" : ""}><summary><span>${i + 1}</span>${esc(l)}</summary><p>${esc(LESSON_TEXT[l] || "In dieser Lektion lernst du die Grundlagen zu „" + l + "“ Schritt für Schritt – mit Beispielen aus dem AKTEX-Chart und einer kurzen Übung im Demo-Depot.")}</p></details></li>`).join("")}</ol>`;
+  if (p.lessons) html = `<ol class="lessons">${p.lessons.map((l, i) => `<li><details ${i === 0 ? "open" : ""}><summary><span>${i + 1}</span>${esc(l)}</summary><p>${esc(LESSON_TEXT[l] || "In dieser Lektion lernst du die Grundlagen zu „" + l + "“ Schritt für Schritt – mit Beispielen aus dem AKYTEX-Chart und einer kurzen Übung im Demo-Depot.")}</p></details></li>`).join("")}</ol>`;
   else if (p.report === "picks") {
     const top = aiEngine.scanAll(STOCKS.map((s) => s.s)).slice(0, 10);
-    html = `<p class="muted small">Stand ${new Date().toLocaleString("de-DE")} · automatisch von AKTEX AI berechnet · keine Anlageberatung</p><ol class="report-list">${top.map((v) => `<li><div><b>${v.sym}</b> <span class="muted">${esc(v.name)}</span></div><div class="up">${v.rating.label} · Konfidenz ${lab.confidence(market, v.sym)} %</div><small>${esc(v.reason)} · Ziel ${num(v.h.setup.tp)} · Stop ${num(v.h.setup.sl)}</small></li>`).join("")}</ol>`;
+    html = `<p class="muted small">Stand ${new Date().toLocaleString("de-DE")} · automatisch von AKYTEX AI berechnet · keine Anlageberatung</p><ol class="report-list">${top.map((v) => `<li><div><b>${v.sym}</b> <span class="muted">${esc(v.name)}</span></div><div class="up">${v.rating.label} · Konfidenz ${lab.confidence(market, v.sym)} %</div><small>${esc(v.reason)} · Ziel ${num(v.h.setup.tp)} · Stop ${num(v.h.setup.sl)}</small></li>`).join("")}</ol>`;
   } else if (p.report === "outlook") {
     const si = lab.sentimentIndex(market);
     const rot = lab.sectorRotation(market);
@@ -4167,8 +4720,8 @@ function bindShop() {
   syncCart();
 }
 
-// ---------- AKTEX Clips ----------
-const CLIPS_KEY = "aktex-v2-clips";
+// ---------- AKYTEX Clips ----------
+const CLIPS_KEY = "akytex-v2-clips";
 const clipsState = (() => {
   try {
     return { liked: [], comments: {}, reported: [], myGen: [], ...JSON.parse(localStorage.getItem(CLIPS_KEY) || "{}") };
@@ -4324,8 +4877,8 @@ function openComments(id) {
 async function recordChartClip() {
   const sym = settings.symbol;
   const a = analyze(aggregate(market.get(sym).m1.slice(-60 * 24 * 7), "1h"));
-  const caps = [`${sym}: mein Blick auf den Chart`, `${a.rating.label} laut AKTEX AI`, `Ziel ${num(a.setup.tp)} · Stop ${num(a.setup.sl)}`];
-  const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#aktex"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
+  const caps = [`${sym}: mein Blick auf den Chart`, `${a.rating.label} laut AKYTEX AI`, `Ziel ${num(a.setup.tp)} · Stop ${num(a.setup.sl)}`];
+  const clip = { id: "m" + Date.now(), kind: "gen", author: "me", sym, title: caps[0], captions: caps, tags: ["#" + sym.toLowerCase(), "#akytex"], likes: 0, comments: 0, created: Date.now(), hue: 250 };
   toast("Aufnahme läuft (8 Sekunden) …", "info", "🎬 Chart-Clip");
   try {
     const blob = await recordClip(clip, market, "@" + clipAuthor(clip).handle);
@@ -4659,7 +5212,7 @@ window.addEventListener("hashchange", () => {
 async function share() {
   const url = shareUrl();
   const q = market.quote(settings.symbol);
-  const data = { title: `AKTEX · ${settings.symbol}`, text: `${q.name} (${settings.symbol}) ${num(q.price)} € ${pct(q.changePct)} – schau dir das auf AKTEX an:`, url };
+  const data = { title: `AKYTEX · ${settings.symbol}`, text: `${q.name} (${settings.symbol}) ${num(q.price)} € ${pct(q.changePct)} – schau dir das auf AKYTEX an:`, url };
   haptic(10);
   if (navigator.share && !embedded) {
     try {
@@ -4703,6 +5256,8 @@ bindAiTabs();
 bindShop();
 bindClips();
 bindCheckout();
+bindFund();
+handleStripeReturn();
 bindCancel();
 bindOnboarding();
 bindAccount();

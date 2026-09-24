@@ -1,13 +1,29 @@
-// AKTEX AI – Marktscan, Depot-Diagnose, Berater-Chat (lokal), Meldungen und Autopilot.
+// AKYTEX AI – Marktscan, Depot-Diagnose, Berater-Chat (lokal), Meldungen und Autopilot.
 // Läuft komplett im Browser. Wo verfügbar, übernimmt ein Sprachmodell den Chat (siehe app.js).
 import { analyze, rating } from "./analysis.js";
 import { aggregate, tickStep } from "./market.js";
 import * as lab from "./ailab.js";
 
-const KEY = "aktex-v2-ai";
+const KEY = "akytex-v2-ai";
 const f2 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pc = (v) => (v > 0 ? "+" : "") + f2(v * 100) + " %";
 const eur = (v) => v.toLocaleString("de-DE", { style: "currency", currency: "EUR" });
+const deaccent = (s) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+// Umgangssprachliche Namen und Marken
+const ALIASES = { google: "GOOGL", alphabet: "GOOGL", youtube: "GOOGL", facebook: "META", instagram: "META", whatsapp: "META", mercedes: "MBG", daimler: "MBG", vw: "VOW3", volkswagen: "VOW3", telekom: "DTE", "munchener ruck": "MUV2", "munich re": "MUV2", lvmh: "MC", "louis vuitton": "MC", totalenergies: "TTE", nestle: "NESN", ozempic: "NOVO", "coca cola": "KO", cola: "KO", mcdonalds: "MCD", "mc donalds": "MCD", exxon: "XOM", jpmorgan: "JPM", "jp morgan": "JPM", "deutsche post": "DHL", "deutsche bank": "DBK", "johnson": "JNJ", microsoft: "MSFT", amazon: "AMZN", nvidia: "NVDA" };
+const STOP = new Set(["aktie", "aktien", "kaufen", "verkaufen", "welche", "sollte", "meinem", "meiner", "depot", "heute", "morgen", "markt", "lohnt", "risiko", "wieviel", "prognose", "backtest", "muster", "warum", "besser", "gerade", "einzahlen", "auszahlen", "danke", "hallo", "bitte", "zeitplan", "sparplan", "chancen", "steuer", "sektor", "sektoren", "stimmung", "tagesplan", "portfolio", "analyse", "trade", "trades", "order", "orders"]);
+// Tippfehler-Abstand (Damerau-Levenshtein, optimal string alignment)
+function osa(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++)
+    for (let j = 1; j <= b.length; j++) {
+      const c = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + c);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  return d[a.length][b.length];
+}
 
 export const STRATEGIES = {
   conservative: { label: "Defensiv", buyScore: 0.45, sellScore: -0.2, desc: "Nur starke Signale, ruhige Qualitätswerte (Volatilität unter 2,5 %/Tag).", filter: (v) => v.atrPct < 0.025 },
@@ -33,7 +49,7 @@ const GLOSSARY = {
   vwap: ["VWAP", "ist der volumengewichtete Durchschnittspreis des Tages – viele Profis nutzen ihn als fairen Preis."],
 };
 
-export class AktexAI {
+export class AkytexAI {
   constructor(market, broker) {
     this.market = market;
     this.broker = broker;
@@ -150,7 +166,7 @@ export class AktexAI {
     const top = Object.entries(sectors).sort((a, b) => b[1] - a[1])[0];
     if (top && invested > 0 && top[1] / invested > 0.5) tips.push({ icon: "🧩", text: `${f2((top[1] / invested) * 100)} % deiner Aktien stecken in „${top[0]}“. Beimischen anderer Branchen senkt das Risiko.` });
     for (const h of holdings) {
-      if (h.v.score < -0.3) tips.push({ icon: "⚠️", text: `${h.sym}: AKTEX AI bewertet „${h.v.rating.label}“ (${h.v.reason}). Prüfe einen Stop-Loss oder Teilverkauf.`, sym: h.sym, action: "sell" });
+      if (h.v.score < -0.3) tips.push({ icon: "⚠️", text: `${h.sym}: AKYTEX AI bewertet „${h.v.rating.label}“ (${h.v.reason}). Prüfe einen Stop-Loss oder Teilverkauf.`, sym: h.sym, action: "sell" });
       else if (h.pnl > 0.12) tips.push({ icon: "🎯", text: `${h.sym} liegt ${pc(h.pnl)} im Plus. Einen Teil sichern oder den Stop nachziehen?`, sym: h.sym, action: "trail" });
     }
     const noStop = holdings.filter((h) => !b.state.orders.some((o) => o.symbol === h.sym && o.type === "stop" && o.side === "sell"));
@@ -429,13 +445,38 @@ export class AktexAI {
 
   // ---------- Lokaler Berater-Chat ----------
   // Erweiterte Absichten (Labor-Werkzeuge, Zeitplan, Kontext-Gedächtnis), sonst Basisantwort
+  // Antwort plus passende Folgefragen
   answer(text, ctx) {
+    this.turnSym = null;
+    const res = this.route(text, ctx);
+    if (!res.follow) res.follow = this.followUps(text, this.turnSym);
+    return res;
+  }
+
+  followUps(text, sym) {
+    const t = text.toLowerCase();
+    const pick = (arr) => arr.filter((q) => q.toLowerCase() !== t).slice(0, 3);
+    if (sym) {
+      const held = !!this.broker.position(sym);
+      const qs = [`Warum bewertest du ${sym} so?`, `Prognose für ${sym}`, held ? `Soll ich ${sym} verkaufen?` : `Wie viel ${sym} soll ich kaufen?`, `Backtest ${sym}`, `Muster bei ${sym}`];
+      // Was gerade gefragt wurde, nicht noch einmal anbieten
+      return pick(qs.filter((q) => !t.includes(q.toLowerCase().split(" ")[0])));
+    }
+    if (/depot|portfolio|wie steh/.test(t)) return pick(["Wie riskant ist mein Depot?", "Rebalancing vorschlagen", "Tagesplan"]);
+    if (/risiko|var\b|monte/.test(t)) return pick(["Wie kann ich mich absichern?", "Rebalancing vorschlagen", "Wie steht mein Depot?"]);
+    if (/kauf|chance|empfehl|beste|top/.test(t)) return pick(["Wie ist die Marktlage heute?", "Sektor-Rotation", "Tagesplan"]);
+    if (/markt|lage|stimmung|sektor/.test(t)) return pick(["Was soll ich jetzt kaufen?", "Gibt es Anomalien?", "Wie steht mein Depot?"]);
+    return pick(["Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Wie ist die Marktlage heute?"]);
+  }
+
+  route(text, ctx) {
     const t = text.toLowerCase().trim();
     let syms = this.findSymbols(text);
     // Kontext-Gedächtnis: „davon“, „die Aktie“, „es“ beziehen sich auf die zuletzt besprochene Aktie
     if (!syms.length && this.lastSym && /(davon|die aktie|der aktie|dem wert|diese|dieser|es |sie |ihr |die.*kaufen|warum|prognose|backtest|wahrscheinlich)/.test(t + " ")) syms = [this.lastSym];
     if (syms.length) this.lastSym = syms[0];
     const sym = syms[0];
+    this.turnSym = sym || null;
     const M = this.market;
     const B = this.broker;
     const eurS = (v) => (v > 0 ? "+" : "") + eur(v);
@@ -539,7 +580,7 @@ export class AktexAI {
     if (cmd === "sentiment" || /stimmung|sentiment|angst|gier|fear|greed/.test(t)) {
       const si = lab.sentimentIndex(M);
       const cs = sym && ctx.community ? lab.communitySentiment(ctx.community, sym) : null;
-      return { html: `<p>AKTEX Sentiment-Index: <b>${si.value}/100 – ${si.label}</b></p><ul><li>Marktbreite: ${Math.round(si.parts.breadth * 100)} % der Aktien im Plus</li><li>Momentum (5 Tage): ${pc(si.parts.mom)}</li><li>Ø RSI: ${f2(si.parts.rsi)}</li></ul>${cs && cs.n ? `<p>Community zu ${sym}: ${cs.long} Long / ${cs.short} Short (${Math.round(cs.bull * 100)} % bullisch)</p>` : ""}` };
+      return { html: `<p>AKYTEX Sentiment-Index: <b>${si.value}/100 – ${si.label}</b></p><ul><li>Marktbreite: ${Math.round(si.parts.breadth * 100)} % der Aktien im Plus</li><li>Momentum (5 Tage): ${pc(si.parts.mom)}</li><li>Ø RSI: ${f2(si.parts.rsi)}</li></ul>${cs && cs.n ? `<p>Community zu ${sym}: ${cs.long} Long / ${cs.short} Short (${Math.round(cs.bull * 100)} % bullisch)</p>` : ""}` };
     }
     // Sektoren
     if (cmd === "sektoren" || /sektor|branche|rotation/.test(t)) {
@@ -606,6 +647,19 @@ export class AktexAI {
     const syms = this.findSymbols(text);
     const qtyM = t.match(/(\d+)\s*(?:stück|stk\.?|x)?\s*([a-zäöü0-9.&-]+)/i);
 
+    // Ein- und Auszahlungen: "zahle 500 € ein", "200 auszahlen"
+    const fundIn = /(einzahl|zahle? .*ein\b|aufladen|geld (drauf|rein|einzahlen)|top ?up)/.test(t);
+    const fundOut = /(auszahl|abheben|geld raus|zahle? .*aus\b)/.test(t);
+    if (fundIn || fundOut) {
+      const amt = parseFloat((t.match(/(\d[\d.]*(?:,\d{1,2})?)\s*(?:€|eur|euro)?/) || [])[1]?.replace(/\./g, "").replace(",", ".") || "0");
+      const dir = fundOut && !fundIn ? "out" : "in";
+      return {
+        html: dir === "in" ? `<p>Gern! ${amt ? `<b>${eur(amt)}</b> kannst du sofort einzahlen` : "Einzahlen geht sofort"} – per Apple Pay, Google Pay, Karte, Echtzeitüberweisung, PayPal oder Lastschrift. Das Geld ist direkt handelbar. Größere Beträge überweist du einfach auf deine Depot-IBAN.</p>` : `<p>${amt ? `<b>${eur(amt)}</b> ` : "Dein Guthaben "}zahle ich dir auf dein Referenzkonto aus – per Echtzeit-Auszahlung in Sekunden. Verfügbar sind <b>${eur(this.broker.buyingPower())}</b>.</p>`,
+        actions: [{ label: dir === "in" ? `${amt ? eur(amt) + " " : ""}einzahlen` : `${amt ? eur(amt) + " " : ""}auszahlen`, fund: dir, amount: amt, primary: true }],
+        follow: dir === "in" ? ["Was soll ich jetzt kaufen?", "Sparplan 200 € ASML monatlich", "Wie steht mein Depot?"] : ["Wie steht mein Depot?"],
+      };
+    }
+
     // Kauf-/Verkaufsbefehle: "kaufe 10 SAP", "verkauf 5 tesla"
     const cmd = t.match(/\b(kauf\w*|verkauf\w*|buy|sell)\b/);
     if (cmd && syms.length && /\d/.test(t) && !/soll|sollte|lohnt|würdest|empfiehl/.test(t)) {
@@ -653,18 +707,47 @@ export class AktexAI {
     if (/markt|heute|lage|briefing|news|stimmung|dax|nasdaq/.test(t)) return this.marketAnswer(ctx.universe);
     if (/^(hi|hallo|hey|moin|servus|guten)/.test(t) || /hilfe|help|was kannst/.test(t)) {
       return {
-        html: `<p>Hallo! Ich bin <b>AKTEX AI</b>, dein persönlicher Trading-Berater. Ich kann:</p><ul><li>dein <b>Depot analysieren</b> und Risiken finden</li><li><b>Chancen</b> im Markt aufspüren</li><li>jede <b>Aktie bewerten</b> (z. B. „Was hältst du von SAP?“)</li><li>Orders vorbereiten („Kaufe 10 NVDA“)</li><li>Begriffe erklären („Was ist ein RSI?“)</li><li>mit dem <b>Autopilot</b> selbstständig handeln</li></ul>`,
+        html: `<p>Hallo! Ich bin <b>AKYTEX AI</b>, dein persönlicher Trading-Berater. Ich kann:</p><ul><li>dein <b>Depot analysieren</b> und Risiken finden</li><li><b>Chancen</b> im Markt aufspüren</li><li>jede <b>Aktie bewerten</b> (z. B. „Was hältst du von SAP?“)</li><li>Orders vorbereiten („Kaufe 10 NVDA“)</li><li>Begriffe erklären („Was ist ein RSI?“)</li><li>mit dem <b>Autopilot</b> selbstständig handeln</li></ul>`,
       };
     }
-    return { html: `<p>Das habe ich nicht ganz verstanden. Frag mich z. B. nach deinem Depot, nach Chancen, nach einer Aktie wie „Tesla“ oder sag „Kaufe 5 SAP“.</p>` };
+    // Nicht verstanden: ähnlichste Themen vorschlagen statt einer Sackgasse
+    const topics = [
+      [/depo|portf|geld|konto/, "Wie steht mein Depot?"],
+      [/kauf|invest|aktie|chanc/, "Was soll ich jetzt kaufen?"],
+      [/risk|risik|sicher|verlust|crash/, "Wie riskant ist mein Depot?"],
+      [/markt|börs|boers|news|heute/, "Wie ist die Marktlage heute?"],
+      [/plan|heute|tun/, "Tagesplan"],
+      [/steuer|finanzamt/, "Steuer-Tipps"],
+    ].filter(([re]) => re.test(t)).map(([, q]) => q);
+    const follow = [...new Set([...topics, "Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Was ist ein RSI?"])].slice(0, 3);
+    return { html: `<p>Das habe ich noch nicht ganz verstanden${topics.length ? " – meintest du vielleicht eines davon?" : "."} Du kannst mich nach deinem Depot, nach Chancen oder nach einer Aktie wie „Tesla“ fragen, Begriffe erklären lassen oder direkt sagen „Kaufe 5 SAP“ oder „Zahle 500 € ein“.</p>`, follow };
   }
 
   findSymbols(text) {
     const out = [];
     const up = text.toUpperCase();
+    const low = deaccent(text.toLowerCase());
     for (const st of this.market.list) {
-      const first = st.n.split(/[ .,-]/)[0].toLowerCase();
-      if (new RegExp(`\\b${st.s}\\b`).test(up) || (first.length > 3 && text.toLowerCase().includes(first))) out.push(st.s);
+      const first = deaccent(st.n.split(/[ .,-]/)[0].toLowerCase());
+      if (new RegExp(`\\b${st.s}\\b`).test(up) || (first.length > 3 && new RegExp(`\\b${first.replace(/[^a-z0-9]/g, "")}`).test(low))) out.push(st.s);
+    }
+    for (const [alias, sym] of Object.entries(ALIASES)) if (!out.includes(sym) && new RegExp(`\\b${alias}\\b`).test(low)) out.push(sym);
+    if (out.length) return out;
+    // Tippfehler verzeihen: „Nvidea“, „Appel“, „Rheinmetal“
+    const words = low.match(/[a-zäöüß]{5,}/g) || [];
+    for (const w of words) {
+      if (STOP.has(w)) continue;
+      let best = null;
+      for (const st of this.market.list) {
+        const names = [deaccent(st.n.split(/[ .,-]/)[0].toLowerCase()), ...Object.keys(ALIASES).filter((a) => ALIASES[a] === st.s && !a.includes(" "))];
+        for (const n of names) {
+          if (n.length < 4) continue;
+          const d = osa(w, n);
+          const max = n.length >= 7 ? 2 : 1;
+          if (d <= max && (!best || d < best.d)) best = { d, s: st.s };
+        }
+      }
+      if (best && !out.includes(best.s)) out.push(best.s);
     }
     return out;
   }
@@ -689,7 +772,7 @@ export class AktexAI {
     actions.push({ label: `Chart ${sym} öffnen`, open: sym });
     return {
       html: `<div class="ai-stock"><div><b>${sym}</b> · ${this.market.get(sym).n}</div><div class="ai-stock-px">${eur(v.price)} <span class="${v.dayChg >= 0 ? "up" : "down"}">${pc(v.dayChg)}</span></div></div>
-        <p>AKTEX AI: <b class="${v.score > 0.1 ? "up" : v.score < -0.1 ? "down" : ""}">${v.rating.label}</b> (Score ${f2(v.score)}, Konfidenz ${lab.confidence(this.market, sym)} %). ${v.reason}.</p>
+        <p>AKYTEX AI: <b class="${v.score > 0.1 ? "up" : v.score < -0.1 ? "down" : ""}">${v.rating.label}</b> (Score ${f2(v.score)}, Konfidenz ${lab.confidence(this.market, sym)} %). ${v.reason}.</p>
         <ul><li>Unterstützung ${eur(d.levels.support)} · Widerstand ${eur(d.levels.resistance)}</li><li>Tagesvolatilität ≈ ${f2(v.atrPct * 100)} %</li>${holdingQ && !pos ? "<li>Du hältst diese Aktie aktuell nicht.</li>" : ""}</ul>
         <p>${rec}</p>`,
       actions,
@@ -721,7 +804,7 @@ export class AktexAI {
     const top = this.scanAll(universe).filter((v) => !this.broker.position(v.sym)).slice(0, 3);
     const eq = this.broker.equity();
     return {
-      html: `<p>Die aktuell stärksten Chancen laut AKTEX AI:</p><ol>${top.map((v) => `<li><b>${v.sym}</b> – ${v.rating.label} (Score ${f2(v.score)}): ${v.reason}.</li>`).join("")}</ol><p class="muted">Tipp: nicht mehr als 5–10 % des Depots pro Aktie, immer mit Stop-Loss.</p>`,
+      html: `<p>Die aktuell stärksten Chancen laut AKYTEX AI:</p><ol>${top.map((v) => `<li><b>${v.sym}</b> – ${v.rating.label} (Score ${f2(v.score)}): ${v.reason}.</li>`).join("")}</ol><p class="muted">Tipp: nicht mehr als 5–10 % des Depots pro Aktie, immer mit Stop-Loss.</p>`,
       actions: top.map((v) => {
         const qty = Math.max(1, Math.floor((eq * 0.05) / v.price));
         return { label: `${qty} ${v.sym} kaufen`, side: "buy", sym: v.sym, qty, sl: v.h.setup.sl, tp: v.h.setup.tp };

@@ -1,4 +1,4 @@
-// Tarife, Add-ons und Preisverzeichnis von AKTEX.
+// Tarife, Add-ons und Preisverzeichnis von AKYTEX.
 // Alle Kosten werden vor jeder Order vollständig angezeigt (Kostentransparenz nach MiFID II).
 export const PLANS = [
   {
@@ -11,7 +11,7 @@ export const PLANS = [
     creatorShare: 0.5,
     tagline: "Zum Reinschnuppern",
     limits: { indicators: 3, alerts: 3, aiDetails: false, copy: false, depth: 3 },
-    features: ["Echtzeit-Charts & Watchlist", "1,00 € pro Order", "3 Indikatoren, 3 Alarme", "AKTEX AI – Gesamtbewertung", "Ideen-Börse: lesen, teilen, handeln"],
+    features: ["Echtzeit-Charts & Watchlist", "1,00 € pro Order", "3 Indikatoren, 3 Alarme", "AKYTEX AI – Gesamtbewertung", "Ideen-Börse: lesen, teilen, handeln"],
   },
   {
     id: "plus",
@@ -23,7 +23,7 @@ export const PLANS = [
     creatorShare: 0.5,
     tagline: "Für Einsteiger",
     limits: { indicators: 5, alerts: 10, aiDetails: true, copy: false, depth: 5 },
-    features: ["Alles aus Free", "0,50 € pro Order", "5 Indikatoren, 10 Alarme", "AKTEX AI mit Marken & Setups", "Orderbuch mit 5 Ebenen"],
+    features: ["Alles aus Free", "0,50 € pro Order", "5 Indikatoren, 10 Alarme", "AKYTEX AI mit Marken & Setups", "Orderbuch mit 5 Ebenen"],
   },
   {
     id: "pro",
@@ -52,7 +52,7 @@ export const PLANS = [
   },
   {
     id: "ai",
-    name: "AKTEX AI",
+    name: "AKYTEX AI",
     group: "ai",
     monthly: 99,
     yearly: 79,
@@ -74,13 +74,13 @@ export const PLANS = [
     creatorShare: 0.7,
     tagline: "Der Autopilot für dein Depot",
     limits: { indicators: 99, alerts: 999, aiDetails: true, copy: true, depth: 12, ai: "auto" },
-    features: ["Alles aus AKTEX AI", "Autopilot handelt selbstständig in deinen Limits", "3 Strategien, Trailing-Stops, Branchenlimits", "Protokoll mit Begründung für jede Entscheidung", "Not-Aus jederzeit · Prioritäts-Support"],
+    features: ["Alles aus AKYTEX AI", "Autopilot handelt selbstständig in deinen Limits", "3 Strategien, Trailing-Stops, Branchenlimits", "Protokoll mit Begründung für jede Entscheidung", "Not-Aus jederzeit · Prioritäts-Support"],
   },
 ];
 
 export const ADDONS = [
   { id: "l2", name: "Level-2-Orderbuch", price: 4.99, icon: "📊", desc: "Volle Markttiefe mit 12 Ebenen für alle Aktien.", includedIn: ["pro", "elite", "ai", "aiprem"] },
-  { id: "signals", name: "AI-Signal-Alarme", price: 6.99, icon: "⚡", desc: "Sofort-Meldung, sobald AKTEX AI das Rating einer Aktie ändert.", includedIn: ["elite", "ai", "aiprem"] },
+  { id: "signals", name: "AI-Signal-Alarme", price: 6.99, icon: "⚡", desc: "Sofort-Meldung, sobald AKYTEX AI das Rating einer Aktie ändert.", includedIn: ["elite", "ai", "aiprem"] },
   { id: "tax", name: "Steuer-Report", price: 2.99, icon: "🧾", desc: "Gewinne, Gebühren und geschätzte Abgeltungsteuer auf einen Blick.", includedIn: ["elite", "ai", "aiprem"] },
 ];
 

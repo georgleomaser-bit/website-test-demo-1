@@ -1,4 +1,4 @@
-// AKTEX AI – regelbasierte technische Analyse (Oszillatoren, gleitende Durchschnitte, Marken, Setup)
+// AKYTEX AI – regelbasierte technische Analyse (Oszillatoren, gleitende Durchschnitte, Marken, Setup)
 import * as ind from "./indicators.js";
 
 const f2 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

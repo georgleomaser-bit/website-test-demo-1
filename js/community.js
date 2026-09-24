@@ -1,9 +1,9 @@
-// AKTEX Ideen-Börse: versiegelte Trading-Ideen mit automatisch gemessener Performance,
+// AKYTEX Ideen-Börse: versiegelte Trading-Ideen mit automatisch gemessener Performance,
 // handelbar mit einem Klick, Autoren erhalten Royalties. (Demo mit fiktiven Profilen)
 import { analyze } from "./analysis.js";
 import { toLocalSec } from "./market.js";
 
-const KEY = "aktex-v2-community";
+const KEY = "akytex-v2-community";
 const f2 = (v) => v.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function rng(seed) {

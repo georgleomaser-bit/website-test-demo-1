@@ -1,29 +1,29 @@
-# ΛKTEX – Geschäftsmodell & Weg zum echten Produkt
+# ΛKYTEX – Geschäftsmodell & Weg zum echten Produkt
 
 *Markets move. Ideas stay.*
 
-Dieses Dokument beschreibt, wie aus der Demo ein echtes Unternehmen werden kann: womit AKTEX Geld verdient, welche Größenordnungen realistisch sind und was rechtlich und technisch nötig ist, bevor echtes Geld fließt.
+Dieses Dokument beschreibt, wie aus der Demo ein echtes Unternehmen werden kann: womit AKYTEX Geld verdient, welche Größenordnungen realistisch sind und was rechtlich und technisch nötig ist, bevor echtes Geld fließt.
 
-> Alle Zahlen sind **Beispielrechnungen mit Annahmen**, keine Prognosen. Ob AKTEX Milliarden umsetzt, hängt von Nutzerwachstum, Kapital, Team, Lizenzen und Marketing ab. Die Rechnung zeigt nur, *wie* Plattformen dieser Art skalieren.
+> Alle Zahlen sind **Beispielrechnungen mit Annahmen**, keine Prognosen. Ob AKYTEX Milliarden umsetzt, hängt von Nutzerwachstum, Kapital, Team, Lizenzen und Marketing ab. Die Rechnung zeigt nur, *wie* Plattformen dieser Art skalieren.
 
 ---
 
 ## 1. Positionierung
 
-AKTEX verbindet drei Produkte, die heute meist getrennt sind:
+AKYTEX verbindet drei Produkte, die heute meist getrennt sind:
 
-| Baustein | Vorbild | AKTEX-Vorteil |
+| Baustein | Vorbild | AKYTEX-Vorteil |
 | --- | --- | --- |
 | Profi-Charts & Analyse | TradingView | im Broker integriert, kein Wechsel zwischen Apps |
 | Günstiger Handel | Neobroker (1 €/Trade) | 0 € im Abo, Trade direkt aus dem Chart |
 | Community & Copy-Trading | Social-Trading-Plattformen | „Ideas stay“: Ideen mit Chart, Rangliste, 1-Klick-Kopieren |
-| KI-Analyse | Research-Tools | AKTEX AI bewertet jede Aktie in Echtzeit, mit Trade-Setup |
+| KI-Analyse | Research-Tools | AKYTEX AI bewertet jede Aktie in Echtzeit, mit Trade-Setup |
 
 **Zielgruppe:** 18–45-jährige Selbstentscheider in DACH, dann EU. Einstieg über das kostenlose Demo-Depot, das es bereits gibt.
 
 ## 2. Der USP: die Ideen-Börse
 
-**Nur bei AKTEX:** Jede Trading-Idee wird beim Veröffentlichen mit Zeitstempel und SHA-256-Siegel (verkettet wie ein Hauptbuch) festgeschrieben. Ziel und Stop werden minütlich geprüft, jede Idee hat eine live gemessene Performance und jeder Autor eine **überprüfbare Trefferquote**. Andere handeln eine Idee mit einem Klick, samt Stop und Ziel des Autors. Dafür fällt eine kleine Ideen-Gebühr an (0,10–0,25 % des Volumens); **50–70 % davon gehen als Royalty an den Autor**.
+**Nur bei AKYTEX:** Jede Trading-Idee wird beim Veröffentlichen mit Zeitstempel und SHA-256-Siegel (verkettet wie ein Hauptbuch) festgeschrieben. Ziel und Stop werden minütlich geprüft, jede Idee hat eine live gemessene Performance und jeder Autor eine **überprüfbare Trefferquote**. Andere handeln eine Idee mit einem Klick, samt Stop und Ziel des Autors. Dafür fällt eine kleine Ideen-Gebühr an (0,10–0,25 % des Volumens); **50–70 % davon gehen als Royalty an den Autor**.
 
 Warum das ein Milliarden-Hebel ist:
 - **Netzwerkeffekt:** Gute Trader bringen ihre Follower mit, weil sie hier Geld verdienen. Das hat TradingView (Ideen ohne Handel) und Copy-Trading-Plattformen (Portfolios ohne Siegel) nicht.
@@ -35,7 +35,7 @@ Warum das ein Milliarden-Hebel ist:
 | Quelle | Umsetzung in der Demo | Hebel |
 | --- | --- | --- |
 | **Abos** | Free · Plus 4,99 € · Pro 12,99 € · Elite 29,99 € (jährlich bis −23 %) | wiederkehrender, planbarer Umsatz |
-| **AI-Tarife** | AKTEX AI 99 € · AI Premium 249 € pro Monat (jährlich 79 € / 199 €) | höchster Umsatz je Kunde |
+| **AI-Tarife** | AKYTEX AI 99 € · AI Premium 249 € pro Monat (jährlich 79 € / 199 €) | höchster Umsatz je Kunde |
 | **Add-ons** | Level-2-Orderbuch 4,99 € · AI-Signal-Alarme 6,99 € · Steuer-Report 2,99 € | Zusatzumsatz ohne Tarifwechsel |
 | **Ordergebühren** | 1,00 € (Free) · 0,50 € (Plus) · 0 € ab Pro | skaliert mit Aktivität, treibt Upgrades |
 | **Ideen-Gebühr** | 0,10–0,25 % je Ideen-Trade, Plattformanteil 30–50 % | wächst mit der Community |
@@ -59,7 +59,7 @@ Annahmen: 8 % der Nutzer zahlen ein Abo (Ø 14 €/Monat), 20 % handeln im Free-
 
 Fintechs dieser Art werden oft mit einem Vielfachen des Jahresumsatzes bewertet. Plattformen wie TradingView, Trade Republic oder Robinhood haben Bewertungen im Milliardenbereich erreicht, allerdings mit vielen Millionen Nutzern, großen Teams und hohen Finanzierungsrunden.
 
-**Wachstumsmotoren, die in AKTEX schon angelegt sind:**
+**Wachstumsmotoren, die in AKYTEX schon angelegt sind:**
 - **Teilen-Links** für Aktien und Charts, jeder geteilte Chart wirbt neue Nutzer
 - **Community-Ideen und Rangliste**, Nutzer kommen täglich wieder
 - **Kostenloses Demo-Depot** ohne Anmeldung, Einstieg ohne Hürde; Umstieg auf ein echtes Depot als nächster Schritt
@@ -74,7 +74,7 @@ Das **Business-Dashboard** in der App rechnet das live mit Schiebereglern durch 
 3. **Marktdaten:** Echtzeitkurse sind lizenzpflichtig (Börsen- bzw. Datenanbieter-Verträge). Für den Start eignen sich Datenanbieter mit API und Weiterverbreitungsrecht.
 4. **Backend:** Benutzerkonten, sichere Anmeldung (2FA/Passkeys), Server für Orders, Datenbank, WebSocket-Kursstrom statt Simulation, Audit-Logs, Penetrationstests.
 5. **Recht & Vertrauen:** Impressum, AGB, Datenschutzerklärung (DSGVO), Risikohinweise, Einlagensicherung über die Partnerbank.
-6. **AKTEX AI:** Persönliche Kauf-/Verkaufsempfehlungen sind **Anlageberatung**, selbstständiges Handeln für Kunden (Autopilot) ist **Finanzportfolioverwaltung**. Beides braucht eine BaFin-Erlaubnis oder ein Haftungsdach bzw. einen lizenzierten Vermögensverwalter als Partner, dazu Geeignetheitsprüfung, Risikoprofil und Protokollierung. Die Demo bildet die Schutzmechanismen schon ab: Limits je Kunde, Not-Aus, Begründung zu jeder Entscheidung.
+6. **AKYTEX AI:** Persönliche Kauf-/Verkaufsempfehlungen sind **Anlageberatung**, selbstständiges Handeln für Kunden (Autopilot) ist **Finanzportfolioverwaltung**. Beides braucht eine BaFin-Erlaubnis oder ein Haftungsdach bzw. einen lizenzierten Vermögensverwalter als Partner, dazu Geeignetheitsprüfung, Risikoprofil und Protokollierung. Die Demo bildet die Schutzmechanismen schon ab: Limits je Kunde, Not-Aus, Begründung zu jeder Entscheidung.
 7. **Team & Kapital:** Gründerteam (Tech, Compliance, Growth), Pre-Seed/Seed-Finanzierung für Lizenz- bzw. Partnerkosten, Marketing und Entwicklung.
 
 ## 6. Roadmap

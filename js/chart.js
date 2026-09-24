@@ -489,14 +489,14 @@ function hexA(hex, a) {
 
 function loadDrawings() {
   try {
-    return JSON.parse(localStorage.getItem("aktex-v2-drawings")) || {};
+    return JSON.parse(localStorage.getItem("akytex-v2-drawings")) || {};
   } catch (_) {
     return {};
   }
 }
 function saveDrawings(d) {
   try {
-    localStorage.setItem("aktex-v2-drawings", JSON.stringify(d));
+    localStorage.setItem("akytex-v2-drawings", JSON.stringify(d));
   } catch (_) {
     /* ignorieren */
   }
