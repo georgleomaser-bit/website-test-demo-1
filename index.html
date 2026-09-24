@@ -2,16 +2,19 @@
 <html lang="de" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
+  <!-- Sicherheit: nur Code, Styles, Schriften und Bilder von dieser Seite; keine Plugins, keine fremden Formulare -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>AKYTEX Trading</title>
-  <meta name="description" content="Akytex – Aktien in Echtzeit analysieren und handeln (Demo)." />
+  <meta name="description" content="Akytex – Trading-Simulator mit KI-Analyse: Aktien analysieren und mit virtuellem Geld handeln." />
   <meta name="theme-color" content="#03040a" />
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
   <link rel="icon" href="icons/favicon-64.png" type="image/png" sizes="64x64" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <meta property="og:title" content="AKYTEX – Markets move. Ideas stay." />
-  <meta property="og:description" content="Aktien in Echtzeit analysieren und handeln – Demo-Trading-Plattform." />
+  <meta property="og:description" content="Trading-Simulator mit Profi-Charts, KI-Assistent und Community – mit virtuellem Geld üben." />
   <meta property="og:image" content="icons/og-image.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -21,7 +24,7 @@
   <meta property="og:locale" content="de_DE" />
   <meta name="robots" content="index, follow" />
   <meta name="keywords" content="Aktien, Trading, Depot, KI, Autopilot, Charts, Börse, Sparplan, Community" />
-  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"AKYTEX","alternateName":"ΛKYTEX","description":"Trading-Plattform mit Profi-Charts, KI-Autopilot, Ideen-Börse und Community (Demo mit simulierten Kursen).","applicationCategory":"FinanceApplication","operatingSystem":"Web, iOS, Android, Windows, macOS","inLanguage":"de","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"}}</script>
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebApplication","name":"AKYTEX","alternateName":"ΛKYTEX","description":"Trading-Plattform mit Profi-Charts, KI-Autopilot, Ideen-Börse und Community (Simulator mit simulierten Kursen und virtuellem Geld).","applicationCategory":"FinanceApplication","operatingSystem":"Web, iOS, Android, Windows, macOS","inLanguage":"de","offers":{"@type":"Offer","price":"0","priceCurrency":"EUR"}}</script>
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:image" content="icons/og-image.png" />
@@ -71,7 +74,7 @@
       </svg>
       <span class="name">ΛKYTEX</span>
     </button>
-    <span class="demo-chip" title="Alle Kurse sind simuliert. Kein echtes Geld, keine Anlageberatung.">DEMO</span>
+    <span class="demo-chip" title="Trading-Simulator: Kurse sind simuliert, gehandelt wird mit virtuellem Geld. Keine Anlageberatung.">SIMULATOR</span>
 
     <button class="sym-btn" id="sym-btn" title="Symbol suchen (/)">
       <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M10 2a8 8 0 0 1 6.32 12.9l5.39 5.4-1.41 1.4-5.4-5.39A8 8 0 1 1 10 2Zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12Z"/></svg>
@@ -156,7 +159,7 @@
           </div>
           <div class="founder-deal" id="founder-deal" hidden></div>
           <div class="trust">
-            <span>✓ Kostenloses Demo-Depot mit 100.000 €</span>
+            <span>✓ Kostenloses Übungsdepot mit 100.000 € Spielgeld</span>
             <span>✓ Keine Anmeldung nötig</span>
             <span>✓ Läuft offline</span>
           </div>
@@ -224,7 +227,7 @@
 
     <section class="home-sec faq reveal">
       <h2>Häufige Fragen</h2>
-      <details><summary>Ist das echtes Geld?</summary><p>Nein. AKYTEX ist aktuell eine Demo: Alle Kurse sind simuliert und das Depot ist virtuell. So kannst du risikolos alle Funktionen ausprobieren.</p></details>
+      <details><summary>Ist das echtes Geld?</summary><p>Nein. Der Handel in AKYTEX ist ein Simulator: Alle Kurse sind simuliert und das Depot ist virtuell. Echt bezahlt werden nur Abos über Stripe. So kannst du risikolos alle Funktionen ausprobieren.</p></details>
       <details><summary>Wie installiere ich die App?</summary><p>Tippe auf „App installieren“. Auf dem iPhone: Teilen → „Zum Home-Bildschirm“. Danach startet AKYTEX wie eine normale App mit eigenem Symbol.</p></details>
       <details><summary>Was kostet ein Trade?</summary><p>Im Free-Tarif 1 € pro Order, mit Pro und Elite 0 €. Keine Depotgebühren.</p></details>
       <details><summary>Kann ich Charts mit Freunden teilen?</summary><p>Ja – der Teilen-Button erzeugt einen Link, der genau deine Aktie und Zeiteinheit öffnet.</p></details>
@@ -428,7 +431,7 @@
       <div class="page-head">
         <div>
           <h1>Ideen</h1>
-          <p class="muted sub">Trading-Ideen der Community · <span class="demo-note">Demo-Profile</span></p>
+          <p class="muted sub">Trading-Ideen der Community · <span class="demo-note">Beispiel-Profile</span></p>
         </div>
         <div class="head-actions">
           <div class="seg" id="idea-filter">
@@ -459,7 +462,7 @@
         <div class="btn-row">
           <button class="btn primary" data-fund="in">＋ Einzahlen</button>
           <button class="btn" data-fund="out">Auszahlen</button>
-          <button class="btn ghost" id="reset-btn">Demo-Konto zurücksetzen</button>
+          <button class="btn ghost" id="reset-btn">Übungsdepot zurücksetzen</button>
         </div>
       </div>
       <div class="kpis" id="kpis"></div>
@@ -600,7 +603,7 @@
         <div class="feat-grid" id="feat-grid"></div>
       </div>
 
-      <p class="ai-legal muted">AKYTEX AI ist Teil einer Demo mit simulierten Kursen und virtuellem Geld. Ihre Einschätzungen sind automatisch berechnet und keine Anlageberatung. Im Echtbetrieb erfordern Anlageberatung und selbstständiges Handeln für Kunden eine Erlaubnis der BaFin.</p>
+      <p class="ai-legal muted">AKYTEX AI arbeitet in einem Trading-Simulator mit simulierten Kursen und virtuellem Geld. Ihre Einschätzungen sind automatisch berechnet und keine Anlageberatung. Im Echtbetrieb erfordern Anlageberatung und selbstständiges Handeln für Kunden eine Erlaubnis der BaFin.</p>
     </div>
   </main>
 
@@ -676,7 +679,7 @@
         <div class="seg clips-tabs" id="clips-tabs"><button class="active" data-cf="foryou">Für dich</button><button data-cf="following">Gefolgt</button><button data-cf="mine">Meine</button></div>
         <button class="btn primary big" id="clip-upload-btn">＋ Clip hochladen</button>
         <button class="btn big" id="clip-record-btn">🎬 Chart-Clip aufnehmen</button>
-        <p class="muted small">Demo: Community-Clips werden live aus Kursdaten generiert. Eigene Videos bleiben in diesem Browser.</p>
+        <p class="muted small">Hinweis: Community-Clips sind Beispiele, die live aus Kursdaten generiert werden. Eigene Videos bleiben in diesem Browser.</p>
       </aside>
       <div class="clips-feed" id="clips-feed"></div>
     </div>

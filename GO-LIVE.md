@@ -72,3 +72,9 @@ Anteile an der eigenen Firma öffentlich zu verkaufen, ist ein Wertpapierangebot
 - in der Praxis meist über eine lizenzierte **Crowdinvesting-Plattform**, die Anlegerschutz, Zahlungen und Verträge abwickelt.
 
 Wenn es so weit ist, kann die App die Kampagne der Plattform verlinken und den Stand anzeigen. Eine simulierte AKYTEX-Aktie in der App, die wie eine echte Beteiligung wirkt, wäre irreführend und ist deshalb nicht eingebaut.
+
+## Sicherheit
+- Die Seite setzt eine **Content Security Policy** (Meta-Tag in `index.html` und `404.html`): nur Skripte, Styles, Schriften und Verbindungen von der eigenen Adresse. Wenn Broker-API oder Kursdaten angeschlossen werden, deren Adressen in `connect-src` ergänzen.
+- Keine geheimen Schlüssel im Code: Stripe läuft über öffentliche Payment Links, alles Geheime gehört auf einen Server.
+- Grenze ohne Server: Der Tarif wird nach der Rückkehr von Stripe im Browser freigeschaltet und lässt sich daher theoretisch fälschen. Eine fälschungssichere Freischaltung braucht einen Server mit Stripe-Webhook (Kaufnummer `session_id` wird schon mitgeliefert und gespeichert).
+- Konten absichern: Zwei-Faktor-Anmeldung für GitHub, Stripe, Google und E-Mail einschalten, keine Passwörter doppelt verwenden.
