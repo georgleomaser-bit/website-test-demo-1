@@ -71,7 +71,7 @@ export function spoken(v) {
   return `${r.toLocaleString("de-DE")} Euro`;
 }
 
-// Monolog für Jarvis: dein Zukunfts-Ich spricht zu dir
+// Monolog für Aky: dein Zukunfts-Ich spricht zu dir
 export function futureMonologue(plan, name) {
   const p = project(plan);
   const more = project(plan, undefined, plan.monthly + 25);

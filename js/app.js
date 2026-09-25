@@ -37,7 +37,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.5"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.6"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -1141,7 +1141,7 @@ document.addEventListener("keydown", (e) => {
     setToolButtons("cursor");
     return;
   }
-  if (typing || document.documentElement.classList.contains("jv-open")) return; // Jarvis hat eigene Tasten
+  if (typing || document.documentElement.classList.contains("jv-open")) return; // Aky hat eigene Tasten
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
     chart.undoDrawing();
@@ -1270,7 +1270,7 @@ function renderPlans(el) {
         const price = planPrice(p, billing);
         const isCur = p.id === settings.plan;
         return `<div class="plan ai-plan ${p.id} ${isCur ? "current" : ""}">
-          ${p.id === "aiprem" ? '<span class="plan-badge gold">Autopilot</span>' : p.id === "ultra" ? '<span class="plan-badge ultra">✦ Jarvis</span>' : ""}
+          ${p.id === "aiprem" ? '<span class="plan-badge gold">Autopilot</span>' : p.id === "ultra" ? '<span class="plan-badge ultra">✦ Aky</span>' : ""}
           <h4>${p.name}</h4><p class="muted">${p.tagline}</p>
           <div class="price">${billing === "yearly" ? `<s>${nf2.format(p.monthly)} €</s>` : ""}<b>${nf2.format(price)} €</b><span>/ Monat</span></div>
           <div class="price-sub">${billing === "yearly" ? `${eur(p.yearly * 12)} jährlich abgerechnet · du sparst ${eur((p.monthly - p.yearly) * 12)}` : `monatlich kündbar · ≈ ${eur((price * 12) / 365)} pro Tag`}</div>
@@ -2253,7 +2253,7 @@ function renderAIView(full = false) {
   $("#ai-doctor-card").classList.toggle("is-locked", !mode);
   $$('.ai-pane[data-aipane="plan"], .ai-pane[data-aipane="lab"]').forEach((p) => p.classList.toggle("is-locked", !mode));
   if (!mode) {
-    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKYTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKYTEX AI</b> (ab 79 €/Monat), <b>AI Premium</b> mit selbstständig handelndem Autopilot und <b>Ultra</b> mit Jarvis, dem Sprachmodus.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
+    $("#ai-locked").innerHTML = `<div class="lock-card"><div class="orb small"><i></i><i></i><i></i></div><div><h3>AKYTEX AI freischalten</h3><p>Berater-Chat, Meldungen, Depot-Doktor und Autopilot gibt es in <b>AKYTEX AI</b> (ab 79 €/Monat), <b>AI Premium</b> mit selbstständig handelndem Autopilot und <b>Ultra</b> mit Aky, dem Sprachmodus.</p></div><button class="btn primary big" data-open-plans>Tarife ansehen</button></div>`;
   }
   if (full && !chat.length) greetChat();
   if (aiTab !== "cockpit") {
@@ -2296,7 +2296,7 @@ function fmtLLM(text) {
 
 // Chat-Darstellung: jede Nachricht bekommt ein festes DOM-Element und wird nur neu gezeichnet,
 // wenn sie sich ändert (m.v). So spielen Animationen nur einmal, und Streaming bleibt flüssig.
-const LAMBDA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 19 L12 5.5 L18.5 19"/></svg>';
+const LAMBDA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19.5 L12 5 L18 19.5 M8.8 14.3 H15.2"/></svg>'; // Akys A
 const chatEls = new WeakMap();
 let chatStick = true;
 let chatFollowRaf = 0;
@@ -2469,7 +2469,7 @@ function greetChat() {
   const h = new Date().getHours();
   const hi = h < 11 ? "Guten Morgen" : h < 18 ? "Hallo" : "Guten Abend";
   const name = account.state.profile?.name?.split(" ")[0];
-  chat.push({ role: "assistant", reveal: true, html: `<p>${hi}${name ? " " + esc(name) : ""}! Ich bin <b>AKYTEX AI</b>, dein persönlicher Assistent. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend – und ich steuere die App für dich: „Zeig mir Tesla auf 4 Stunden“, „SAP auf die Watchlist“, „Öffne den Shop“ oder „Schreib einen Post zu NVDA“. Per 🎙️ auch mit Sprache.</p>`, follow: ["Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Tagesplan"] });
+  chat.push({ role: "assistant", reveal: true, html: `<p>${hi}${name ? " " + esc(name) : ""}! Ich bin <b>Aky</b>, dein persönlicher Assistent. Ich kenne dein Depot, scanne alle ${STOCKS.length} Aktien laufend – und ich steuere die App für dich: „Zeig mir Tesla auf 4 Stunden“, „SAP auf die Watchlist“, „Öffne den Shop“ oder „Schreib einen Post zu NVDA“. Per 🎙️ auch mit Sprache.</p>`, follow: ["Wie steht mein Depot?", "Was soll ich jetzt kaufen?", "Tagesplan"] });
 }
 function chatAbort() {
   chatCtl?.abort();
@@ -2700,7 +2700,7 @@ Kontext: Tarif ${plan().name}. Geöffnete Aktie: ${settings.symbol}. Watchlist: 
       } },
     {
       name: "profit_mode",
-      description: "Profit-Modus von Jarvis: vollautomatischer Autopilot im virtuellen Übungsdepot mit dem Ziel maximaler, risikobereinigter Rendite (Top-Setups, Stops, Trailing-Stops, Notbremse). action: on | off | status. Nur einschalten, wenn der Nutzer es ausdrücklich möchte.",
+      description: "Profit-Modus von Aky: vollautomatischer Autopilot im virtuellen Übungsdepot mit dem Ziel maximaler, risikobereinigter Rendite (Top-Setups, Stops, Trailing-Stops, Notbremse). action: on | off | status. Nur einschalten, wenn der Nutzer es ausdrücklich möchte.",
       inputSchema: { type: "object", properties: { action: { type: "string", enum: ["on", "off", "status"] } }, required: ["action"] },
       execute: (i) => {
         if (i.action === "status") return profitReport().replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
@@ -2956,7 +2956,7 @@ function bindAI() {
     if (t.closest("[data-league-open]")) return openLeague();
     if (t.closest("[data-academy-open]")) return openAcademy();
     if (t.closest("[data-plan-ultra]")) {
-      openPlans("AKYTEX Ultra: alles aus AI Premium plus Jarvis, der Sprachmodus.");
+      openPlans("AKYTEX Ultra: alles aus AI Premium plus Aky, der Sprachmodus.");
       return setTimeout(() => $("#modal-plans .ai-plan.ultra")?.scrollIntoView({ behavior: "smooth", block: "center" }), 350);
     }
     const act = t.closest("[data-ai-act]");
@@ -4208,7 +4208,7 @@ const LEGAL = {
     <h3>3. Hosting</h3><p>Die Website wird über GitHub Pages (GitHub, Inc., USA) ausgeliefert. Beim Aufruf verarbeitet GitHub technisch notwendige Verbindungsdaten wie IP-Adresse, Zeitpunkt und abgerufene Datei, um die Seite auszuliefern und die Sicherheit zu gewährleisten (Art. 6 Abs. 1 lit. f DSGVO). Die Übermittlung in die USA erfolgt auf Grundlage des EU-US Data Privacy Framework bzw. von Standardvertragsklauseln.</p>
     ${LIVEPAY() ? `<h3>4. Zahlungen über Stripe</h3><p>Abos bezahlst du über Stripe (Stripe Payments Europe, Ltd., 1 Grand Canal Street Lower, Dublin 2, Irland). Deine Zahlungsdaten gibst du direkt bei Stripe ein, wir erhalten sie nicht. Wir erhalten von Stripe Name, E-Mail-Adresse, gewählten Tarif, Zahlungsstatus und Rechnungsdaten zur Vertragsabwicklung (Art. 6 Abs. 1 lit. b DSGVO) und bewahren Rechnungsdaten entsprechend der steuer- und handelsrechtlichen Pflichten auf (bis zu 10 Jahre, Art. 6 Abs. 1 lit. c DSGVO). Stripe kann Daten auch in Drittländern verarbeiten; Details: stripe.com/de/privacy.</p>` : `<h3>4. Zahlungen</h3><p>Der Checkout läuft derzeit im Testmodus; es werden keine Zahlungsdaten gespeichert oder übertragen.</p>`}
     <h3>Clips auf dem AKYTEX-Server</h3><p>Wenn du AKYTEX über unseren eigenen Server nutzt und einen Clip hochlädst, likest, kommentierst oder meldest, legen wir ein anonymes Konto an: einen frei wählbaren Nutzernamen und einen zufälligen Zugangsschlüssel (gespeichert nur als Hash). Wir speichern deine Videos samt Beschreibung, Likes, Kommentare und Meldungen, um den Clip-Feed für alle Nutzer bereitzustellen (Art. 6 Abs. 1 lit. b DSGVO) und rechtswidrige Inhalte nach dem Digital Services Act zu bearbeiten (Art. 6 Abs. 1 lit. c DSGVO). IP-Adressen verwenden wir nur kurzzeitig im Arbeitsspeicher zum Schutz vor Missbrauch (Rate-Limits) und speichern sie nicht dauerhaft. Clips kannst du jederzeit selbst löschen; für die Löschung des ganzen Kontos schreib uns an ${CO("email", "E-Mail")}.</p>
-    <h3>5. KI-Funktionen</h3><p>AKYTEX AI rechnet standardmäßig vollständig in deinem Browser. Nur wenn du die App in einer Claude-Umgebung nutzt, wird deine Chat-Frage samt der dafür nötigen Depotdaten an das Sprachmodell von Anthropic übermittelt (Art. 6 Abs. 1 lit. b DSGVO). Die Sprachausgabe und Spracheingabe (auch Jarvis, der Sprachmodus) nutzen die Funktionen deines Browsers bzw. Betriebssystems: Je nach Browser wird deine gesprochene Eingabe dabei zur Erkennung an dessen Anbieter übertragen (z. B. Google bei Chrome, Apple bei Safari). AKYTEX selbst nimmt nichts auf und speichert keine Sprachaufnahmen. Das Mikrofon ist nur aktiv, solange Jarvis sichtbar zuhört (leuchtende Bildschirmränder).</p>
+    <h3>5. KI-Funktionen</h3><p>AKYTEX AI rechnet standardmäßig vollständig in deinem Browser. Nur wenn du die App in einer Claude-Umgebung nutzt, wird deine Chat-Frage samt der dafür nötigen Depotdaten an das Sprachmodell von Anthropic übermittelt (Art. 6 Abs. 1 lit. b DSGVO). Die Sprachausgabe und Spracheingabe (auch Aky, der Sprachmodus) nutzen die Funktionen deines Browsers bzw. Betriebssystems: Je nach Browser wird deine gesprochene Eingabe dabei zur Erkennung an dessen Anbieter übertragen (z. B. Google bei Chrome, Apple bei Safari). AKYTEX selbst nimmt nichts auf und speichert keine Sprachaufnahmen. Das Mikrofon ist nur aktiv, solange Aky sichtbar zuhört (leuchtende Bildschirmränder).</p>
     <h3>6. Kontakt per E-Mail</h3><p>Schreibst du uns, verarbeiten wir deine Angaben zur Bearbeitung der Anfrage (Art. 6 Abs. 1 lit. b bzw. f DSGVO) und löschen sie, sobald sie nicht mehr erforderlich sind.</p>
     <h3>7. Deine Rechte</h3><p>Auskunft (Art. 15), Berichtigung (Art. 16), Löschung (Art. 17), Einschränkung (Art. 18), Datenübertragbarkeit (Art. 20) und Widerspruch (Art. 21 DSGVO). Du kannst dich bei einer Datenschutz-Aufsichtsbehörde beschweren, z. B. beim Hamburgischen Beauftragten für Datenschutz und Informationsfreiheit.</p>`,
   terms: () => `<h2>Allgemeine Geschäftsbedingungen</h2><ol class="legal-ol">
@@ -4276,7 +4276,7 @@ function cmdItems(q) {
     { icon: "⏱", label: "Zeitplan / Timer anlegen", run: () => setAiTab("plan") },
     { icon: "🧪", label: "AI-Labor öffnen", run: () => setAiTab("lab") },
     { icon: "🎬", label: "Chart-Clip aufnehmen", run: () => recordChartClip() },
-    { icon: "✦", label: "Jarvis-Sprachmodus starten", run: () => startJarvis() },
+    { icon: "✦", label: "Aky-Sprachmodus starten", run: () => startJarvis() },
     { icon: "🔮", label: "Zukunfts-Ich treffen", run: () => openFuture() },
     { icon: "🏆", label: "Liga öffnen", run: () => openLeague() },
     { icon: "📚", label: "Geld-Akademie: Lektion des Tages", run: () => openAcademy("today") },
@@ -6192,7 +6192,7 @@ function runAppControl(action, value = "") {
 }
 
 // Erkennt App-Befehle in normaler Sprache. Liefert eine Antwort oder null (dann antwortet die KI).
-// ---------- Profit-Modus: Jarvis' Maximal-Modus für das Übungsdepot ----------
+// ---------- Profit-Modus: Akys Maximal-Modus für das Übungsdepot ----------
 // Vollautomatischer Autopilot mit dem Ziel maximaler, risikobereinigter Rendite – mit harten Risikogrenzen.
 const PROFIT_PRESET = { enabled: true, mode: "auto", strategy: "profit", budgetPct: 90, maxPosPct: 12, stopPct: 5, takePct: 15, maxTrades: 20, universe: "all", manageAll: true, atrStops: true, minConf: 55, maxDailyLoss: 4, shadow: false, hoursOn: false };
 const profitOn = () => !!aiEngine.state.profit?.on && aiEngine.state.config.enabled && aiEngine.state.config.strategy === "profit";
@@ -6222,13 +6222,13 @@ function profitReport() {
   const sells = aiEngine.state.sells || { n: 0, wins: 0 };
   return `<p>${profitOn() ? "🚀 Der Profit-Modus läuft" : "Der Profit-Modus ist pausiert"} – seit ${since}.</p>
     <ul><li>Depot: <b>${eur(eq)}</b>, seit Start <b class="${chg >= 0 ? "up" : "down"}">${pct(chg)}</b></li>
-    <li>Realisiert durch Jarvis: <b class="${(aiEngine.state.aiPnl || 0) - p.pnl0 >= 0 ? "up" : "down"}">${sEur((aiEngine.state.aiPnl || 0) - p.pnl0)}</b></li>
+    <li>Realisiert durch Aky: <b class="${(aiEngine.state.aiPnl || 0) - p.pnl0 >= 0 ? "up" : "down"}">${sEur((aiEngine.state.aiPnl || 0) - p.pnl0)}</b></li>
     <li>${managed.length ? `Offene Positionen: ${managed.join(", ")}` : "Gerade keine offene Position – ich warte auf ein gutes Setup."}</li>
     <li>Abgeschlossene Trades: ${sells.n}, davon mit Gewinn: ${sells.wins}</li></ul>
     <p class="muted">Virtuelles Geld, simulierte Kurse – keine Anlageberatung.</p>`;
 }
 
-// Lagebericht für Jarvis und den Chat: Markt, Depot und die 2–3 sinnvollsten nächsten Schritte
+// Lagebericht für Aky und den Chat: Markt, Depot und die 2–3 sinnvollsten nächsten Schritte
 function jarvisBrief() {
   const h = new Date().getHours();
   const name = account.state.profile?.name?.split(" ")[0];
@@ -6282,7 +6282,7 @@ function jarvisBrief() {
     actions: actions.slice(0, 3),
   };
 }
-// Smalltalk, Fachbegriffe und kleine Helfer – damit Jarvis sich wie ein echter Assistent anfühlt
+// Smalltalk, Fachbegriffe und kleine Helfer – damit Aky sich wie ein echter Assistent anfühlt
 const GLOSSARY = [
   [/\brsi\b/, "Der <b>RSI</b> (Relative-Stärke-Index) misst von 0 bis 100, wie stark eine Aktie zuletzt gestiegen oder gefallen ist. Über 70 gilt sie als heiß gelaufen, unter 30 als ausverkauft – beides sind Hinweise, keine Garantien."],
   [/\bmacd\b/, "Der <b>MACD</b> vergleicht zwei gleitende Durchschnitte. Kreuzt die MACD-Linie ihre Signallinie nach oben, nimmt der Schwung nach oben zu – nach unten entsprechend umgekehrt."],
@@ -6307,9 +6307,9 @@ const JOKES = ["Warum gehen Trader nie ins Kino? Sie sehen schon den ganzen Tag 
 function jarvisSmalltalk(t, syms = []) {
   const title = jarvisTitle();
   const name = account.state.profile?.name?.split(" ")[0];
-  if (/^(hallo|hi|hey|servus|moin|yo|guten (morgen|tag|abend))( jarvis)?$/.test(t)) return { html: `<p>Hey ${esc(title)}! Schön, dass du da bist. Soll ich dir sagen, was heute an der Börse los ist?</p>`, follow: ["Was soll ich heute tun?", "Wie steht mein Depot?"] };
+  if (/^(hallo|hi|hey|servus|moin|yo|guten (morgen|tag|abend))( (?:jarvis|aky|aki|akki))?$/.test(t)) return { html: `<p>Hey ${esc(title)}! Schön, dass du da bist. Soll ich dir sagen, was heute an der Börse los ist?</p>`, follow: ["Was soll ich heute tun?", "Wie steht mein Depot?"] };
   if (/^wie geht('| e)?s( dir)?|^alles (gut|klar)( bei dir)?$/.test(t)) return { html: `<p>Mir geht's bestens, ${esc(title)} – ich habe alle ${STOCKS.length} Aktien im Blick und bin bereit. Und bei dir?</p>` };
-  if (/(wer bist du|was bist du|wie heißt du|stell dich vor)/.test(t)) return { html: `<p>Ich bin <b>Jarvis</b>, der KI-Assistent von AKYTEX. Ich kenne dein Depot, analysiere Aktien, erkläre dir die Börse und steuere die ganze App für dich – per Text oder Stimme.</p>` };
+  if (/(wer bist du|was bist du|wie heißt du|stell dich vor)/.test(t)) return { html: `<p>Ich bin <b>Aky</b>, der KI-Assistent von AKYTEX. Ich kenne dein Depot, analysiere Aktien, erkläre dir die Börse und steuere die ganze App für dich – per Text oder Stimme.</p>` };
   if (/(was kannst du|wobei hilfst du|was kann ich dich fragen|hilfe$|^hilfe)/.test(t)) return { html: `<p>Eine Menge, ${esc(title)}:</p><ul><li>„Was soll ich heute tun?“ – dein Lagebericht</li><li>„Öffne Nvidia auf 4 Stunden und setz sie auf die Watchlist“ – mehrere Schritte auf einmal</li><li>„Sag Bescheid, wenn Tesla über 250 steigt“ – Preisalarm</li><li>„Analysiere SAP“ oder „Prognose für Apple“</li><li>„Erklär mir den RSI“ – Börsenwissen einfach erklärt</li></ul>` };
   if (/(wie spät|uhrzeit|wieviel uhr|wie viel uhr)/.test(t)) return { html: `<p>Es ist ${new Date().toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr.</p>` };
   if (/(welcher tag|welches datum|den wievielten|was ist heute für ein tag)/.test(t)) return { html: `<p>Heute ist ${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.</p>` };
@@ -6358,14 +6358,14 @@ function jarvisScore(text) {
   const t = text.toLowerCase();
   return (appCommand(t) ? 5 : 0) + (multiCommand(t) ? 6 : 0) + aiEngine.findSymbols(text).length * 2 + (/\d/.test(t) ? 0.5 : 0);
 }
-// Kurzer Satz zur Lage für Jarvis' Begrüßung
+// Kurzer Satz zur Lage für Akys Begrüßung
 function jarvisQuickStatus() {
   const pos = Object.keys(broker.state.positions || {}).length;
   const total = broker.equity() / broker.invested() - 1;
   if (!pos) return "Dein Übungsdepot ist startklar.";
   return `Dein Depot steht bei ${pct(total).replace("+", "plus ").replace("-", "minus ")}.`;
 }
-// ---------- Trader-DNA: Jarvis lernt aus deinen eigenen Trades ----------
+// ---------- Trader-DNA: Aky lernt aus deinen eigenen Trades ----------
 // Persönlich und nicht kopierbar: Das Profil entsteht aus dem Verhalten jedes einzelnen Nutzers und wird mit
 // jedem Trade genauer (Trefferquote, Chance-Risiko, Haltedauer, Fehler-Muster, Lieblingsbranchen).
 function traderDNA() {
@@ -6893,7 +6893,7 @@ function renderAcademy() {
     if (!ac.quiz) {
       const done = academy.doneToday(ac.s);
       html += `<div class="ac-lesson"><div class="ac-icon">${l.icon}</div><h3>${esc(l.t)}</h3>${l.body.map((p) => `<p>${esc(p)}</p>`).join("")}
-        <div class="btn-row"><button class="btn primary big" data-ac-quiz>${done ? "Nochmal üben" : "Quiz starten · 3 Min."}</button><button class="btn big" data-ac-listen>🔊 Jarvis erklärt es</button></div>
+        <div class="btn-row"><button class="btn primary big" data-ac-quiz>${done ? "Nochmal üben" : "Quiz starten · 3 Min."}</button><button class="btn big" data-ac-listen>🔊 Aky erklärt es</button></div>
         <p class="muted small">${done ? "✅ Heute erledigt – dein Streak ist sicher. Morgen wartet die nächste Lektion." : "Schließe das Quiz ab, damit dein Streak weiterläuft."} · ${ac.s.done.length}/${academy.LESSONS.length} Lektionen</p></div>`;
     } else {
       const q = ac.quiz;
@@ -7010,7 +7010,7 @@ function paintAcademyMini() {
   el.innerHTML = `🔥 <b>${ac.s.streak}</b> ${ac.s.streak === 1 ? "Tag" : "Tage"} · Level ${lv.n} ${lv.name} · ${academy.doneToday(ac.s) ? "heute erledigt ✅" : "Lektion wartet"}`;
 }
 bindAcademy();
-// Stimmung für Jarvis’ Auto-Modus: Tagesveränderung von Depot und Markt (in %)
+// Stimmung für Akys Auto-Modus: Tagesveränderung von Depot und Markt (in %)
 function jarvisMoodHint() {
   const eq = broker.equity() || 1;
   let dayAbs = 0;
@@ -7021,7 +7021,7 @@ function jarvisMoodHint() {
   const mk = STOCKS.reduce((sum, x) => sum + market.quote(x.s).changePct, 0) / STOCKS.length;
   return { day: (dayAbs / eq) * 100, market: mk * 100 };
 }
-// Jarvis fragt über den normalen Chat – so landet alles auch im Verlauf
+// Aky fragt über den normalen Chat – so landet alles auch im Verlauf
 async function jarvisAsk(text) {
   const from = chat.length;
   // Sicherheitsnetz: nach 25 s ohne Antwort ehrlich Bescheid geben statt zu schweigen
@@ -7073,7 +7073,7 @@ function appCommand(text) {
   if (/(profit.?modus|getting rich|reich.?werden.?modus|money.?modus|mach (mir |uns )?(mehr )?geld|maximier\w* (meinen |den |meine )?(gewinn|profit|rendite)|geld.?maschine)/.test(t)) {
     if (/(\baus\b|ausschalt|stopp|\bstop\b|beend|deaktiv|pausier)/.test(t)) return done(`<p>Profit-Modus ist aus, ${esc(jarvisTitle())}. Deine Positionen bleiben mit ihren Stops bestehen.</p>`, () => profitMode(false));
     if (/(wie läuft|status|bilanz|stand|ergebnis|wie viel|wieviel)/.test(t)) return done(profitReport(), null, ["Profit-Modus aus", "Wie steht mein Depot?"]);
-    if (aiMode() !== "auto") return done(`<p>Den Profit-Modus – ich handle dann vollautomatisch für dein Übungsdepot – gibt es mit <b>AI Premium</b> und <b>Ultra</b>.</p>`, null, null, [{ label: "Ultra ansehen", primary: true, run: () => openPlans("Profit-Modus: Jarvis handelt vollautomatisch für dein Übungsdepot.") }]);
+    if (aiMode() !== "auto") return done(`<p>Den Profit-Modus – ich handle dann vollautomatisch für dein Übungsdepot – gibt es mit <b>AI Premium</b> und <b>Ultra</b>.</p>`, null, null, [{ label: "Ultra ansehen", primary: true, run: () => openPlans("Profit-Modus: Aky handelt vollautomatisch für dein Übungsdepot.") }]);
     return done(`<p>🚀 Profit-Modus ist an, ${esc(jarvisTitle())}. Ab jetzt arbeite ich für dein Übungsdepot auf maximalen Gewinn – mit Disziplin:</p>
       <ul><li>Ich scanne laufend alle ${STOCKS.length} Aktien und kaufe nur die mit dem besten Chance-Risiko: Aufwärtstrend, starkes Momentum, Konfidenz ab 55 %.</li>
       <li>Ich setze bis zu 90 % des Depots ein, aber höchstens 12 % pro Aktie und 35 % pro Branche.</li>
@@ -7081,8 +7081,8 @@ function appCommand(text) {
       <li>Notbremse: Liegt das Depot an einem Tag 4 % im Minus, pausiere ich automatisch.</li></ul>
       <p class="muted">Ehrlich: Auch die beste Strategie macht mal Verluste – niemand kann Gewinne garantieren. Das hier ist virtuelles Geld; du lernst, wie Profis handeln. Keine Anlageberatung.</p>`, () => profitMode(true), ["Wie läuft der Profit-Modus?", "Profit-Modus aus"]);
   }
-  // Jarvis-Sprachmodus per Text starten
-  if (/^(jarvis|hey jarvis|sprachmodus|sprich mit mir)$/.test(t)) return done(`<p>✦ Jarvis hört zu – sprich einfach los.</p>`, () => startJarvis());
+  // Aky-Sprachmodus per Text starten
+  if (/^(jarvis|aky|aki|akki|hey (?:jarvis|aky|aki|akki)|sprachmodus|sprich mit mir)$/.test(t)) return done(`<p>✦ Aky hört zu – sprich einfach los.</p>`, () => startJarvis());
   // Lagebericht: Was soll ich tun?
   if (/(was soll ich (heute |jetzt |als nächstes )?(tun|machen)|was steht (heute )?an|lagebericht|briefing|tagesbriefing|wie sieht('| e)?s aus|was gibt('| e)?s neues|was ist los|was geht)/.test(t) && !/(kauf|verkauf)/.test(t)) {
     const b = jarvisBrief();
@@ -7181,7 +7181,7 @@ function showHint(key, text, actions = [], { category = key.split("-")[0], coold
   const h = $("#jarvis-hint");
   h._actions = actions;
   h._category = category;
-  h.innerHTML = `<span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span><div class="jh-body"><small>AKYTEX AI · Vorschlag</small><p>${text}</p><div class="jh-acts">${actions.map((a, i) => `<button class="${i === 0 ? "btn primary small" : "mini-btn"}" data-jh="${i}">${esc(a.label)}</button>`).join("")}<button class="jh-never" data-jh-never>Nicht mehr vorschlagen</button></div></div><button class="jh-x" data-jh-x aria-label="Schließen">✕</button>`;
+  h.innerHTML = `<span class="orb tiny spin" aria-hidden="true"><i></i><i></i><i></i></span><div class="jh-body"><small>Aky · Vorschlag</small><p>${text}</p><div class="jh-acts">${actions.map((a, i) => `<button class="${i === 0 ? "btn primary small" : "mini-btn"}" data-jh="${i}">${esc(a.label)}</button>`).join("")}<button class="jh-never" data-jh-never>Nicht mehr vorschlagen</button></div></div><button class="jh-x" data-jh-x aria-label="Schließen">✕</button>`;
   h.hidden = false;
   requestAnimationFrame(() => h.classList.add("show"));
   clearTimeout(hintTimer);
@@ -7240,7 +7240,7 @@ function bindVoice() {
   if (!SR || !btn) return btn && (btn.hidden = true);
   let rec = null;
   btn.addEventListener("click", () => {
-    // Mit Ultra (oder Gratis-Fragen) startet das Mikro den Jarvis-Sprachmodus, sonst normales Diktieren
+    // Mit Ultra (oder Gratis-Fragen) startet das Mikro den Aky-Sprachmodus, sonst normales Diktieren
     if (!rec && (jarvisAllowed() || trialLeft())) return startJarvis();
     if (rec) return rec.stop();
     rec = new SR();
@@ -7285,7 +7285,7 @@ function initAssistant() {
     haptic,
     name: () => account.state.profile?.name?.split(" ")[0] || "",
     openChat: () => openAssistant(false),
-    upsell: () => openPlans("Jarvis, der Sprachmodus, ist Teil von AKYTEX Ultra."),
+    upsell: () => openPlans("Aky, der Sprachmodus, ist Teil von AKYTEX Ultra."),
     score: jarvisScore,
     quickStatus: jarvisQuickStatus,
     moodHint: jarvisMoodHint,
@@ -7297,7 +7297,7 @@ function initAssistant() {
     }),
   });
   $("#jv-start").addEventListener("click", () => startJarvis());
-  // Λ-Knopf: antippen = Chat, gedrückt halten und loslassen = Jarvis.
+  // Λ-Knopf: antippen = Chat, gedrückt halten und loslassen = Aky.
   // Gestartet wird beim Loslassen – nur dann erlauben Safari und installierte Apps Mikrofon und Stimme.
   let press = 0;
   let armed = false;
@@ -7335,7 +7335,7 @@ function initAssistant() {
     assistantOpen() ? closeAssistant() : openAssistant();
   });
   if (jarvisSupported())
-    setTimeout(() => showHint("jarvis-intro", "Neu: Sprich mit mir! Halte das Λ gedrückt oder tippe auf „Jarvis“, und ich sage dir, was heute ansteht.", [{ label: "Jetzt ausprobieren", run: () => startJarvis() }], { cooldown: 30 * 86400e3 }), 24000);
+    setTimeout(() => showHint("jarvis-intro", "Neu: Sprich mit mir! Halte mich oben rechts gedrückt oder tippe im Chat auf „Aky“, und ich sage dir, was heute ansteht.", [{ label: "Jetzt ausprobieren", run: () => startJarvis() }], { cooldown: 30 * 86400e3 }), 24000);
   $("#jp-close").addEventListener("click", closeAssistant);
   $("#jp-proactive").checked = assist.proactive;
   $("#jp-proactive").addEventListener("change", (e) => {

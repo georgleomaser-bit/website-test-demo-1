@@ -1,7 +1,7 @@
-// Jarvis: der Sprachmodus von AKYTEX AI (Tarif Ultra) – im Stil eines modernen Sprachassistenten.
+// Aky: der Sprachmodus von AKYTEX AI (Tarif Ultra) – im Stil eines modernen Sprachassistenten.
 // Leuchtende, atmende Bildschirmränder, unten eine gläserne Leiste mit schillernder Kugel, darüber
 // Antwortkarten. Zuhören mit Pausen-Toleranz, Männerstimme, Untertitel, „mehr“ für ausführliche
-// Antworten und Vorschläge per Tipp oder „Ja“. Geld bewegt Jarvis nie per Sprache.
+// Antworten und Vorschläge per Tipp oder „Ja“. Geld bewegt Aky nie per Sprache.
 const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -16,7 +16,7 @@ export const TRIAL_TURNS = 3;
 
 const J = { deps: null, on: false, state: "off", rec: null, lvl: 0, kick: 0, raf: 0, mic: null, an: null, ctx: null, buf: null, silent: 0, pending: null, rest: "", greeted: false, idleTimer: 0, sayTimer: 0, endTimer: 0, muted: false, thinkGlow: false };
 
-// Jarvis läuft überall: mit Spracherkennung per Stimme, sonst per Schreiben/Diktieren über die Tastatur
+// Aky läuft überall: mit Spracherkennung per Stimme, sonst per Schreiben/Diktieren über die Tastatur
 export const jarvisSupported = () => true;
 export function trialLeft() {
   try {
@@ -52,7 +52,7 @@ function setTitle(t) {
 const MOOD_KEY = "akytex-jarvis-mood";
 const REACT_KEY = "akytex-jarvis-react";
 const MEM_KEY = "akytex-jarvis-memory";
-// rgb: Farbe von Kugel und HUD · rate/pitch: Stimme · pace: Bewegung der Kugel · tone: Anweisung fürs Sprachmodell
+// rgb: Grundfarbe (Aky bleibt immer blau) · rate/pitch: Stimme · pace: Bewegung der Kugel · tone: Anweisung fürs Sprachmodell
 export const MOODS = {
   jarvis: { label: "Klassisch", icon: "🎩", rgb: [255, 176, 72], rate: 1, pitch: 0, pace: 1, tone: "souverän und höflich wie ein britischer Butler, mit trockenem Humor", sample: "Sehr wohl. Klassisch, souverän, zu Diensten." },
   ruhig: { label: "Ruhig", icon: "🌊", rgb: [70, 186, 255], rate: 0.93, pitch: -0.04, pace: 0.55, tone: "ruhig, gelassen und beruhigend, ohne Hektik – auch wenn der Markt wackelt", sample: "Ganz ruhig. Ich bin entspannt für dich da." },
@@ -86,7 +86,7 @@ export const moodSetting = () => {
   const m = load(MOOD_KEY, "auto");
   return m === "auto" || MOODS[m] ? m : "auto";
 };
-// „Auto“: Jarvis passt seine Stimmung an Tageszeit, Depot und Markt an
+// „Auto“: Aky passt seine Stimmung an Tageszeit, Depot und Markt an
 function autoMood() {
   const h = new Date().getHours();
   const c = J.deps?.moodHint?.() || {};
@@ -111,7 +111,7 @@ function setReactions(r) {
   updateMoodBox();
 }
 export const jarvisMemory = () => (Array.isArray(load(MEM_KEY, [])) ? load(MEM_KEY, []) : []).slice(-30);
-// Für das Sprachmodell: Tonfall, erlaubte Emotionen und was Jarvis sich gemerkt hat
+// Für das Sprachmodell: Tonfall, erlaubte Emotionen und was Aky sich gemerkt hat
 export function jarvisPersona() {
   const m = jarvisMood();
   const r = reactions();
@@ -121,7 +121,7 @@ export function jarvisPersona() {
   const mem = jarvisMemory();
   return `Tonfall: ${m.tone}. ${shown.length ? `Zeige passende Gefühle: ${shown.join(", ")}.` : "Bleib emotional neutral."}${r.humor && m.key !== "ernst" ? "" : " Keine Witze."}${mem.length ? ` Das hat dir der Nutzer anvertraut (nutze es, wenn es passt): ${mem.map((x) => `„${x.t}“`).join("; ")}.` : ""}`;
 }
-// Ich-Form in Du-Form, damit Jarvis Gemerktes natürlich wiedergibt („ich mag Tesla“ → „du magst Tesla“)
+// Ich-Form in Du-Form, damit Aky Gemerktes natürlich wiedergibt („ich mag Tesla“ → „du magst Tesla“)
 const PRON = { ich: "du", mich: "dich", mir: "dir", mein: "dein", meine: "deine", meinen: "deinen", meinem: "deinem", meiner: "deiner", meines: "deines" };
 const VERB = { bin: "bist", habe: "hast", hab: "hast", mag: "magst", kann: "kannst", will: "willst", muss: "musst", darf: "darfst", soll: "sollst", möchte: "möchtest", weiß: "weißt", werde: "wirst", hätte: "hättest", wäre: "wärst" };
 const NOT_VERB = /^(k?eine|gerne?|heute|morgen|immer|lieber|diese|jede|alle|welche|seine|ihre|unsere|deine|meine|viele|wenige|ganze|große|kleine|nie|ohne|halbe|ganze)$/i;
@@ -171,7 +171,6 @@ function feeling(html) {
 const FLASH = { joy: [110, 255, 150], worry: [255, 70, 55], hype: [255, 236, 140] };
 function emote(kind) {
   if (!FLASH[kind]) return;
-  J.flash = { rgb: FLASH[kind], at: performance.now(), dur: kind === "worry" ? 2200 : 1600 };
   if (kind !== "worry") J.burst = 1;
   J.kick = 1;
   J.voiceMod = kind === "joy" || kind === "hype" ? { rate: 1.04, pitch: 0.04 } : { rate: 0.95, pitch: -0.04 };
@@ -215,7 +214,7 @@ function cycleVoice() {
 function maleHint() {
   if (hasMaleVoice()) return "";
   const ua = navigator.userAgent;
-  if (IOS) return "Für eine Männerstimme: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → Deutsch → „Yannick“ oder „Martin“ laden. Danach wählt Jarvis sie automatisch.";
+  if (IOS) return "Für eine Männerstimme: iPhone-Einstellungen → Bedienungshilfen → Gesprochene Inhalte → Stimmen → Deutsch → „Yannick“ oder „Martin“ laden. Danach wählt Aky sie automatisch.";
   if (/Mac/.test(ua)) return "Für eine Männerstimme: Systemeinstellungen → Bedienungshilfen → Gesprochene Inhalte → Systemstimme → Stimme verwalten → Deutsch → „Yannick“ oder „Martin“ laden.";
   if (/Android/.test(ua)) return "Für eine Männerstimme: Einstellungen → Bedienungshilfen → Text-in-Sprache → Google-Sprachausgabe → Deutsch → eine männliche Stimme wählen.";
   if (/Windows/.test(ua)) return "Für eine Männerstimme: Microsoft Edge nutzen (dort gibt es „Conrad“ und „Killian“) oder in Windows unter Zeit und Sprache → Sprachausgabe die Stimme „Stefan“ installieren.";
@@ -252,7 +251,7 @@ export function toSpeech(html, max = 700) {
 // Füllwörter und Anrede am Anfang weglassen, damit Befehle sicher erkannt werden
 export function cleanUtterance(t) {
   return String(t)
-    .replace(/^\s*(hey|hi|okay|ok|hallo)?\s*(jarvis|akytex)[,!.]?\s*/i, "")
+    .replace(/^\s*(hey|hi|okay|ok|hallo)?\s*(jarvis|aky|aki|akki|akytex)[,!.]?\s*/i, "")
     .replace(/(?<![\p{L}])(äh+m?|ähm|öhm|hm+|sag mal|mal eben|kannst du( mir)?( bitte)?|könntest du( mir)?( bitte)?|würdest du( bitte)?|bitte)(?![\p{L}])/giu, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -267,31 +266,31 @@ function build() {
   el.innerHTML = `<div class="jv-edge" aria-hidden="true"></div><div class="jv-edge jv-soft" aria-hidden="true"></div><div class="jv-edge jv-wide" aria-hidden="true"></div>
     <div class="jv-hud" aria-hidden="true">
       <i class="jv-fr tl"></i><i class="jv-fr tr"></i><i class="jv-fr bl"></i><i class="jv-fr br"></i>
-      <div class="jv-top"><span class="jv-brand">J.A.R.V.I.S. <em>· AKYTEX</em></span><span class="jv-meter">${"<i></i>".repeat(24)}</span><span class="jv-clock" data-hud="clock"></span></div>
+      <div class="jv-top"><span class="jv-brand">AKY <em>· AKYTEX</em></span><span class="jv-meter">${"<i></i>".repeat(24)}</span><span class="jv-clock" data-hud="clock"></span></div>
       <div class="jv-side jv-left"><p>DEPOT<b data-hud="depot">–</b></p><p>MARKT<b data-hud="market">–</b></p><p>MODUS<b data-hud="mode">–</b></p><p>TRADER-DNA<b data-hud="dna">–</b></p></div>
       <div class="jv-side jv-right"><p>STIMME<b data-hud="voice">–</b></p><p>EMOTION<b data-hud="mood">–</b></p><p>ANREDE<b data-hud="title">–</b></p><p>STATUS<b data-hud="state">ONLINE</b></p></div>
       <i class="jv-reticle"></i>
     </div>
-    <div class="jv-stage" role="dialog" aria-label="Jarvis – Sprachmodus">
-      <div class="jv-core"><canvas class="jv-orb" aria-hidden="true"></canvas></div>
+    <div class="jv-stage" role="dialog" aria-label="Aky – Sprachmodus">
+      <div class="jv-core"><span class="orb aky-xl" aria-hidden="true"><i></i><i></i><i></i></span></div>
       <div class="jv-txt"><span class="jv-state" aria-live="polite">HÖRE ZU</span><span class="jv-you"></span></div>
       <p class="jv-say" aria-live="polite"></p>
       <div class="jv-acts"></div>
     </div>
-    <div class="jv-moodbox" hidden role="dialog" aria-label="Emotionen und Stimme von Jarvis">
+    <div class="jv-moodbox" hidden role="dialog" aria-label="Emotionen und Stimme von Aky">
       <p class="jv-mb-h">STIMMUNG</p><div class="jv-mb-row" data-mb="mood"></div>
       <p class="jv-mb-h">EMOTIONEN ZEIGEN</p><div class="jv-mb-row" data-mb="react"></div>
       <p class="jv-mb-h">STIMME</p><div class="jv-mb-row jv-voices" data-mb="voice"></div>
       <div class="jv-sliders"><label>TEMPO<input type="range" min="0.8" max="1.3" step="0.02" data-vp="rate"></label><label>TONHÖHE<input type="range" min="0.6" max="1.4" step="0.02" data-vp="pitch"></label></div>
     </div>
-    <p class="jv-keys" aria-hidden="true">LEERTASTE · SPRECHEN &nbsp; ESC · BEENDEN &nbsp; ALT+J · JARVIS</p>
+    <p class="jv-keys" aria-hidden="true">LEERTASTE · SPRECHEN &nbsp; ESC · BEENDEN &nbsp; ALT+J · AKY</p>
     <div class="jv-controls">
-      <form class="jv-type" hidden><input type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag Jarvis … (🎤 auf der Tastatur zum Diktieren)" aria-label="Frage an Jarvis" /></form>
+      <form class="jv-type" hidden><input type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag Aky … (🎤 auf der Tastatur zum Diktieren)" aria-label="Frage an Aky" /></form>
       <button class="jv-btn" data-jv="mood" title="Emotionen wählen" aria-label="Emotionen wählen">🎭</button>
       <button class="jv-btn" data-jv="voice" title="Stimme wählen" aria-label="Stimme wählen">🗣</button>
       <button class="jv-btn jv-micbtn" data-jv="mic" title="Mikrofon an/aus" aria-label="Mikrofon an oder aus">🎙</button>
       <button class="jv-btn" data-jv="chat" title="Im Chat weiterlesen" aria-label="Chat öffnen">💬</button>
-      <button class="jv-btn jv-end" data-jv="close" title="Jarvis beenden (Esc)" aria-label="Jarvis beenden">✕</button>
+      <button class="jv-btn jv-end" data-jv="close" title="Aky beenden (Esc)" aria-label="Aky beenden">✕</button>
     </div>`;
   document.body.appendChild(el);
   el.addEventListener("click", onClick);
@@ -312,7 +311,7 @@ function build() {
   return el;
 }
 const root = () => $("#jv") || build();
-const LABELS = { listen: "HÖRE ZU", think: "ANALYSIERE", speak: "JARVIS", idle: "TIPPE AUF DEN KERN UND SPRICH", muted: "MIKROFON AUS", upsell: "JARVIS", type: "SCHREIB ODER DIKTIERE" };
+const LABELS = { listen: "HÖRE ZU", think: "ANALYSIERE", speak: "AKY", idle: "TIPPE AUF DEN KERN UND SPRICH", muted: "MIKROFON AUS", upsell: "AKY", type: "SCHREIB ODER DIKTIERE" };
 function setState(s, label) {
   J.state = s;
   const el = root();
@@ -554,179 +553,8 @@ function showActions(actions) {
     .join("");
 }
 
-// ---------- Der Kern: goldene Partikel-Kugel in 3D (Canvas, 60 fps) ----------
-const MOBILE = matchMedia("(max-width: 700px)").matches;
-const N = MOBILE ? 700 : 1100;
-const GOLD = Math.PI * (3 - Math.sqrt(5));
-// Partikel einmal erzeugen: Hülle (Fibonacci-Kugel), leuchtende Bänder, innere Wirbel und Umlaufbahnen
-const BANDS = [
-  [0.5, 0.2],
-  [-0.6, 1.1],
-  [1.2, 2.2],
-  [0.15, 2.9],
-  [-1.1, 0.6],
-];
-const PTS = Array.from({ length: N }, (_, i) => {
-  const m = i % 20;
-  const kind = m < 9 ? 0 : m < 15 ? 3 : m < 18 ? 1 : 2;
-  const seed = (i * 12.9898) % 6.283;
-  let x;
-  let y;
-  let z;
-  if (kind === 3) {
-    // Punkt auf einem geneigten Großkreis (wie die Bögen im Film)
-    const [tx, ty] = BANDS[i % BANDS.length];
-    const a = (i * 0.61803) % 6.283;
-    const j = 0.04 * Math.sin(i * 7.1);
-    const x0 = Math.cos(a);
-    const z0 = Math.sin(a);
-    const y1 = j * Math.cos(tx) - z0 * Math.sin(tx);
-    const z1 = j * Math.sin(tx) + z0 * Math.cos(tx);
-    x = x0 * Math.cos(ty) + z1 * Math.sin(ty);
-    z = -x0 * Math.sin(ty) + z1 * Math.cos(ty);
-    y = y1;
-  } else {
-    y = 1 - (2 * (i + 0.5)) / N;
-    const r = Math.sqrt(1 - y * y);
-    const ph = i * GOLD;
-    x = Math.cos(ph) * r;
-    z = Math.sin(ph) * r;
-  }
-  return { kind, x, y, z, rad: kind === 0 ? 0.9 + ((i * 37) % 19) / 100 : kind === 3 ? 0.97 + ((i * 11) % 9) / 100 : kind === 1 ? 0.2 + ((i * 53) % 50) / 100 : 1.12 + ((i * 29) % 30) / 100, seed, sp: 0.3 + ((i * 7) % 10) / 12 };
-});
-// Leuchtpunkte in festen Größen vorrendern – ohne Skalierung zeichnet der Browser sie am schnellsten.
-// Farbe folgt der Stimmung: bei jedem Farbwechsel werden die fünf kleinen Vorlagen neu gemalt (billig).
-const mixc = (c, w, k) => c.map((v, i) => Math.round(v + ((w[i] ?? w) - v) * k));
-function makeSprites(rgb) {
-  const hi = mixc(rgb, 255, 0.86);
-  const mid = mixc(rgb, 255, 0.3);
-  return [3, 5, 7, 10, 14].map((n) => {
-    const c = document.createElement("canvas");
-    c.width = c.height = n;
-    const g = c.getContext("2d");
-    const h = n / 2;
-    const gr = g.createRadialGradient(h, h, 0, h, h, h);
-    gr.addColorStop(0, `rgba(${hi},1)`);
-    gr.addColorStop(0.25, `rgba(${mid},0.95)`);
-    gr.addColorStop(0.6, `rgba(${rgb},0.3)`);
-    gr.addColorStop(1, `rgba(${mixc(rgb, 0, 0.3)},0)`);
-    g.fillStyle = gr;
-    g.fillRect(0, 0, n, n);
-    return { n, c };
-  });
-}
-let SPRITES = makeSprites([255, 176, 72]);
-let spriteRgb = [255, 176, 72];
-const spriteFor = (size) => SPRITES[size < 4 ? 0 : size < 6 ? 1 : size < 8.5 ? 2 : size < 12 ? 3 : 4];
-const ARCS = Array.from({ length: 7 }, (_, i) => ({ r: 1.02 + i * 0.045, len: 0.5 + ((i * 3) % 5) * 0.28, off: i * 1.7, sp: (i % 2 ? -1 : 1) * (0.2 + i * 0.07), w: i % 3 === 0 ? 2.2 : 1.1 }));
-let heat = [255, 176, 72]; // aktuelle Farbe (gleitet weich zur Zielfarbe)
-// Helligkeit je Zustand – die Farbe selbst kommt aus der Stimmung
-const TINT = { listen: 1, think: 0.86, speak: 1.12, idle: 0.86, muted: 0.7, upsell: 1, type: 0.92 };
-function targetColor(now) {
-  const base = J.tint || jarvisMood().rgb;
-  const f = TINT[J.state] ?? 1;
-  let c = base.map((v) => Math.min(255, v * f));
-  const fl = J.flash;
-  if (fl) {
-    const p = (now - fl.at) / fl.dur;
-    if (p >= 1) J.flash = null;
-    else c = mixc(c, fl.rgb, Math.sin(Math.PI * Math.min(1, p * 1.4)) * 0.85);
-  }
-  return c;
-}
-function drawOrb(t, dt) {
-  const cv = root().querySelector(".jv-orb");
-  if (!cv || root().classList.contains("glow-only")) return;
-  const dpr = Math.min(MOBILE ? 1.5 : 1.35, devicePixelRatio || 1) * (J.stride > 2 ? 0.85 : 1);
-  const css = cv.clientWidth || 300;
-  const S = Math.round(css * dpr);
-  if (cv.width !== S) cv.width = cv.height = S;
-  const x = cv.getContext("2d");
-  const [hr, hg, hb] = heat.map((v) => v | 0);
-  const L = J.lvl;
-  const B = J.burst || 0;
-  const pace = jarvisMood().pace;
-  const c = S / 2;
-  const R = S * 0.3 * (1 + 0.07 * B);
-  const spin = (J.state === "think" ? 1.4 : J.state === "speak" ? 0.7 : 0.4) * (0.6 + 0.4 * pace) + B * 1.6;
-  J.ay = (J.ay || 0) + dt * (spin + L * 0.8);
-  const ax = 0.42 + 0.12 * Math.sin(t * 0.33);
-  const cy = Math.cos(J.ay);
-  const sy = Math.sin(J.ay);
-  const cx = Math.cos(ax);
-  const sx = Math.sin(ax);
-  x.clearRect(0, 0, S, S);
-  // weiches Glühen hinter der Kugel
-  const glow = x.createRadialGradient(c, c, 0, c, c, R * (1.7 + 0.4 * L));
-  glow.addColorStop(0, `rgba(${hr},${hg},${hb},${0.28 + 0.3 * L})`);
-  glow.addColorStop(0.45, `rgba(${hr},${(hg * 0.7) | 0},${(hb * 0.5) | 0},${0.1 + 0.12 * L})`);
-  glow.addColorStop(1, "rgba(0,0,0,0)");
-  x.fillStyle = glow;
-  x.fillRect(0, 0, S, S);
-  x.globalCompositeOperation = "lighter";
-  // Partikel (bei schwacher Hardware nur jeder 2./3. – die Kugel bleibt vollständig, nur lichter)
-  const f = 3.2;
-  const st = J.stride || 1;
-  const boost = 1 + 0.22 * (st - 1);
-  const wobK = (0.1 + 0.04 * pace) * (1 + B * 1.5);
-  for (let i = 0; i < N; i += st) {
-    const p = PTS[i];
-    const wob = 1 + (L + B * 0.6) * wobK * Math.sin(p.seed * 3 + t * (2 + p.sp * 3 * pace)) + (p.kind === 1 ? 0.08 * Math.sin(t * p.sp + p.seed) : 0);
-    let px = p.x;
-    let py = p.y;
-    let pz = p.z;
-    if (p.kind === 2) {
-      // Umlaufbahn: flache Ringe um den Äquator
-      const a = p.seed + t * p.sp * 0.5;
-      px = Math.cos(a);
-      pz = Math.sin(a);
-      py = 0.08 * Math.sin(p.seed * 5);
-    }
-    const r = p.rad * wob;
-    const X = px * cy + pz * sy;
-    const Z0 = -px * sy + pz * cy;
-    const Y = py * cx - Z0 * sx;
-    const Z = py * sx + Z0 * cx;
-    const s = f / (f + Z * r);
-    const sxp = c + X * r * R * s;
-    const syp = c + Y * r * R * s;
-    const depth = (1 - Z) / 2;
-    const a = ((p.kind === 1 ? 0.5 : p.kind === 3 ? 0.4 : 0.22) + 0.6 * depth * (0.6 + 0.4 * L)) * boost;
-    const size = (p.kind === 3 ? 4.2 : p.kind === 1 ? 5 : 3.2) * (0.55 + 0.9 * depth) * dpr * (0.9 + 0.45 * L);
-    const sp = spriteFor(size);
-    x.globalAlpha = a > 1 ? 1 : a;
-    x.drawImage(sp.c, (sxp - sp.n / 2) | 0, (syp - sp.n / 2) | 0);
-  }
-  x.globalAlpha = 1;
-  // Bögen um die Kugel
-  x.lineCap = "round";
-  for (const A of ARCS) {
-    const from = A.off + t * A.sp * (1 + L);
-    x.strokeStyle = `rgba(${hr},${(hg * 0.85) | 0},${(hb * 0.6) | 0},${0.22 + 0.35 * L})`;
-    x.lineWidth = A.w * dpr;
-    x.beginPath();
-    x.ellipse(c, c, R * A.r, R * A.r * (0.94 + 0.06 * Math.sin(t + A.off)), ax * 0.2, from, from + A.len + L * 0.6);
-    x.stroke();
-  }
-  // heller Kern mit Wirbel
-  const core = x.createRadialGradient(c, c, 0, c, c, R * (0.42 + 0.22 * L));
-  core.addColorStop(0, `rgba(255,248,225,${0.85 + 0.15 * L})`);
-  core.addColorStop(0.35, `rgba(${hr},${hg},${(hb * 0.8) | 0},${0.55 + 0.3 * L})`);
-  core.addColorStop(1, "rgba(0,0,0,0)");
-  x.fillStyle = core;
-  x.beginPath();
-  x.arc(c, c, R * (0.42 + 0.22 * L), 0, Math.PI * 2);
-  x.fill();
-  for (let j = 0; j < 3; j++) {
-    const a0 = t * (1.1 + j * 0.4) * (j % 2 ? -1 : 1) + j * 2.1;
-    x.strokeStyle = `rgba(255,${200 + j * 15},${120 + j * 30},${0.35 + 0.4 * L})`;
-    x.lineWidth = (1.2 + L * 1.5) * dpr;
-    x.beginPath();
-    x.ellipse(c, c, R * (0.2 + j * 0.07), R * (0.09 + j * 0.05), a0, 0, Math.PI * (1.1 + L * 0.6));
-    x.stroke();
-  }
-  x.globalCompositeOperation = "source-over";
-}
+// ---------- Der Kern: Aky – blaue Kugel mit weißem A (reines CSS, läuft flüssig auf jedem Gerät) ----------
+// Hier wird nur die Stärke der Bewegung (--lvl) und ein kurzer Impuls bei Emotionen (--burst) geglättet.
 function loop(now) {
   J.raf = requestAnimationFrame(loop);
   const dt = Math.min(0.05, (now - (J.last || now)) / 1000) || 0.016;
@@ -748,47 +576,17 @@ function loop(now) {
   if (J.thinkGlow && !J.on) target = 0.3 + 0.12 * Math.sin(t * 4);
   J.kick *= Math.pow(0.02, dt);
   J.burst = (J.burst || 0) * Math.pow(0.08, dt);
-  // Farbe weich zur Stimmung gleiten lassen; HUD und Leuchtpunkte folgen
-  const tc = targetColor(now);
-  const kc = 1 - Math.pow(0.04, dt);
-  heat = heat.map((v, i) => v + (tc[i] - v) * kc);
-  if (heat.some((v, i) => Math.abs(v - spriteRgb[i]) > 3) && now - (J.spriteAt || 0) > 60) {
-    spriteRgb = heat.map((v) => v | 0);
-    SPRITES = makeSprites(spriteRgb);
-    J.spriteAt = now;
-    const el = root();
-    el.style.setProperty("--jv-c", spriteRgb.join(", "));
-    el.style.setProperty("--jv-hi", mixc(spriteRgb, 255, 0.55).join(", "));
-    el.style.setProperty("--jv-bg", mixc(spriteRgb, 0, 0.84).join(", "));
-  }
   // Bildratenunabhängig glätten – gleich weich bei 60 und 120 Hz
   J.lvl += (Math.max(0, Math.min(1, target)) - J.lvl) * (1 - Math.pow(0.0008, dt));
-  root().style.setProperty("--lvl", J.lvl.toFixed(3));
+  const el = root();
   if (!REDUCED || !J.drawn) {
-    const t0 = performance.now();
-    drawOrb(t, dt);
-    tune(performance.now() - t0, dt * 1000, now);
+    el.style.setProperty("--lvl", J.lvl.toFixed(3));
+    el.style.setProperty("--burst", J.burst.toFixed(3));
   }
   J.drawn = true;
   if (J.on && now - (J.hudAt || 0) > 1000) {
     J.hudAt = now;
     updateHud();
-  }
-}
-// Flüssig auf jedem Gerät: ruckelt es (unter ~40 Bildern/s), zeichnet Jarvis weniger Partikel – und wieder
-// alle, sobald Luft ist. Nach einem Rückfall wartet er länger, damit die Qualität nicht hin und her springt.
-function tune(cost, frame, now) {
-  J.cost = (J.cost ?? cost) * 0.92 + cost * 0.08;
-  J.frame = (J.frame ?? frame) * 0.92 + frame * 0.08;
-  if (now - (J.tunedAt || 0) < 1500) return;
-  J.tunedAt = now;
-  const st = J.stride || 1;
-  if (J.frame > 25 && st < 3) {
-    J.stride = st + 1;
-    if (now - (J.upAt || 0) < 5000) J.lockUntil = now + 20000; // gerade erst hochgeschaltet und wieder zu langsam
-  } else if (J.frame < 19 && st > 1 && now > (J.lockUntil || 0)) {
-    J.stride = st - 1;
-    J.upAt = now;
   }
 }
 function startLoop() {
@@ -844,7 +642,7 @@ export function thinkGlow(on) {
 // ---------- Ablauf ----------
 export function initJarvis(deps) {
   J.deps = deps;
-  // Tastatur im Browser: Alt+J öffnet Jarvis, Leertaste = sprechen (bzw. fertig), Esc schließt
+  // Tastatur im Browser: Alt+J öffnet Aky, Leertaste = sprechen (bzw. fertig), Esc schließt
   addEventListener("keydown", (e) => {
     if (e.key === "Escape" && J.on) {
       if (!root().querySelector(".jv-moodbox").hidden) return toggleMoodBox(false);
@@ -922,7 +720,7 @@ export async function startJarvis(opts = {}) {
     showSay(hint);
     revealTo(1e9);
   };
-  // Eigener Text (Zukunfts-Ich): sprechen, dann Knöpfe – zuhören nur mit Jarvis-Zugang
+  // Eigener Text (Zukunfts-Ich): sprechen, dann Knöpfe – zuhören nur mit Aky-Zugang
   if (opts.say) {
     typeMode(false);
     J.voiceMod = opts.voice || null;
@@ -1026,7 +824,7 @@ function listen(fromTap = false) {
         if (J.rec === rec) J.rec = null;
         return idle();
       }
-      J.deps.toast("Bitte erlaube den Zugriff aufs Mikrofon – oder schreib Jarvis einfach.", "error", "🎙 Mikrofon");
+      J.deps.toast("Bitte erlaube den Zugriff aufs Mikrofon – oder schreib Aky einfach.", "error", "🎙 Mikrofon");
       J.rec = null;
       typeMode(true);
     }
@@ -1067,7 +865,7 @@ function idle() {
 const YES = /^(ja|jo|jep|jap|klar|gerne|gern|ok(ay)?|mach( das| es)?|los|genau|auf jeden|sicher)\b/i;
 const MORE = /^(ja|mehr|weiter|erzähl( mir)? mehr|und( weiter)?|genauer|details?|ausführlicher)\b/i;
 const NO = /^(nein|nee|ne|nö|lieber nicht|abbrechen|stopp? das)\b/i;
-const BYE = /^(stopp?|danke( dir| schön)?( jarvis)?|tschüss|tschau|ciao|ende|beenden|schließen|das wars?|das war's|bis später|gute nacht)\b/i;
+const BYE = /^(stopp?|danke( dir| schön)?( (?:jarvis|aky|aki|akki))?|tschüss|tschau|ciao|ende|beenden|schließen|das wars?|das war's|bis später|gute nacht)\b/i;
 // Was per Sprache bestätigt werden darf: nichts, was Geld bewegt oder handelt
 export const voiceSafe = (a) => !!a && !(a.side || a.fund || a.schedule || a.plan || /kauf|verkauf|order|zahl|einzahl|auszahl|abo|bestell|handel|ausführ/i.test(a.label || ""));
 
@@ -1269,7 +1067,7 @@ function voiceHint() {
   );
 }
 // Sprechen Satz für Satz: natürlichere Pausen, keine Abbrüche bei langen Texten, Untertitel synchron.
-// Startet die Stimme nicht (blockiert oder defekte Stimme), versucht Jarvis es mit der Standardstimme
+// Startet die Stimme nicht (blockiert oder defekte Stimme), versucht Aky es mit der Standardstimme
 // und zeigt sonst nur Untertitel – er hängt nie stumm fest.
 function speakOut(text) {
   text = speakable(text);
@@ -1430,7 +1228,7 @@ function upsellCard(fromStart) {
   startLoop();
   setState("upsell");
   showYou("");
-  const msg = `${fromStart ? "Jarvis gehört zu AKYTEX Ultra." : "Das waren deine Gratis-Fragen."} Mit Ultra sprichst du unbegrenzt mit mir: Lagebericht, nächste Schritte und die ganze App per Stimme.`;
+  const msg = `${fromStart ? "Aky gehört zu AKYTEX Ultra." : "Das waren deine Gratis-Fragen."} Mit Ultra sprichst du unbegrenzt mit mir: Lagebericht, nächste Schritte und die ganze App per Stimme.`;
   const done = () => {
     root().querySelector(".jv-acts").innerHTML = `<button class="btn primary small" data-jv="plans">✦ Ultra ansehen</button>`;
     J.on && idle();

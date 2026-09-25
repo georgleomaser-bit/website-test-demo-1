@@ -205,7 +205,7 @@ export class Broker {
     const s = this.state;
     const sym = order.symbol;
     let pnl = null;
-    let held = null; // Haltedauer und Einstand fürs Trader-Profil (Jarvis)
+    let held = null; // Haltedauer und Einstand fürs Trader-Profil (Aky)
     let entry = null;
     const { orderFee, ideaFee, total: fee } = this.costs(order.qty, price, order.ideaFeePct || 0);
     if (order.side === "buy") {
