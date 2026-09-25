@@ -11,6 +11,7 @@ import * as lab from "./ailab.js";
 import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
+import { startBackdrop } from "./bgfx.js";
 import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle, jarvisPersona, jarvisMood } from "./jarvis.js";
 import * as future from "./future.js";
 import * as academy from "./academy.js";
@@ -37,7 +38,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.6"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.7"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -1141,7 +1142,7 @@ document.addEventListener("keydown", (e) => {
     setToolButtons("cursor");
     return;
   }
-  if (typing || document.documentElement.classList.contains("jv-open")) return; // Aky hat eigene Tasten
+  if (typing || (document.documentElement.classList.contains("jv-open") && e.code === "Space")) return; // Leertaste gehört Aky (sprechen), sonst läuft die App parallel weiter
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
     e.preventDefault();
     chart.undoDrawing();
@@ -2296,7 +2297,7 @@ function fmtLLM(text) {
 
 // Chat-Darstellung: jede Nachricht bekommt ein festes DOM-Element und wird nur neu gezeichnet,
 // wenn sie sich ändert (m.v). So spielen Animationen nur einmal, und Streaming bleibt flüssig.
-const LAMBDA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19.5 L12 5 L18 19.5 M8.8 14.3 H15.2"/></svg>'; // Akys A
+const LAMBDA = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 19 L12 5.5 L18.5 19"/></svg>'; // Akys Λ wie im Logo
 const chatEls = new WeakMap();
 let chatStick = true;
 let chatFollowRaf = 0;
@@ -7277,6 +7278,7 @@ function bindVoice() {
 }
 
 function initAssistant() {
+  startBackdrop();
   initJarvis({
     ask: jarvisAsk,
     allowed: jarvisAllowed,
