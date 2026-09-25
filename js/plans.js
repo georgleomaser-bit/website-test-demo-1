@@ -85,9 +85,9 @@ export const PLANS = [
     fee: 0,
     ideaFee: 0.001,
     creatorShare: 0.7,
-    tagline: "Jarvis: sprich einfach mit AKYTEX",
+    tagline: "Aky: sprich einfach mit AKYTEX",
     limits: { indicators: 99, alerts: 999, aiDetails: true, copy: true, depth: 12, ai: "auto", voice: true },
-    features: ["Alles aus AI Premium", "Jarvis-Sprachmodus: fragen, steuern, planen – per Stimme", "Gesprochener Lagebericht mit deinen nächsten Schritten", "Leuchtender KI-Modus an den Bildschirmrändern", "Neue KI-Funktionen immer zuerst"],
+    features: ["Alles aus AI Premium", "Aky-Sprachmodus: fragen, steuern, planen – per Stimme", "Gesprochener Lagebericht mit deinen nächsten Schritten", "Leuchtender KI-Modus an den Bildschirmrändern", "Neue KI-Funktionen immer zuerst"],
   },
 ];
 

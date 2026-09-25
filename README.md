@@ -35,7 +35,7 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 - **Ideen:** Community-Feed mit Trading-Ideen (eigene Ideen inkl. Chart-Screenshot teilen), Likes, Folgen
 - **Rangliste & Copy-Trading:** Top-Trader-Ranking (inkl. eigenem Depot), Portfolios mit einem Klick kopieren
 - **Ideen-Börse (USP):** versiegelte Ideen (SHA-256), live gemessene Performance, verifizierte Trefferquoten, 1-Klick-Handel mit Stop & Ziel, Royalties für Autoren
-- **Preismodell:** Free · Plus · Pro · Elite, AKYTEX AI (99 €), AI Premium (249 €) und Ultra mit Jarvis-Sprachmodus (299 €), monatlich/jährlich, Add-ons, Preis- und Leistungsverzeichnis, volle Kostenaufstellung vor jeder Order
+- **Preismodell:** Free · Plus · Pro · Elite, AKYTEX AI (99 €), AI Premium (249 €) und Ultra mit Aky-Sprachmodus (299 €), monatlich/jährlich, Add-ons, Preis- und Leistungsverzeichnis, volle Kostenaufstellung vor jeder Order
 - **AKYTEX AI:** Berater-Chat (lokal oder mit Claude, wo verfügbar), Meldungen, Depot-Doktor, Chancen-Scan und **Autopilot** (Vorschläge oder selbstständig in deinen Limits, mit Protokoll und Not-Aus)
 - **Business-Dashboard:** Umsatz- und Bewertungsmodell mit Reglern, Umsatz nach Quelle, 5-Jahres-Pfad, Funnel
 - Geschäftsplan: siehe [`BUSINESS.md`](BUSINESS.md)

@@ -2038,7 +2038,7 @@ body[data-view="ai"] .jarvis-hint { bottom: calc(18px + env(safe-area-inset-bott
 @media (max-width: 900px) { body[data-view="clips"] .jarvis-fab { bottom: auto; top: calc(var(--clips-top, 120px) + 118px); transform: scale(0.8); } }
 
 /* =====================================================================
-   JARVIS · Sprachmodus mit leuchtenden Bildschirmrändern
+   AKY · Sprachmodus mit leuchtenden Bildschirmrändern
    ===================================================================== */
 @property --jv-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 .jv { position: fixed; inset: 0; z-index: 120; pointer-events: none; --lvl: 0.2; --jv-r: 0px; }
@@ -2224,7 +2224,7 @@ html[data-theme="dark"] .jv-type input::placeholder { color: rgba(255, 255, 255,
 html[data-theme="dark"] .jv-shade { background: linear-gradient(to top, rgba(4, 6, 16, 0.32), transparent); }
 
 /* =====================================================================
-   JARVIS · HUD wie im Film: Partikel-Kugel auf Schwarz, Farbe folgt der Stimmung (--jv-c)
+   AKY · Sprachmodus im Vollbild (Farben: siehe AKY-Abschnitt am Ende)
    ===================================================================== */
 html[data-theme] .jv:not(.glow-only) { pointer-events: auto; background: radial-gradient(ellipse 70% 60% at 50% 42%, rgba(var(--jv-bg), 0.6), rgba(3, 3, 6, 0.96) 72%); opacity: 0; transition: opacity 0.55s ease; color: rgb(var(--jv-hi)); }
 html[data-theme] .jv.on:not(.glow-only) { opacity: 1; }
@@ -2476,3 +2476,116 @@ html[data-theme] .lg-trade .btn.sell { background: #dc2626; color: #fff; border-
 .jv-sliders label { display: flex; flex-direction: column; gap: 6px; font: 700 10px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 0.2em; color: rgba(var(--jv-hi), 0.6); }
 .jv-sliders input[type="range"] { accent-color: rgb(var(--jv-c)); background: rgba(var(--jv-c), 0.2); }
 .p-card.basket .b-free { display: block; margin-top: 6px; text-align: center; font-size: 11.5px; }
+
+/* =====================================================================
+   AKY · der KI-Assistent von AKYTEX
+   Eine glänzende blaue Kugel in den Logo-Farben mit einem weißen A, durch das Licht fließt.
+   Gilt überall, wo die KI auftaucht (.orb): oben rechts, im Chat, in Hinweisen und im Sprachmodus.
+   ===================================================================== */
+.orb {
+  background:
+    radial-gradient(circle at 33% 25%, rgba(255, 255, 255, 0.6) 0, rgba(255, 255, 255, 0.14) 16%, rgba(255, 255, 255, 0) 30%),
+    radial-gradient(circle at 50% 40%, #5b95ff 0%, #2962ff 36%, #1a3fb8 64%, #0b1d5c 100%);
+  box-shadow:
+    inset 0 calc(var(--os) * -0.07) calc(var(--os) * 0.16) rgba(3, 10, 40, 0.6),
+    inset 0 calc(var(--os) * 0.02) calc(var(--os) * 0.05) rgba(255, 255, 255, 0.28),
+    0 0 0 1px rgba(169, 200, 255, 0.3),
+    0 calc(var(--os) * 0.1) calc(var(--os) * 0.34) rgba(41, 98, 255, 0.42);
+}
+/* reflektiertes Licht unten in der Kugel */
+.orb::before { inset: 0; border: 0; box-shadow: none; background: radial-gradient(ellipse 62% 34% at 50% 100%, rgba(130, 178, 255, 0.55), transparent 72%); }
+/* langsam kreisender Glanz auf der Oberfläche */
+.orb i:nth-child(1) { inset: 0; -webkit-mask: none; mask: none; opacity: 0.9; background: conic-gradient(from 0deg, transparent 0 62%, rgba(190, 215, 255, 0.34) 80%, transparent 96%); animation: orbSpin 7s linear infinite; }
+/* feiner Lichtrand */
+.orb i:nth-child(2) { inset: 0; -webkit-mask: none; mask: none; opacity: 1; background: none; border: max(1px, calc(var(--os) * 0.012)) solid rgba(200, 222, 255, 0.28); animation: none; }
+/* das A: weiß, nach unten leicht bläulich, mit durchlaufendem Lichtstreifen */
+.orb i:nth-child(3) {
+  inset: 24% 25% 26%; border-radius: 0; filter: none;
+  background:
+    linear-gradient(100deg, transparent 32%, rgba(120, 170, 255, 0.95) 47%, transparent 62%) 130% 0 / 260% 100% no-repeat,
+    linear-gradient(180deg, #ffffff 35%, #d3e4ff 100%);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='11' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='11' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  animation: akyFlow 4.2s ease-in-out infinite;
+}
+/* weiches Leuchten hinter dem A */
+.orb::after {
+  content: ""; position: absolute; inset: 18% 19% 20%; pointer-events: none; background: rgba(170, 205, 255, 0.85); opacity: 0.55;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 124 124'%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3Cpath filter='url(%23b)' d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 124 124'%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3Cpath filter='url(%23b)' d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  animation: akyGlow 4.2s ease-in-out infinite;
+}
+.orb::after { z-index: 0; }
+.orb i:nth-child(3) { z-index: 2; }
+@keyframes akyFlow { 0% { background-position: 130% 0, 0 0; } 55%, 100% { background-position: -130% 0, 0 0; } }
+@keyframes akyGlow { 0%, 100% { opacity: 0.4; } 30% { opacity: 0.75; } }
+.orb.tiny i:nth-child(3) { animation-play-state: paused; }
+.orb.tiny.spin i:nth-child(3) { animation-play-state: running; }
+
+/* Aky oben rechts – immer da, mittelgroß */
+.jarvis-fab { top: calc(10px + env(safe-area-inset-top)); bottom: auto; right: 14px; width: 54px; height: 54px; filter: none; border-radius: 50%; }
+.jarvis-fab .orb.aky-fab { --os: 54px; }
+.jarvis-fab .orb.aky-fab i:nth-child(1) { animation-duration: 9s; }
+.jarvis-fab:hover .orb { box-shadow: inset 0 -4px 9px rgba(3, 10, 40, 0.6), inset 0 1px 3px rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(169, 200, 255, 0.5), 0 6px 26px rgba(41, 98, 255, 0.7); }
+.jarvis-fab:focus-visible { outline: 2px solid #a9c8ff; outline-offset: 3px; }
+/* Aky bleibt auch in der KI-Ansicht und bei offenem Chat sichtbar (dort: nochmal tippen = schließen) */
+body[data-view="ai"] .jarvis-fab, body.jarvis-on .jarvis-fab { opacity: 1; pointer-events: auto; transform: none; }
+body.jarvis-on .jarvis-fab .orb { box-shadow: inset 0 -4px 9px rgba(3, 10, 40, 0.6), 0 0 0 2px rgba(169, 200, 255, 0.75), 0 0 0 6px rgba(41, 98, 255, 0.22), 0 6px 26px rgba(41, 98, 255, 0.6); }
+.jarvis-fab.holding { box-shadow: 0 0 0 6px rgba(41, 98, 255, 0.28), 0 0 40px rgba(79, 140, 255, 0.7); }
+/* Platz in der Kopfzeile, damit Aky nichts verdeckt */
+.topbar, body[data-view="chart"] .topbar { padding-right: 80px; }
+/* Hinweise von Aky erscheinen direkt darunter */
+.jarvis-hint { top: calc(74px + env(safe-area-inset-top)); bottom: auto; right: 14px; transform: translate3d(0, -12px, 0) scale(0.96); transform-origin: top right; }
+.jarvis-hint.show { transform: none; }
+body[data-view="ai"] .jarvis-hint { bottom: auto; }
+/* Chat-Panel beginnt unter Aky */
+.jarvis-panel { top: calc(76px + env(safe-area-inset-top)); transform-origin: top right; }
+@media (max-width: 760px) {
+  .jarvis-fab { top: calc(8px + env(safe-area-inset-top)); right: 10px; width: 46px; height: 46px; }
+  .jarvis-fab .orb.aky-fab { --os: 46px; }
+  body[data-view="clips"] .jarvis-fab { top: calc(8px + env(safe-area-inset-top)); bottom: auto; transform: none; }
+  .topbar { padding-right: 62px; }
+  body[data-view="chart"] .topbar { padding-right: 62px; }
+  .jarvis-hint { top: calc(62px + env(safe-area-inset-top)); right: 10px; bottom: auto; }
+  .jarvis-panel { top: auto; transform-origin: bottom center; }
+}
+
+/* Sprachmodus: ruhiges Dunkelblau statt Film-HUD, Aky groß in der Mitte */
+.jv { --jv-c: 110, 162, 242; --jv-hi: 222, 234, 255; --jv-bg: 10, 28, 78; --burst: 0; }
+html[data-theme] .jv:not(.glow-only) { background: radial-gradient(ellipse 65% 55% at 50% 38%, rgba(20, 52, 140, 0.9), rgba(5, 12, 34, 0.98) 62%, rgba(3, 6, 18, 0.995) 100%); }
+.jv-fr, .jv-reticle { display: none; }
+.jv-hud, html[data-theme] .jv .jv-state, .jv-mb-h, .jv-keys, .jv-sliders label { font-family: var(--font-body); }
+.jv-hud { letter-spacing: 0.08em; }
+.jv-top { left: 8px; right: 8px; border-bottom-color: rgba(var(--jv-c), 0.16); }
+.jv-brand { font-family: var(--font-display); font-weight: 600; letter-spacing: 0.24em; }
+.jv-side b { text-shadow: none; }
+.jv-core { position: relative; display: grid; place-items: center; width: min(44vmin, 320px); transform: scale(calc(0.97 + 0.06 * var(--lvl) + 0.06 * var(--burst))); }
+.jv-core .orb.aky-xl { --os: min(44vmin, 320px); box-shadow: inset 0 calc(var(--os) * -0.07) calc(var(--os) * 0.16) rgba(3, 10, 40, 0.6), inset 0 calc(var(--os) * 0.02) calc(var(--os) * 0.05) rgba(255, 255, 255, 0.28), 0 0 0 1px rgba(169, 200, 255, 0.3), 0 0 calc(var(--os) * (0.25 + 0.35 * var(--lvl))) rgba(41, 98, 255, calc(0.35 + 0.35 * var(--lvl))); }
+.jv-core .orb::after { animation: none; opacity: calc(0.4 + 0.6 * var(--lvl)); }
+/* Zuhören: Wellen um die Kugel · Nachdenken: der Glanz kreist schneller */
+.jv-core::before, .jv-core::after { content: ""; position: absolute; inset: 0; border-radius: 50%; border: 1.5px solid rgba(140, 185, 255, 0.55); opacity: 0; pointer-events: none; }
+.jv[data-state="listen"] .jv-core::before { animation: akyWave 2.4s ease-out infinite; }
+.jv[data-state="listen"] .jv-core::after { animation: akyWave 2.4s ease-out 1.2s infinite; }
+@keyframes akyWave { from { transform: scale(1); opacity: 0.7; } to { transform: scale(1.45); opacity: 0; } }
+.jv[data-state="think"] .jv-core .orb i:nth-child(1) { animation-duration: 1.3s; }
+.jv[data-state="think"] .jv-core .orb i:nth-child(3) { animation-duration: 1.6s; }
+.jv[data-state="speak"] .jv-core .orb i:nth-child(3) { animation-duration: 2.4s; }
+html[data-theme] .jv .jv-txt { margin-top: 3vmin; }
+html[data-theme] .jv .jv-state { color: rgba(var(--jv-hi), 0.8); text-shadow: none; letter-spacing: 0.26em; }
+html[data-theme] .jv .jv-say { color: #fff; text-shadow: none; }
+.jv-chip.primary { color: #fff; background: #2962ff; border-color: #2962ff; box-shadow: 0 8px 22px rgba(41, 98, 255, 0.35); }
+.jv-mchip, .jv-mchip.on { --mc: var(--jv-c) !important; }
+html[data-theme] .jv .jv-end { border-color: rgba(var(--jv-c), 0.45); color: rgb(var(--jv-hi)); }
+/* Leuchtende Ränder (während Aky im Chat nachdenkt) und der Aky-Knopf im Chat: Blautöne statt Regenbogen */
+.jv-edge { background: conic-gradient(from var(--jv-a), #2962ff, #6ea2f2, #a9c8ff, #4f8cff, #1a3fb8, #6ea2f2, #2962ff); }
+.jv-start { background: linear-gradient(var(--panel), var(--panel)) padding-box, conic-gradient(from var(--jv-a), #2962ff, #a9c8ff, #4f8cff, #1a3fb8, #6ea2f2, #2962ff) border-box; }
+.jv-dot { background: radial-gradient(circle at 35% 30%, #cfe0ff, #2962ff 60%, #0b1d5c); }
+@media (max-width: 700px) {
+  .jv-core, .jv-core .orb.aky-xl { width: min(60vw, 40vh); --os: min(60vw, 40vh); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .orb i, .orb::after, .jv-core::before, .jv-core::after { animation: none !important; }
+}
+/* Akys Bild neben seinen Chat-Antworten */
+.msg-av { background: radial-gradient(circle at 33% 25%, rgba(255, 255, 255, 0.55) 0, rgba(255, 255, 255, 0) 30%), radial-gradient(circle at 50% 40%, #5b95ff 0%, #2962ff 40%, #1a3fb8 70%, #0b1d5c 100%); box-shadow: inset 0 -2px 5px rgba(3, 10, 40, 0.55), 0 0 0 1px rgba(169, 200, 255, 0.3), 0 3px 10px rgba(41, 98, 255, 0.4); }
+.msg-av svg { stroke: #fff; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 2px rgba(200, 225, 255, 0.9)); }
