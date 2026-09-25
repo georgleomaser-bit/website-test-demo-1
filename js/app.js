@@ -12,6 +12,7 @@ import { Scheduler, CONDITIONS, EVERY, WEEKDAYS } from "./scheduler.js";
 import { Shop, BASKETS, PRODUCTS, CATS } from "./shop.js";
 import * as cloud from "./cloud.js";
 import { startBackdrop } from "./bgfx.js";
+import { heroFx, initHomeFx } from "./herofx.js";
 import { initJarvis, startJarvis, thinkGlow, pickVoice, jarvisSupported, trialLeft, jarvisTitle, jarvisPersona, jarvisMood } from "./jarvis.js";
 import * as future from "./future.js";
 import * as academy from "./academy.js";
@@ -38,7 +39,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.7"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.8"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -2011,56 +2012,9 @@ setInterval(() => {
 }, 11000);
 
 // ---------- Startseite: animierter Hintergrund & USP-Demo ----------
-let heroRaf = 0;
 function heroAnim(on) {
-  const cv = $("#hero-canvas");
-  cancelAnimationFrame(heroRaf);
-  if (!on || !cv || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-  const ctx = cv.getContext("2d");
-  const dpr = Math.min(1.5, devicePixelRatio || 1);
-  const candles = [];
-  let price = 0.5;
-  let t = 0;
-  const resize = () => {
-    cv.width = Math.round(cv.clientWidth * dpr);
-    cv.height = cv.clientHeight * dpr;
-  };
-  resize();
-  let last = 0;
-  let visible = true;
-  new IntersectionObserver(([e]) => (visible = e.isIntersecting)).observe(cv);
-  const draw = (now = performance.now()) => {
-    heroRaf = requestAnimationFrame(draw);
-    if (!visible || document.hidden || now - last < 32) return; // 30 Bilder/s, nur wenn sichtbar
-    last = now;
-    if (cv.width !== Math.round(cv.clientWidth * dpr)) resize();
-    const W = cv.width;
-    const H = cv.height;
-    t++;
-    if (t % 3 === 0) {
-      const o = price;
-      price = Math.min(0.85, Math.max(0.15, price + (Math.random() - 0.47) * 0.035));
-      candles.push({ x: W + 10, o, c: price, h: Math.max(o, price) + Math.random() * 0.02, l: Math.min(o, price) - Math.random() * 0.02 });
-    }
-    ctx.clearRect(0, 0, W, H);
-    const bw = 7 * dpr;
-    for (const c of candles) {
-      c.x -= 2.4 * dpr; // doppelte Schrittweite bei halber Bildrate: gleiche Geschwindigkeit
-      const up = c.c >= c.o;
-      const drift = (1 - c.x / W) * 0.25; // leicht ansteigend nach rechts
-      const Y = (v) => H * (1 - v + drift - 0.1);
-      ctx.globalAlpha = 0.16 * Math.min(1, c.x / (W * 0.3));
-      ctx.fillStyle = ctx.strokeStyle = up ? "#4f8cff" : "#6ea2f2";
-      ctx.beginPath();
-      ctx.moveTo(c.x, Y(c.h));
-      ctx.lineTo(c.x, Y(c.l));
-      ctx.lineWidth = dpr;
-      ctx.stroke();
-      ctx.fillRect(c.x - bw / 2, Math.min(Y(c.o), Y(c.c)), bw, Math.max(2, Math.abs(Y(c.o) - Y(c.c))));
-    }
-    while (candles.length && candles[0].x < -20) candles.shift();
-  };
-  draw();
+  heroFx(on);
+  if (on) initHomeFx($("#view-home"));
 }
 function renderUspDemo() {
   const el = $("#usp-demo");

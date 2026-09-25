@@ -194,6 +194,8 @@ export function startBackdrop() {
 
   function run() {
     if (document.hidden) return;
+    // Auf der Startseite hat der Hero seine eigene, große Animation
+    if (document.body.dataset.view === "home") return (wait = setTimeout(run, 3000));
     setup();
     start = 0;
     raf = requestAnimationFrame(frame);
