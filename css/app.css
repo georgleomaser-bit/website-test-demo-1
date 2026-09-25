@@ -2498,21 +2498,21 @@ html[data-theme] .lg-trade .btn.sell { background: #dc2626; color: #fff; border-
 .orb i:nth-child(1) { inset: 0; -webkit-mask: none; mask: none; opacity: 0.9; background: conic-gradient(from 0deg, transparent 0 62%, rgba(190, 215, 255, 0.34) 80%, transparent 96%); animation: orbSpin 7s linear infinite; }
 /* feiner Lichtrand */
 .orb i:nth-child(2) { inset: 0; -webkit-mask: none; mask: none; opacity: 1; background: none; border: max(1px, calc(var(--os) * 0.012)) solid rgba(200, 222, 255, 0.28); animation: none; }
-/* das A: weiß, nach unten leicht bläulich, mit durchlaufendem Lichtstreifen */
+/* das Λ wie im Logo: weiß, nach unten leicht bläulich, mit durchlaufendem Lichtstreifen */
 .orb i:nth-child(3) {
   inset: 24% 25% 26%; border-radius: 0; filter: none;
   background:
     linear-gradient(100deg, transparent 32%, rgba(120, 170, 255, 0.95) 47%, transparent 62%) 130% 0 / 260% 100% no-repeat,
     linear-gradient(180deg, #ffffff 35%, #d3e4ff 100%);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='11' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='11' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M20 82 L50 20 L80 82' fill='none' stroke='%23000' stroke-width='10' stroke-linejoin='miter'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M20 82 L50 20 L80 82' fill='none' stroke='%23000' stroke-width='10' stroke-linejoin='miter'/%3E%3C/svg%3E") center / contain no-repeat;
   animation: akyFlow 4.2s ease-in-out infinite;
 }
 /* weiches Leuchten hinter dem A */
 .orb::after {
   content: ""; position: absolute; inset: 18% 19% 20%; pointer-events: none; background: rgba(170, 205, 255, 0.85); opacity: 0.55;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 124 124'%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3Cpath filter='url(%23b)' d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 124 124'%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3Cpath filter='url(%23b)' d='M22 84 L50 16 L78 84 M34 61 H66' fill='none' stroke='%23000' stroke-width='13' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 124 124'%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3Cpath filter='url(%23b)' d='M20 82 L50 20 L80 82' fill='none' stroke='%23000' stroke-width='13' stroke-linejoin='miter'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='-12 -12 124 124'%3E%3Cfilter id='b' x='-20%25' y='-20%25' width='140%25' height='140%25'%3E%3CfeGaussianBlur stdDeviation='5'/%3E%3C/filter%3E%3Cpath filter='url(%23b)' d='M20 82 L50 20 L80 82' fill='none' stroke='%23000' stroke-width='13' stroke-linejoin='miter'/%3E%3C/svg%3E") center / contain no-repeat;
   animation: akyGlow 4.2s ease-in-out infinite;
 }
 .orb::after { z-index: 0; }
@@ -2588,4 +2588,118 @@ html[data-theme] .jv .jv-end { border-color: rgba(var(--jv-c), 0.45); color: rgb
 }
 /* Akys Bild neben seinen Chat-Antworten */
 .msg-av { background: radial-gradient(circle at 33% 25%, rgba(255, 255, 255, 0.55) 0, rgba(255, 255, 255, 0) 30%), radial-gradient(circle at 50% 40%, #5b95ff 0%, #2962ff 40%, #1a3fb8 70%, #0b1d5c 100%); box-shadow: inset 0 -2px 5px rgba(3, 10, 40, 0.55), 0 0 0 1px rgba(169, 200, 255, 0.3), 0 3px 10px rgba(41, 98, 255, 0.4); }
-.msg-av svg { stroke: #fff; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 2px rgba(200, 225, 255, 0.9)); }
+.msg-av svg { stroke: #fff; stroke-linejoin: miter; filter: drop-shadow(0 0 2px rgba(200, 225, 255, 0.9)); }
+
+/* Sprachmodus als kleines Fenster oben rechts: Aky bleibt in seiner Ecke, die App bleibt sichtbar und bedienbar */
+html.jv-open body > :not(.jv):not(#toasts):not(.toasts) { visibility: visible; transition: none; }
+html[data-theme] .jv:not(.glow-only) { pointer-events: none; background: none; }
+.jv .jv-hud, .jv .jv-keys { display: none !important; }
+.jv .jv-core { position: fixed; top: calc(10px + env(safe-area-inset-top)); right: 14px; width: 54px; height: 54px; z-index: 2; pointer-events: auto; cursor: pointer; }
+.jv .jv-core .orb.aky-xl { --os: 54px; width: var(--os); height: var(--os); }
+.jv:not(.on) .jv-core { opacity: 0; }
+.jv-panel { position: absolute; top: calc(74px + env(safe-area-inset-top)); right: 14px; width: min(390px, calc(100vw - 28px)); max-height: calc(100dvh - 96px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 24px; pointer-events: auto; color: rgb(var(--jv-hi)); background: rgba(7, 16, 44, 0.92); -webkit-backdrop-filter: blur(24px) saturate(1.5); backdrop-filter: blur(24px) saturate(1.5); border: 1px solid rgba(110, 162, 242, 0.3); box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08); transform-origin: top right; opacity: 0; transform: translate3d(0, -8px, 0) scale(0.97); transition: opacity 0.3s ease, transform 0.45s var(--spring); }
+.jv.on .jv-panel { opacity: 1; transform: none; }
+.jv.glow-only .jv-panel, .jv.glow-only .jv-core { display: none; }
+.jv .jv-stage { position: static; inset: auto; padding: 0; gap: 6px; align-items: stretch; justify-content: flex-start; animation: none !important; pointer-events: auto; }
+html[data-theme] .jv .jv-txt { margin: 0; align-items: flex-start; }
+html[data-theme] .jv .jv-state { font-size: 11px; letter-spacing: 0.2em; }
+html[data-theme] .jv .jv-you { text-align: left; font-size: 14px; }
+html[data-theme] .jv .jv-say { text-align: left; max-width: none; max-height: 36vh; min-height: 0; margin: 2px 0 0; font-size: 17px; }
+html[data-theme] .jv .jv-say:empty { display: none; }
+html[data-theme] .jv .jv-acts { justify-content: flex-start; }
+.jv .jv-moodbox { position: static; left: auto; bottom: auto; transform: none; width: auto; max-height: none; padding: 12px; animation: none; box-shadow: none; }
+.jv .jv-controls { position: static; left: auto; bottom: auto; transform: none; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; }
+html[data-theme] .jv .jv-btn { width: 44px; height: 44px; font-size: 16px; }
+html[data-theme] .jv .jv-type { flex: 1 1 100%; width: auto; }
+html[data-theme] .jv .jv-type input { height: 44px; }
+@media (max-width: 760px) {
+  .jv .jv-core { top: calc(8px + env(safe-area-inset-top)); right: 10px; width: 46px; height: 46px; }
+  .jv .jv-core .orb.aky-xl { --os: 46px; }
+  .jv-panel { top: calc(62px + env(safe-area-inset-top)); right: 10px; width: calc(100vw - 20px); max-height: calc(100dvh - 80px - env(safe-area-inset-top)); }
+}
+
+/* Aky-Fenster als Liquid Glass (hell und dunkel), weiche Federanimation beim Öffnen */
+[data-theme="light"] .jv { --jv-c: 41, 98, 255; --jv-hi: 14, 28, 72; }
+.jv-panel { background: var(--lg-bg-strong, rgba(255, 255, 255, 0.7)); -webkit-backdrop-filter: var(--lg-blur, blur(26px) saturate(2)); backdrop-filter: var(--lg-blur, blur(26px) saturate(2)); border: 0.5px solid var(--lg-edge, rgba(255, 255, 255, 0.8)); box-shadow: var(--lg-shine, inset 0 1px 1px rgba(255, 255, 255, 0.9)), 0 24px 70px rgba(16, 36, 110, 0.28), 0 2px 8px rgba(16, 36, 110, 0.12); border-radius: 28px; isolation: isolate;
+  transform: translate3d(0, -10px, 0) scale(0.9); filter: blur(6px); transition: opacity 0.35s ease, transform 0.6s var(--spring), filter 0.4s ease; }
+.jv.on .jv-panel { filter: none; }
+/* heller Lichtschimmer oben links wie auf Glas */
+.jv-panel::before { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: -1; background: radial-gradient(120% 70% at 12% 0%, rgba(255, 255, 255, 0.45), transparent 55%), radial-gradient(80% 60% at 100% 100%, rgba(79, 140, 255, 0.16), transparent 70%); }
+[data-theme="dark"] .jv-panel::before { background: radial-gradient(120% 70% at 12% 0%, rgba(255, 255, 255, 0.12), transparent 55%), radial-gradient(80% 60% at 100% 100%, rgba(79, 140, 255, 0.22), transparent 70%); }
+html[data-theme] .jv .jv-say { color: rgb(var(--jv-hi)); }
+html[data-theme] .jv .jv-state { color: rgba(var(--jv-c), 0.95); }
+html[data-theme] .jv .jv-you { color: rgba(var(--jv-hi), 0.65); }
+.jv .jv-moodbox { background: rgba(var(--jv-c), 0.06); border: 0.5px solid rgba(var(--jv-c), 0.25); border-radius: 20px; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.jv-chip { border-color: rgba(var(--jv-c), 0.35); background: rgba(255, 255, 255, 0.14); box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.5); transition: background-color 0.25s, transform 0.45s var(--spring), box-shadow 0.25s; }
+.jv-chip.primary { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.45), 0 8px 22px rgba(41, 98, 255, 0.35); }
+/* Knöpfe: runde Glasperlen mit Symbol */
+html[data-theme] .jv .jv-btn { color: rgb(var(--jv-hi)); background: rgba(255, 255, 255, 0.16); border: 0.5px solid rgba(255, 255, 255, 0.55); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6), inset 0 -1px 1px rgba(255, 255, 255, 0.15), 0 4px 14px rgba(16, 36, 110, 0.12); transition: background-color 0.25s, transform 0.5s var(--spring), box-shadow 0.25s; }
+[data-theme="dark"] .jv .jv-btn { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.16); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.25); }
+html[data-theme] .jv .jv-btn:hover { background: rgba(var(--jv-c), 0.14); transform: translateY(-1px); }
+html[data-theme] .jv .jv-btn:active { transform: scale(0.88); }
+html[data-theme] .jv [data-jv="mood"].on { color: #fff; background: #2962ff; border-color: #2962ff; }
+html[data-theme] .jv .jv-end { color: rgb(var(--jv-hi)); border-color: rgba(255, 255, 255, 0.55); }
+.jv-btn svg, .mic-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; display: block; }
+.jv-btn .slash { display: none; }
+/* Mikrofone: überall gleich – Glasknopf, beim Zuhören Aky-Blau mit sanftem Puls */
+html[data-theme] .jv .jv-micbtn { color: #fff; background: radial-gradient(circle at 35% 28%, #7fb0ff, #2962ff 55%, #1a3fb8); border-color: rgba(169, 200, 255, 0.8); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55), 0 6px 18px rgba(41, 98, 255, 0.45); }
+.jv[data-state="listen"] .jv-micbtn { animation: akyMic 1.6s ease-in-out infinite; }
+html[data-theme] .jv .jv-micbtn.off { color: rgb(var(--jv-hi)); background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.55); box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.6); animation: none; }
+.jv-micbtn.off .slash { display: inline; }
+.mic-btn { display: grid; place-items: center; color: var(--text); border-radius: 50%; transition: background-color 0.25s, color 0.25s, transform 0.5s var(--spring); }
+.mic-btn:hover { color: #2962ff; }
+.mic-btn:active { transform: scale(0.88); }
+.mic-btn.rec { color: #fff; background: radial-gradient(circle at 35% 28%, #7fb0ff, #2962ff 55%, #1a3fb8); animation: akyMic 1.6s ease-in-out infinite; }
+@keyframes akyMic { 0%, 100% { box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55), 0 0 0 0 rgba(41, 98, 255, 0.5); } 50% { box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.55), 0 0 0 9px rgba(41, 98, 255, 0); } }
+/* Aky in der Ecke wächst ein wenig, solange er aktiv ist */
+.jv .jv-core { transition: opacity 0.3s; }
+.jv.on .jv-core { transform: scale(calc(1.04 + 0.08 * var(--lvl) + 0.06 * var(--burst))); }
+@media (prefers-reduced-motion: reduce) { .jv[data-state="listen"] .jv-micbtn, .mic-btn.rec { animation: none; } .jv-panel { filter: none; transition: opacity 0.2s; } }
+
+/* Hintergrund-Animation (ΛKYTEX → Aktienkurse), liegt hinter allen Inhalten */
+.bgfx { position: fixed; inset: 0; width: 100vw; height: 100vh; z-index: -1; pointer-events: none; }
+
+/* =====================================================================
+   LIQUID GLASS · für die ganze Website
+   Flächen sind durchscheinend und brechen das Licht, der ΛKYTEX-Hintergrund schimmert weich hindurch.
+   Bewegungen federn nach (Hover, Drücken, Öffnen).
+   ===================================================================== */
+html[data-theme] .ticker, html[data-theme] .drawbar, html[data-theme] .rightbar, html[data-theme] .bottom,
+html[data-theme] .popover, html[data-theme] .preview-chart, html[data-theme] .is-feed, html[data-theme] .band div,
+html[data-theme] .ss-box, html[data-theme] .addon, html[data-theme] .chip, html[data-theme] .chat-sugg button,
+html[data-theme] .ps-plans button, html[data-theme] .jp-proactive {
+  background: var(--lg-bg); -webkit-backdrop-filter: var(--lg-blur); backdrop-filter: var(--lg-blur); border-color: var(--lg-edge); box-shadow: var(--lg-shine);
+}
+html[data-theme] .popover, html[data-theme] .ss-box { background: var(--lg-bg-strong); box-shadow: var(--lg-shine), var(--lg-drop); border-radius: 20px; }
+html[data-theme] .rightbar, html[data-theme] .bottom, html[data-theme] .drawbar { background: var(--lg-bg-strong); }
+html[data-theme] .screener th, html[data-theme] .card .grid th, html[data-theme] th { background: transparent; }
+html[data-theme] .ticker { border-bottom-color: var(--lg-line); }
+/* Lichtkante oben auf Karten – wie eine gewölbte Glasscheibe */
+html[data-theme] .card, html[data-theme] .kpi, html[data-theme] .feature, html[data-theme] .idea-card, html[data-theme] .plan, html[data-theme] .p-card, html[data-theme] .modal-box {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0) 38%), var(--lg-bg);
+  -webkit-backdrop-filter: var(--lg-blur); backdrop-filter: var(--lg-blur);
+}
+[data-theme="dark"] .card, [data-theme="dark"] .kpi, [data-theme="dark"] .feature, [data-theme="dark"] .idea-card, [data-theme="dark"] .plan, [data-theme="dark"] .p-card, [data-theme="dark"] .modal-box {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 38%), var(--lg-bg);
+}
+html[data-theme] .modal-box { background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.3), rgba(255, 255, 255, 0) 38%), var(--lg-bg-strong); }
+[data-theme="dark"] .modal-box { background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0) 38%), var(--lg-bg-strong); }
+/* Federnde Bewegungen */
+html[data-theme] .card, html[data-theme] .kpi, html[data-theme] .feature, html[data-theme] .idea-card, html[data-theme] .p-card, html[data-theme] .feat, html[data-theme] .is-tile {
+  transition: transform 0.55s var(--spring-soft, var(--spring)), box-shadow 0.35s ease, border-color 0.35s ease;
+}
+@media (hover: hover) {
+  html[data-theme] .kpi:hover, html[data-theme] .feature:hover, html[data-theme] .idea-card:hover, html[data-theme] .p-card:hover, html[data-theme] .feat:hover, html[data-theme] .is-tile:hover { transform: translateY(-3px); box-shadow: var(--lg-shine), 0 18px 46px rgba(30, 50, 120, 0.16); }
+}
+html[data-theme] .btn, html[data-theme] .mini-btn, html[data-theme] .icon-btn, html[data-theme] .chip, html[data-theme] .view-btn, html[data-theme] .tb-btn { transition: transform 0.45s var(--spring), background-color 0.25s, box-shadow 0.25s, color 0.2s; }
+html[data-theme] .btn:active, html[data-theme] .mini-btn:active, html[data-theme] .icon-btn:active, html[data-theme] .chip:active, html[data-theme] .view-btn:active, html[data-theme] .tb-btn:active { transform: scale(0.94); transition-duration: 0.12s; }
+/* aktiver Reiter als Glastropfen */
+html[data-theme] .view-btn.active { background: var(--lg-bg-strong); box-shadow: var(--lg-shine), 0 4px 14px rgba(30, 50, 120, 0.12); }
+/* Hintergrund-Animation auf dem Handy etwas zurückhaltender */
+@media (max-width: 700px) { .bgfx { opacity: 0.85; } }
+@media (prefers-reduced-motion: reduce) { html[data-theme] .card, html[data-theme] .kpi { transition: none; } }
+/* Aky-Fenster: etwas milchigeres Glas, damit Text dahinter nicht stört */
+html[data-theme] .jv-panel { background: linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(240, 245, 255, 0.72)); }
+html[data-theme="dark"] .jv-panel { background: linear-gradient(135deg, rgba(34, 42, 78, 0.86), rgba(16, 22, 46, 0.8)); }
+html[data-theme] .jv .jv-btn:not(.jv-micbtn):not(.on) { background: rgba(255, 255, 255, 0.78); }
+html[data-theme="dark"] .jv .jv-btn:not(.jv-micbtn):not(.on) { background: rgba(255, 255, 255, 0.09); }

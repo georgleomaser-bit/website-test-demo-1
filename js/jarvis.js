@@ -258,6 +258,16 @@ export function cleanUtterance(t) {
 }
 
 // ---------- Oberfläche: HUD wie im Film ----------
+// Symbole der Aky-Knöpfe (schlicht, passend zum Liquid-Glass-Design)
+const ic = (d) => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+export const MIC_SVG = ic('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/><path class="slash" d="M4 4l16 16"/>');
+const ICONS = {
+  mood: ic('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14a4.2 4.2 0 0 0 7 0"/><path d="M9.3 9.6h.01M14.7 9.6h.01" stroke-width="2.6"/>'),
+  voice: ic('<path d="M4 10v4M8 7v10M12 4v16M16 8v8M20 11v2"/>'),
+  mic: MIC_SVG,
+  chat: ic('<path d="M5 18.5V6.8A2.8 2.8 0 0 1 7.8 4h8.4A2.8 2.8 0 0 1 19 6.8v6.4A2.8 2.8 0 0 1 16.2 16H8.5L5 18.5z"/>'),
+  close: ic('<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>'),
+};
 function build() {
   const el = document.createElement("div");
   el.className = "jv";
@@ -271,8 +281,9 @@ function build() {
       <div class="jv-side jv-right"><p>STIMME<b data-hud="voice">–</b></p><p>EMOTION<b data-hud="mood">–</b></p><p>ANREDE<b data-hud="title">–</b></p><p>STATUS<b data-hud="state">ONLINE</b></p></div>
       <i class="jv-reticle"></i>
     </div>
-    <div class="jv-stage" role="dialog" aria-label="Aky – Sprachmodus">
-      <div class="jv-core"><span class="orb aky-xl" aria-hidden="true"><i></i><i></i><i></i></span></div>
+    <div class="jv-core" title="Antippen und sprechen"><span class="orb aky-xl" aria-hidden="true"><i></i><i></i><i></i></span></div>
+    <div class="jv-panel" role="dialog" aria-label="Aky – Sprachmodus">
+    <div class="jv-stage">
       <div class="jv-txt"><span class="jv-state" aria-live="polite">HÖRE ZU</span><span class="jv-you"></span></div>
       <p class="jv-say" aria-live="polite"></p>
       <div class="jv-acts"></div>
@@ -286,11 +297,12 @@ function build() {
     <p class="jv-keys" aria-hidden="true">LEERTASTE · SPRECHEN &nbsp; ESC · BEENDEN &nbsp; ALT+J · AKY</p>
     <div class="jv-controls">
       <form class="jv-type" hidden><input type="text" enterkeyhint="send" autocomplete="off" placeholder="Frag Aky … (🎤 auf der Tastatur zum Diktieren)" aria-label="Frage an Aky" /></form>
-      <button class="jv-btn" data-jv="mood" title="Emotionen wählen" aria-label="Emotionen wählen">🎭</button>
-      <button class="jv-btn" data-jv="voice" title="Stimme wählen" aria-label="Stimme wählen">🗣</button>
-      <button class="jv-btn jv-micbtn" data-jv="mic" title="Mikrofon an/aus" aria-label="Mikrofon an oder aus">🎙</button>
-      <button class="jv-btn" data-jv="chat" title="Im Chat weiterlesen" aria-label="Chat öffnen">💬</button>
-      <button class="jv-btn jv-end" data-jv="close" title="Aky beenden (Esc)" aria-label="Aky beenden">✕</button>
+      <button class="jv-btn" data-jv="mood" title="Emotionen wählen" aria-label="Emotionen wählen">${ICONS.mood}</button>
+      <button class="jv-btn" data-jv="voice" title="Stimme wählen" aria-label="Stimme wählen">${ICONS.voice}</button>
+      <button class="jv-btn jv-micbtn" data-jv="mic" title="Mikrofon an/aus" aria-label="Mikrofon an oder aus">${ICONS.mic}</button>
+      <button class="jv-btn" data-jv="chat" title="Im Chat weiterlesen" aria-label="Chat öffnen">${ICONS.chat}</button>
+      <button class="jv-btn jv-end" data-jv="close" title="Aky beenden (Esc)" aria-label="Aky beenden">${ICONS.close}</button>
+    </div>
     </div>`;
   document.body.appendChild(el);
   el.addEventListener("click", onClick);
