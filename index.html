@@ -145,42 +145,39 @@
 
   <!-- ================= STARTSEITE ================= -->
   <main class="view page home" id="view-home" hidden>
-    <section class="hero">
+    <section class="hero hx" id="hx">
+      <div class="hx-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="hx-floor" aria-hidden="true"></div>
       <canvas class="hero-canvas" id="hero-canvas" aria-hidden="true"></canvas>
-      <div class="hero-glow"></div>
-      <div class="hero-inner">
-        <div class="hero-copy reveal">
-          <span class="eyebrow"><i></i> Trading-Simulator · 40 Aktien · KI-Analyse</span>
-          <h1>Markets move.<br /><span class="grad">Ideas stay.</span></h1>
-          <p class="lead">Profi-Charts wie bei den Großen, KI-Analyse für jede Aktie, eine Community voller Trading-Ideen – und Orders ab 0 € im virtuellen Depot. Alles in einer App, auf jedem Gerät.</p>
-          <div class="hero-cta">
-            <button class="btn primary big" id="hero-start">Jetzt kostenlos starten</button>
-            <button class="btn ghost big" id="hero-install">App installieren</button>
-          </div>
-          <div class="founder-deal" id="founder-deal" hidden></div>
-          <div class="trust">
-            <span>✓ Kostenloses Übungsdepot mit 100.000 € Spielgeld</span>
-            <span>✓ Keine Anmeldung nötig</span>
-            <span>✓ Läuft offline</span>
-          </div>
+      <div class="hx-inner">
+        <span class="hx-pill"><i></i> Trading-Simulator · 40 Aktien · KI-Analyse</span>
+        <h1 class="hx-title" aria-label="Markets move. Ideas stay."><span class="hx-line"><span class="w">Markets</span> <span class="w">move.</span></span><span class="hx-line hx-shine"><span class="w">Ideas</span> <span class="w">stay.</span></span></h1>
+        <p class="hx-lead">Profi-Charts, KI-Analyse für jede Aktie und eine Community voller Ideen – im Übungsdepot mit 100.000 € Spielgeld. Kostenlos, auf jedem Gerät.</p>
+        <div class="hx-cta">
+          <button class="btn primary big hx-go" id="hero-start"><span>Jetzt kostenlos starten</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg></button>
+          <button class="btn big hx-ghost" id="hero-install">App installieren</button>
         </div>
-        <div class="hero-visual reveal">
-          <img class="hero-logo" src="icons/logo.svg" alt="AKYTEX Logo" width="440" height="440" />
-          <div class="float-card fc1" id="fc1"></div>
-          <div class="float-card fc2" id="fc2"></div>
-          <div class="float-card fc3" id="fc3"></div>
-        </div>
+        <div class="hx-trust"><span>Keine Anmeldung nötig</span><span>Läuft offline</span><span>Simulierte Kurse · virtuelles Geld</span></div>
       </div>
+      <div class="hx-stage" id="hx-stage" aria-hidden="true"></div>
+      <div class="hx-cards" aria-hidden="true">
+        <div class="float-card fc1" id="fc1"></div>
+        <div class="float-card fc2" id="fc2"></div>
+        <div class="float-card fc3" id="fc3"></div>
+      </div>
+      <div class="hx-scroll" aria-hidden="true"><i></i></div>
     </section>
 
     <div class="live-activity" id="live-activity" aria-hidden="true"></div>
 
     <section class="band reveal">
-      <div><b>40+</b><span>Aktien aus USA &amp; Europa</span></div>
-      <div><b>12</b><span>Profi-Indikatoren</span></div>
+      <div><b data-count="40" data-suffix="+">40+</b><span>Aktien aus USA &amp; Europa</span></div>
+      <div><b data-count="12">12</b><span>Profi-Indikatoren</span></div>
       <div><b>0 €</b><span>Ordergebühr mit Pro</span></div>
       <div><b>24/7</b><span>Live-Kurse (simuliert)</span></div>
     </section>
+
+    <section class="home-sec fd-sec reveal"><div class="founder-deal" id="founder-deal" hidden></div></section>
 
     <section class="home-sec">
       <h2 class="reveal">Alles, was Trader brauchen.</h2>
@@ -195,6 +192,8 @@
       </div>
     </section>
 
+    <div class="bento">
+      <div class="bento-head reveal"><span class="usp-eyebrow">Entdecken</span><h2>Mehr als eine Trading-App.</h2></div>
     <section class="home-sec fu-home reveal" id="zukunft">
       <div class="fu-hero">
         <span class="usp-eyebrow">Neu · Nur bei AKYTEX</span>
@@ -231,14 +230,16 @@
 
     <section class="home-sec jvp reveal" id="ultra">
       <div class="jvp-card">
+        <span class="orb jvp-orb" aria-hidden="true"><i></i><i></i><i></i></span>
         <span class="plan-badge ultra">✦ Neu · AKYTEX Ultra</span>
-        <h2>Sprich einfach mit AKYTEX.</h2>
+        <h2>Sprich einfach mit Aky.</h2>
         <p class="sec-lead">Aky hört zu, sagt dir, was heute ansteht, und erledigt den Rest per Stimme. Solange Aky zuhört, leuchten die Ränder deines Bildschirms.</p>
         <div class="jvp-quotes"><span>„Was soll ich heute tun?“</span><span>„Zeig mir Nvidia auf 4 Stunden.“</span><span>„Wie steht mein Depot?“</span><span>„Schreib einen Post zu SAP.“</span></div>
         <div class="jvp-cta"><button class="btn primary big" data-jarvis-try>✦ Aky gratis testen</button><button class="btn big" data-plan-ultra>Ultra ansehen</button></div>
         <small class="muted">3 Fragen gratis · danach mit AKYTEX Ultra ab 239 €/Monat · 14 Tage kostenlos testen · keine Anlageberatung</small>
       </div>
     </section>
+    </div>
 
     <section class="home-sec usp" id="usp">
       <span class="usp-eyebrow reveal">Nur bei AKYTEX</span>
