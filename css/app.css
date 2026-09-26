@@ -2877,3 +2877,5 @@ body[data-view="home"] .bgfx { opacity: 0; transition: opacity 0.5s; }
 .hero.hx .float-card { background: linear-gradient(145deg, rgba(60, 100, 220, 0.34), rgba(12, 26, 80, 0.55)); }
 .hx-pill { background: rgba(30, 60, 160, 0.35); }
 .hx-ghost { background: rgba(30, 60, 160, 0.28) !important; }
+.sf-cols a { padding: 2px 0; color: var(--text-2); font-size: 13.5px; text-decoration: none; }
+.sf-cols a:hover { color: var(--text); }
