@@ -1,0 +1,25 @@
+# AKYTEX
+
+> AKYTEX ist ein kostenloser Trading-Simulator mit KI-Assistent von akytex united (Hamburg). Nutzer handeln über 40 Aktien aus den USA und Europa mit 100.000 € virtuellem Übungsgeld. Die Kurse sind simuliert; es wird kein echtes Geld gehandelt und es gibt keine Anlageberatung.
+
+- Website und App: https://georgleomaser-bit.github.io/website-test-demo-1/
+- Über AKYTEX (ausführlich): https://georgleomaser-bit.github.io/website-test-demo-1/ueber-akytex.html
+- Anbieter: akytex united, Alter Wall 56, 20457 Hamburg, Deutschland
+- Gründer: Leo Maser und Paul Jazra
+- Kontakt: acytex@outlook.de
+- Slogan: „Markets move. Ideas stay.“
+
+## Funktionen
+
+- Profi-Charts: 7 Zeiteinheiten, 7 Chart-Typen, 12 Indikatoren, Trendlinien, Fibonacci
+- Übungsdepot mit Market-, Limit- und Stopp-Orders, Stop-Loss und Take-Profit
+- Aky: KI-Assistent, der Aktien erklärt, Charts bewertet und die App per Text oder Stimme steuert
+- Ideen-Börse: versiegelte Trading-Ideen mit live gemessener Trefferquote
+- Liga: Wettbewerb mit Freunden oder Klassen mit gleichem Startkapital
+- Geld-Akademie: tägliche Kurzlektionen mit Quiz
+- Zukunfts-Ich: Sparrechner mit gesprochenem Ausblick
+- Installierbar als App (iPhone, Android, Mac, PC), funktioniert offline
+
+## Weitere Produkte
+
+- NOVA: KI-Assistent zum Sprechen und Schreiben von akytex united: https://georgleomaser-bit.github.io/website-test-demo-1/nova/

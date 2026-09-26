@@ -39,7 +39,9 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 const roundTo = (v, step) => Math.round(v / step) * step;
 
 const SETTINGS_KEY = "akytex-v2-settings";
-const APP_VERSION = "5.8"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
+const APP_VERSION = "5.9";
+// Titel der Startseite (so erscheint AKYTEX bei Google und in geteilten Links)
+const HOME_TITLE = "AKYTEX – Trading-Simulator mit KI-Assistent | Aktien üben mit Spielgeld"; // bei jedem Update zusammen mit VERSION in sw.js erhöhen
 function loadSettings() {
   try {
     return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {};
@@ -223,7 +225,7 @@ function syncToolbar() {
   $$("#tf-group [data-tf]").forEach((b) => b.classList.toggle("active", b.dataset.tf === settings.tf));
   $("#chart-type").value = settings.type;
   $("#sym-label").textContent = settings.symbol;
-  document.title = `${settings.symbol} ${num(market.get(settings.symbol).price)} · Akytex`;
+  document.title = settings.view === "home" ? HOME_TITLE : `${settings.symbol} ${num(market.get(settings.symbol).price)} · AKYTEX`;
 }
 
 function setTimeframe(tf) {
@@ -1131,7 +1133,7 @@ market.onTick(() => {
 });
 function syncTitle() {
   const q = market.quote(settings.symbol);
-  document.title = `${settings.symbol} ${num(q.price)} ${pct(q.changePct)} · Akytex`;
+  document.title = settings.view === "home" ? HOME_TITLE : `${settings.symbol} ${num(q.price)} ${pct(q.changePct)} · AKYTEX`;
 }
 
 // ---------- Tastatur ----------
@@ -4326,7 +4328,7 @@ function injectFooters() {
   const foot = `<footer class="site-foot">
     <div class="sf-brand"><img src="icons/icon.svg" alt="" width="30" height="30"/><div><b>ΛKYTEX</b><small>Markets move. Ideas stay.</small></div></div>
     <div class="sf-cols">
-      <div><b>Produkt</b><button data-goto="chart">Chart</button><button data-goto="ideas">Ideen-Börse</button><button data-goto="ai">AKYTEX AI</button><button data-open-plans>Preise</button></div>
+      <div><b>Produkt</b><button data-goto="chart">Chart</button><button data-goto="ideas">Ideen-Börse</button><button data-goto="ai">AKYTEX AI</button><button data-open-plans>Preise</button><a href="ueber-akytex.html">Über AKYTEX</a></div>
       <div><b>Konto</b><button data-goto="account" data-acct-tab="billing">Abo & Zahlung</button><button data-goto="account" data-acct-tab="invoices">Rechnungen</button><button data-cancel-open class="sf-cancel">Verträge hier kündigen</button></div>
       <div><b>Rechtliches</b><button data-legal-open="impressum">Impressum</button><button data-legal-open="privacy">Datenschutz</button><button data-legal-open="terms">AGB</button><button data-legal-open="risk">Risikohinweise</button></div>
     </div>
