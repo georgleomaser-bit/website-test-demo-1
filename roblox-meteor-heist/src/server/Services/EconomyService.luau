@@ -441,8 +441,12 @@ function EconomyService.Start()
 			EconomyService.Collect(player)
 			ok, message = true, ""
 		elseif action == "Home" then
-			Services.PlotService.TeleportHome(player)
-			ok, message = true, ""
+			if Services.CarryService.IsCarrying(player) then
+				ok, message = false, "Mit einem Meteor musst du laufen! 🏃"
+			else
+				Services.PlotService.TeleportHome(player)
+				ok, message = true, ""
+			end
 		end
 		dirty[player] = true
 		return { Ok = ok, Message = message }

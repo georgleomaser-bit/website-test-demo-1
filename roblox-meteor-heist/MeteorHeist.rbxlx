@@ -1614,8 +1614,23 @@ function CarryService.Start()
 				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				local plot = Services.PlotService.GetPlot(player)
+				local teleported = false
+				if root then
+					-- Anti-Teleport: wer mit Beute unmöglich schnell vorankommt, verliert sie
+					local now = os.clock()
+					if info.LastPos then
+						local dist = (root.Position - info.LastPos).Magnitude
+						local dt = math.max(now - info.LastTime, 0.05)
+						local limit = math.max(humanoid and humanoid.WalkSpeed * 2.5 or 0, 70)
+						teleported = dist > 25 and dist / dt > limit
+					end
+					info.LastPos = root.Position
+					info.LastTime = now
+				end
 				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
 					CarryService.Fail(player, "died")
+				elseif teleported then
+					CarryService.Fail(player, "teleport")
 				elseif os.clock() - info.Started > Config.CarryTimeout then
 					CarryService.Fail(player, "timeout")
 				elseif plot and Services.PlotService.IsInside(plot, root.Position) then
@@ -2345,8 +2360,12 @@ function EconomyService.Start()
 			EconomyService.Collect(player)
 			ok, message = true, ""
 		elseif action == "Home" then
-			Services.PlotService.TeleportHome(player)
-			ok, message = true, ""
+			if Services.CarryService.IsCarrying(player) then
+				ok, message = false, "Mit einem Meteor musst du laufen! 🏃"
+			else
+				Services.PlotService.TeleportHome(player)
+				ok, message = true, ""
+			end
 		end
 		dirty[player] = true
 		return { Ok = ok, Message = message }
@@ -4735,18 +4754,15 @@ local rebirthDetail = label({
 	MaxText = 16,
 	Parent = rebirthContent,
 })
-button(
-	{
-		Size = UDim2.new(1, 0, 0, 50),
-		Text = "🔥 REBIRTH!",
-		Color = THEME.Red,
-		LayoutOrder = 4,
-		Parent = rebirthContent,
-	},
-	function()
-		request("Rebirth")
-	end
-)
+button({
+	Size = UDim2.new(1, 0, 0, 50),
+	Text = "🔥 REBIRTH!",
+	Color = THEME.Red,
+	LayoutOrder = 4,
+	Parent = rebirthContent,
+}, function()
+	request("Rebirth")
+end)
 
 -- ---------------------------------------------------------------------
 -- DAILY
@@ -5202,16 +5218,13 @@ local function buildAdminPanel()
 			end
 		end
 	end
-	button(
-		{
-			Size = UDim2.new(0.42, 0, 1, 0),
-			Text = "🔄 Spieler laden",
-			Color = THEME.Blue,
-			LayoutOrder = 2,
-			Parent = targetRow,
-		},
-		refreshPlayers
-	)
+	button({
+		Size = UDim2.new(0.42, 0, 1, 0),
+		Text = "🔄 Spieler laden",
+		Color = THEME.Blue,
+		LayoutOrder = 2,
+		Parent = targetRow,
+	}, refreshPlayers)
 
 	-- Meteor-Auswahl
 	section(content, "☄️ Meteor spawnen / geben", 4)
@@ -5273,21 +5286,18 @@ local function buildAdminPanel()
 		Parent = countRow,
 	})
 	local spawnRow = row(content, 9, 42)
-	button(
-		{
-			Size = UDim2.new(0.25, -5, 1, 0),
-			Text = "Im Krater",
-			Color = THEME.Accent,
-			LayoutOrder = 1,
-			Parent = spawnRow,
-		},
-		function()
-			admin(
-				"SpawnMeteor",
-				{ MeteorId = selectedMeteor, Mutation = selectedMutation, Count = countBox.Text, Where = "Crater" }
-			)
-		end
-	)
+	button({
+		Size = UDim2.new(0.25, -5, 1, 0),
+		Text = "Im Krater",
+		Color = THEME.Accent,
+		LayoutOrder = 1,
+		Parent = spawnRow,
+	}, function()
+		admin(
+			"SpawnMeteor",
+			{ MeteorId = selectedMeteor, Mutation = selectedMutation, Count = countBox.Text, Where = "Crater" }
+		)
+	end)
 	button(
 		{ Size = UDim2.new(0.25, -5, 1, 0), Text = "Vor mir", Color = THEME.Accent, LayoutOrder = 2, Parent = spawnRow },
 		function()
@@ -5297,47 +5307,35 @@ local function buildAdminPanel()
 			)
 		end
 	)
-	button(
-		{
-			Size = UDim2.new(0.25, -5, 1, 0),
-			Text = "Gratis vor mir",
-			Color = THEME.Green,
-			LayoutOrder = 3,
-			Parent = spawnRow,
-		},
-		function()
-			admin(
-				"SpawnMeteor",
-				{
-					MeteorId = selectedMeteor,
-					Mutation = selectedMutation,
-					Count = countBox.Text,
-					Where = "Me",
-					Free = true,
-				}
-			)
-		end
-	)
-	button(
-		{
-			Size = UDim2.new(0.25, -5, 1, 0),
-			Text = "In Ziel-Base",
-			Color = THEME.Purple,
-			LayoutOrder = 4,
-			Parent = spawnRow,
-		},
-		function()
-			admin(
-				"GiveMeteor",
-				{
-					MeteorId = selectedMeteor,
-					Mutation = selectedMutation,
-					Level = levelBox.Text,
-					Target = targetBox.Text,
-				}
-			)
-		end
-	)
+	button({
+		Size = UDim2.new(0.25, -5, 1, 0),
+		Text = "Gratis vor mir",
+		Color = THEME.Green,
+		LayoutOrder = 3,
+		Parent = spawnRow,
+	}, function()
+		admin("SpawnMeteor", {
+			MeteorId = selectedMeteor,
+			Mutation = selectedMutation,
+			Count = countBox.Text,
+			Where = "Me",
+			Free = true,
+		})
+	end)
+	button({
+		Size = UDim2.new(0.25, -5, 1, 0),
+		Text = "In Ziel-Base",
+		Color = THEME.Purple,
+		LayoutOrder = 4,
+		Parent = spawnRow,
+	}, function()
+		admin("GiveMeteor", {
+			MeteorId = selectedMeteor,
+			Mutation = selectedMutation,
+			Level = levelBox.Text,
+			Target = targetBox.Text,
+		})
+	end)
 
 	-- Meteorregen
 	section(content, "🌧️ Meteorregen (Seltenheit wählen)", 10)
@@ -5346,18 +5344,15 @@ local function buildAdminPanel()
 		admin("MeteorRain", { Count = countBox.Text ~= "1" and countBox.Text or 15 })
 	end)
 	for i, rarity in ipairs(Config.Rarities) do
-		button(
-			{
-				Text = rarity.Name,
-				Color = rarity.Color:Lerp(Color3.new(0, 0, 0), 0.4),
-				LayoutOrder = i,
-				MaxText = 14,
-				Parent = rainGrid,
-			},
-			function()
-				admin("MeteorRain", { Rarity = rarity.Name, Count = countBox.Text ~= "1" and countBox.Text or 10 })
-			end
-		)
+		button({
+			Text = rarity.Name,
+			Color = rarity.Color:Lerp(Color3.new(0, 0, 0), 0.4),
+			LayoutOrder = i,
+			MaxText = 14,
+			Parent = rainGrid,
+		}, function()
+			admin("MeteorRain", { Rarity = rarity.Name, Count = countBox.Text ~= "1" and countBox.Text or 10 })
+		end)
 	end
 
 	-- Geld & Werte
@@ -5375,56 +5370,44 @@ local function buildAdminPanel()
 			admin("GiveCash", { Target = targetBox.Text, Amount = amountBox.Text })
 		end
 	)
-	button(
-		{
-			Size = UDim2.new(0.25, -5, 1, 0),
-			Text = "Cash setzen",
-			Color = THEME.Green,
-			LayoutOrder = 2,
-			Parent = moneyRow,
-		},
-		function()
-			admin("SetCash", { Target = targetBox.Text, Amount = amountBox.Text })
-		end
-	)
-	button(
-		{
-			Size = UDim2.new(0.25, -5, 1, 0),
-			Text = "Rebirths setzen",
-			Color = THEME.Red,
-			LayoutOrder = 3,
-			Parent = moneyRow,
-		},
-		function()
-			admin("SetRebirths", { Target = targetBox.Text, Amount = amountBox.Text })
-		end
-	)
-	button(
-		{
-			Size = UDim2.new(0.25, -5, 1, 0),
-			Text = "Speed-Lvl setzen",
-			Color = THEME.Blue,
-			LayoutOrder = 4,
-			Parent = moneyRow,
-		},
-		function()
-			admin("SetSpeed", { Target = targetBox.Text, Amount = amountBox.Text })
-		end
-	)
+	button({
+		Size = UDim2.new(0.25, -5, 1, 0),
+		Text = "Cash setzen",
+		Color = THEME.Green,
+		LayoutOrder = 2,
+		Parent = moneyRow,
+	}, function()
+		admin("SetCash", { Target = targetBox.Text, Amount = amountBox.Text })
+	end)
+	button({
+		Size = UDim2.new(0.25, -5, 1, 0),
+		Text = "Rebirths setzen",
+		Color = THEME.Red,
+		LayoutOrder = 3,
+		Parent = moneyRow,
+	}, function()
+		admin("SetRebirths", { Target = targetBox.Text, Amount = amountBox.Text })
+	end)
+	button({
+		Size = UDim2.new(0.25, -5, 1, 0),
+		Text = "Speed-Lvl setzen",
+		Color = THEME.Blue,
+		LayoutOrder = 4,
+		Parent = moneyRow,
+	}, function()
+		admin("SetSpeed", { Target = targetBox.Text, Amount = amountBox.Text })
+	end)
 	local passGridAdmin = grid(content, 15, 112, 36)
 	for i, pass in ipairs(Config.GamePasses) do
-		button(
-			{
-				Text = pass.Icon .. " " .. pass.Name,
-				Color = THEME.PanelLight,
-				LayoutOrder = i,
-				MaxText = 13,
-				Parent = passGridAdmin,
-			},
-			function()
-				admin("GivePass", { Target = targetBox.Text, PassKey = pass.Key })
-			end
-		)
+		button({
+			Text = pass.Icon .. " " .. pass.Name,
+			Color = THEME.PanelLight,
+			LayoutOrder = i,
+			MaxText = 13,
+			Parent = passGridAdmin,
+		}, function()
+			admin("GivePass", { Target = targetBox.Text, PassKey = pass.Key })
+		end)
 	end
 
 	-- Events
@@ -5446,46 +5429,37 @@ local function buildAdminPanel()
 		Parent = eventRow1,
 	})
 	local globalButton
-	globalButton = button(
-		{
-			Size = UDim2.new(0.33, -4, 1, 0),
-			Text = "Nur dieser Server",
-			Color = THEME.Gray,
-			LayoutOrder = 3,
-			MaxText = 14,
-			Parent = eventRow1,
-		},
-		function()
-			globalToggle = not globalToggle
-			globalButton.Text = globalToggle and "🌍 ALLE Server" or "Nur dieser Server"
-			globalButton.BackgroundColor3 = globalToggle and THEME.Purple or THEME.Gray
-		end
-	)
+	globalButton = button({
+		Size = UDim2.new(0.33, -4, 1, 0),
+		Text = "Nur dieser Server",
+		Color = THEME.Gray,
+		LayoutOrder = 3,
+		MaxText = 14,
+		Parent = eventRow1,
+	}, function()
+		globalToggle = not globalToggle
+		globalButton.Text = globalToggle and "🌍 ALLE Server" or "Nur dieser Server"
+		globalButton.BackgroundColor3 = globalToggle and THEME.Purple or THEME.Gray
+	end)
 	local eventRow2 = row(content, 18, 40)
-	button(
-		{
-			Size = UDim2.new(0.5, -3, 1, 0),
-			Text = "🍀 Glück starten",
-			Color = THEME.Green,
-			LayoutOrder = 1,
-			Parent = eventRow2,
-		},
-		function()
-			admin("ServerLuck", { Mult = multBox.Text, Minutes = minutesBox.Text, Global = globalToggle })
-		end
-	)
-	button(
-		{
-			Size = UDim2.new(0.5, -3, 1, 0),
-			Text = "🌠 Meteoritenschauer",
-			Color = THEME.Accent,
-			LayoutOrder = 2,
-			Parent = eventRow2,
-		},
-		function()
-			admin("StartShower", { Seconds = (tonumber(minutesBox.Text) or 1) * 60, Global = globalToggle })
-		end
-	)
+	button({
+		Size = UDim2.new(0.5, -3, 1, 0),
+		Text = "🍀 Glück starten",
+		Color = THEME.Green,
+		LayoutOrder = 1,
+		Parent = eventRow2,
+	}, function()
+		admin("ServerLuck", { Mult = multBox.Text, Minutes = minutesBox.Text, Global = globalToggle })
+	end)
+	button({
+		Size = UDim2.new(0.5, -3, 1, 0),
+		Text = "🌠 Meteoritenschauer",
+		Color = THEME.Accent,
+		LayoutOrder = 2,
+		Parent = eventRow2,
+	}, function()
+		admin("StartShower", { Seconds = (tonumber(minutesBox.Text) or 1) * 60, Global = globalToggle })
+	end)
 	local announceRow = row(content, 19, 40)
 	local announceBox = textBox({
 		Size = UDim2.new(0.7, -3, 1, 0),
@@ -5493,18 +5467,15 @@ local function buildAdminPanel()
 		LayoutOrder = 1,
 		Parent = announceRow,
 	})
-	button(
-		{
-			Size = UDim2.new(0.3, -3, 1, 0),
-			Text = "📢 Senden",
-			Color = THEME.Blue,
-			LayoutOrder = 2,
-			Parent = announceRow,
-		},
-		function()
-			admin("Announce", { Text = announceBox.Text, Global = globalToggle })
-		end
-	)
+	button({
+		Size = UDim2.new(0.3, -3, 1, 0),
+		Text = "📢 Senden",
+		Color = THEME.Blue,
+		LayoutOrder = 2,
+		Parent = announceRow,
+	}, function()
+		admin("Announce", { Text = announceBox.Text, Global = globalToggle })
+	end)
 
 	-- Moderation
 	section(content, "🛡️ Moderation (Ziel oben)", 20)

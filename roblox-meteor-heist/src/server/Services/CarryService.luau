@@ -416,8 +416,23 @@ function CarryService.Start()
 				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				local plot = Services.PlotService.GetPlot(player)
+				local teleported = false
+				if root then
+					-- Anti-Teleport: wer mit Beute unmöglich schnell vorankommt, verliert sie
+					local now = os.clock()
+					if info.LastPos then
+						local dist = (root.Position - info.LastPos).Magnitude
+						local dt = math.max(now - info.LastTime, 0.05)
+						local limit = math.max(humanoid and humanoid.WalkSpeed * 2.5 or 0, 70)
+						teleported = dist > 25 and dist / dt > limit
+					end
+					info.LastPos = root.Position
+					info.LastTime = now
+				end
 				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
 					CarryService.Fail(player, "died")
+				elseif teleported then
+					CarryService.Fail(player, "teleport")
 				elseif os.clock() - info.Started > Config.CarryTimeout then
 					CarryService.Fail(player, "timeout")
 				elseif plot and Services.PlotService.IsInside(plot, root.Position) then
