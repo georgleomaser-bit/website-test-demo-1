@@ -726,6 +726,7 @@ local TextService = game:GetService("TextService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 local Remotes = require(script.Parent:WaitForChild("Remotes"))
+local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 
 local AdminService = {}
 local Services
@@ -998,6 +999,51 @@ local function publishGlobal(message): boolean
 		handleGlobal(message) -- wenigstens auf diesem Server
 	end
 	return ok
+end
+
+-- -------------------------------------------------------------------
+-- FOTO-MODUS (schöne Thumbnail-Screenshots)
+-- -------------------------------------------------------------------
+local photoRng = Random.new()
+local SHOWCASE_DISTANCE = 14 -- Studs vor dem Admin
+local SHOWCASE_GAP = 2.5 -- Lücke zwischen zwei Meteoren
+local SHOWCASE_LIFETIME = 300 -- Sekunden
+local PHOTO_RARITIES = { "Legendary", "Mythic", "Celestial", "Divine", "Secret" }
+-- Öfter Gold/Diamond/Cosmic als Normal – glänzt schöner auf dem Foto
+local PHOTO_MUTATIONS = {
+	{ Name = "Normal", Weight = 16 },
+	{ Name = "Gold", Weight = 32 },
+	{ Name = "Diamond", Weight = 28 },
+	{ Name = "Cosmic", Weight = 24 },
+}
+
+-- Zufälliger Deko-Meteor für die Foto-Base (wird NICHT gespeichert)
+local function photoEntry()
+	local rarity = PHOTO_RARITIES[photoRng:NextInteger(1, #PHOTO_RARITIES)]
+	local def = Services.MeteorService.RandomOfRarity(rarity)
+	if not def then
+		return nil
+	end
+	local mut = Util.WeightedPick(PHOTO_MUTATIONS, nil, photoRng)
+	local level = math.min(photoRng:NextInteger(10, 20), Config.MaxLevel)
+	return { Id = def.Id, Mut = mut.Name, Lv = level, Xp = 0 }
+end
+
+-- Je der teuerste spawnbare Meteor jeder Seltenheit (Common zuerst, Secret zuletzt)
+local function showcaseDefs()
+	local list = {}
+	for _, rarity in ipairs(Config.Rarities) do
+		local best = nil
+		for _, def in ipairs(Config.MeteorsByRarity[rarity.Name]) do
+			if not best or def.Price > best.Price then
+				best = def
+			end
+		end
+		if best then
+			table.insert(list, best)
+		end
+	end
+	return list
 end
 
 -- -------------------------------------------------------------------
@@ -1372,6 +1418,62 @@ function Actions.Invisible(admin, args)
 		setInvisible(p, args.Enabled == true)
 	end
 	return #targets > 0, (args.Enabled and "👻 Unsichtbar: " or "Sichtbar: ") .. names(targets)
+end
+
+-- Foto-Modus: Reihe aller Seltenheiten vor dem Admin (links Common, rechts Secret)
+function Actions.Showcase(admin)
+	local root = getRoot(admin)
+	if not root then
+		return false, "Kein Charakter"
+	end
+	local defs = showcaseDefs()
+	if #defs == 0 then
+		return false, "Keine Meteore gefunden"
+	end
+	local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+	look = look.Magnitude > 0.01 and look.Unit or Vector3.new(0, 0, -1)
+	local right = look:Cross(Vector3.yAxis) -- quer zur Blickrichtung
+	local sizes = {}
+	local width = SHOWCASE_GAP * (#defs - 1)
+	for i, def in ipairs(defs) do
+		sizes[i] = MeteorFactory.GetSize({ Id = def.Id, Lv = 1 })
+		width += sizes[i]
+	end
+	local center = root.Position + look * SHOWCASE_DISTANCE
+	local offset = -width / 2
+	for i, def in ipairs(defs) do
+		Services.MeteorService.SpawnMeteor({
+			Id = def.Id,
+			Mut = "Normal",
+			Position = center + right * (offset + sizes[i] / 2),
+			Instant = true,
+			Announce = false,
+			Lifetime = SHOWCASE_LIFETIME,
+		})
+		offset += sizes[i] + SHOWCASE_GAP
+	end
+	return true, "✨ Showcase: " .. #defs .. " Meteore (5 Min)"
+end
+
+-- Foto-Modus: leere Slots der eigenen Base mit Deko füllen (nur Optik, nichts gespeichert)
+function Actions.PhotoBase(admin)
+	local plot = Services.PlotService.GetPlot(admin)
+	if not plot then
+		return false, "Du hast keine Base"
+	end
+	local count = Services.PlotService.FillPhotoShowcase(plot, photoEntry)
+	return true, count > 0 and ("🏠 Foto-Base: " .. count .. " Deko-Meteore") or "🏠 Base ist schon voll"
+end
+
+-- Foto-Modus: Deko weg, Slot-Farben zurück, Krater leer
+function Actions.PhotoClear(admin)
+	local plot = Services.PlotService.GetPlot(admin)
+	if plot then
+		Services.PlotService.ClearPhotoShowcase(plot)
+		Services.PlotService.UpdateSlotColors(plot)
+	end
+	Services.MeteorService.ClearGround()
+	return true, "🧹 Foto-Deko entfernt, Krater geleert"
 end
 
 -- -------------------------------------------------------------------
@@ -3286,7 +3388,8 @@ local function impactEffect(position: Vector3, size: number)
 	end
 end
 
--- opts: { Id?, Mut?, Rarity?, Position?, Free?, Instant?, Announce? }
+-- opts: { Id?, Mut?, Rarity?, Position?, Free?, Instant?, Announce?, Lifetime? }
+-- Lifetime = Sekunden bis zum Zerbröseln (ohne Angabe: GroundLifetime bzw. DroppedLifetime bei Free)
 function MeteorService.SpawnMeteor(opts)
 	opts = opts or {}
 	local entry
@@ -3315,6 +3418,7 @@ function MeteorService.SpawnMeteor(opts)
 	local size = part.Size.Y
 	local landing = opts.Position or randomLandingSpot()
 	local landCF = CFrame.new(landing.X, 0.4 + size / 2, landing.Z)
+	local lifetime = tonumber(opts.Lifetime) or (opts.Free and Config.DroppedLifetime or Config.GroundLifetime)
 
 	local record = {
 		Entry = entry,
@@ -3322,7 +3426,7 @@ function MeteorService.SpawnMeteor(opts)
 		Price = price,
 		Landed = false,
 		Claimed = false,
-		Expires = os.clock() + (opts.Free and Config.DroppedLifetime or Config.GroundLifetime),
+		Expires = os.clock() + lifetime,
 	}
 	table.insert(groundMeteors, record)
 	attachClaimPrompt(record)
@@ -4074,6 +4178,23 @@ end
 -- -------------------------------------------------------------------
 -- METEORE IN DER BASE ANZEIGEN
 -- -------------------------------------------------------------------
+-- Foto-Deko (Admin-Panel → 📸 Foto-Modus): Ordner im Plot-Model, Teile heißen "Slot<n>"
+local PHOTO_FOLDER = "PhotoShowcase"
+
+-- Stellt einen Meteor mittig auf das Slot-Pad
+local function placeOnSlot(plot, slot: number, meteor: BasePart)
+	local slotPart = plot.Slots[slot]
+	meteor.CFrame = slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2 + meteor.Size.Y / 2, 0)
+end
+
+local function removePhotoDeco(plot, slot: number)
+	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
+	local deco = folder and folder:FindFirstChild("Slot" .. slot)
+	if deco then
+		deco:Destroy()
+	end
+end
+
 function PlotService.RenderSlot(plot, slot: number)
 	local existing = plot.MeteorParts[slot]
 	if existing then
@@ -4091,9 +4212,9 @@ function PlotService.RenderSlot(plot, slot: number)
 	if Services.CarryService.IsSlotBeingStolen(plot, slot) then
 		return -- wird gerade geklaut -> unsichtbar in der Base
 	end
+	removePhotoDeco(plot, slot) -- echter Meteor ersetzt die Foto-Deko
 	local meteor = MeteorFactory.Create(entry, "Base")
-	local slotPart = plot.Slots[slot]
-	meteor.CFrame = slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2 + meteor.Size.Y / 2, 0)
+	placeOnSlot(plot, slot, meteor)
 	meteor:SetAttribute("PlotIndex", plot.Index)
 	meteor:SetAttribute("Slot", slot)
 	local def = Config.MeteorsById[entry.Id]
@@ -4142,14 +4263,52 @@ end
 
 function PlotService.UpdateSlotColors(plot)
 	local count = plot.Owner and PlotService.SlotCount(plot.Owner) or 0
+	-- Foto-Deko aktiv -> alle Pads in der Plot-Farbe (volle Base sieht auf dem Foto besser aus)
+	local photo = plot.Model:FindFirstChild(PHOTO_FOLDER) ~= nil
 	for slot, slotPart in ipairs(plot.Slots) do
-		if slot <= count then
+		if slot <= count or photo then
 			slotPart.Color = plot.Color:Lerp(Color3.new(1, 1, 1), 0.3)
 			slotPart.Transparency = 0
 		else
 			slotPart.Color = Color3.fromRGB(35, 35, 45)
 			slotPart.Transparency = 0.5
 		end
+	end
+end
+
+-- -------------------------------------------------------------------
+-- FOTO-DEKO (nur Optik für Thumbnails: keine Spieldaten, keine Prompts)
+-- -------------------------------------------------------------------
+-- Füllt ALLE Slots ohne echten Meteor (auch die gesperrten 11-15) mit Deko-Meteoren.
+-- makeEntry() liefert { Id, Mut, Lv }. Gibt die Anzahl der Deko-Meteore zurück.
+function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
+	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = PHOTO_FOLDER
+		folder.Parent = plot.Model
+	end
+	local count = 0
+	for slot = 1, #plot.Slots do
+		removePhotoDeco(plot, slot) -- nochmal drücken = neu würfeln
+		local entry = plot.MeteorParts[slot] == nil and makeEntry() or nil
+		if entry and Config.MeteorsById[entry.Id] then
+			local meteor = MeteorFactory.Create(entry, "Base")
+			meteor.Name = "Slot" .. slot
+			placeOnSlot(plot, slot, meteor)
+			meteor.Parent = folder
+			count += 1
+		end
+	end
+	PlotService.UpdateSlotColors(plot)
+	return count
+end
+
+-- Entfernt nur die Deko (Slot-Farben danach mit UpdateSlotColors zurücksetzen)
+function PlotService.ClearPhotoShowcase(plot)
+	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
+	if folder then
+		folder:Destroy()
 	end
 end
 
@@ -4236,6 +4395,7 @@ function PlotService.ReleasePlot(player: Player)
 		meteor:Destroy()
 		plot.MeteorParts[slot] = nil
 	end
+	PlotService.ClearPhotoShowcase(plot)
 	PlotService.UpdateSlotColors(plot)
 end
 
@@ -4407,6 +4567,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
 
 local player = Players.LocalPlayer
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -5293,8 +5454,13 @@ end)
 -- ---------------------------------------------------------------------
 local plotsFolder = workspace:WaitForChild("MeteorHeistMap"):WaitForChild("Plots")
 local trackedPrompts: { [ProximityPrompt]: boolean } = {}
+local photoMode = false -- Foto-Modus (Taste H, siehe unten): dann bleiben ALLE Prompts aus
 
 local function updatePrompt(prompt: ProximityPrompt)
+	if photoMode then
+		prompt.Enabled = false
+		return
+	end
 	local plotModel = prompt:FindFirstAncestorWhichIsA("Model")
 	if not plotModel then
 		return
@@ -5545,6 +5711,114 @@ player:GetAttributeChangedSignal("CanFly"):Connect(function()
 	if player:GetAttribute("CanFly") ~= true and flying then
 		stopFlying()
 	end
+end)
+
+-- =====================================================================
+-- FOTO-MODUS (Taste H, nur Admins) – für schöne Thumbnail-Screenshots.
+-- Rein clientseitig: blendet die eigene UI, die Roblox-Oberfläche und alle Prompts aus.
+-- =====================================================================
+local photoPending = false -- Toast wird gezeigt, gleich wird ausgeblendet
+local photoToken = 0
+local photoHidden: { [ProximityPrompt]: boolean } = {} -- Prompts, die der Foto-Modus ausgeschaltet hat
+local photoConnections: { RBXScriptConnection } = {}
+local savedCoreGui: { [Enum.CoreGuiType]: boolean } = {}
+
+local function hidePrompt(prompt: ProximityPrompt)
+	local function off()
+		if photoMode and prompt.Enabled then
+			photoHidden[prompt] = true
+			prompt.Enabled = false
+		end
+	end
+	off()
+	-- Der Server schaltet z.B. BuyPrompts beim Landen ein -> sofort wieder aus
+	table.insert(photoConnections, prompt:GetPropertyChangedSignal("Enabled"):Connect(off))
+end
+
+local function startPhotoMode()
+	photoMode = true
+	gui.Enabled = false
+	-- Roblox-Oberfläche (Chat, Spielerliste, Rucksack ...) merken und ausblenden
+	savedCoreGui = {}
+	for _, item in ipairs(Enum.CoreGuiType:GetEnumItems()) do
+		if item ~= Enum.CoreGuiType.All then
+			local ok, enabled = pcall(StarterGui.GetCoreGuiEnabled, StarterGui, item)
+			-- Nicht lesbar -> beim Beenden trotzdem wieder einschalten (sonst bliebe es für immer aus)
+			savedCoreGui[item] = not ok or enabled == true
+		end
+	end
+	pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.All, false)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ProximityPrompt") then
+			hidePrompt(inst)
+		end
+	end
+	table.insert(
+		photoConnections,
+		workspace.DescendantAdded:Connect(function(inst)
+			if inst:IsA("ProximityPrompt") then
+				hidePrompt(inst)
+			end
+		end)
+	)
+end
+
+local function stopPhotoMode()
+	photoMode = false
+	for _, connection in ipairs(photoConnections) do
+		connection:Disconnect()
+	end
+	photoConnections = {}
+	gui.Enabled = true
+	for item, enabled in pairs(savedCoreGui) do
+		pcall(StarterGui.SetCoreGuiEnabled, StarterGui, item, enabled)
+	end
+	-- Kaufen-Prompts wieder an (der Server prüft beim Kaufen ohnehin, ob der Meteor gelandet ist),
+	-- Klauen/Verkaufen stellt der Prompt-Updater wieder richtig ein.
+	for prompt in pairs(photoHidden) do
+		if prompt.Parent and not trackedPrompts[prompt] then
+			prompt.Enabled = true
+		end
+	end
+	photoHidden = {}
+	for prompt in pairs(trackedPrompts) do
+		if prompt.Parent then
+			updatePrompt(prompt)
+		end
+	end
+end
+
+local function togglePhotoMode()
+	if photoMode or photoPending then
+		photoToken += 1
+		photoPending = false
+		if photoMode then
+			stopPhotoMode()
+			toast("📸 Foto-Modus aus", "Info")
+		end
+		return
+	end
+	if player:GetAttribute("IsAdmin") ~= true then
+		return
+	end
+	photoPending = true
+	photoToken += 1
+	local token = photoToken
+	toast("📸 Foto-Modus: H drücken zum Beenden", "Info")
+	task.delay(1.5, function()
+		if photoPending and photoToken == token then
+			photoPending = false
+			startPhotoMode()
+		end
+	end)
+end
+
+-- Funktioniert auch bei versteckter UI, aber nicht beim Tippen in einer TextBox
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or input.KeyCode ~= Enum.KeyCode.H or UserInputService:GetFocusedTextBox() then
+		return
+	end
+	togglePhotoMode()
 end)
 
 -- =====================================================================
@@ -6003,6 +6277,43 @@ local function buildAdminPanel()
 		button({ Text = info[1], Color = info[2], LayoutOrder = i, MaxText = 14, Parent = abuseGrid }, info[3])
 	end
 
+	-- Foto-Modus (für Thumbnails)
+	section(content, "📸 Foto-Modus", 25)
+	local photoGrid = grid(content, 26, 146, 40)
+	local photoActions = {
+		{
+			"📸 UI aus/an (Taste H)",
+			THEME.Blue,
+			function()
+				togglePhotoMode()
+			end,
+		},
+		{
+			"✨ Showcase-Reihe",
+			THEME.Purple,
+			function()
+				admin("Showcase")
+			end,
+		},
+		{
+			"🏠 Foto-Base füllen",
+			THEME.Green,
+			function()
+				admin("PhotoBase")
+			end,
+		},
+		{
+			"🧹 Foto aufräumen",
+			THEME.Gray,
+			function()
+				admin("PhotoClear")
+			end,
+		},
+	}
+	for i, info in ipairs(photoActions) do
+		button({ Text = info[1], Color = info[2], LayoutOrder = i, MaxText = 14, Parent = photoGrid }, info[3])
+	end
+
 	sideButton("🛠️ Admin", Color3.fromRGB(200, 40, 40), 7, function()
 		openWindow(adminWindow)
 	end)
@@ -6011,7 +6322,7 @@ local function buildAdminPanel()
 			openWindow(adminWindow)
 		end
 	end)
-	toast("🛠️ Admin-Panel: Taste P • Fliegen: Taste G", "Info")
+	toast("🛠️ Admin-Panel: Taste P • Fliegen: Taste G • Foto: Taste H", "Info")
 end
 
 local adminBuilt = false

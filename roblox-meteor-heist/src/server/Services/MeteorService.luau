@@ -244,7 +244,8 @@ local function impactEffect(position: Vector3, size: number)
 	end
 end
 
--- opts: { Id?, Mut?, Rarity?, Position?, Free?, Instant?, Announce? }
+-- opts: { Id?, Mut?, Rarity?, Position?, Free?, Instant?, Announce?, Lifetime? }
+-- Lifetime = Sekunden bis zum Zerbröseln (ohne Angabe: GroundLifetime bzw. DroppedLifetime bei Free)
 function MeteorService.SpawnMeteor(opts)
 	opts = opts or {}
 	local entry
@@ -273,6 +274,7 @@ function MeteorService.SpawnMeteor(opts)
 	local size = part.Size.Y
 	local landing = opts.Position or randomLandingSpot()
 	local landCF = CFrame.new(landing.X, 0.4 + size / 2, landing.Z)
+	local lifetime = tonumber(opts.Lifetime) or (opts.Free and Config.DroppedLifetime or Config.GroundLifetime)
 
 	local record = {
 		Entry = entry,
@@ -280,7 +282,7 @@ function MeteorService.SpawnMeteor(opts)
 		Price = price,
 		Landed = false,
 		Claimed = false,
-		Expires = os.clock() + (opts.Free and Config.DroppedLifetime or Config.GroundLifetime),
+		Expires = os.clock() + lifetime,
 	}
 	table.insert(groundMeteors, record)
 	attachClaimPrompt(record)

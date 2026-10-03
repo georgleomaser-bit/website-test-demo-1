@@ -11,8 +11,17 @@
  *    node generate.js            -> alle Bilder neu erzeugen
  *    node generate.js pass-vip   -> nur Bilder, deren Name "pass-vip" enthaelt
  *    node generate.js --html     -> zusaetzlich die HTML-Seiten nach ./html/ schreiben
+ *    node generate.js --screens <ordner> --out <ordner>
+ *                                -> anderer Screenshot-/Ausgabe-Ordner
+ *    node generate.js --no-screens -> Screenshots ignorieren, alles zeichnen
  *
  *  Ausgabe: ../ (also vorbereitet/bilder/)
+ *
+ *  Screenshot-Modus (siehe README.md): Liegen in vorbereitet/screenshots/
+ *  echte In-Game-Bilder (base, krater, tragen, showcase, secret als
+ *  .png/.jpg), werden Spiel-Icon und Thumbnails daraus gebaut (plus
+ *  thumbnail-4/5). Fehlt ein Screenshot, wird das Bild wie bisher
+ *  gezeichnet. Die 14 Pass/Produkt-Icons sind immer gezeichnet.
  *
  *  Qualitaets-Automatik:
  *   - Text wird automatisch verkleinert, bis er in seine Breite passt.
@@ -26,6 +35,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
+const { pathToFileURL } = require('url');
 
 function loadPlaywright() {
   try {
@@ -878,6 +888,296 @@ function thumb3() {
 }
 
 // ---------------------------------------------------------------------
+//  SCREENSHOT-MODUS: Spiel-Icon + Thumbnails aus echten In-Game-Bildern.
+//  Der Screenshot wird "cover"-skaliert (gleichmaessig, nie verzerrt,
+//  ueberstehende Raender werden abgeschnitten), leicht farbkorrigiert
+//  (mehr Saettigung/Kontrast), bekommt eine Vignette und dunkle Verlaeufe
+//  hinter den Ueberschriften. Texte/Baender/Pillen = dieselben Bausteine
+//  wie bei den gezeichneten Thumbnails.
+// ---------------------------------------------------------------------
+const SHOT_NAMES = ['base', 'krater', 'tragen', 'showcase', 'secret'];
+const SHOT_EXTS = ['.png', '.jpg', '.jpeg']; // Reihenfolge = Vorrang bei doppelten Namen
+const DEFAULT_SCREENS_DIR = path.resolve(__dirname, '..', '..', 'screenshots');
+const SHOT_HREF = '__SCREENSHOT_HREF__'; // Platzhalter, wird beim Rendern ersetzt
+const SHOT_UPSCALE_WARN = 1.5; // ab dieser Vergroesserung Hinweis "Aufloesung zu gering"
+
+function findScreens(dir) {
+  const found = {};
+  const warnings = [];
+  const files = fs
+    .readdirSync(dir)
+    .filter((f) => {
+      try {
+        return fs.statSync(path.join(dir, f)).isFile();
+      } catch (e) {
+        return false; // z. B. kaputter Link
+      }
+    })
+    .sort((a, b) => {
+      const ka = path.basename(a, path.extname(a)).toLowerCase();
+      const kb = path.basename(b, path.extname(b)).toLowerCase();
+      if (ka !== kb) return ka < kb ? -1 : 1;
+      return SHOT_EXTS.indexOf(path.extname(a).toLowerCase()) - SHOT_EXTS.indexOf(path.extname(b).toLowerCase());
+    });
+  for (const f of files) {
+    const ext = path.extname(f).toLowerCase();
+    const name = path.basename(f, path.extname(f)).toLowerCase();
+    const isImage = /^\.(png|jpe?g|webp|gif|bmp|heic|heif|avif|tiff?)$/.test(ext);
+    if (!isImage) continue; // z. B. README.md
+    if (!SHOT_EXTS.includes(ext)) {
+      warnings.push(`${f}: Format nicht unterstuetzt - bitte als .png oder .jpg speichern.`);
+      continue;
+    }
+    if (!SHOT_NAMES.includes(name)) {
+      warnings.push(`${f}: unbekannter Name, wird ignoriert (erlaubt: ${SHOT_NAMES.join(', ')}).`);
+      continue;
+    }
+    if (found[name]) {
+      warnings.push(`${f}: es gibt schon ${path.basename(found[name].file)} fuer "${name}" - ${f} wird ignoriert.`);
+      continue;
+    }
+    found[name] = { name, file: path.join(dir, f) };
+  }
+  return { found, warnings };
+}
+
+function sniffMime(buf) {
+  if (buf.slice(0, 8).toString('hex') === '89504e470d0a1a0a') return 'image/png';
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  return null;
+}
+
+// Ist die Datei vollstaendig? (abgebrochener Download/Upload/Kopiervorgang)
+// Chromium zeigt abgeschnittene Bilder sonst kommentarlos nur halb an
+// (Rest leer) -> fast schwarzes Thumbnail ohne jede Warnung.
+function isComplete(buf, mime) {
+  if (mime === 'image/png') {
+    // Chunks ablaufen, bis IEND kommt
+    let off = 8;
+    while (off + 12 <= buf.length) {
+      const len = buf.readUInt32BE(off);
+      const type = buf.toString('latin1', off + 4, off + 8);
+      off += 12 + len;
+      if (off > buf.length) return false;
+      if (type === 'IEND') return true;
+    }
+    return false;
+  }
+  // JPEG: Segmente ablaufen (APPn samt eingebettetem Vorschaubild wird per
+  // Laenge uebersprungen), nach SOS die Bilddaten bis zum naechsten Marker
+  // durchsuchen. Vollstaendig = EOI-Marker (FFD9) erreicht.
+  const isRst = (m) => m >= 0xd0 && m <= 0xd7;
+  let off = 2;
+  while (off + 2 <= buf.length) {
+    if (buf[off] !== 0xff) return false;
+    const m = buf[off + 1];
+    if (m === 0xd9) return true;
+    if (m === 0xff) { off++; continue; } // Fuellbyte
+    if (m === 0x01 || isRst(m)) { off += 2; continue; }
+    if (off + 4 > buf.length) return false;
+    off += 2 + buf.readUInt16BE(off + 2);
+    if (m === 0xda) {
+      while (off + 1 < buf.length && !(buf[off] === 0xff && buf[off + 1] !== 0x00 && !isRst(buf[off + 1]))) off++;
+      if (off + 1 >= buf.length) return false;
+    }
+  }
+  return false;
+}
+
+// Laedt den Screenshot im Browser, misst die echte Groesse und erkennt
+// einfarbige Raender (Fensterrahmen, Titelleiste, schwarze Balken,
+// transparente Schatten), die vor dem Zuschneiden entfernt werden.
+async function analyseShot(page, shot) {
+  const buf = fs.readFileSync(shot.file);
+  const mime = sniffMime(buf);
+  if (!mime) throw new Error('Datei ist kein gueltiges PNG/JPG');
+  if (!isComplete(buf, mime)) throw new Error('Datei ist unvollstaendig/abgeschnitten - bitte neu speichern bzw. neu kopieren');
+  const url = `data:${mime};base64,${buf.toString('base64')}`;
+  const res = await page.evaluate(async (url) => {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const W = img.naturalWidth;
+    const H = img.naturalHeight;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0);
+    const d = ctx.getImageData(0, 0, W, H).data;
+    const TOL = 26; // erlaubte Abweichung je Farbkanal innerhalb einer Linie
+    const SHARE = 0.9; // so viel der Linie muss "gleichfarbig" sein
+    const EDGE = 12; // Farbsprung, der einen Rahmen vom Bildinhalt trennt
+    const CAP = 0.09; // max. 9 % je Seite; laenger = Bildinhalt (z. B. Himmel), nicht Rahmen
+    const diff = (a, b) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+    // Liefert Median-Farbe (RGBA) einer Linie und ob sie (fast) einfarbig ist
+    const line = (n, at) => {
+      const step = Math.max(1, Math.floor(n / 1200));
+      const hist = [0, 1, 2, 3].map(() => new Uint32Array(256));
+      let cnt = 0;
+      for (let i = 0; i < n; i += step) {
+        const p = at(i) * 4;
+        for (let ch = 0; ch < 4; ch++) hist[ch][d[p + ch]]++;
+        cnt++;
+      }
+      const med = hist.map((h) => {
+        let s = 0;
+        for (let v = 0; v < 256; v++) {
+          s += h[v];
+          if (s * 2 >= cnt) return v;
+        }
+        return 255;
+      });
+      let ok = 0;
+      for (let i = 0; i < n; i += step) {
+        const p = at(i) * 4;
+        if (
+          Math.abs(d[p] - med[0]) <= TOL && Math.abs(d[p + 1] - med[1]) <= TOL &&
+          Math.abs(d[p + 2] - med[2]) <= TOL && Math.abs(d[p + 3] - med[3]) <= TOL
+        ) ok++;
+      }
+      return { med, uni: ok >= cnt * SHARE };
+    };
+    // Anteil der Pixel einer Linie, die (fast) die Farbe col haben
+    const share = (n, at, col) => {
+      const step = Math.max(1, Math.floor(n / 1200));
+      let cnt = 0;
+      let ok = 0;
+      for (let i = 0; i < n; i += step) {
+        const p = at(i) * 4;
+        if (diff([d[p], d[p + 1], d[p + 2], d[p + 3]], col) <= EDGE) ok++;
+        cnt++;
+      }
+      return ok / cnt;
+    };
+    // Rahmen = einfarbige Linien vom Rand an, die mit einem klaren Farbsprung
+    // enden. Mehrere Schichten (z. B. 1-px-Rand + Titelleiste) werden
+    // nacheinander abgeschaelt. Reicht ein Streifen bis CAP oder geht er
+    // ohne Farbsprung in den Inhalt ueber (Himmel, Boden), bleibt er stehen.
+    const band = (len, cross, at) => {
+      const cap = Math.max(1, Math.floor(len * CAP));
+      const info = (k) => line(cross, (i) => at(k, i));
+      let total = 0;
+      for (;;) {
+        let k = total;
+        let prev = null;
+        while (k < cap) {
+          const l = info(k);
+          if (!l.uni || (prev && diff(l.med, prev) > EDGE)) break;
+          prev = l.med;
+          k++;
+        }
+        // naechste Linie muss sich klar vom Streifen abheben (hoechstens halb so viel gleiche Farbe)
+        if (k === total || k >= cap || share(cross, (i) => at(k, i), prev) > 0.5) return total;
+        total = k;
+      }
+    };
+    const top = band(H, W, (k, i) => k * W + i);
+    const bottom = band(H, W, (k, i) => (H - 1 - k) * W + i);
+    const rows = H - top - bottom;
+    const left = band(W, rows, (k, i) => (top + i) * W + k);
+    const right = band(W, rows, (k, i) => (top + i) * W + (W - 1 - k));
+    return { w: W, h: H, trim: { top, bottom, left, right } };
+  }, url);
+  const t = res.trim;
+  return {
+    ...shot, ...res, url,
+    crop: { x: t.left, y: t.top, w: res.w - t.left - t.right, h: res.h - t.top - t.bottom },
+  };
+}
+
+// "cover": gleichmaessiger Massstab, Zielflaeche immer voll bedeckt.
+// fx/fy = wohin (Anteil der Zielbreite/-hoehe) die Mitte des Screenshots
+// kommt; zoom > 1 zeigt einen engeren Ausschnitt um die Bildmitte.
+function shotPlacement(shot, W, H, { zoom = 1, fx = 0.5, fy = 0.5 } = {}) {
+  const c = shot.crop;
+  const tx = W * fx;
+  const ty = H * fy;
+  const s = zoom * Math.max((2 * Math.max(tx, W - tx)) / c.w, (2 * Math.max(ty, H - ty)) / c.h);
+  return { s, x: tx - (c.x + c.w / 2) * s, y: ty - (c.y + c.h / 2) * s, w: shot.w * s, h: shot.h * s };
+}
+
+// Hintergrund-Ebenen: Screenshot (farbkorrigiert) + Vignette + dunkle
+// Verlaeufe oben/unten (Hoehe in px, 0 = keiner) hinter den Ueberschriften.
+function shotBackdrop(W, H, pl, { top = 0, bottom = 0, shade = 0.8 } = {}) {
+  const contrast = 1.12;
+  const icpt = n1((0.5 - 0.5 * contrast) * 1000) / 1000;
+  const func = (ch) => `<feFunc${ch} type="linear" slope="${contrast}" intercept="${icpt}"/>`;
+  const fade = (id, flip) => {
+    const st = [[0, shade], [0.5, shade * 0.66], [1, 0]];
+    return `<linearGradient id="${id}" x1="0" y1="${flip ? 1 : 0}" x2="0" y2="${flip ? 0 : 1}">${st
+      .map(([o, a]) => `<stop offset="${o}" stop-color="#0c0428" stop-opacity="${n1(a * 100) / 100}"/>`)
+      .join('')}</linearGradient>`;
+  };
+  return `<defs>
+    <filter id="shotGrade" filterUnits="userSpaceOnUse" x="0" y="0" width="${W}" height="${H}" color-interpolation-filters="sRGB">
+      <feColorMatrix type="saturate" values="1.3"/>
+      <feComponentTransfer>${func('R')}${func('G')}${func('B')}</feComponentTransfer>
+    </filter>
+    <radialGradient id="shotVig" cx="0.5" cy="0.5" r="0.72"><stop offset="0.45" stop-color="#07021a" stop-opacity="0"/><stop offset="0.8" stop-color="#07021a" stop-opacity="0.3"/><stop offset="1" stop-color="#07021a" stop-opacity="0.62"/></radialGradient>
+    ${fade('shotFadeT', false)}${fade('shotFadeB', true)}
+  </defs>
+  <rect width="${W}" height="${H}" fill="#0b0620"/>
+  <g filter="url(#shotGrade)"><image class="shot" href="${SHOT_HREF}" x="${n1(pl.x)}" y="${n1(pl.y)}" width="${n1(pl.w)}" height="${n1(pl.h)}" preserveAspectRatio="xMidYMid meet"/></g>
+  <rect width="${W}" height="${H}" fill="url(#shotVig)"/>
+  ${top ? `<rect x="0" y="0" width="${W}" height="${top}" fill="url(#shotFadeT)"/>` : ''}
+  ${bottom ? `<rect x="0" y="${H - bottom}" width="${W}" height="${bottom}" fill="url(#shotFadeB)"/>` : ''}`;
+}
+
+const HEAD = { sw: 0.17, depth: 0.08, glow: '#ff5a00', glowOp: 0.5 };
+
+function shotThumb1(pl) {
+  const head = txt('', {
+    x: 960, cy: 150, size: 178, fill: headlineFill(), maxW: 1800, ...HEAD,
+    tspans: [{ text: 'KLAU DIE ', fill: FILL.white }, { text: 'METEORE!' }],
+  });
+  return thumbSVG(shotBackdrop(TW, TH, pl, { top: 440 }) + head);
+}
+
+function shotThumb2(pl) {
+  const head1 = txt('', {
+    x: 960, cy: 135, size: 160, fill: headlineFill(), maxW: 1800, ...HEAD, glow: '#ff3dc8',
+    tspans: [{ text: 'SECRET ', fill: ['#ffffff', '#ffe0f6', '#ff7ad9'] }, { text: 'METEOR' }],
+  });
+  const head2 = txt('GEFUNDEN!', { x: 960, cy: 950, size: 175, fill: headlineFill(), maxW: 1500, ...HEAD });
+  return thumbSVG(shotBackdrop(TW, TH, pl, { top: 400, bottom: 400 }) + head1 + head2);
+}
+
+function shotThumb3(pl) {
+  const ev = ribbon(960, 100, 400, 104, 'EVENT', { fill: ['#ff5a5a', '#c2000f'] });
+  const headline = txt('METEORITENSCHAUER!', { x: 960, cy: 285, size: 150, fill: headlineFill(), maxW: 1830, ...HEAD, glowOp: 0.55 });
+  const badges =
+    pill(585, 960, '3X GLÜCK', { fill: ['#47ff7a', '#0a9a3a'], emoji: '🍀', size: 72, w: 600 }) +
+    pill(1285, 960, 'KEINE LOCKS!', { fill: ['#5aa8ff', '#1240c0'], emoji: '🔓', size: 72, w: 700 });
+  return thumbSVG(shotBackdrop(TW, TH, pl, { top: 500, bottom: 330 }) + ev + headline + badges);
+}
+
+function shotThumb4(pl) {
+  const head = txt('WERDE REICH!', { x: 960, cy: 150, size: 200, fill: headlineFill(), maxW: 1800, ...HEAD });
+  const sub = txt('DEINE BASE VOLLER METEORE', { x: 960, cy: 315, size: 80, fill: FILL.white, maxW: 1500, sw: 0.2, depth: 0.08 });
+  return thumbSVG(shotBackdrop(TW, TH, pl, { top: 500 }) + head + sub);
+}
+
+function shotThumb5(pl) {
+  const head1 = txt('', {
+    x: 960, cy: 140, size: 190, fill: headlineFill(), maxW: 1800, ...HEAD,
+    tspans: [{ text: '27 ', fill: ['#ffffff', '#c4f6ff', '#1ed2ff'] }, { text: 'METEORE' }],
+  });
+  const head2 = txt('ZUM SAMMELN!', { x: 960, cy: 950, size: 165, fill: headlineFill(), maxW: 1700, ...HEAD });
+  return thumbSVG(shotBackdrop(TW, TH, pl, { top: 420, bottom: 400 }) + head1 + head2);
+}
+
+function shotGameIcon(pl) {
+  const S = 512;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${S}" height="${S}" viewBox="0 0 ${S} ${S}">
+  <defs>${commonDefs(1)}</defs>
+  ${shotBackdrop(S, S, pl, { bottom: 260, shade: 0.88 })}
+  ${txt('METEOR', { x: 256, cy: 348, size: 104, fill: FILL.fire, maxW: 470, glow: '#ff6a00', glowOp: 0.55 })}
+  ${txt('HEIST', { x: 256, cy: 436, size: 116, fill: ['#ffffff', '#e8f0ff', '#8fc8ff'], stroke: '#0a0a36', maxW: 430, glow: '#4a8cff', glowOp: 0.5 })}
+</svg>`;
+}
+
+// ---------------------------------------------------------------------
 //  SEITE + RENDERN
 // ---------------------------------------------------------------------
 function pageHTML(w, h, svg) {
@@ -891,12 +1191,23 @@ function pageHTML(w, h, svg) {
   </style></head><body>${svg}</body></html>`;
 }
 
+// shot.from = Screenshot-Namen in Vorrang-Reihenfolge. Ist keiner davon da,
+// wird svg() gezeichnet; Jobs ohne svg (thumbnail-4/5) werden dann uebersprungen.
 const JOBS = [
   ...ICONS.map((ic) => ({ file: ic.file, w: 512, h: 512, kind: 'circle', desc: ic.desc, svg: () => iconSVG(ic) })),
-  { file: 'spiel-icon.png', w: 512, h: 512, kind: 'square', desc: 'Spiel-Icon: riesiger gluehender Meteor mit Feuerschweif im Weltall, darunter METEOR HEIST.', svg: gameIconSVG },
-  { file: 'thumbnail-1.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 1: "KLAU DIE METEORE!" - maskierte Blockfigur rennt mit gluehendem Meteor ueber dem Kopf, Verfolger mit Bonk-Schlaeger, Krater.', svg: thumb1 },
-  { file: 'thumbnail-2.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 2: "SECRET METEOR GEFUNDEN!" - riesiger weiss-pinker Meteor mit Glow und Strahlen, Schild mit "SECRET"-Band.', svg: thumb2 },
-  { file: 'thumbnail-3.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 3: "METEORITENSCHAUER!" - viele bunte Meteore regnen schraeg herab, EVENT-Band, 3X GLUECK und KEINE LOCKS!.', svg: thumb3 },
+  { file: 'spiel-icon.png', w: 512, h: 512, kind: 'square', desc: 'Spiel-Icon: riesiger gluehender Meteor mit Feuerschweif im Weltall, darunter METEOR HEIST.', svg: gameIconSVG,
+    // engerer Ausschnitt um die Bildmitte; die Bildmitte landet ueber dem Schriftzug
+    shot: { from: ['secret', 'showcase', 'base'], svg: shotGameIcon, place: { zoom: 1.15, fy: 0.4 } } },
+  { file: 'thumbnail-1.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 1: "KLAU DIE METEORE!" - maskierte Blockfigur rennt mit gluehendem Meteor ueber dem Kopf, Verfolger mit Bonk-Schlaeger, Krater.', svg: thumb1,
+    shot: { from: ['tragen'], svg: shotThumb1 } },
+  { file: 'thumbnail-2.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 2: "SECRET METEOR GEFUNDEN!" - riesiger weiss-pinker Meteor mit Glow und Strahlen, Schild mit "SECRET"-Band.', svg: thumb2,
+    shot: { from: ['secret', 'showcase'], svg: shotThumb2 } },
+  { file: 'thumbnail-3.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 3: "METEORITENSCHAUER!" - viele bunte Meteore regnen schraeg herab, EVENT-Band, 3X GLUECK und KEINE LOCKS!.', svg: thumb3,
+    shot: { from: ['krater'], svg: shotThumb3 } },
+  { file: 'thumbnail-4.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 4 (nur mit Screenshot "base"): "WERDE REICH!" - Deine Base voller Meteore.', svg: null,
+    shot: { from: ['base'], svg: shotThumb4 } },
+  { file: 'thumbnail-5.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 5 (nur mit Screenshot "showcase"): "27 METEORE ZUM SAMMELN!".', svg: null,
+    shot: { from: ['showcase'], svg: shotThumb5 } },
 ];
 
 function pngSize(file) {
@@ -989,26 +1300,141 @@ async function textBounds(page, W, H, margin) {
   );
 }
 
+const USAGE = `Benutzung: node generate.js [Optionen] [Filter ...]
+  Filter              nur Bilder, deren Dateiname den Text enthaelt (z. B. thumbnail, pass-vip)
+  --screens <ordner>  In-Game-Screenshots (Standard: ${DEFAULT_SCREENS_DIR})
+  --out <ordner>      Ausgabe-Ordner (Standard: ${OUT_DIR})
+  --no-screens        Screenshots ignorieren, alles zeichnen
+  --html              HTML-Seiten zusaetzlich nach ./html/ (bzw. <out>/html/) schreiben
+  --help              diese Hilfe`;
+
+// Bedienfehler (falsche Option, Ordner fehlt): ohne Stacktrace melden
+const userError = (msg) => Object.assign(new Error(msg), { user: true });
+
+function parseArgs(argv) {
+  const o = { screens: null, out: null, noScreens: false, html: false, filters: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    const m = /^--(screens|out)(?:=(.*))?$/.exec(a);
+    if (m) {
+      const v = m[2] !== undefined ? m[2] : argv[++i];
+      if (!v || v.startsWith('--')) throw userError(`--${m[1]} braucht einen Ordner.\n\n${USAGE}`);
+      o[m[1]] = path.resolve(v);
+    } else if (a === '--no-screens') o.noScreens = true;
+    else if (a === '--html') o.html = true;
+    else if (a === '--help' || a === '-h') o.help = true;
+    else if (a.startsWith('--')) throw userError(`Unbekannte Option: ${a}\n\n${USAGE}`);
+    else o.filters.push(a);
+  }
+  return o;
+}
+
 async function main() {
-  const args = process.argv.slice(2);
-  const writeHtml = args.includes('--html');
-  const filters = args.filter((a) => !a.startsWith('--'));
-  const jobs = JOBS.filter((j) => !filters.length || filters.some((f) => j.file.includes(f)));
-  if (writeHtml) fs.mkdirSync(HTML_DIR, { recursive: true });
+  const opt = parseArgs(process.argv.slice(2));
+  if (opt.help) return console.log(USAGE);
+  const outDir = opt.out || OUT_DIR;
+  const htmlDir = opt.out ? path.join(outDir, 'html') : HTML_DIR;
+  const writeHtml = opt.html;
+  const jobs = JOBS.filter((j) => !opt.filters.length || opt.filters.some((f) => j.file.includes(f)));
+
+  // ---- Screenshots suchen ----
+  const screensDir = opt.screens || DEFAULT_SCREENS_DIR;
+  let screens = {};
+  if (opt.noScreens) {
+    console.log('Screenshots: ausgeschaltet (--no-screens) -> alles gezeichnet');
+  } else if (!fs.existsSync(screensDir) || !fs.statSync(screensDir).isDirectory()) {
+    if (opt.screens) throw userError(`Screenshot-Ordner nicht gefunden: ${screensDir}`);
+    console.log(`Screenshots: Ordner ${screensDir} fehlt -> alles gezeichnet`);
+  } else {
+    const { found, warnings } = findScreens(screensDir);
+    screens = found;
+    const names = SHOT_NAMES.filter((n) => found[n]);
+    console.log(`Screenshots in ${screensDir}:`);
+    console.log(`  gefunden: ${names.length ? names.map((n) => path.basename(found[n].file)).join(', ') : '(keine)'}`);
+    const missing = SHOT_NAMES.filter((n) => !found[n]);
+    if (missing.length) console.log(`  fehlen:   ${missing.join(', ')}${names.length ? '' : ' -> alles wird gezeichnet'}`);
+    warnings.forEach((w) => console.log(`  HINWEIS: ${w}`));
+  }
+  console.log('');
+  fs.mkdirSync(outDir, { recursive: true });
+  if (writeHtml) fs.mkdirSync(htmlDir, { recursive: true });
 
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch();
   const report = [];
+  const summary = [];
   let problems = 0;
+  const shotCache = new Map();
+  let anaPage = null;
+  const loadShot = async (name) => {
+    if (!shotCache.has(name)) {
+      try {
+        if (!anaPage) anaPage = await browser.newPage();
+        shotCache.set(name, await analyseShot(anaPage, screens[name]));
+      } catch (e) {
+        problems++;
+        console.log(`FEHLER: Screenshot ${path.basename(screens[name].file)} nicht lesbar (${e.message.split('\n')[0]}) -> wird uebersprungen`);
+        shotCache.set(name, null);
+      }
+    }
+    return shotCache.get(name);
+  };
+
   for (const job of jobs) {
     UID = 0;
+    let shot = null;
+    if (job.shot) {
+      for (const name of job.shot.from) {
+        if (screens[name] && (shot = await loadShot(name))) break;
+      }
+    }
+    const wanted = job.shot ? job.shot.from.map((n) => `"${n}"`).join('/') : '';
+    // vorhanden, aber nicht lesbar (kaputt/abgeschnitten) -> ehrlich melden statt "kein Screenshot"
+    const broken = !shot && job.shot ? job.shot.from.filter((n) => screens[n]).map((n) => path.basename(screens[n].file)) : [];
+    const why = broken.length ? `Screenshot ${broken.join('/')} nicht lesbar` : `kein Screenshot ${wanted}`;
+    if (!shot && !job.svg) {
+      const old = fs.existsSync(path.join(outDir, job.file)) ? ' (alte Datei im Ausgabe-Ordner bleibt unveraendert liegen)' : '';
+      const msg = `uebersprungen - ${why}${old}`;
+      console.log(JSON.stringify({ file: job.file, quelle: msg }));
+      summary.push([job.file, msg]);
+      continue;
+    }
     const page = await browser.newPage({ viewport: { width: job.w, height: job.h }, deviceScaleFactor: 1 });
-    const html = pageHTML(job.w, job.h, job.svg());
-    if (writeHtml) fs.writeFileSync(path.join(HTML_DIR, job.file.replace(/\.png$/, '.html')), html);
+    const pl = shot ? shotPlacement(shot, job.w, job.h, job.shot.place) : null;
+    const svg = shot ? job.shot.svg(pl) : job.svg();
+    const html = pageHTML(job.w, job.h, shot ? svg.split(SHOT_HREF).join(shot.url) : svg);
+    if (writeHtml) {
+      // in der HTML-Datei auf den Screenshot verlinken statt ihn einzubetten
+      const fileHtml = shot ? pageHTML(job.w, job.h, svg.split(SHOT_HREF).join(pathToFileURL(shot.file).href)) : html;
+      fs.writeFileSync(path.join(htmlDir, job.file.replace(/\.png$/, '.html')), fileHtml);
+    }
     await page.setContent(html, { waitUntil: 'load' });
-    await page.evaluate(() => document.fonts.ready);
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      // sicherstellen, dass Screenshot-Bilder fertig dekodiert sind
+      await Promise.all(
+        [...document.querySelectorAll('image.shot')].map((im) => {
+          const i = new Image();
+          i.src = im.getAttribute('href');
+          return i.decode().catch(() => {});
+        })
+      );
+    });
     const fitted = await fitText(page);
-    const info = { file: job.file, fitted };
+    const info = { file: job.file, quelle: 'Zeichnung', fitted };
+    if (shot) {
+      info.quelle = `Screenshot ${path.basename(shot.file)}`;
+      info.screenshot = `${shot.w}x${shot.h}`;
+      const t = shot.trim;
+      if (t.top || t.bottom || t.left || t.right) info.randEntfernt = t;
+      info.massstab = Math.round(pl.s * 1000) / 1000;
+      if (pl.s > SHOT_UPSCALE_WARN) {
+        info.hinweis = `Screenshot wird ${pl.s.toFixed(2)}x vergroessert und kann unscharf wirken - besser hoehere Aufloesung (mind. 1920x1080) verwenden`;
+      }
+    } else if (job.shot && !opt.noScreens) {
+      info.quelle = `Zeichnung (${why})`;
+    }
+    summary.push([job.file, info.quelle + (info.hinweis ? '  [unscharf?]' : '')]);
 
     if (job.kind === 'circle') {
       // Pixel-Pruefung: Inhalt (ohne Hintergrund/Deko) muss im 80%-Kreis liegen
@@ -1033,7 +1459,7 @@ async function main() {
       if (bad.length) problems++;
     }
 
-    const outFile = path.join(OUT_DIR, job.file);
+    const outFile = path.join(outDir, job.file);
     await page.screenshot({ path: outFile, type: 'png' });
     await page.close();
     const sz = pngSize(outFile);
@@ -1046,13 +1472,23 @@ async function main() {
     console.log(JSON.stringify(info));
   }
   await browser.close();
-  console.log(problems ? `\nWARNUNG: ${problems} Bild(er) mit Problemen.` : `\nOK: ${report.length} Bild(er) erzeugt in ${OUT_DIR}`);
+
+  // ---- Zusammenfassung: welches Bild kam woher? ----
+  if (summary.length) {
+    const circle = new Set(JOBS.filter((j) => j.kind === 'circle').map((j) => j.file));
+    const rows = summary.filter(([f]) => !circle.has(f));
+    const nIcons = summary.length - rows.length;
+    console.log('\nQuelle je Bild:');
+    rows.forEach(([f, q]) => console.log(`  ${f.padEnd(18)} ${q}`));
+    if (nIcons) console.log(`  ${`${nIcons} Pass/Produkt-Icon(s)`.padEnd(18)} Zeichnung`);
+  }
+  console.log(problems ? `\nWARNUNG: ${problems} Problem(e), siehe oben.` : `\nOK: ${report.length} Bild(er) erzeugt in ${outDir}`);
   process.exitCode = problems ? 1 : 0;
 }
 
 if (require.main === module) {
   main().catch((e) => {
-    console.error(e);
+    console.error(e.user ? `FEHLER: ${e.message}` : e);
     process.exit(1);
   });
 }

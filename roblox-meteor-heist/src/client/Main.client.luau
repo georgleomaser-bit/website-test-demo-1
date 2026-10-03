@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
 
 local player = Players.LocalPlayer
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -898,8 +899,13 @@ end)
 -- ---------------------------------------------------------------------
 local plotsFolder = workspace:WaitForChild("MeteorHeistMap"):WaitForChild("Plots")
 local trackedPrompts: { [ProximityPrompt]: boolean } = {}
+local photoMode = false -- Foto-Modus (Taste H, siehe unten): dann bleiben ALLE Prompts aus
 
 local function updatePrompt(prompt: ProximityPrompt)
+	if photoMode then
+		prompt.Enabled = false
+		return
+	end
 	local plotModel = prompt:FindFirstAncestorWhichIsA("Model")
 	if not plotModel then
 		return
@@ -1150,6 +1156,114 @@ player:GetAttributeChangedSignal("CanFly"):Connect(function()
 	if player:GetAttribute("CanFly") ~= true and flying then
 		stopFlying()
 	end
+end)
+
+-- =====================================================================
+-- FOTO-MODUS (Taste H, nur Admins) – für schöne Thumbnail-Screenshots.
+-- Rein clientseitig: blendet die eigene UI, die Roblox-Oberfläche und alle Prompts aus.
+-- =====================================================================
+local photoPending = false -- Toast wird gezeigt, gleich wird ausgeblendet
+local photoToken = 0
+local photoHidden: { [ProximityPrompt]: boolean } = {} -- Prompts, die der Foto-Modus ausgeschaltet hat
+local photoConnections: { RBXScriptConnection } = {}
+local savedCoreGui: { [Enum.CoreGuiType]: boolean } = {}
+
+local function hidePrompt(prompt: ProximityPrompt)
+	local function off()
+		if photoMode and prompt.Enabled then
+			photoHidden[prompt] = true
+			prompt.Enabled = false
+		end
+	end
+	off()
+	-- Der Server schaltet z.B. BuyPrompts beim Landen ein -> sofort wieder aus
+	table.insert(photoConnections, prompt:GetPropertyChangedSignal("Enabled"):Connect(off))
+end
+
+local function startPhotoMode()
+	photoMode = true
+	gui.Enabled = false
+	-- Roblox-Oberfläche (Chat, Spielerliste, Rucksack ...) merken und ausblenden
+	savedCoreGui = {}
+	for _, item in ipairs(Enum.CoreGuiType:GetEnumItems()) do
+		if item ~= Enum.CoreGuiType.All then
+			local ok, enabled = pcall(StarterGui.GetCoreGuiEnabled, StarterGui, item)
+			-- Nicht lesbar -> beim Beenden trotzdem wieder einschalten (sonst bliebe es für immer aus)
+			savedCoreGui[item] = not ok or enabled == true
+		end
+	end
+	pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.All, false)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		if inst:IsA("ProximityPrompt") then
+			hidePrompt(inst)
+		end
+	end
+	table.insert(
+		photoConnections,
+		workspace.DescendantAdded:Connect(function(inst)
+			if inst:IsA("ProximityPrompt") then
+				hidePrompt(inst)
+			end
+		end)
+	)
+end
+
+local function stopPhotoMode()
+	photoMode = false
+	for _, connection in ipairs(photoConnections) do
+		connection:Disconnect()
+	end
+	photoConnections = {}
+	gui.Enabled = true
+	for item, enabled in pairs(savedCoreGui) do
+		pcall(StarterGui.SetCoreGuiEnabled, StarterGui, item, enabled)
+	end
+	-- Kaufen-Prompts wieder an (der Server prüft beim Kaufen ohnehin, ob der Meteor gelandet ist),
+	-- Klauen/Verkaufen stellt der Prompt-Updater wieder richtig ein.
+	for prompt in pairs(photoHidden) do
+		if prompt.Parent and not trackedPrompts[prompt] then
+			prompt.Enabled = true
+		end
+	end
+	photoHidden = {}
+	for prompt in pairs(trackedPrompts) do
+		if prompt.Parent then
+			updatePrompt(prompt)
+		end
+	end
+end
+
+local function togglePhotoMode()
+	if photoMode or photoPending then
+		photoToken += 1
+		photoPending = false
+		if photoMode then
+			stopPhotoMode()
+			toast("📸 Foto-Modus aus", "Info")
+		end
+		return
+	end
+	if player:GetAttribute("IsAdmin") ~= true then
+		return
+	end
+	photoPending = true
+	photoToken += 1
+	local token = photoToken
+	toast("📸 Foto-Modus: H drücken zum Beenden", "Info")
+	task.delay(1.5, function()
+		if photoPending and photoToken == token then
+			photoPending = false
+			startPhotoMode()
+		end
+	end)
+end
+
+-- Funktioniert auch bei versteckter UI, aber nicht beim Tippen in einer TextBox
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or input.KeyCode ~= Enum.KeyCode.H or UserInputService:GetFocusedTextBox() then
+		return
+	end
+	togglePhotoMode()
 end)
 
 -- =====================================================================
@@ -1608,6 +1722,43 @@ local function buildAdminPanel()
 		button({ Text = info[1], Color = info[2], LayoutOrder = i, MaxText = 14, Parent = abuseGrid }, info[3])
 	end
 
+	-- Foto-Modus (für Thumbnails)
+	section(content, "📸 Foto-Modus", 25)
+	local photoGrid = grid(content, 26, 146, 40)
+	local photoActions = {
+		{
+			"📸 UI aus/an (Taste H)",
+			THEME.Blue,
+			function()
+				togglePhotoMode()
+			end,
+		},
+		{
+			"✨ Showcase-Reihe",
+			THEME.Purple,
+			function()
+				admin("Showcase")
+			end,
+		},
+		{
+			"🏠 Foto-Base füllen",
+			THEME.Green,
+			function()
+				admin("PhotoBase")
+			end,
+		},
+		{
+			"🧹 Foto aufräumen",
+			THEME.Gray,
+			function()
+				admin("PhotoClear")
+			end,
+		},
+	}
+	for i, info in ipairs(photoActions) do
+		button({ Text = info[1], Color = info[2], LayoutOrder = i, MaxText = 14, Parent = photoGrid }, info[3])
+	end
+
 	sideButton("🛠️ Admin", Color3.fromRGB(200, 40, 40), 7, function()
 		openWindow(adminWindow)
 	end)
@@ -1616,7 +1767,7 @@ local function buildAdminPanel()
 			openWindow(adminWindow)
 		end
 	end)
-	toast("🛠️ Admin-Panel: Taste P • Fliegen: Taste G", "Info")
+	toast("🛠️ Admin-Panel: Taste P • Fliegen: Taste G • Foto: Taste H", "Info")
 end
 
 local adminBuilt = false

@@ -366,6 +366,23 @@ end
 -- -------------------------------------------------------------------
 -- METEORE IN DER BASE ANZEIGEN
 -- -------------------------------------------------------------------
+-- Foto-Deko (Admin-Panel → 📸 Foto-Modus): Ordner im Plot-Model, Teile heißen "Slot<n>"
+local PHOTO_FOLDER = "PhotoShowcase"
+
+-- Stellt einen Meteor mittig auf das Slot-Pad
+local function placeOnSlot(plot, slot: number, meteor: BasePart)
+	local slotPart = plot.Slots[slot]
+	meteor.CFrame = slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2 + meteor.Size.Y / 2, 0)
+end
+
+local function removePhotoDeco(plot, slot: number)
+	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
+	local deco = folder and folder:FindFirstChild("Slot" .. slot)
+	if deco then
+		deco:Destroy()
+	end
+end
+
 function PlotService.RenderSlot(plot, slot: number)
 	local existing = plot.MeteorParts[slot]
 	if existing then
@@ -383,9 +400,9 @@ function PlotService.RenderSlot(plot, slot: number)
 	if Services.CarryService.IsSlotBeingStolen(plot, slot) then
 		return -- wird gerade geklaut -> unsichtbar in der Base
 	end
+	removePhotoDeco(plot, slot) -- echter Meteor ersetzt die Foto-Deko
 	local meteor = MeteorFactory.Create(entry, "Base")
-	local slotPart = plot.Slots[slot]
-	meteor.CFrame = slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2 + meteor.Size.Y / 2, 0)
+	placeOnSlot(plot, slot, meteor)
 	meteor:SetAttribute("PlotIndex", plot.Index)
 	meteor:SetAttribute("Slot", slot)
 	local def = Config.MeteorsById[entry.Id]
@@ -434,14 +451,52 @@ end
 
 function PlotService.UpdateSlotColors(plot)
 	local count = plot.Owner and PlotService.SlotCount(plot.Owner) or 0
+	-- Foto-Deko aktiv -> alle Pads in der Plot-Farbe (volle Base sieht auf dem Foto besser aus)
+	local photo = plot.Model:FindFirstChild(PHOTO_FOLDER) ~= nil
 	for slot, slotPart in ipairs(plot.Slots) do
-		if slot <= count then
+		if slot <= count or photo then
 			slotPart.Color = plot.Color:Lerp(Color3.new(1, 1, 1), 0.3)
 			slotPart.Transparency = 0
 		else
 			slotPart.Color = Color3.fromRGB(35, 35, 45)
 			slotPart.Transparency = 0.5
 		end
+	end
+end
+
+-- -------------------------------------------------------------------
+-- FOTO-DEKO (nur Optik für Thumbnails: keine Spieldaten, keine Prompts)
+-- -------------------------------------------------------------------
+-- Füllt ALLE Slots ohne echten Meteor (auch die gesperrten 11-15) mit Deko-Meteoren.
+-- makeEntry() liefert { Id, Mut, Lv }. Gibt die Anzahl der Deko-Meteore zurück.
+function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
+	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = PHOTO_FOLDER
+		folder.Parent = plot.Model
+	end
+	local count = 0
+	for slot = 1, #plot.Slots do
+		removePhotoDeco(plot, slot) -- nochmal drücken = neu würfeln
+		local entry = plot.MeteorParts[slot] == nil and makeEntry() or nil
+		if entry and Config.MeteorsById[entry.Id] then
+			local meteor = MeteorFactory.Create(entry, "Base")
+			meteor.Name = "Slot" .. slot
+			placeOnSlot(plot, slot, meteor)
+			meteor.Parent = folder
+			count += 1
+		end
+	end
+	PlotService.UpdateSlotColors(plot)
+	return count
+end
+
+-- Entfernt nur die Deko (Slot-Farben danach mit UpdateSlotColors zurücksetzen)
+function PlotService.ClearPhotoShowcase(plot)
+	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
+	if folder then
+		folder:Destroy()
 	end
 end
 
@@ -528,6 +583,7 @@ function PlotService.ReleasePlot(player: Player)
 		meteor:Destroy()
 		plot.MeteorParts[slot] = nil
 	end
+	PlotService.ClearPhotoShowcase(plot)
 	PlotService.UpdateSlotColors(plot)
 end
 

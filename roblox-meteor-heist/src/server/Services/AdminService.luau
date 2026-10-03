@@ -11,6 +11,7 @@ local TextService = game:GetService("TextService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 local Remotes = require(script.Parent:WaitForChild("Remotes"))
+local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 
 local AdminService = {}
 local Services
@@ -283,6 +284,51 @@ local function publishGlobal(message): boolean
 		handleGlobal(message) -- wenigstens auf diesem Server
 	end
 	return ok
+end
+
+-- -------------------------------------------------------------------
+-- FOTO-MODUS (schöne Thumbnail-Screenshots)
+-- -------------------------------------------------------------------
+local photoRng = Random.new()
+local SHOWCASE_DISTANCE = 14 -- Studs vor dem Admin
+local SHOWCASE_GAP = 2.5 -- Lücke zwischen zwei Meteoren
+local SHOWCASE_LIFETIME = 300 -- Sekunden
+local PHOTO_RARITIES = { "Legendary", "Mythic", "Celestial", "Divine", "Secret" }
+-- Öfter Gold/Diamond/Cosmic als Normal – glänzt schöner auf dem Foto
+local PHOTO_MUTATIONS = {
+	{ Name = "Normal", Weight = 16 },
+	{ Name = "Gold", Weight = 32 },
+	{ Name = "Diamond", Weight = 28 },
+	{ Name = "Cosmic", Weight = 24 },
+}
+
+-- Zufälliger Deko-Meteor für die Foto-Base (wird NICHT gespeichert)
+local function photoEntry()
+	local rarity = PHOTO_RARITIES[photoRng:NextInteger(1, #PHOTO_RARITIES)]
+	local def = Services.MeteorService.RandomOfRarity(rarity)
+	if not def then
+		return nil
+	end
+	local mut = Util.WeightedPick(PHOTO_MUTATIONS, nil, photoRng)
+	local level = math.min(photoRng:NextInteger(10, 20), Config.MaxLevel)
+	return { Id = def.Id, Mut = mut.Name, Lv = level, Xp = 0 }
+end
+
+-- Je der teuerste spawnbare Meteor jeder Seltenheit (Common zuerst, Secret zuletzt)
+local function showcaseDefs()
+	local list = {}
+	for _, rarity in ipairs(Config.Rarities) do
+		local best = nil
+		for _, def in ipairs(Config.MeteorsByRarity[rarity.Name]) do
+			if not best or def.Price > best.Price then
+				best = def
+			end
+		end
+		if best then
+			table.insert(list, best)
+		end
+	end
+	return list
 end
 
 -- -------------------------------------------------------------------
@@ -657,6 +703,62 @@ function Actions.Invisible(admin, args)
 		setInvisible(p, args.Enabled == true)
 	end
 	return #targets > 0, (args.Enabled and "👻 Unsichtbar: " or "Sichtbar: ") .. names(targets)
+end
+
+-- Foto-Modus: Reihe aller Seltenheiten vor dem Admin (links Common, rechts Secret)
+function Actions.Showcase(admin)
+	local root = getRoot(admin)
+	if not root then
+		return false, "Kein Charakter"
+	end
+	local defs = showcaseDefs()
+	if #defs == 0 then
+		return false, "Keine Meteore gefunden"
+	end
+	local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+	look = look.Magnitude > 0.01 and look.Unit or Vector3.new(0, 0, -1)
+	local right = look:Cross(Vector3.yAxis) -- quer zur Blickrichtung
+	local sizes = {}
+	local width = SHOWCASE_GAP * (#defs - 1)
+	for i, def in ipairs(defs) do
+		sizes[i] = MeteorFactory.GetSize({ Id = def.Id, Lv = 1 })
+		width += sizes[i]
+	end
+	local center = root.Position + look * SHOWCASE_DISTANCE
+	local offset = -width / 2
+	for i, def in ipairs(defs) do
+		Services.MeteorService.SpawnMeteor({
+			Id = def.Id,
+			Mut = "Normal",
+			Position = center + right * (offset + sizes[i] / 2),
+			Instant = true,
+			Announce = false,
+			Lifetime = SHOWCASE_LIFETIME,
+		})
+		offset += sizes[i] + SHOWCASE_GAP
+	end
+	return true, "✨ Showcase: " .. #defs .. " Meteore (5 Min)"
+end
+
+-- Foto-Modus: leere Slots der eigenen Base mit Deko füllen (nur Optik, nichts gespeichert)
+function Actions.PhotoBase(admin)
+	local plot = Services.PlotService.GetPlot(admin)
+	if not plot then
+		return false, "Du hast keine Base"
+	end
+	local count = Services.PlotService.FillPhotoShowcase(plot, photoEntry)
+	return true, count > 0 and ("🏠 Foto-Base: " .. count .. " Deko-Meteore") or "🏠 Base ist schon voll"
+end
+
+-- Foto-Modus: Deko weg, Slot-Farben zurück, Krater leer
+function Actions.PhotoClear(admin)
+	local plot = Services.PlotService.GetPlot(admin)
+	if plot then
+		Services.PlotService.ClearPhotoShowcase(plot)
+		Services.PlotService.UpdateSlotColors(plot)
+	end
+	Services.MeteorService.ClearGround()
+	return true, "🧹 Foto-Deko entfernt, Krater geleert"
 end
 
 -- -------------------------------------------------------------------

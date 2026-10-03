@@ -122,6 +122,7 @@ Marketing und am Roblox-Algorithmus**. Das kann niemand garantieren. Was am meis
 | 🎉 Events | X-fach Glück für Y Minuten, Meteoritenschauer, Nachricht an alle. Mit 🌍 **auf ALLEN Servern gleichzeitig** |
 | 🛡️ Moderation | Kick, Bann (Tage oder für immer, gilt fürs ganze Spiel), Entbannen per UserId, Base leeren, Spielstand zurücksetzen, Teleport zu/holen, Krater leeren. Bann/Reset brauchen einen zweiten Klick |
 | 😈 Admin Abuse | **Fliegen/Schweben** (Taste **G**: WASD + Leertaste hoch, Shift runter), **ADMIN-ABUSE-EVENT** (10x Glück, Schauer, Geld für alle, Gratis-Secrets, Mond-Schwerkraft, auch auf allen Servern), Mond-Schwerkraft an/aus, Spieler einfrieren/auftauen, riesig/mini/normal, unsichtbar |
+| 📸 Foto-Modus | Für schöne Thumbnails: **UI aus/an** (Taste **H**: alle Knöpfe, Roblox-Leisten und E-Hinweise weg, nochmal **H** = zurück), **Showcase-Reihe** (je ein Meteor jeder Seltenheit vor dir, bleibt 5 Min), **Foto-Base füllen** (leere Plätze deiner Base mit Deko-Meteoren, nur zum Anschauen, wird nicht gespeichert), **Foto aufräumen** (Deko weg, Krater leer) |
 
 ## ⚙️ Balancing – alles in `Config`
 
