@@ -1,6 +1,7 @@
 -- Baut das Aussehen eines Meteors: Größe nach Seltenheit, Licht/Feuer/Funken für seltene,
 -- Material/Farbe nach Mutation, Spezial-Effekte der Admin-Meteore, Namensschild darüber.
 -- Lichter und Feuer gibt es bewusst sparsam (viele Meteore gleichzeitig = sonst Lag).
+-- Dazu: Prompts anlegen (AddPrompt) und serverseitig prüfen, ob lange genug gehalten wurde (OnHeldTrigger).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
@@ -14,6 +15,7 @@ local LIGHT_FROM = { Base = 5, Ground = 5, Belt = 6, Carry = 7 }
 local FIRE_FROM = { Base = 7, Ground = 7, Belt = 99, Carry = 99 }
 local SPARKLES_FROM = { Base = 6, Ground = 6, Belt = 7, Carry = 99 }
 local SHADOW_MIN_SIZE = 3.5 -- nur große Meteore werfen Schatten
+local FROST_WHITEN = 0.4 -- Frost-Meteore etwas weißer als die Mutationsfarbe (sonst fast wie Diamond)
 
 local GREEN = Color3.fromRGB(120, 255, 120)
 local YELLOW = Color3.fromRGB(255, 230, 90)
@@ -191,6 +193,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		part.Material = Enum.Material.Foil
 		part.Color = mut.Color
 	elseif mut.Name == "Diamond" then
+		-- türkises Glas + Glitzern (unten bei den Effekten) – so sieht man den Unterschied zu Frost
 		part.Material = Enum.Material.Glass
 		part.Transparency = 0.15
 		part.Color = mut.Color
@@ -199,11 +202,11 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		part.Material = Enum.Material.Neon
 		part.Color = mut.Color
 	elseif mut.Name == "Frost" then
-		-- hellblaues Eis
+		-- hellblaues Eis: heller und weißlicher als Diamond, dazu fallen Schneeflocken (unten)
 		part.Material = Enum.Material.Glass
 		part.Transparency = 0.1
 		part.Reflectance = 0.15
-		part.Color = mut.Color
+		part.Color = mut.Color:Lerp(Color3.new(1, 1, 1), FROST_WHITEN)
 	elseif mut.Rainbow == true then
 		-- Regenbogen: der Client färbt alle Teile mit dem Attribut "Rainbow" lokal durch
 		part.Material = Enum.Material.Neon
@@ -234,15 +237,38 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		fire.Parent = part
 	end
 	if mut.Name == "Lava" and not part:FindFirstChildOfClass("Fire") then
-		-- Lava-Mutation: kleines Feuer (auch am Band – Lava ist selten genug)
+		-- Lava-Mutation: kleines Feuer. Am Förderband startet es AUS (mit Glück-Events liegen dort
+		-- viele Lava-Meteore): der Client schaltet nur die nächsten paar ein (Attribut "LavaFire", WorldFX).
 		local fire = Instance.new("Fire")
 		fire.Color = mut.Color
 		fire.SecondaryColor = Color3.fromRGB(120, 20, 0)
 		fire.Size = math.max(1.5, size * 0.45)
 		fire.Heat = 3
+		if mode == "Belt" then
+			fire.Enabled = false
+			fire:SetAttribute("LavaFire", true)
+		end
 		fire.Parent = part
 	end
-	local specialMut = mut.Name == "Cosmic" or mut.Rainbow == true
+	if mut.Name == "Frost" then
+		-- Frost-Mutation: ein paar Schneeflocken rieseln herunter
+		local snow = Instance.new("ParticleEmitter")
+		snow.Name = "FrostSnow"
+		snow.Color = ColorSequence.new(Color3.new(1, 1, 1))
+		snow.LightEmission = 0.5
+		snow.LightInfluence = 0
+		snow.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, math.clamp(size * 0.07, 0.15, 0.45)),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		snow.Lifetime = NumberRange.new(1, 1.6)
+		snow.Speed = NumberRange.new(0.5, 1.5)
+		snow.SpreadAngle = Vector2.new(180, 180)
+		snow.Acceleration = Vector3.new(0, -4, 0)
+		snow.Rate = if mode == "Belt" then 3 else 6
+		snow.Parent = part
+	end
+	local specialMut = mut.Name == "Cosmic" or mut.Name == "Diamond" or mut.Rainbow == true
 	if (rarityIndex >= (SPARKLES_FROM[mode] or 99) or (specialMut and mode ~= "Carry")) and not isAdmin then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or rarity.Color
@@ -325,6 +351,49 @@ function MeteorFactory.AddPrompt(
 	prompt.KeyboardKeyCode = key or Enum.KeyCode.E
 	prompt.Parent = part
 	return prompt
+end
+
+-- -------------------------------------------------------------------
+-- HALTEN PRÜFEN (gegen "sofort auslösen"-Cheats)
+-- "Triggered" schickt der Client. Ein Cheater kann einen Prompt auch ohne Halten auslösen
+-- (z.B. HoldDuration lokal auf 0). Deshalb merkt sich der Server, wann der Spieler angefangen
+-- hat zu halten (PromptButtonHoldBegan kommt auch auf dem Server an), und ruft callback nur auf,
+-- wenn wirklich so lange gehalten wurde, wie die HoldDuration HIER auf dem Server sagt.
+-- -------------------------------------------------------------------
+local HOLD_TOLERANCE = 0.15 -- Sekunden Spielraum für Netzwerk-Schwankungen
+local HOLD_MAX_EXTRA = 3 -- ein Halten zählt höchstens so lange über die HoldDuration hinaus
+
+function MeteorFactory.OnHeldTrigger(prompt: ProximityPrompt, callback: (player: Player) -> ())
+	local started: { [Player]: number } = {}
+	local ended: { [Player]: number } = {}
+	prompt.PromptButtonHoldBegan:Connect(function(player: Player)
+		started[player] = os.clock()
+		ended[player] = nil
+	end)
+	prompt.PromptButtonHoldEnded:Connect(function(player: Player)
+		-- (kommt evtl. kurz VOR Triggered an -> Zeitpunkt merken statt löschen)
+		if started[player] then
+			ended[player] = os.clock()
+		end
+	end)
+	prompt.Triggered:Connect(function(player: Player)
+		local hold = prompt.HoldDuration
+		if hold > 0 then
+			local t = os.clock()
+			local begin = started[player]
+			local release = ended[player]
+			started[player] = nil
+			ended[player] = nil
+			if not begin then
+				return -- nie angefangen zu halten
+			end
+			local heldUntil = if release then math.min(release, t) else t
+			if heldUntil - begin < hold - HOLD_TOLERANCE or t - begin > hold + HOLD_MAX_EXTRA then
+				return -- zu kurz gehalten (oder ein uraltes Halten)
+			end
+		end
+		callback(player)
+	end)
 end
 
 return MeteorFactory

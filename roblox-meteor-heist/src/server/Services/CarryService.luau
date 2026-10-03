@@ -8,12 +8,15 @@
 --    fällt das Ei an Ort und Stelle auf den Boden – und JEDER kann es schnappen.
 --  * Gekaufte Meteore (F) muss man NICHT tragen – sie fliegen automatisch in die Base.
 --  * Bonk-Schläger (bzw. Super-Bonk-Gadget) zum Verteidigen.
+--  * Seltene Beute ist schwer (Config.HeavyCarry, Tempo rechnet EconomyService), wer klaut, verliert
+--    den Umhang (sonst wäre jeder Diebstahl unbonkbar), Eingefrorene können nicht klauen.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 local AlienFactory = require(script.Parent:WaitForChild("AlienFactory"))
 
@@ -23,6 +26,8 @@ local Services
 local carrying: { [Player]: any } = {}
 local stealing: { [any]: { [number]: Player } } = {} -- [plot][slot] = Dieb
 local lastBonk: { [Player]: number } = {}
+-- Klau-Versuche aus Basen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
+local stealLimiter = Util.RateLimiter(6, 1)
 
 local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der Beute)
 -- Mindest-Tragezeit: kürzester möglicher Weg (raus aus der fremden Base, rein in die eigene)
@@ -61,6 +66,12 @@ end
 
 function CarryService.IsCarrying(player: Player): boolean
 	return carrying[player] ~= nil
+end
+
+-- Was trägt der Spieler gerade? (Eintrag { Id, Mut, ... } oder nil) – z.B. für "schwere Beute"
+function CarryService.CarriedEntry(player: Player): any
+	local info = carrying[player]
+	return info and info.Entry
 end
 
 -- -------------------------------------------------------------------
@@ -318,20 +329,36 @@ function CarryService.StartCarry(player: Player, entry, info)
 	if info.MinTime == nil then
 		info.MinTime = info.Source == "Ground" and minGroundCarryTime(player, info.StartPos) or 0
 	end
+	-- Wer klaut, wird sichtbar: sonst wäre jeder Diebstahl mit Umhang unbonkbar
+	local gadgets = Services.GadgetService
+	local uncloaked = false
+	if gadgets and gadgets.IsCloaked(player) then
+		gadgets.EndCloak(player, true)
+		uncloaked = true
+	end
 	info.Visual = createVisual(player, entry)
 	carrying[player] = info
 	Services.EconomyService.ApplySpeed(player)
 	Services.EconomyService.MarkDirty(player)
+	local extra = ""
+	if Config.HeavyFactor(entry) and not Services.MonetizationService.HasPass(player, "CarryFast") then
+		extra ..= " 🐢 Schwer – du bist langsamer!"
+	end
+	if uncloaked then
+		extra ..= " 👻 Du bist wieder sichtbar!"
+	end
 	if info.Source == "Ground" then
 		Services.EconomyService.Notify(
 			player,
-			"😈 Geschnappt: "
-				.. Config.EntryName(entry)
-				.. "! Schnell in deine Base – wer dich bonkt, kriegt es! 🏃",
+			"😈 Geschnappt: " .. Config.EntryName(entry) .. "! Schnell in deine Base 🏃" .. extra,
 			"Info"
 		)
 	else
-		Services.EconomyService.Notify(player, "🏃 Bring " .. Config.EntryName(entry) .. " in deine Base!", "Info")
+		Services.EconomyService.Notify(
+			player,
+			"🏃 Bring " .. Config.EntryName(entry) .. " in deine Base!" .. extra,
+			"Info"
+		)
 	end
 end
 
@@ -507,6 +534,9 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	if not owner or owner == thief then
 		return
 	end
+	if not stealLimiter.Check(thief) then
+		return -- zu viele Versuche auf einmal (Cheat) -> still ignorieren
+	end
 	local thiefData = Services.DataService.Get(thief)
 	local ownerData = Services.DataService.Get(owner)
 	local Economy = Services.EconomyService
@@ -539,6 +569,11 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	local object = plot.MeteorParts[slot]
 	local objectPos = Services.PlotService.ObjectPosition(object)
 	if not root or not humanoid or humanoid.Health <= 0 or not objectPos then
+		return
+	end
+	if root.Anchored then
+		-- eingefroren (Falle / Admin): erst auftauen, dann klauen
+		Services.EconomyService.Notify(thief, "🧊 Du bist eingefroren!", "Error")
 		return
 	end
 	if (root.Position - objectPos).Magnitude > Services.PlotService.ObjectRadius(object) + 16 then
@@ -610,8 +645,10 @@ local function bonk(player: Player, tool: Tool, super: boolean)
 	local gadgets = Services.GadgetService
 	local best, bestDist = nil, range
 	for _, other in ipairs(Players:GetPlayers()) do
-		-- Unsichtbare (Umhang) kann man nicht bonken
-		if other ~= player and not (gadgets and gadgets.IsCloaked(other)) then
+		-- Unsichtbare (Umhang) kann man nicht bonken – wer Beute trägt, aber schon
+		-- (Klauen beendet den Umhang sowieso, das hier ist nur das Sicherheitsnetz)
+		local cloaked = gadgets ~= nil and gadgets.IsCloaked(other) and not carrying[other]
+		if other ~= player and not cloaked then
 			local otherRoot = other.Character and other.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 			local otherHum = other.Character and other.Character:FindFirstChildOfClass("Humanoid")
 			if otherRoot and otherHum and otherHum.Health > 0 then
@@ -801,6 +838,7 @@ function CarryService.Start()
 	local function onLeaving(player: Player)
 		lastBonk[player] = nil
 		moveTrack[player] = nil
+		stealLimiter.Clear(player)
 		if carrying[player] then
 			CarryService.Fail(player, "left")
 		end

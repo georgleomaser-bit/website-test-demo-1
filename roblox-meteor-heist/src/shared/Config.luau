@@ -175,6 +175,13 @@ Config.MaxDroppedMeteors = 90 -- Sicherheitsgrenze für Eier am Boden (fallen ge
 Config.CarryTimeout = 60 -- Sekunden Zeit, um die Beute in die eigene Base zu bringen
 Config.NormalWalkSpeed = 16
 Config.CarrySpeedFactor = 0.7 -- beim Tragen: 70% vom eigenen Tempo (Gamepass "Volle Speed beim Tragen" = 100%)
+-- SCHWERE BEUTE: seltene Eier/Aliens sind schwerer -> beim Tragen noch langsamer (mehr Zeit zum Bonken!).
+-- Es gilt der kleinste passende Faktor (statt CarrySpeedFactor). Gamepass "Volle Speed beim Tragen" = kein Abzug.
+Config.HeavyCarry = {
+	{ FromRarity = "Legendary", Factor = 0.6 },
+	{ FromRarity = "Mythic", Factor = 0.5 },
+	{ FromRarity = "Celestial", Factor = 0.45 },
+}
 
 -- SPEED FARM: Auf den Laufbändern (Treadmills) am Spawn-Platz laufen = Schritte 👟 sammeln.
 -- Mehr Schritte = schneller laufen. Höhere Laufbänder geben viel mehr Schritte,
@@ -273,6 +280,10 @@ Config.IndexBonusPerAlien = 0.01
 Config.BeltSpawnInterval = 0.5 -- alle X Sekunden kommt ein neuer Meteor aufs Band
 Config.BeltSpeed = 9 -- Studs pro Sekunde
 Config.MaxBeltMeteors = 110 -- Sicherheitsgrenze (mehr liegen nie gleichzeitig auf dem Band)
+-- Im Meteoritenschauer fahren die Meteore auf ZWEI Spuren (links/rechts der Bandmitte),
+-- sonst passen gar nicht so viele aufs Band. Dafür darf das Band dann voller werden.
+Config.ShowerMaxBeltMeteors = 160
+Config.BeltLaneOffset = 3.5 -- Studs: Abstand der beiden Schauer-Spuren zur Bandmitte
 
 -- GRATIS-ZONE am Spawn-Platz: hier landen Gratis- und Admin-Meteore
 Config.FreeMeteorLifetime = 180 -- Sekunden, bis ein Gratis-Meteor verschwindet
@@ -281,7 +292,7 @@ Config.MaxFreeMeteors = 20
 -- METEORITENSCHAUER-EVENT: alle X Sekunden, Y Sekunden lang, mehr + bessere Meteore
 Config.ShowerInterval = 480
 Config.ShowerDuration = 60
-Config.ShowerBeltInterval = 0.2 -- im Schauer kommen die Meteore viel schneller
+Config.ShowerBeltInterval = 0.2 -- im Schauer kommen die Meteore viel schneller (auf zwei Spuren, siehe oben)
 Config.ShowerLuck = 3
 
 -- EGG RUSH-EVENT: alle X Sekunden regnen Y Gratis-Eier auf die Wiese der ganzen Map.
@@ -309,7 +320,8 @@ Config.DailyRewardIncomeSeconds = 120 -- Tagesbonus = 2 Min Einkommen x Streak (
 --   Type = "Spins" -> "Amount" Glücksrad-Drehs
 --   Type = "Egg"   -> zufälliges Ei der Seltenheit "Rarity" fliegt in die Base (Base voll -> Wert als Cash)
 --   Icon / Name    -> Anzeige im Spiel
--- SPIELZEIT-GESCHENKE: pro Sitzung, "Minutes" = Minuten seit dem Beitreten
+-- SPIELZEIT-GESCHENKE: "Minutes" = Minuten Spielzeit HEUTE (zählt über alle Besuche, wird gespeichert;
+-- um Mitternacht UTC fängt es von vorne an – neu beitreten setzt die Zeit NICHT zurück)
 Config.PlaytimeGifts = {
 	{ Minutes = 2, Type = "Cash", Seconds = 60, Min = 500, Icon = "💵", Name = "Cash" },
 	{ Minutes = 5, Type = "Steps", Seconds = 120, Min = 300, Icon = "👟", Name = "Schritte" },
@@ -394,6 +406,8 @@ Config.VIPBonus = 0.25
 -- ---------------------------------------------------------------------
 -- 4) SELTENHEITEN – Weight = Spawnchance (relativ), Size = Größe des Meteors
 --    Kleine kommen oft, große & seltene kaum -> "erst kleine, dann immer bessere"
+--    Jedes Ei am Förderband und im Egg Rush kann man GRATIS klauen (ca. 2 pro Sekunde!) –
+--    deshalb sind die seltenen Seltenheiten extra selten, sonst wären Preise und Rebirths egal.
 --    HatchTime = Sekunden bis das Alien schlüpft
 --    RequiredRebirths = so viele Rebirths braucht man, um diese Seltenheit zu KAUFEN
 --    (klauen geht immer!)
@@ -403,12 +417,12 @@ Config.Rarities = {
 	{ Name = "Common", Weight = 50, Size = 2, Color = Color3.fromRGB(200, 200, 200), HatchTime = 8 },
 	{ Name = "Uncommon", Weight = 26, Size = 2.5, Color = Color3.fromRGB(85, 220, 95), HatchTime = 15 },
 	{ Name = "Rare", Weight = 13, Size = 3, Color = Color3.fromRGB(70, 150, 255), HatchTime = 30 },
-	{ Name = "Epic", Weight = 6.5, Size = 3.6, Color = Color3.fromRGB(180, 80, 255), HatchTime = 50 },
-	{ Name = "Legendary", Weight = 3, Size = 4.2, Color = Color3.fromRGB(255, 190, 40), HatchTime = 80 },
-	{ Name = "Mythic", Weight = 1.1, Size = 4.9, Color = Color3.fromRGB(255, 60, 90), HatchTime = 120 },
+	{ Name = "Epic", Weight = 5, Size = 3.6, Color = Color3.fromRGB(180, 80, 255), HatchTime = 50 },
+	{ Name = "Legendary", Weight = 0.8, Size = 4.2, Color = Color3.fromRGB(255, 190, 40), HatchTime = 80 },
+	{ Name = "Mythic", Weight = 0.28, Size = 4.9, Color = Color3.fromRGB(255, 60, 90), HatchTime = 120 },
 	{
 		Name = "Celestial",
-		Weight = 0.3,
+		Weight = 0.07,
 		Size = 5.6,
 		Color = Color3.fromRGB(90, 230, 255),
 		HatchTime = 180,
@@ -416,7 +430,7 @@ Config.Rarities = {
 	},
 	{
 		Name = "Divine",
-		Weight = 0.08,
+		Weight = 0.018,
 		Size = 6.4,
 		Color = Color3.fromRGB(255, 240, 150),
 		HatchTime = 260,
@@ -424,7 +438,7 @@ Config.Rarities = {
 	},
 	{
 		Name = "Secret",
-		Weight = 0.02,
+		Weight = 0.005,
 		Size = 7.2,
 		Color = Color3.fromRGB(255, 255, 255),
 		HatchTime = 360,
@@ -800,6 +814,11 @@ end
 if #Config.WheelPrizes ~= 8 then
 	warn("[Config] Das Glücksrad braucht genau 8 Felder in Config.WheelPrizes!")
 end
+for _, heavy in ipairs(Config.HeavyCarry) do
+	if not Config.RaritiesByName[heavy.FromRarity] then
+		warn("[Config] Config.HeavyCarry: Seltenheit '" .. tostring(heavy.FromRarity) .. "' gibt es nicht!")
+	end
+end
 for i, treadmill in ipairs(Config.Treadmills) do
 	assert(Config.TreadmillsById[treadmill.Id] == nil, "Doppelte Laufband-Id: " .. treadmill.Id)
 	if i > 1 then
@@ -867,6 +886,23 @@ end
 
 function Config.ChargeTime(level: number): number
 	return Config.ChargeSecondsPerLevel * level
+end
+
+-- Schwere Beute (Config.HeavyCarry): Trage-Faktor für ein seltenes Ei/Alien, nil = nicht schwer
+function Config.HeavyFactor(entry): number?
+	local def = entry and Config.MeteorsById[entry.Id]
+	local index = def and Config.RarityIndex[def.Rarity]
+	if not index then
+		return nil
+	end
+	local factor: number? = nil
+	for _, heavy in ipairs(Config.HeavyCarry) do
+		local from = Config.RarityIndex[heavy.FromRarity]
+		if from and index >= from and (factor == nil or heavy.Factor < factor) then
+			factor = heavy.Factor
+		end
+	end
+	return factor
 end
 
 -- Laufgeschwindigkeit aus den Schritten (logarithmisch, max. MaxWalkSpeed)

@@ -184,7 +184,7 @@ local function productInfoText(product: any, state: any): string
 			tostring(product.Minutes or 15)
 		)
 	elseif kind == "Shower" then
-		return "🌠 Sofort mehr + bessere Meteore für alle!"
+		return "🌠 Sofort für alle: zwei Spuren voller Meteore, 3x Glück, keine Locks!"
 	elseif kind == "Meteor" then
 		return oddsText(product.Rarity)
 	elseif kind == "StarterPack" then
@@ -232,6 +232,28 @@ local function ownsGadget(state: any, id: string): boolean
 	return type(owned) == "table" and table.find(owned, id) ~= nil
 end
 
+-- ⭐ STARTER-PAKET: nur einmal! Ein Developer Product kann der Server nicht auf einen Kauf begrenzen
+-- (bezahlt ist bezahlt, er muss liefern). Deshalb bleibt der Kauf-Knopf nach dem Klick gesperrt,
+-- bis Roblox "abgebrochen" meldet oder der Server "gekauft" (State StarterBought).
+local STARTER_LOCK_SAFETY = 30 -- Sekunden: spätestens dann ist der Knopf wieder frei (z.B. ohne Antwort)
+local starterPendingUntil = 0
+
+function Windows.StarterPending(): boolean
+	return os.clock() < starterPendingUntil
+end
+
+function Windows.BuyStarter()
+	local product = ctx.Config.ProductsByKey and ctx.Config.ProductsByKey.StarterPack
+	local state = ctx.State
+	if not product or product.Id == 0 or (state and state.StarterBought == true) or Windows.StarterPending() then
+		return
+	end
+	starterPendingUntil = os.clock() + STARTER_LOCK_SAFETY
+	Windows.RefreshShop(state)
+	ctx.Hud.Refresh(state)
+	MarketplaceService:PromptProductPurchase(player, product.Id)
+end
+
 function Windows.RefreshShop(state: any)
 	for _, entry in ipairs(passCards) do
 		local pass = entry.Pass
@@ -260,6 +282,9 @@ function Windows.RefreshShop(state: any)
 			entry.Button.SetColor(GRAY)
 		elseif product.Type == "StarterPack" and state and state.StarterBought == true then
 			entry.Button.SetText("✅ Gekauft")
+			entry.Button.SetColor(GRAY)
+		elseif product.Type == "StarterPack" and Windows.StarterPending() then
+			entry.Button.SetText("⏳ Kauf läuft...")
 			entry.Button.SetColor(GRAY)
 		else
 			entry.Button.SetText(if entry.Price then ("R$ " .. entry.Price) else "Kaufen")
@@ -417,11 +442,13 @@ local function buildBoostPage(page: Frame)
 			MaxText = 20,
 			Parent = card,
 		}, function()
-			local state = ctx.State
-			if product.Id == 0 or (starter and state and state.StarterBought == true) then
+			if starter then
+				Windows.BuyStarter() -- nur einmal kaufbar (mit Sperre gegen Doppelkauf)
 				return
 			end
-			MarketplaceService:PromptProductPurchase(player, product.Id)
+			if product.Id ~= 0 then
+				MarketplaceService:PromptProductPurchase(player, product.Id)
+			end
 		end)
 		local entry: ProductCard = { Product = product, Info = info, Button = buy, Price = nil }
 		table.insert(productCards, entry)
@@ -1223,6 +1250,22 @@ function Windows.Init(context: any)
 		end
 	end
 	Windows.RefreshShop(nil)
+
+	-- ⭐ Starter-Paket: abgebrochen -> Knopf wieder frei. Gekauft -> bleibt gesperrt, bis der Server
+	-- "gekauft" meldet (danach verschwindet der Knopf ganz)
+	local starter = ctx.Config.ProductsByKey and ctx.Config.ProductsByKey.StarterPack
+	MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId, productId, purchased)
+		if userId ~= player.UserId or not starter or productId ~= starter.Id then
+			return
+		end
+		if not purchased then
+			starterPendingUntil = 0
+		end
+		Windows.RefreshShop(ctx.State)
+		if ctx.State then
+			ctx.Hud.Refresh(ctx.State)
+		end
+	end)
 end
 
 return Windows

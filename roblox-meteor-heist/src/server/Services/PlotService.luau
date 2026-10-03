@@ -219,7 +219,8 @@ function PlotService.RenderSlot(plot, slot: number)
 	)
 	local sellPrompt =
 		MeteorFactory.AddPrompt(promptPart, "SellPrompt", sellText(entry), name, 1, Enum.KeyCode.F, reach)
-	stealPrompt.Triggered:Connect(function(player)
+	-- Klauen: der Server prüft, ob wirklich Config.StealHoldDuration lang gehalten wurde
+	MeteorFactory.OnHeldTrigger(stealPrompt, function(player)
 		Services.CarryService.TrySteal(player, plot, slot)
 	end)
 	sellPrompt.Triggered:Connect(function(player)

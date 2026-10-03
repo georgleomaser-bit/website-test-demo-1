@@ -46,6 +46,7 @@ local incomeLabel: TextLabel
 local infoLabel: TextLabel
 local offerButton: UI.Button? = nil
 local starterButton: UI.Button? = nil
+local starterSubText = "Super-Angebot!"
 local dailyBadge: Frame
 local giftBadge: Frame
 local wheelBadge: Frame
@@ -181,10 +182,8 @@ local function buildLeft()
 			Visible = false, -- erst zeigen, wenn der State sagt: noch nicht gekauft
 			Parent = bar,
 		}, function()
-			local state = ctx.State
-			if starter.Id ~= 0 and not (state and state.StarterBought == true) then
-				MarketplaceService:PromptProductPurchase(player, starter.Id)
-			end
+			-- nur einmal kaufbar: Windows sperrt den Knopf bis zur Antwort (kein Doppelkauf per Doppelklick)
+			ctx.Windows.BuyStarter()
 		end)
 		button.Stroke.Color = Color3.fromRGB(255, 255, 255)
 		TweenService:Create(button.Stroke, OFFER_GLOW_INFO, { Thickness = 5 }):Play()
@@ -193,7 +192,8 @@ local function buildLeft()
 		starterButton = button
 		UI.FetchPrice(starter.Id, Enum.InfoType.Product, function(price)
 			if price then
-				button.SetSub("🔥 NUR " .. price .. " R$ 🔥")
+				starterSubText = "🔥 NUR " .. price .. " R$ 🔥"
+				button.SetSub(starterSubText)
 			end
 		end)
 	end
@@ -527,15 +527,25 @@ end
 -- ---------------------------------------------------------------------
 -- PROMPT-HINWEIS (Prompts meldet, welche Art Prompt gerade sichtbar ist)
 -- ---------------------------------------------------------------------
+-- "Touch" (Handy/Tablet), "Gamepad" (Controller) oder "Keyboard" (PC) – nach der letzten Eingabe,
+-- vor der ersten Eingabe nach dem Gerät geraten
 local function inputStyle(): string
 	local last = UserInputService:GetLastInputType()
 	if last == Enum.UserInputType.Touch then
 		return "Touch"
 	elseif last.Name:sub(1, 7) == "Gamepad" then
 		return "Gamepad"
+	elseif last == Enum.UserInputType.Keyboard or last.Name:sub(1, 5) == "Mouse" then
+		return "Keyboard"
+	end
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+		return "Touch"
+	elseif UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then
+		return "Gamepad"
 	end
 	return "Keyboard"
 end
+Hud.InputStyle = inputStyle
 
 local function hintText(kind: string, state: any): string
 	local style = inputStyle()
@@ -768,6 +778,21 @@ local function setCarrying(now: boolean)
 	end
 end
 
+-- ⭐ Starter-Paket-Knopf: zeigen, solange nicht gekauft und eingerichtet. Läuft gerade ein Kauf,
+-- steht "⏳" darauf (ein zweiter Klick wäre ein zweiter Kauf – Windows.BuyStarter ignoriert ihn).
+local function updateStarter(state: any)
+	local starter = starterButton
+	if not starter or not state then
+		return
+	end
+	local product = ctx.Config.ProductsByKey.StarterPack
+	local show = product ~= nil and product.Id ~= 0 and state.StarterBought == false
+	if starter.Frame.Visible ~= show then
+		starter.Frame.Visible = show
+	end
+	starter.SetSub(if ctx.Windows.StarterPending() then "⏳ Kauf läuft..." else starterSubText)
+end
+
 function Hud.Refresh(state: any)
 	if not state then
 		return
@@ -810,11 +835,7 @@ function Hud.Refresh(state: any)
 		local owned = state.Passes and state.Passes.SpeedBoots == true
 		offer.Frame.Visible = boots ~= nil and boots.Id ~= 0 and not owned
 	end
-	local starter = starterButton
-	if starter then
-		local product = ctx.Config.ProductsByKey.StarterPack
-		starter.Frame.Visible = product ~= nil and product.Id ~= 0 and state.StarterBought == false
-	end
+	updateStarter(state)
 	dailyBadge.Visible = state.DailyReady == true
 	updateBadges(state)
 
@@ -902,6 +923,7 @@ function Hud.Tick()
 	local state = ctx.State
 	if state then
 		updateBadges(state)
+		updateStarter(state)
 	end
 	-- Eingabegerät gewechselt (Tastatur <-> Handy/Controller)? Hinweis neu schreiben
 	updateHint()

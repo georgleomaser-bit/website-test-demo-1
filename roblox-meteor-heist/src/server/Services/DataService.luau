@@ -38,7 +38,10 @@ local DEFAULT_DATA = {
 	Spins = 1, -- 🎡 Glücksrad-Drehs (gekauft/gewonnen; der Gratis-Dreh zählt extra)
 	LastFreeSpin = 0, -- os.time() des letzten Gratis-Drehs
 	-- 📜 Tagesaufgaben: Day = UTC-Tag "YYYY-MM-DD", List = { { Id, Kind, Goal, Progress, Claimed } }
+	--    (dazu Rerolled = true, wenn heute schon eine Aufgabe getauscht wurde)
 	Quests = { Day = "", List = {} },
+	-- 🎁 Spielzeit-Geschenke: Spielzeit von heute (UTC, über alle Besuche), abgeholte als ["1"] = true
+	Gifts = { Day = "", Seconds = 0, Claimed = {} },
 	Gadgets = {}, -- ["SpeedCoil"] = true -> besessen (bleibt bei Rebirth)
 	StarterBought = false, -- ⭐ Starter-Paket schon gekauft (nur einmal im Shop)
 }
@@ -124,6 +127,22 @@ local function sanitizeRewards(data)
 	local quests = data.Quests
 	if type(quests) ~= "table" or type(quests.Day) ~= "string" or type(quests.List) ~= "table" then
 		data.Quests = nil -- der RewardService würfelt dann neue Aufgaben
+	elseif quests.Rerolled ~= nil and type(quests.Rerolled) ~= "boolean" then
+		quests.Rerolled = nil
+	end
+	local gifts = data.Gifts
+	if type(gifts) ~= "table" or type(gifts.Day) ~= "string" or type(gifts.Claimed) ~= "table" then
+		data.Gifts = nil -- Reconcile trägt den Standard ein, der RewardService fängt neu an
+	else
+		local seconds = gifts.Seconds
+		if type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 or seconds == math.huge then
+			gifts.Seconds = 0
+		end
+		for key, claimed in pairs(gifts.Claimed) do
+			if type(key) ~= "string" or claimed ~= true then
+				gifts.Claimed[key] = nil
+			end
+		end
 	end
 	if type(data.Gadgets) ~= "table" then
 		data.Gadgets = nil

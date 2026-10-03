@@ -5,8 +5,11 @@
 --                   Fremde frieren Config.TrapFreezeTime Sekunden ein, getragene Beute ist weg.
 --   🔨 Super-Bonk – ersetzt den normalen Bonk (Schlag-Logik in CarryService)
 --   👻 Umhang     – Klick: Config.CloakDuration Sekunden unsichtbar und nicht bonkbar,
---                   danach Config.CloakCooldown Sekunden Abklingzeit
+--                   danach Config.CloakCooldown Sekunden Abklingzeit (ab dem Sichtbarwerden).
+--                   Wer klaut, wird sofort sichtbar (CarryService), mit Beute geht er nicht an.
 -- Alles wird hier auf dem Server geprüft und gebremst (Klicks kommen vom Client).
+-- Fallen lösen über Touched UND über eine eigene Server-Prüfung aus (Touched meldet der Client –
+-- wer das lokal abschaltet, läuft trotzdem nicht einfach drüber).
 
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
@@ -23,6 +26,11 @@ local SYNC_INTERVAL = 2 -- so oft wird geprüft, ob jeder seine Werkzeuge hat
 local TRAP_PLACE_COOLDOWN = 1 -- Sekunden zwischen zwei Fallen
 local TRAP_SIZE = 4.5
 local TRAP_HEIGHT = 0.6 -- so hoch, dass Füße beim Drüberlaufen sicher die Falle berühren
+local TRAP_EDGE_MARGIN = TRAP_SIZE / 2 + 1 -- Fallen-Mitte so weit innerhalb der Base (nichts ragt raus)
+local TRAP_IMMUNE_EXTRA = 5 -- nach dem Auftauen so viele Sekunden immun (keine Endlos-Falle)
+local TRAP_CHECK_INTERVAL = 0.2 -- so oft prüft der Server selbst, ob jemand auf einer Falle steht
+local TRAP_REACH = TRAP_SIZE / 2 + 1 -- waagrechter Abstand Fallen-Mitte <-> HumanoidRootPart
+local TRAP_MAX_HEIGHT = 5 -- so hoch über der Falle zählt der HumanoidRootPart noch als "draufgetreten"
 
 -- Werkzeug-Namen im Rucksack (Super-Bonk heißt in CarryService "Super-Bonk")
 local TOOL_NAMES = {
@@ -34,6 +42,7 @@ local TOOL_NAMES = {
 -- Fallen pro Besitzer (eine Base pro Spieler): [player] = { Falle, ... }
 local trapsByOwner: { [Player]: { BasePart } } = {}
 local trapPlacedAt: { [Player]: number } = {}
+local trapImmuneUntil: { [Player]: number } = {} -- gerade aus einer Falle aufgetaut -> kurz immun
 -- Umhang: [player] = { Character, Changed = { [Instance] = alte Transparenz }, Conn, ... }
 type CloakState = {
 	Character: Model,
@@ -178,22 +187,23 @@ local function freeze(root: BasePart, seconds: number)
 	end)
 end
 
-local function onTrapTouched(owner: Player, trap: BasePart, hit: BasePart)
-	if trap:GetAttribute("Sprung") == true or not trap.Parent then
+-- Falle schnappt zu (über Touched oder die Server-Prüfung). Nur für Fremde, die IN der Base des
+-- Besitzers stehen (wer am Eingang vorbeiläuft, wird nicht erwischt) und nicht gerade erst aufgetaut sind.
+local function springTrap(owner: Player, trap: BasePart, victim: Player)
+	if trap:GetAttribute("Sprung") == true or not trap.Parent or victim == owner then
 		return
 	end
-	local character = hit:FindFirstAncestorOfClass("Model")
-	local victim = character and Players:GetPlayerFromCharacter(character)
-	if not victim or victim == owner or not character then
+	if os.clock() < (trapImmuneUntil[victim] or 0) then
 		return
 	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+	local _, humanoid, root = aliveCharacter(victim)
+	local plot = Services.PlotService.GetPlot(owner)
+	if not humanoid or not root or not plot or not Services.PlotService.IsInside(plot, root.Position) then
 		return
 	end
 	trap:SetAttribute("Sprung", true)
 	trap:Destroy()
+	trapImmuneUntil[victim] = os.clock() + Config.TrapFreezeTime + TRAP_IMMUNE_EXTRA
 	if not root.Anchored then
 		freeze(root, Config.TrapFreezeTime) -- (schon vom Admin eingefroren -> so lassen)
 	end
@@ -207,6 +217,39 @@ local function onTrapTouched(owner: Player, trap: BasePart, hit: BasePart)
 		"Error"
 	)
 	Services.EconomyService.Notify(owner, "🪤 " .. victim.DisplayName .. " ist in deine Falle getappt!", "Success")
+end
+
+local function onTrapTouched(owner: Player, trap: BasePart, hit: BasePart)
+	local character = hit:FindFirstAncestorOfClass("Model")
+	local victim = character and Players:GetPlayerFromCharacter(character)
+	if victim and victim.Character == character then
+		springTrap(owner, trap, victim)
+	end
+end
+
+-- Server-Prüfung (alle TRAP_CHECK_INTERVAL Sekunden): steht ein Fremder auf einer Falle?
+local function checkTraps()
+	for owner, list in pairs(trapsByOwner) do
+		for _, trap in ipairs(list) do
+			if trap.Parent and trap:GetAttribute("Sprung") ~= true then
+				local center = trap.Position
+				for _, victim in ipairs(Players:GetPlayers()) do
+					local character = victim.Character
+					local root = character and character:FindFirstChild("HumanoidRootPart")
+					if victim ~= owner and root and root:IsA("BasePart") then
+						local offset = root.Position - center
+						local flatSq = offset.X * offset.X + offset.Z * offset.Z
+						if flatSq <= TRAP_REACH * TRAP_REACH and offset.Y > -1 and offset.Y < TRAP_MAX_HEIGHT then
+							springTrap(owner, trap, victim)
+							if trap:GetAttribute("Sprung") == true then
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 end
 
 local function buildTrap(position: Vector3): BasePart
@@ -288,6 +331,13 @@ local function placeTrap(player: Player)
 	if not floor or not Services.PlotService.IsInside(plot, floor) then
 		return
 	end
+	-- Die ganze Falle muss in der Base liegen (am Rand würde sie vor den Eingang ragen)
+	local localFloor = plot.CFrame:PointToObjectSpace(floor)
+	local limit = (plot.HalfSize or 36) - TRAP_EDGE_MARGIN
+	if math.abs(localFloor.X) > limit or math.abs(localFloor.Z) > limit then
+		Services.EconomyService.Notify(player, "🪤 Zu nah am Rand – stell die Falle weiter innen auf!", "Error")
+		return
+	end
 	trapPlacedAt[player] = t
 	local folder = plot.Model:FindFirstChild("Traps")
 	if not folder then
@@ -352,12 +402,15 @@ local function setOverheadTag(character: Model)
 	end
 end
 
+-- Umhang beenden (Zeit um, Klauen, Respawn, Admin-Unsichtbar). Die Abklingzeit zählt ab JETZT.
+-- silent = keine Nachricht
 local function endCloak(player: Player, silent: boolean?)
 	local state = cloaks[player]
 	if not state then
 		return
 	end
 	cloaks[player] = nil
+	cloakReadyAt[player] = os.clock() + Config.CloakCooldown
 	state.Conn:Disconnect()
 	for inst, transparency in pairs(state.Changed) do
 		if inst.Parent then
@@ -380,6 +433,7 @@ local function endCloak(player: Player, silent: boolean?)
 		)
 	end
 end
+GadgetService.EndCloak = endCloak
 
 local function activateCloak(player: Player)
 	if not useLimiter.Check(player) or not GadgetService.Owns(player, "Cloak") then
@@ -394,11 +448,16 @@ local function activateCloak(player: Player)
 		Services.EconomyService.Notify(player, "👻 Umhang lädt noch " .. math.ceil(readyAt - t) .. " s", "Error")
 		return
 	end
+	if Services.CarryService.IsCarrying(player) then
+		Services.EconomyService.Notify(player, "👻 Mit Beute geht der Umhang nicht – erst heimbringen!", "Error")
+		return
+	end
 	local character, humanoid = aliveCharacter(player)
 	if not character or not humanoid then
 		return
 	end
-	cloakReadyAt[player] = t + Config.CloakCooldown
+	-- (falls endCloak nie kommt, z.B. Fehler: spätestens dann wieder bereit)
+	cloakReadyAt[player] = t + Config.CloakDuration + Config.CloakCooldown
 	local state: CloakState = {
 		Character = character,
 		Changed = {},
@@ -419,7 +478,7 @@ local function activateCloak(player: Player)
 	player:SetAttribute("CloakedUntil", workspace:GetServerTimeNow() + Config.CloakDuration)
 	Services.EconomyService.Notify(
 		player,
-		"👻 " .. Config.CloakDuration .. " s unsichtbar – niemand kann dich bonken!",
+		"👻 " .. Config.CloakDuration .. " s unsichtbar – niemand kann dich bonken! (Klauen macht sichtbar)",
 		"Success"
 	)
 	task.delay(Config.CloakDuration, function()
@@ -626,7 +685,19 @@ function GadgetService.Start()
 		clearTraps(player)
 		cloakReadyAt[player] = nil
 		trapPlacedAt[player] = nil
+		trapImmuneUntil[player] = nil
 		useLimiter.Clear(player)
+	end)
+
+	-- Fallen selbst prüfen (Touched allein reicht nicht – das meldet der Client)
+	task.spawn(function()
+		while true do
+			task.wait(TRAP_CHECK_INTERVAL)
+			local ok, err = pcall(checkTraps)
+			if not ok then
+				warn("[GadgetService] Fallen-Prüfung: " .. tostring(err))
+			end
+		end
 	end)
 
 	-- Sicherheitsnetz: fehlende Werkzeuge nachreichen (z.B. Gadget per Spielstand geschenkt)

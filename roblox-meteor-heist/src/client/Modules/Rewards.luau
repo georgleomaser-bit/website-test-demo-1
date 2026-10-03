@@ -1,8 +1,9 @@
 -- =====================================================================
 --  BELOHNUNGS-FENSTER: 🎁 Geschenke, 🎡 Glücksrad, 📜 Tagesaufgaben
 --  Gewürfelt und gutgeschrieben wird NUR auf dem Server. Hier wird angezeigt und angefragt
---  ("ClaimGift", "Spin", "ClaimQuest"). Countdowns im State gelten ab seiner Ankunft
---  (ctx.StateTime) und laufen lokal weiter – ohne dass der Server jede Sekunde senden muss.
+--  ("ClaimGift", "Spin", "ClaimQuest", "RerollQuest"). Countdowns laufen lokal weiter – ohne dass
+--  der Server jede Sekunde senden muss: FreeSpinIn gilt ab der Ankunft des States (ctx.StateTime),
+--  die Geschenke kommen nur bei Änderung und zählen ab GiftsAt (Serverzeit).
 --  Das Glücksrad dreht flüssig mit Ease-Out genau auf das Feld, das der Server gewürfelt hat.
 -- =====================================================================
 
@@ -33,6 +34,16 @@ local function sinceState(): number
 		return 0
 	end
 	return math.max(0, os.clock() - t)
+end
+
+-- Sekunden, seit die Geschenk-Countdowns (ReadyIn) gelten. Der Server schickt die Geschenke nur bei
+-- Änderung – deshalb zählen sie ab GiftsAt (Serverzeit), nicht ab dem letzten State.
+local function sinceGifts(state: any): number
+	local at = type(state) == "table" and tonumber(state.GiftsAt)
+	if at then
+		return math.max(0, workspace:GetServerTimeNow() - at)
+	end
+	return sinceState()
 end
 
 -- "👟 2x Schritte" + Icon "👟" -> Icon nicht doppelt
@@ -67,6 +78,7 @@ export type Summary = {
 
 function Rewards.Summary(state: any): Summary
 	local elapsed = sinceState()
+	local giftElapsed = sinceGifts(state)
 	local giftsReady = 0
 	local nextGift: number? = nil
 	local quests = 0
@@ -74,7 +86,7 @@ function Rewards.Summary(state: any): Summary
 		if type(state.Gifts) == "table" then
 			for _, gift in ipairs(state.Gifts) do
 				if type(gift) == "table" and gift.Claimed ~= true then
-					local left = (tonumber(gift.ReadyIn) or 0) - elapsed
+					local left = (tonumber(gift.ReadyIn) or 0) - giftElapsed
 					if left <= 0 then
 						giftsReady += 1
 					elseif nextGift == nil or left < nextGift then
@@ -202,7 +214,7 @@ function Rewards.RefreshGifts(state: any)
 		return
 	end
 	local list = if type(state.Gifts) == "table" then state.Gifts else {}
-	local elapsed = sinceState()
+	local elapsed = sinceGifts(state)
 	local playSeconds: number? = nil
 	for i, card in ipairs(giftCards) do
 		local gift = list[i]
@@ -223,7 +235,7 @@ function Rewards.RefreshGifts(state: any)
 			elseif left <= 0 then
 				subText, buttonText, color, gold = "🎁 Bereit – hol es dir!", "🎁 Abholen", Theme.Green, true
 			else
-				subText = "nach " .. minutes .. " Min. Spielzeit"
+				subText = "nach " .. minutes .. " Min. Spielzeit heute"
 				buttonText, color, gold = "⏳ " .. ctx.Util.FormatTime(math.ceil(left)), GRAY, false
 			end
 			if card.Sub.Text ~= subText then
@@ -243,11 +255,11 @@ function Rewards.RefreshGifts(state: any)
 	if #list == 0 then
 		info = "🎁 Geschenke werden geladen..."
 	elseif playSeconds then
-		info = "⏱️ Spielzeit: "
+		info = "⏱️ Spielzeit heute: "
 			.. ctx.Util.FormatTime(math.max(0, playSeconds))
 			.. "  •  bleib dran für mehr! 🎁"
 	else
-		info = "🏆 Alle Geschenke freigeschaltet – stark!"
+		info = "🏆 Alle Geschenke von heute freigeschaltet – morgen gibt's neue!"
 	end
 	if giftInfo.Text ~= info then
 		giftInfo.Text = info
@@ -720,6 +732,7 @@ type QuestCard = {
 	Bar: UI.Bar,
 	Reward: TextLabel,
 	Button: UI.Button,
+	Reroll: UI.Button, -- 🔄 einmal am Tag tauschen
 }
 
 local questCards: { QuestCard } = {}
@@ -751,7 +764,7 @@ local function ensureQuestCard(i: number): QuestCard
 	})
 	local reward = UI.Label({
 		Position = UDim2.new(0, 12, 1, -46),
-		Size = UDim2.new(1, -190, 0, 36),
+		Size = UDim2.new(1, -246, 0, 36),
 		Text = "",
 		Font = Enum.Font.GothamBold,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -771,6 +784,19 @@ local function ensureQuestCard(i: number): QuestCard
 	}, function()
 		ctx.Request("ClaimQuest", i)
 	end)
+	-- 🔄 Tauschen (einmal am Tag, z.B. wenn keine anderen Spieler zum Bonken da sind)
+	local reroll = UI.Button({
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -178, 1, -8),
+		Size = UDim2.fromOffset(50, 42),
+		Text = "🔄",
+		Color = Theme.Purple,
+		MaxText = 22,
+		Visible = false,
+		Parent = card,
+	}, function()
+		ctx.Request("RerollQuest", i)
+	end)
 	local entry: QuestCard = {
 		Card = card,
 		Stroke = stroke,
@@ -778,6 +804,7 @@ local function ensureQuestCard(i: number): QuestCard
 		Bar = bar,
 		Reward = reward,
 		Button = button,
+		Reroll = reroll,
 	}
 	questCards[i] = entry
 	return entry
@@ -820,7 +847,11 @@ function Rewards.RefreshQuests(state: any)
 	end
 	local Util = ctx.Util
 	local list = if type(state.Quests) == "table" then state.Quests else {}
-	local header = "⏰ Neue Aufgaben in " .. Util.FormatTime(secondsToNewDay()) .. "  •  Belohnung: 💵 + 🎡"
+	local canReroll = state.QuestReroll == true
+	local header = "⏰ Neue Aufgaben in "
+		.. Util.FormatTime(secondsToNewDay())
+		.. "  •  Belohnung: 💵 + 🎡"
+		.. (if canReroll then "  •  🔄 1x tauschen" else "")
 	if questHeader.Text ~= header then
 		questHeader.Text = header
 	end
@@ -853,6 +884,10 @@ function Rewards.RefreshQuests(state: any)
 			else
 				card.Button.SetText("⏳ " .. math.floor(progress / goal * 100) .. "%")
 				card.Button.SetColor(GRAY)
+			end
+			local showReroll = canReroll and not done and not claimed
+			if card.Reroll.Frame.Visible ~= showReroll then
+				card.Reroll.Frame.Visible = showReroll
 			end
 			local gold = done and not claimed
 			local strokeColor = if gold then Theme.Gold else BLACK

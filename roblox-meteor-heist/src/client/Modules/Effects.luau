@@ -5,7 +5,8 @@
 --   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base
 --                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter)
 --   "Hatch"    -> Funken-Explosion + Lichtblitz, wenn ein Alien schlüpft
---   "HatchReveal" -> große Karte in der Bildschirmmitte (seltenes Alien geschlüpft) + Konfetti
+--   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) + Konfetti,
+--                    sonst bzw. beim Tragen kleine Karte oben rechts
 --   "Shake", "Confetti", "Alarm" wie bisher
 --  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
@@ -204,6 +205,12 @@ end
 local BURST_RANGE = 450 -- weiter weg sieht man es eh nicht -> nichts tun
 local FLASH_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SHELL_INFO = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+-- Viele Explosionen auf einmal (z.B. mehrere Eier schlüpfen gleichzeitig): höchstens MAX_FLASHES
+-- Lichtblitze pro FLASH_WINDOW Sekunden, darüber nur noch halb so viele Funken
+local FLASH_WINDOW = 0.25
+local MAX_FLASHES = 3
+local flashWindowStart = 0
+local flashCount = 0
 
 local function localPart(props: { [string]: any }): Part
 	local base: { [string]: any } = {
@@ -251,6 +258,18 @@ local function burst(position: Vector3, color: Color3, amount: number, flash: bo
 	local camera = workspace.CurrentCamera
 	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
 		return
+	end
+	if flash then
+		local t = os.clock()
+		if t - flashWindowStart > FLASH_WINDOW then
+			flashWindowStart = t
+			flashCount = 0
+		end
+		flashCount += 1
+		if flashCount > MAX_FLASHES then
+			flash = false
+			amount *= 0.5
+		end
 	end
 	local holder = localPart({
 		Name = "Burst",
@@ -512,11 +531,15 @@ end
 -- ---------------------------------------------------------------------
 -- HATCH REVEAL: große Karte in der Mitte (Name in Seltenheits-Farbe, Stufe, Mutation)
 -- Eine Karte wird einmal gebaut und wiederverwendet; mehrere hintereinander warten kurz.
+-- Groß + Konfetti nur für Besonderes (Ultra oder ab Epic). "Selten"-Aliens aus kleinen Eiern und
+-- alles, während du Beute trägst, kommt als kleine Karte oben rechts (verdeckt nicht die Mitte).
 -- ---------------------------------------------------------------------
 local REVEAL_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local REVEAL_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 local REVEAL_SPIN_INFO = TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
 local REVEAL_TIME = 3.2
+local MINI_REVEAL_TIME = 1.8
+local MINI_REVEAL_SCALE = 0.45
 local MAX_REVEAL_QUEUE = 4
 -- Ersatz-Symbole (Config.Mutations -> Icon hat Vorrang; gleiche Symbole wie an Aliens und Meteoren)
 local MUTATION_ICONS: { [string]: string } = {
@@ -790,6 +813,23 @@ local function fillReveal(ui: RevealUI, data: any): boolean
 	return true
 end
 
+-- Große Karte (Mitte, Konfetti) oder kleine (oben rechts)?
+local function revealIsBig(data: any): boolean
+	local state = ctx.State
+	if state and state.Carrying == true then
+		return false -- beim Wegrennen mit Beute nicht die Bildschirmmitte zudecken
+	end
+	local def = ctx.Aliens.ById[data.AlienId]
+	if not def then
+		return false
+	end
+	if def.Tier == "Ultra" then
+		return true
+	end
+	local Config = ctx.Config
+	return (Config.RarityIndex[def.Rarity] or 0) >= (Config.RarityIndex.Epic or 4)
+end
+
 local function showNextReveal()
 	if revealBusy then
 		return
@@ -800,18 +840,25 @@ local function showNextReveal()
 		local ui = reveal or buildReveal()
 		reveal = ui
 		if ui and not hidden and fillReveal(ui, data) then
+			local big = revealIsBig(data)
 			revealSkip = false
+			ui.Holder.AnchorPoint = if big then Vector2.new(0.5, 0.5) else Vector2.new(1, 0)
+			ui.Holder.Position = if big then UDim2.fromScale(0.5, 0.45) else UDim2.new(1, -14, 0, 56)
+			ui.Rays.Visible = big
 			ui.Holder.Visible = true
 			ui.Scale.Scale = 0.2
 			ui.Rays.Rotation = 0
 			local rayTween = TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 })
 			ui.RayTween = rayTween
 			rayTween:Play()
-			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = 1 }):Play()
-			confetti(1.6)
-			shake(0.35)
+			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = if big then 1 else MINI_REVEAL_SCALE }):Play()
+			if big then
+				confetti(1.6)
+				shake(0.35)
+			end
+			local showTime = if big then REVEAL_TIME else MINI_REVEAL_TIME
 			local shown = 0
-			while shown < REVEAL_TIME and not revealSkip and not hidden do
+			while shown < showTime and not revealSkip and not hidden do
 				shown += task.wait(0.1)
 			end
 			local out = TweenService:Create(ui.Scale, REVEAL_OUT_INFO, { Scale = 0 })

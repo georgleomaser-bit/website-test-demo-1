@@ -75,7 +75,7 @@ Meteore sind Alien-Eier und fahren auf dem Laufband vorbei! KLAU sie gratis und 
 💰 Aliens bringen Geld pro Sekunde
 😈 Klau aus fremden Basen, bonk Diebe weg
 🥚 EGG RUSH: Eier regnen auf die ganze Map. Der Schnellste gewinnt!
-🌠 Meteoritenschauer: keine Locks, 3x Glück
+🌠 Meteoritenschauer: 2x Meteore, keine Locks, 3x Glück
 🎡 Glücksrad, 🎁 Geschenke und 📜 Tagesaufgaben
 🛠️ Gadgets: Speed Coil, Falle, Super-Bonk, Unsichtbarkeits-Umhang
 👟 7 Laufbänder: sammle Schritte, werde superschnell
@@ -101,7 +101,7 @@ Meteors are alien eggs and roll by on the conveyor belt! STEAL them for free and
 💰 Aliens earn cash every second
 😈 Steal from other bases, bonk thieves away
 🥚 EGG RUSH: eggs rain all over the map. Fastest player wins!
-🌠 Meteor showers: no locks, 3x luck
+🌠 Meteor showers: 2x meteors, no locks, 3x luck
 🎡 Lucky wheel, 🎁 gifts and 📜 daily quests
 🛠️ Gadgets: Speed Coil, trap, Super Bonk, invisibility cloak
 👟 7 treadmills: collect steps, get super fast
@@ -318,7 +318,7 @@ Volle Speed beim Tragen
 Beschreibung:
 
 ```
-Beim Tragen von Eiern und Aliens wirst du nicht mehr langsamer, für immer! Ohne diesen Pass rennst du mit Beute nur mit 70 % Tempo. Mit ihm entkommst du viel leichter!
+Beim Tragen von Eiern und Aliens wirst du nicht mehr langsamer, für immer! Ohne diesen Pass rennst du mit Beute nur mit 70 % Tempo, mit schwerer, seltener Beute sogar nur mit 45 bis 60 %. Mit ihm entkommst du viel leichter!
 ```
 
 - Preis: **299 Robux**
@@ -440,7 +440,7 @@ Meteoritenschauer JETZT
 Beschreibung:
 
 ```
-Startet sofort einen Meteoritenschauer für alle im Server: 60 Sekunden lang mehr Meteore, 3x Glück und keine Locks!
+Startet sofort einen Meteoritenschauer für alle im Server: 60 Sekunden lang fahren die Meteore auf zwei Spuren (fast doppelt so viele), dazu 3x Glück und keine Locks!
 ```
 
 - Preis: **49 Robux**
@@ -501,7 +501,7 @@ Das Super-Angebot für den Start, nur EINMAL kaufbar! Du bekommst: Geld (15 Minu
 - Bild: `produkt-starter-paket.png`
 - Config-Key: `StarterPack`
 
-> 💡 Roblox selbst kann ein Developer Product nicht auf „nur 1x“ begrenzen. Das macht das Spiel: Nach dem Kauf verschwindet der Knopf **⭐ STARTER-PAKET**. Er erscheint erst, wenn die ID eingetragen ist.
+> 💡 Roblox selbst kann ein Developer Product nicht auf „nur 1x“ begrenzen. Das macht das Spiel: Nach dem Kauf verschwindet der Knopf **⭐ STARTER-PAKET**. Solange ein Kauf läuft, ist er gesperrt („⏳ Kauf läuft...“), damit niemand aus Versehen zweimal kauft. Er erscheint erst, wenn die ID eingetragen ist.
 
 > 💡 In manchen Ländern verbietet Roblox bezahlte Zufalls-Gegenstände. Dort zeigt das Spiel im Shop automatisch den anderen Inhalt an: mehr Geld statt Drehs und ein festes Legendary-Ei (Solar Flare) statt eines zufälligen.
 

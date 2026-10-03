@@ -789,6 +789,7 @@ type ToastEntry = {
 	LabelStroke: UIStroke?,
 	Leaving: boolean,
 	Token: number,
+	Kind: string,
 }
 
 local TOAST_COLORS: { [string]: Color3 } = {
@@ -798,6 +799,17 @@ local TOAST_COLORS: { [string]: Color3 } = {
 	Event = Color3.fromRGB(235, 120, 20),
 	Alarm = Color3.fromRGB(230, 20, 30),
 	Announce = Color3.fromRGB(60, 95, 230),
+}
+
+-- Zu viele Toasts: zuerst fliegt der älteste mit der KLEINSTEN Wichtigkeit raus.
+-- So verdrängen Ansagen an alle ("Event") nie den eigenen Diebstahl-Alarm oder eine Fehlermeldung.
+local TOAST_PRIORITY: { [string]: number } = {
+	Info = 1,
+	Event = 1,
+	Success = 2,
+	Error = 2,
+	Announce = 2,
+	Alarm = 3,
 }
 
 local toastHolder: Frame? = nil
@@ -843,7 +855,21 @@ local function newToastEntry(): ToastEntry
 		LabelStroke = label:FindFirstChildOfClass("UIStroke"),
 		Leaving = false,
 		Token = 0,
+		Kind = "Info",
 	}
+end
+
+-- Welcher Toast soll weichen? Der älteste mit der kleinsten Wichtigkeit.
+local function toastToDrop(): ToastEntry
+	local drop = activeToasts[1]
+	local lowest = math.huge
+	for _, entry in ipairs(activeToasts) do
+		local priority = TOAST_PRIORITY[entry.Kind] or 1
+		if priority < lowest then
+			drop, lowest = entry, priority
+		end
+	end
+	return drop
 end
 
 -- Ein-/Ausblenden über die Transparenz der einzelnen Teile. Gibt den Tween der Fläche zurück.
@@ -910,6 +936,7 @@ function UI.Toast(text: string, kind: string?)
 	local entry = table.remove(toastPool) or newToastEntry()
 	entry.Token += 1
 	entry.Leaving = false
+	entry.Kind = if kind and TOAST_COLORS[kind] then kind else "Info"
 	local token = entry.Token
 	entry.Gradient.Color = UI.ButtonSequence(color)
 	entry.Label.Text = text
@@ -923,7 +950,7 @@ function UI.Toast(text: string, kind: string?)
 	TweenService:Create(entry.Inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
 	fadeToast(entry, TOAST_FADE_INFO, 0)
 	while #activeToasts > MAX_TOASTS do
-		removeToast(activeToasts[1])
+		removeToast(toastToDrop())
 	end
 	task.delay((kind == "Announce" or kind == "Event") and 7 or 4, function()
 		if entry.Token == token then

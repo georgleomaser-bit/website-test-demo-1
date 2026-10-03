@@ -559,7 +559,13 @@ local function buildBelt(map: Folder): BeltInfo
 	local titleAnchor = anchorPart("TitleSign", CFrame.new(0, PORTAL_HEIGHT + 9, startZ + PORTAL_LENGTH / 2), deco)
 	worldSign(titleAnchor, "Sign", 46, 11, Vector3.zero, 700, {
 		{ Name = "Title", Text = "☄️ METEOR HEIST ☄️", Color = Color3.fromRGB(255, 170, 60), Height = 0.62 },
-		{ Name = "Hint", Text = "😈 E = Klauen (gratis) • 🛒 F = Kaufen", Color = WHITE, Height = 0.38 },
+		-- geräteneutral (am Handy gibt es keine E/F-Tasten): halten = klauen, kurz = kaufen
+		{
+			Name = "Hint",
+			Text = "😈 Halten = Klauen (gratis) • 🛒 Kaufen = Lieferung",
+			Color = WHITE,
+			Height = 0.38,
+		},
 	})
 
 	return {

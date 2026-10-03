@@ -900,6 +900,12 @@ end
 function Actions.Invisible(admin, args)
 	local targets = resolveTargets(admin, args.Target)
 	for _, p in ipairs(targets) do
+		-- Erst einen laufenden Umhang (Gadget) beenden: beide ändern dieselben Transparenzen,
+		-- sonst merkt sich setInvisible die Umhang-Werte bzw. der Umhang stellt später alte Werte her
+		local gadgets = Services.GadgetService
+		if gadgets and gadgets.EndCloak then
+			gadgets.EndCloak(p, true)
+		end
 		setInvisible(p, args.Enabled == true)
 	end
 	return #targets > 0, (args.Enabled and "👻 Unsichtbar: " or "Sichtbar: ") .. names(targets)

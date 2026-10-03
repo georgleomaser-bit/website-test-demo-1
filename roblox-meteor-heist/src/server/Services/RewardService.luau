@@ -1,9 +1,12 @@
 -- Belohnungen, die zum Wiederkommen locken (v2.1):
---  * 🎁 SPIELZEIT-GESCHENKE: pro Sitzung nach 2, 5, 10 ... 60 Minuten ein Geschenk (Zeit ab Beitritt)
+--  * 🎁 SPIELZEIT-GESCHENKE: nach 2, 5, 10 ... 60 Minuten Spielzeit ein Geschenk. Die Spielzeit zählt
+--    pro UTC-Tag über ALLE Besuche und steht im Spielstand (data.Gifts) – neu beitreten setzt sie
+--    nicht zurück (sonst könnte man alle 10 Minuten neu beitreten und dieselben Geschenke abholen).
 --  * 🎡 GLÜCKSRAD: Drehs (data.Spins) + alle Config.FreeSpinHours Stunden ein Gratis-Dreh
---  * 📜 TAGESAUFGABEN: pro UTC-Tag 3 Aufgaben (Klauen, Schlüpfen, Laufen ...) -> Cash + 1 Dreh
+--  * 📜 TAGESAUFGABEN: pro UTC-Tag 3 Aufgaben (Klauen, Schlüpfen, Laufen ...) -> Cash + 1 Dreh,
+--    eine davon darf man einmal am Tag tauschen (z.B. "Bonk 3 Diebe" auf einem leeren Server)
 -- Gewürfelt und gutgeschrieben wird NUR hier auf dem Server. Der Client zeigt nur an (State)
--- und schickt Anfragen ("ClaimGift", "Spin", "ClaimQuest" über den EconomyService).
+-- und schickt Anfragen ("ClaimGift", "Spin", "ClaimQuest", "RerollQuest" über den EconomyService).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,6 +32,8 @@ local SPIN_COOLDOWN = 2 -- Sekunden zwischen zwei Drehs (der Client dreht das Ra
 local SPIN_REVEAL_DELAY = 5 -- große Gewinne erst ansagen, wenn das Rad beim Gewinner stehen geblieben ist
 local SPIN_ANNOUNCE_RARITY = "Legendary" -- ab dieser Seltenheit wird ein Ei-Gewinn allen angesagt
 local FIRST_NOTIFY_DELAY = 8 -- "Gratis-Dreh bereit" erst nach den Willkommens-Nachrichten
+local MAX_TICK = 5 -- Spielzeit: nach einem Server-Hänger höchstens so viele Sekunden auf einmal
+local MAX_GIFT_SECONDS = 86400 -- mehr als ein Tag Spielzeit geht an einem Tag nicht
 
 -- Tagesaufgaben: Goals = feste Auswahl, Scale = wächst mit dem Fortschritt des Spielers.
 -- Social = braucht andere Spieler (Klauen aus Basen, Bonken) -> höchstens eine davon pro Tag.
@@ -56,12 +61,16 @@ end
 
 local TRACK_KINDS = { Grab = true, Steal = true, Hatch = true, Steps = true, Collect = true, Bonk = true }
 
--- Sitzungs-Daten (nicht gespeichert)
+-- Sitzungs-Daten (nicht gespeichert – die Spielzeit für Geschenke steht in data.Gifts)
 local joinedAt: { [Player]: number } = {}
-local claimedGifts: { [Player]: { [number]: boolean } } = {}
+local lastTick: { [Player]: number } = {}
 local notifiedGifts: { [Player]: { [number]: boolean } } = {}
+local notifiedDay: { [Player]: string } = {}
 local freeSpinNotified: { [Player]: boolean } = {}
 local lastSpin: { [Player]: number } = {}
+-- Zuletzt geschickte Geschenke/Aufgaben (nur bei Änderung neu schicken, spart Netzwerk)
+local sentGiftKey: { [Player]: string } = {}
+local sentQuestKey: { [Player]: string } = {}
 
 -- -------------------------------------------------------------------
 -- HELFER
@@ -111,7 +120,7 @@ local function markDirty(player: Player)
 	Services.EconomyService.MarkDirty(player)
 end
 
--- Sekunden seit dem Beitritt (Spielzeit-Geschenke)
+-- Sekunden seit dem Beitritt (nur für den ersten Hinweis, NICHT für die Geschenke)
 local function sessionSeconds(player: Player): number
 	local t = joinedAt[player]
 	if not t then
@@ -121,19 +130,44 @@ local function sessionSeconds(player: Player): number
 	return os.clock() - t
 end
 
+-- 🎁 Spielzeit von heute (UTC) aus dem Spielstand: { Day, Seconds, Claimed = { ["1"] = true } }.
+-- Neuer Tag oder kaputte Daten -> wieder bei 0, alle Geschenke neu.
+type GiftData = { Day: string, Seconds: number, Claimed: { [string]: boolean } }
+
+local function giftData(data): GiftData
+	local gifts = data.Gifts
+	local day = today()
+	if
+		type(gifts) ~= "table"
+		or gifts.Day ~= day
+		or type(gifts.Claimed) ~= "table"
+		or type(gifts.Seconds) ~= "number"
+		or gifts.Seconds ~= gifts.Seconds
+	then
+		gifts = { Day = day, Seconds = 0, Claimed = {} }
+		data.Gifts = gifts
+	end
+	return gifts
+end
+
 local function prizeType(prize): string
 	return tostring(prize.Type or prize.Kind or "Cash")
 end
 
--- Einkommen + Schritte-Tempo einmal ausrechnen (für mehrere Belohnungstexte auf einmal)
+-- Einkommen + Schritte-Tempo einmal ausrechnen (für mehrere Belohnungstexte auf einmal).
+-- state (optional) = schon gebauter State: dann werden Income/StepsMult daraus genommen statt neu gerechnet.
 type Rates = { Income: number, StepsPerSecond: number }
 
-local function rates(player: Player, data): Rates
+local function rates(player: Player, data, state: { [string]: any }?): Rates
 	local best = Config.BestTreadmill(data.Steps)
 	local rate = best and best.Rate or 1
+	local income = state and tonumber(state.Income)
+	local stepsMult = state and tonumber(state.StepsMult)
 	return {
-		Income = finite(Services.EconomyService.GetIncome(player)),
-		StepsPerSecond = finite(rate / Config.TreadmillTick * Services.EconomyService.GetStepsMult(player)),
+		Income = finite(income or Services.EconomyService.GetIncome(player)),
+		StepsPerSecond = finite(
+			rate / Config.TreadmillTick * (stepsMult or Services.EconomyService.GetStepsMult(player))
+		),
 	}
 end
 
@@ -175,14 +209,16 @@ end
 -- -------------------------------------------------------------------
 -- EIER & PREISE GUTSCHREIBEN
 -- -------------------------------------------------------------------
--- Ei (Meteor) einer Seltenheit in die Base. Base voll / keine Base -> Wert als Cash.
+-- Ei (Meteor) einer Seltenheit in die Base. Base voll / keine Base -> Geld statt Ei:
+--   Gratis-Belohnung (Geschenk, Glücksrad): der Verkaufswert (Wert * Config.SellRatio) – sonst lohnt
+--   es sich, die Base absichtlich voll zu lassen. opts.FullValue (Robux-Käufe): der volle Wert.
 -- opts.Fixed = immer der günstigste Meteor der Seltenheit (z.B. Länder ohne Zufalls-Käufe)
 -- opts.RandomMutation = Mutation würfeln (Gold, Frost ...), sonst "Normal"
 -- Gibt (true, Text) zurück – false nur, wenn es die Seltenheit nicht gibt.
 function RewardService.GiveEgg(
 	player: Player,
 	rarityName: string,
-	opts: { Fixed: boolean?, RandomMutation: boolean? }?
+	opts: { Fixed: boolean?, RandomMutation: boolean?, FullValue: boolean? }?
 ): (boolean, string)
 	local Meteor = Services.MeteorService
 	local def = nil
@@ -208,7 +244,8 @@ function RewardService.GiveEgg(
 	if Services.EconomyService.GiveMeteor(player, entry, true) then
 		return true, "🥚 " .. label .. " fliegt in deine Base!"
 	end
-	local value = math.floor(Config.MeteorValue(entry))
+	local ratio = if opts and opts.FullValue then 1 else Config.SellRatio
+	local value = math.floor(Config.MeteorValue(entry) * ratio)
 	Services.EconomyService.AddCash(player, value)
 	return true, "📦 Base voll – du bekommst " .. Util.FormatCash(value) .. " statt " .. label
 end
@@ -408,11 +445,60 @@ function RewardService.ClaimQuest(player: Player, index: any): (boolean, string)
 	return true, "📜 Belohnung: +" .. Util.FormatCash(cash) .. " und +" .. spinsWord(QUEST_REWARD_SPINS) .. " 🎡!"
 end
 
+-- 🔄 Einmal pro Tag eine (noch nicht geschaffte) Aufgabe tauschen – z.B. "Bonk 3 Diebe" auf einem
+-- leeren Server. Die neue Aufgabe braucht nie andere Spieler und ist von einer Art, die heute noch fehlt.
+function RewardService.RerollQuest(player: Player, index: any): (boolean, string)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return false, "Lädt noch... ⏳"
+	end
+	if ensureQuests(player, data) then
+		return false, "📜 Neuer Tag – neue Aufgaben!"
+	end
+	local quests = data.Quests
+	if quests.Rerolled == true then
+		return false, "🔄 Heute schon getauscht – morgen wieder!"
+	end
+	local i = tonumber(index)
+	local quest = i and quests.List[i]
+	if type(quest) ~= "table" then
+		return false, "Unbekannte Aufgabe"
+	end
+	if quest.Claimed or quest.Progress >= quest.Goal then
+		return false, "✅ Die hast du schon geschafft!"
+	end
+	local used = {}
+	for _, other in ipairs(quests.List) do
+		used[other.Id] = true
+	end
+	local options = {}
+	for _, def in ipairs(QUEST_POOL) do
+		if not def.Social and not used[def.Id] then
+			table.insert(options, def)
+		end
+	end
+	if #options == 0 then
+		return false, "🔄 Gerade keine andere Aufgabe frei"
+	end
+	local def = options[rng:NextInteger(1, #options)]
+	local fresh = {
+		Id = def.Id,
+		Kind = def.Kind,
+		Goal = questGoal(def, rates(player, data)),
+		Progress = 0,
+		Claimed = false,
+	}
+	quests.List[i] = fresh
+	quests.Rerolled = true
+	markDirty(player)
+	return true, "🔄 Neue Aufgabe: " .. questText(fresh)
+end
+
 -- -------------------------------------------------------------------
--- 🎁 SPIELZEIT-GESCHENKE
+-- 🎁 SPIELZEIT-GESCHENKE (Spielzeit von heute, siehe giftData)
 -- -------------------------------------------------------------------
-local function giftReadyIn(player: Player, gift): number
-	return math.max(0, math.ceil((tonumber(gift.Minutes) or 0) * 60 - sessionSeconds(player)))
+local function giftReadyIn(gifts: GiftData, gift): number
+	return math.max(0, math.ceil((tonumber(gift.Minutes) or 0) * 60 - gifts.Seconds))
 end
 
 function RewardService.ClaimGift(player: Player, index: any): (boolean, string)
@@ -425,19 +511,16 @@ function RewardService.ClaimGift(player: Player, index: any): (boolean, string)
 	if type(gift) ~= "table" or not i then
 		return false, "Unbekanntes Geschenk"
 	end
-	local claimed = claimedGifts[player]
-	if not claimed then
-		claimed = {}
-		claimedGifts[player] = claimed
-	end
-	if claimed[i] then
+	local gifts = giftData(data)
+	local key = tostring(i)
+	if gifts.Claimed[key] then
 		return false, "✅ Schon abgeholt!"
 	end
-	local remaining = giftReadyIn(player, gift)
+	local remaining = giftReadyIn(gifts, gift)
 	if remaining > 0 then
 		return false, "⏳ Noch " .. Util.FormatTime(remaining) .. " spielen!"
 	end
-	claimed[i] = true
+	gifts.Claimed[key] = true
 	local text = grantPrize(player, data, gift, true)
 	Services.EconomyService.Effect(player, "Confetti", 1)
 	markDirty(player)
@@ -506,56 +589,84 @@ end
 
 -- -------------------------------------------------------------------
 -- DATEN AN DEN CLIENT (EconomyService ruft das bei jedem State auf)
+--   Spins, FreeSpinIn, QuestReroll: klein -> immer
+--   Gifts (+ GiftsAt), Quests: nur bei Änderung oder wenn full = true (alle ~20 s). Der Client behält
+--   sonst die alten. ReadyIn gilt ab GiftsAt (Serverzeit) – so zählt der Client auch mit einem
+--   älteren Paket richtig herunter.
 -- -------------------------------------------------------------------
-function RewardService.FillState(player: Player, data, state)
+function RewardService.FillState(player: Player, data, state, full: boolean?)
 	ensureQuests(player, data)
-	local r = rates(player, data)
-
-	local gifts = {}
-	local claimed = claimedGifts[player]
-	for i, gift in ipairs(giftList()) do
-		gifts[i] = {
-			Minutes = tonumber(gift.Minutes) or 0,
-			Claimed = claimed ~= nil and claimed[i] == true,
-			ReadyIn = giftReadyIn(player, gift),
-			Text = prizeText(gift, r),
-		}
-	end
-
-	local quests = {}
-	local rewardText = "💵 " .. Util.FormatCash(questRewardCash(r)) .. " + 🎡 " .. spinsWord(QUEST_REWARD_SPINS)
-	for i, quest in ipairs(data.Quests.List) do
-		quests[i] = {
-			Text = questText(quest),
-			Kind = quest.Kind, -- z.B. "Collect" -> der Client zeigt den Fortschritt mit $
-			Goal = quest.Goal,
-			Progress = quest.Progress,
-			Claimed = quest.Claimed == true,
-			RewardText = rewardText,
-		}
-	end
+	local r = rates(player, data, state)
+	local gifts = giftData(data)
 
 	state.Spins = tonumber(data.Spins) or 0
 	state.FreeSpinIn = RewardService.FreeSpinIn(data)
-	state.Gifts = gifts
-	state.Quests = quests
+	state.QuestReroll = data.Quests.Rerolled ~= true -- heute noch eine Aufgabe tauschbar?
+
+	local giftRows = {}
+	local giftKey = { gifts.Day }
+	for i, gift in ipairs(giftList()) do
+		local claimed = gifts.Claimed[tostring(i)] == true
+		local text = prizeText(gift, r)
+		giftRows[i] = {
+			Minutes = tonumber(gift.Minutes) or 0,
+			Claimed = claimed,
+			ReadyIn = giftReadyIn(gifts, gift),
+			Text = text,
+		}
+		table.insert(giftKey, (if claimed then "1" else "0") .. text)
+	end
+	local giftSignature = table.concat(giftKey, "|")
+	if full or sentGiftKey[player] ~= giftSignature then
+		sentGiftKey[player] = giftSignature
+		state.Gifts = giftRows
+		state.GiftsAt = workspace:GetServerTimeNow()
+	end
+
+	local quests = {}
+	local questKey = { data.Quests.Day }
+	local rewardText = "💵 " .. Util.FormatCash(questRewardCash(r)) .. " + 🎡 " .. spinsWord(QUEST_REWARD_SPINS)
+	for i, quest in ipairs(data.Quests.List) do
+		local text = questText(quest)
+		local claimed = quest.Claimed == true
+		quests[i] = {
+			Text = text,
+			Kind = quest.Kind, -- z.B. "Collect" -> der Client zeigt den Fortschritt mit $
+			Goal = quest.Goal,
+			Progress = quest.Progress,
+			Claimed = claimed,
+			RewardText = rewardText,
+		}
+		table.insert(questKey, text .. "#" .. tostring(quest.Progress) .. (if claimed then "1" else "0"))
+	end
+	table.insert(questKey, rewardText)
+	local questSignature = table.concat(questKey, "|")
+	if full or sentQuestKey[player] ~= questSignature then
+		sentQuestKey[player] = questSignature
+		state.Quests = quests
+	end
 end
 
--- Jede Sekunde: "Geschenk bereit" / "Gratis-Dreh bereit" melden (je einmal)
-local function checkPlayer(player: Player)
+-- Jede Sekunde: Spielzeit hochzählen, "Geschenk bereit" / "Gratis-Dreh bereit" melden (je einmal)
+local function tickPlayer(player: Player, dt: number)
 	local data = Services.DataService.Get(player)
-	if not data or sessionSeconds(player) < FIRST_NOTIFY_DELAY then
+	if not data then
+		return
+	end
+	local gifts = giftData(data)
+	gifts.Seconds = math.min(MAX_GIFT_SECONDS, gifts.Seconds + dt)
+	if sessionSeconds(player) < FIRST_NOTIFY_DELAY then
 		return
 	end
 	local notified = notifiedGifts[player]
-	if not notified then
-		notified = {}
+	if not notified or notifiedDay[player] ~= gifts.Day then
+		notified = {} -- neuer Tag -> alle Geschenke wieder neu melden
 		notifiedGifts[player] = notified
+		notifiedDay[player] = gifts.Day
 	end
-	local claimed = claimedGifts[player]
 	local ready = 0
 	for i, gift in ipairs(giftList()) do
-		if not notified[i] and not (claimed and claimed[i]) and giftReadyIn(player, gift) <= 0 then
+		if not notified[i] and not gifts.Claimed[tostring(i)] and giftReadyIn(gifts, gift) <= 0 then
 			notified[i] = true
 			ready += 1
 		end
@@ -585,10 +696,13 @@ function RewardService.Start()
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		joinedAt[player] = nil
-		claimedGifts[player] = nil
+		lastTick[player] = nil
 		notifiedGifts[player] = nil
+		notifiedDay[player] = nil
 		freeSpinNotified[player] = nil
 		lastSpin[player] = nil
+		sentGiftKey[player] = nil
+		sentQuestKey[player] = nil
 	end)
 
 	task.spawn(function()
@@ -596,7 +710,11 @@ function RewardService.Start()
 			task.wait(1)
 			for _, player in ipairs(Players:GetPlayers()) do
 				if Services.EconomyService.IsReady(player) then
-					local ok, err = pcall(checkPlayer, player)
+					-- echte vergangene Zeit (task.wait ist nie genau 1 s), nach Hängern gedeckelt
+					local clock = os.clock()
+					local dt = math.clamp(clock - (lastTick[player] or clock), 0, MAX_TICK)
+					lastTick[player] = clock
+					local ok, err = pcall(tickPlayer, player, dt)
 					if not ok then
 						warn("[RewardService] Fehler bei " .. player.Name .. ": " .. tostring(err))
 					end

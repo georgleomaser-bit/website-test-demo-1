@@ -717,6 +717,13 @@ Config.MaxDroppedMeteors = 90 -- Sicherheitsgrenze für Eier am Boden (fallen ge
 Config.CarryTimeout = 60 -- Sekunden Zeit, um die Beute in die eigene Base zu bringen
 Config.NormalWalkSpeed = 16
 Config.CarrySpeedFactor = 0.7 -- beim Tragen: 70% vom eigenen Tempo (Gamepass "Volle Speed beim Tragen" = 100%)
+-- SCHWERE BEUTE: seltene Eier/Aliens sind schwerer -> beim Tragen noch langsamer (mehr Zeit zum Bonken!).
+-- Es gilt der kleinste passende Faktor (statt CarrySpeedFactor). Gamepass "Volle Speed beim Tragen" = kein Abzug.
+Config.HeavyCarry = {
+	{ FromRarity = "Legendary", Factor = 0.6 },
+	{ FromRarity = "Mythic", Factor = 0.5 },
+	{ FromRarity = "Celestial", Factor = 0.45 },
+}
 
 -- SPEED FARM: Auf den Laufbändern (Treadmills) am Spawn-Platz laufen = Schritte 👟 sammeln.
 -- Mehr Schritte = schneller laufen. Höhere Laufbänder geben viel mehr Schritte,
@@ -815,6 +822,10 @@ Config.IndexBonusPerAlien = 0.01
 Config.BeltSpawnInterval = 0.5 -- alle X Sekunden kommt ein neuer Meteor aufs Band
 Config.BeltSpeed = 9 -- Studs pro Sekunde
 Config.MaxBeltMeteors = 110 -- Sicherheitsgrenze (mehr liegen nie gleichzeitig auf dem Band)
+-- Im Meteoritenschauer fahren die Meteore auf ZWEI Spuren (links/rechts der Bandmitte),
+-- sonst passen gar nicht so viele aufs Band. Dafür darf das Band dann voller werden.
+Config.ShowerMaxBeltMeteors = 160
+Config.BeltLaneOffset = 3.5 -- Studs: Abstand der beiden Schauer-Spuren zur Bandmitte
 
 -- GRATIS-ZONE am Spawn-Platz: hier landen Gratis- und Admin-Meteore
 Config.FreeMeteorLifetime = 180 -- Sekunden, bis ein Gratis-Meteor verschwindet
@@ -823,7 +834,7 @@ Config.MaxFreeMeteors = 20
 -- METEORITENSCHAUER-EVENT: alle X Sekunden, Y Sekunden lang, mehr + bessere Meteore
 Config.ShowerInterval = 480
 Config.ShowerDuration = 60
-Config.ShowerBeltInterval = 0.2 -- im Schauer kommen die Meteore viel schneller
+Config.ShowerBeltInterval = 0.2 -- im Schauer kommen die Meteore viel schneller (auf zwei Spuren, siehe oben)
 Config.ShowerLuck = 3
 
 -- EGG RUSH-EVENT: alle X Sekunden regnen Y Gratis-Eier auf die Wiese der ganzen Map.
@@ -851,7 +862,8 @@ Config.DailyRewardIncomeSeconds = 120 -- Tagesbonus = 2 Min Einkommen x Streak (
 --   Type = "Spins" -> "Amount" Glücksrad-Drehs
 --   Type = "Egg"   -> zufälliges Ei der Seltenheit "Rarity" fliegt in die Base (Base voll -> Wert als Cash)
 --   Icon / Name    -> Anzeige im Spiel
--- SPIELZEIT-GESCHENKE: pro Sitzung, "Minutes" = Minuten seit dem Beitreten
+-- SPIELZEIT-GESCHENKE: "Minutes" = Minuten Spielzeit HEUTE (zählt über alle Besuche, wird gespeichert;
+-- um Mitternacht UTC fängt es von vorne an – neu beitreten setzt die Zeit NICHT zurück)
 Config.PlaytimeGifts = {
 	{ Minutes = 2, Type = "Cash", Seconds = 60, Min = 500, Icon = "💵", Name = "Cash" },
 	{ Minutes = 5, Type = "Steps", Seconds = 120, Min = 300, Icon = "👟", Name = "Schritte" },
@@ -936,6 +948,8 @@ Config.VIPBonus = 0.25
 -- ---------------------------------------------------------------------
 -- 4) SELTENHEITEN – Weight = Spawnchance (relativ), Size = Größe des Meteors
 --    Kleine kommen oft, große & seltene kaum -> "erst kleine, dann immer bessere"
+--    Jedes Ei am Förderband und im Egg Rush kann man GRATIS klauen (ca. 2 pro Sekunde!) –
+--    deshalb sind die seltenen Seltenheiten extra selten, sonst wären Preise und Rebirths egal.
 --    HatchTime = Sekunden bis das Alien schlüpft
 --    RequiredRebirths = so viele Rebirths braucht man, um diese Seltenheit zu KAUFEN
 --    (klauen geht immer!)
@@ -945,12 +959,12 @@ Config.Rarities = {
 	{ Name = "Common", Weight = 50, Size = 2, Color = Color3.fromRGB(200, 200, 200), HatchTime = 8 },
 	{ Name = "Uncommon", Weight = 26, Size = 2.5, Color = Color3.fromRGB(85, 220, 95), HatchTime = 15 },
 	{ Name = "Rare", Weight = 13, Size = 3, Color = Color3.fromRGB(70, 150, 255), HatchTime = 30 },
-	{ Name = "Epic", Weight = 6.5, Size = 3.6, Color = Color3.fromRGB(180, 80, 255), HatchTime = 50 },
-	{ Name = "Legendary", Weight = 3, Size = 4.2, Color = Color3.fromRGB(255, 190, 40), HatchTime = 80 },
-	{ Name = "Mythic", Weight = 1.1, Size = 4.9, Color = Color3.fromRGB(255, 60, 90), HatchTime = 120 },
+	{ Name = "Epic", Weight = 5, Size = 3.6, Color = Color3.fromRGB(180, 80, 255), HatchTime = 50 },
+	{ Name = "Legendary", Weight = 0.8, Size = 4.2, Color = Color3.fromRGB(255, 190, 40), HatchTime = 80 },
+	{ Name = "Mythic", Weight = 0.28, Size = 4.9, Color = Color3.fromRGB(255, 60, 90), HatchTime = 120 },
 	{
 		Name = "Celestial",
-		Weight = 0.3,
+		Weight = 0.07,
 		Size = 5.6,
 		Color = Color3.fromRGB(90, 230, 255),
 		HatchTime = 180,
@@ -958,7 +972,7 @@ Config.Rarities = {
 	},
 	{
 		Name = "Divine",
-		Weight = 0.08,
+		Weight = 0.018,
 		Size = 6.4,
 		Color = Color3.fromRGB(255, 240, 150),
 		HatchTime = 260,
@@ -966,7 +980,7 @@ Config.Rarities = {
 	},
 	{
 		Name = "Secret",
-		Weight = 0.02,
+		Weight = 0.005,
 		Size = 7.2,
 		Color = Color3.fromRGB(255, 255, 255),
 		HatchTime = 360,
@@ -1342,6 +1356,11 @@ end
 if #Config.WheelPrizes ~= 8 then
 	warn("[Config] Das Glücksrad braucht genau 8 Felder in Config.WheelPrizes!")
 end
+for _, heavy in ipairs(Config.HeavyCarry) do
+	if not Config.RaritiesByName[heavy.FromRarity] then
+		warn("[Config] Config.HeavyCarry: Seltenheit '" .. tostring(heavy.FromRarity) .. "' gibt es nicht!")
+	end
+end
 for i, treadmill in ipairs(Config.Treadmills) do
 	assert(Config.TreadmillsById[treadmill.Id] == nil, "Doppelte Laufband-Id: " .. treadmill.Id)
 	if i > 1 then
@@ -1409,6 +1428,23 @@ end
 
 function Config.ChargeTime(level: number): number
 	return Config.ChargeSecondsPerLevel * level
+end
+
+-- Schwere Beute (Config.HeavyCarry): Trage-Faktor für ein seltenes Ei/Alien, nil = nicht schwer
+function Config.HeavyFactor(entry): number?
+	local def = entry and Config.MeteorsById[entry.Id]
+	local index = def and Config.RarityIndex[def.Rarity]
+	if not index then
+		return nil
+	end
+	local factor: number? = nil
+	for _, heavy in ipairs(Config.HeavyCarry) do
+		local from = Config.RarityIndex[heavy.FromRarity]
+		if from and index >= from and (factor == nil or heavy.Factor < factor) then
+			factor = heavy.Factor
+		end
+	end
+	return factor
 end
 
 -- Laufgeschwindigkeit aus den Schritten (logarithmisch, max. MaxWalkSpeed)
@@ -2578,6 +2614,12 @@ end
 function Actions.Invisible(admin, args)
 	local targets = resolveTargets(admin, args.Target)
 	for _, p in ipairs(targets) do
+		-- Erst einen laufenden Umhang (Gadget) beenden: beide ändern dieselben Transparenzen,
+		-- sonst merkt sich setInvisible die Umhang-Werte bzw. der Umhang stellt später alte Werte her
+		local gadgets = Services.GadgetService
+		if gadgets and gadgets.EndCloak then
+			gadgets.EndCloak(p, true)
+		end
 		setInvisible(p, args.Enabled == true)
 	end
 	return #targets > 0, (args.Enabled and "👻 Unsichtbar: " or "Sichtbar: ") .. names(targets)
@@ -3977,12 +4019,15 @@ return AlienFactory
 --    fällt das Ei an Ort und Stelle auf den Boden – und JEDER kann es schnappen.
 --  * Gekaufte Meteore (F) muss man NICHT tragen – sie fliegen automatisch in die Base.
 --  * Bonk-Schläger (bzw. Super-Bonk-Gadget) zum Verteidigen.
+--  * Seltene Beute ist schwer (Config.HeavyCarry, Tempo rechnet EconomyService), wer klaut, verliert
+--    den Umhang (sonst wäre jeder Diebstahl unbonkbar), Eingefrorene können nicht klauen.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 local AlienFactory = require(script.Parent:WaitForChild("AlienFactory"))
 
@@ -3992,6 +4037,8 @@ local Services
 local carrying: { [Player]: any } = {}
 local stealing: { [any]: { [number]: Player } } = {} -- [plot][slot] = Dieb
 local lastBonk: { [Player]: number } = {}
+-- Klau-Versuche aus Basen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
+local stealLimiter = Util.RateLimiter(6, 1)
 
 local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der Beute)
 -- Mindest-Tragezeit: kürzester möglicher Weg (raus aus der fremden Base, rein in die eigene)
@@ -4030,6 +4077,12 @@ end
 
 function CarryService.IsCarrying(player: Player): boolean
 	return carrying[player] ~= nil
+end
+
+-- Was trägt der Spieler gerade? (Eintrag { Id, Mut, ... } oder nil) – z.B. für "schwere Beute"
+function CarryService.CarriedEntry(player: Player): any
+	local info = carrying[player]
+	return info and info.Entry
 end
 
 -- -------------------------------------------------------------------
@@ -4287,20 +4340,36 @@ function CarryService.StartCarry(player: Player, entry, info)
 	if info.MinTime == nil then
 		info.MinTime = info.Source == "Ground" and minGroundCarryTime(player, info.StartPos) or 0
 	end
+	-- Wer klaut, wird sichtbar: sonst wäre jeder Diebstahl mit Umhang unbonkbar
+	local gadgets = Services.GadgetService
+	local uncloaked = false
+	if gadgets and gadgets.IsCloaked(player) then
+		gadgets.EndCloak(player, true)
+		uncloaked = true
+	end
 	info.Visual = createVisual(player, entry)
 	carrying[player] = info
 	Services.EconomyService.ApplySpeed(player)
 	Services.EconomyService.MarkDirty(player)
+	local extra = ""
+	if Config.HeavyFactor(entry) and not Services.MonetizationService.HasPass(player, "CarryFast") then
+		extra ..= " 🐢 Schwer – du bist langsamer!"
+	end
+	if uncloaked then
+		extra ..= " 👻 Du bist wieder sichtbar!"
+	end
 	if info.Source == "Ground" then
 		Services.EconomyService.Notify(
 			player,
-			"😈 Geschnappt: "
-				.. Config.EntryName(entry)
-				.. "! Schnell in deine Base – wer dich bonkt, kriegt es! 🏃",
+			"😈 Geschnappt: " .. Config.EntryName(entry) .. "! Schnell in deine Base 🏃" .. extra,
 			"Info"
 		)
 	else
-		Services.EconomyService.Notify(player, "🏃 Bring " .. Config.EntryName(entry) .. " in deine Base!", "Info")
+		Services.EconomyService.Notify(
+			player,
+			"🏃 Bring " .. Config.EntryName(entry) .. " in deine Base!" .. extra,
+			"Info"
+		)
 	end
 end
 
@@ -4476,6 +4545,9 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	if not owner or owner == thief then
 		return
 	end
+	if not stealLimiter.Check(thief) then
+		return -- zu viele Versuche auf einmal (Cheat) -> still ignorieren
+	end
 	local thiefData = Services.DataService.Get(thief)
 	local ownerData = Services.DataService.Get(owner)
 	local Economy = Services.EconomyService
@@ -4508,6 +4580,11 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	local object = plot.MeteorParts[slot]
 	local objectPos = Services.PlotService.ObjectPosition(object)
 	if not root or not humanoid or humanoid.Health <= 0 or not objectPos then
+		return
+	end
+	if root.Anchored then
+		-- eingefroren (Falle / Admin): erst auftauen, dann klauen
+		Services.EconomyService.Notify(thief, "🧊 Du bist eingefroren!", "Error")
 		return
 	end
 	if (root.Position - objectPos).Magnitude > Services.PlotService.ObjectRadius(object) + 16 then
@@ -4579,8 +4656,10 @@ local function bonk(player: Player, tool: Tool, super: boolean)
 	local gadgets = Services.GadgetService
 	local best, bestDist = nil, range
 	for _, other in ipairs(Players:GetPlayers()) do
-		-- Unsichtbare (Umhang) kann man nicht bonken
-		if other ~= player and not (gadgets and gadgets.IsCloaked(other)) then
+		-- Unsichtbare (Umhang) kann man nicht bonken – wer Beute trägt, aber schon
+		-- (Klauen beendet den Umhang sowieso, das hier ist nur das Sicherheitsnetz)
+		local cloaked = gadgets ~= nil and gadgets.IsCloaked(other) and not carrying[other]
+		if other ~= player and not cloaked then
 			local otherRoot = other.Character and other.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 			local otherHum = other.Character and other.Character:FindFirstChildOfClass("Humanoid")
 			if otherRoot and otherHum and otherHum.Health > 0 then
@@ -4770,6 +4849,7 @@ function CarryService.Start()
 	local function onLeaving(player: Player)
 		lastBonk[player] = nil
 		moveTrack[player] = nil
+		stealLimiter.Clear(player)
 		if carrying[player] then
 			CarryService.Fail(player, "left")
 		end
@@ -4862,7 +4942,10 @@ local DEFAULT_DATA = {
 	Spins = 1, -- 🎡 Glücksrad-Drehs (gekauft/gewonnen; der Gratis-Dreh zählt extra)
 	LastFreeSpin = 0, -- os.time() des letzten Gratis-Drehs
 	-- 📜 Tagesaufgaben: Day = UTC-Tag "YYYY-MM-DD", List = { { Id, Kind, Goal, Progress, Claimed } }
+	--    (dazu Rerolled = true, wenn heute schon eine Aufgabe getauscht wurde)
 	Quests = { Day = "", List = {} },
+	-- 🎁 Spielzeit-Geschenke: Spielzeit von heute (UTC, über alle Besuche), abgeholte als ["1"] = true
+	Gifts = { Day = "", Seconds = 0, Claimed = {} },
 	Gadgets = {}, -- ["SpeedCoil"] = true -> besessen (bleibt bei Rebirth)
 	StarterBought = false, -- ⭐ Starter-Paket schon gekauft (nur einmal im Shop)
 }
@@ -4948,6 +5031,22 @@ local function sanitizeRewards(data)
 	local quests = data.Quests
 	if type(quests) ~= "table" or type(quests.Day) ~= "string" or type(quests.List) ~= "table" then
 		data.Quests = nil -- der RewardService würfelt dann neue Aufgaben
+	elseif quests.Rerolled ~= nil and type(quests.Rerolled) ~= "boolean" then
+		quests.Rerolled = nil
+	end
+	local gifts = data.Gifts
+	if type(gifts) ~= "table" or type(gifts.Day) ~= "string" or type(gifts.Claimed) ~= "table" then
+		data.Gifts = nil -- Reconcile trägt den Standard ein, der RewardService fängt neu an
+	else
+		local seconds = gifts.Seconds
+		if type(seconds) ~= "number" or seconds ~= seconds or seconds < 0 or seconds == math.huge then
+			gifts.Seconds = 0
+		end
+		for key, claimed in pairs(gifts.Claimed) do
+			if type(key) ~= "string" or claimed ~= true then
+				gifts.Claimed[key] = nil
+			end
+		end
 	end
 	if type(data.Gadgets) ~= "table" then
 		data.Gadgets = nil
@@ -5253,6 +5352,8 @@ local REVEAL_RARITY = Config.RarityIndex.Epic or 4 -- ab Epic: große Schlüpf-K
 local LUCKY_PASS_MULT = 2 -- Gamepass "2x Glück": Selten/Ultra beim Schlüpfen doppelt so wahrscheinlich
 local MAX_COIL_BONUS = 1 + (Config.SpeedCoilBonus or 0.3) -- Speed Coil: +30% (auch über MaxWalkSpeed)
 local TIER_RANK = { Normal = 1, Selten = 2, Ultra = 3 }
+-- "Alle Eier sofort schlüpfen": höchstens so viele Schlüpf-Explosionen an alle (sonst ruckelt es bei allen)
+local HATCH_ALL_BURSTS = 3
 
 -- -------------------------------------------------------------------
 -- NACHRICHTEN & EFFEKTE
@@ -5380,12 +5481,18 @@ local function gadgetSpeedBonus(player: Player): number
 	return math.clamp(factor, 1, MAX_COIL_BONUS)
 end
 
--- Beim Tragen: Config.CarrySpeedFactor, mit Gamepass "Volle Speed beim Tragen" kein Abzug
+-- Beim Tragen: Config.CarrySpeedFactor, seltene (schwere) Beute noch langsamer (Config.HeavyCarry),
+-- mit Gamepass "Volle Speed beim Tragen" gar kein Abzug
 local function carryFactor(player: Player): number
 	if Services.MonetizationService.HasPass(player, "CarryFast") then
 		return 1
 	end
-	return Config.CarrySpeedFactor
+	local factor = Config.CarrySpeedFactor
+	local heavy = Config.HeavyFactor(Services.CarryService.CarriedEntry(player))
+	if heavy then
+		factor = math.min(factor, heavy)
+	end
+	return factor
 end
 
 -- Echte Laufgeschwindigkeit: Schritte-Tempo x Speed Coil (Deckel MaxWalkSpeed * 1.3), beim Tragen langsamer
@@ -5580,8 +5687,13 @@ local function alienScore(def, tier: string): number
 	return (def and Config.RarityIndex[def.Rarity] or 0) * 10 + (TIER_RANK[tier] or 1)
 end
 
+-- Stelle der Schlüpf-Explosion über einem Slot
+local function hatchPosition(plot, slot: number): Vector3
+	return Services.PlotService.SlotTopCFrame(plot, slot).Position + Vector3.new(0, 2, 0)
+end
+
 -- Meteor in Slot schlüpft jetzt -> Alien würfeln, Index, Effekt, neu anzeigen. Gibt die Alien-Id zurück.
--- quiet = keine Einzel-Nachrichten/-Karten (z.B. "Alle Eier sofort schlüpfen" meldet gesammelt)
+-- quiet = keine Einzel-Nachrichten/-Karten/-Explosionen (z.B. "Alle Eier sofort schlüpfen" meldet gesammelt)
 function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: number?, quiet: boolean?): string
 	local alienId = Aliens.Roll(entry.Id, EconomyService.HatchLuck(player, luck))
 	entry.Alien = alienId
@@ -5592,9 +5704,14 @@ function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: n
 
 	local alien = Aliens.ById[alienId]
 	local def = Config.MeteorsById[entry.Id]
-	local position = Services.PlotService.SlotTopCFrame(plot, slot).Position + Vector3.new(0, 2, 0)
 	Services.PlotService.RenderSlot(plot, slot)
-	EconomyService.EffectAll("Hatch", 0, { Position = position, Rarity = def and def.Rarity or "Common" })
+	if not quiet then
+		EconomyService.EffectAll(
+			"Hatch",
+			0,
+			{ Position = hatchPosition(plot, slot), Rarity = def and def.Rarity or "Common" }
+		)
+	end
 
 	local name = alien and alien.Name or alienId
 	local tier = alien and alien.Tier or "Normal"
@@ -5630,17 +5747,31 @@ function EconomyService.HatchAll(player: Player): number
 	local indexBefore = EconomyService.IndexCount(data)
 	local count = 0
 	local bestId, bestMut, bestScore = nil, nil, -1
+	local bursts: { { Position: Vector3, Rarity: string, Score: number } } = {}
 	for key, entry in pairs(data.Meteors) do
 		local slot = tonumber(key)
 		if slot and entry.Alien == nil and not Services.CarryService.IsSlotBeingStolen(plot, slot) then
 			local alienId = EconomyService.Hatch(player, plot, slot, entry, luck, true)
 			count += 1
 			local alien = Aliens.ById[alienId]
-			local score = alienScore(Config.MeteorsById[entry.Id], alien and alien.Tier or "Normal")
+			local def = Config.MeteorsById[entry.Id]
+			local score = alienScore(def, alien and alien.Tier or "Normal")
 			if score > bestScore then
 				bestId, bestMut, bestScore = alienId, entry.Mut, score
 			end
+			table.insert(bursts, {
+				Position = hatchPosition(plot, slot),
+				Rarity = def and def.Rarity or "Common",
+				Score = score,
+			})
 		end
+	end
+	-- Nur die besten paar Explosionen an alle schicken (18 auf einmal = Ruckeln bei jedem Spieler)
+	table.sort(bursts, function(a, b)
+		return a.Score > b.Score
+	end)
+	for i = 1, math.min(HATCH_ALL_BURSTS, #bursts) do
+		EconomyService.EffectAll("Hatch", 0, { Position = bursts[i].Position, Rarity = bursts[i].Rarity })
 	end
 	if count > 0 then
 		local discovered = EconomyService.IndexCount(data) - indexBefore
@@ -5779,21 +5910,24 @@ local function buildState(player: Player)
 		Gadgets = ownedGadgets(data),
 		StarterBought = data.StarterBought == true,
 	}
-	-- 🎁 Geschenke, 🎡 Glücksrad (Spins, FreeSpinIn), 📜 Aufgaben – ein Fehler dort darf den State nie stoppen
-	local rewards = Services.RewardService
-	if rewards then
-		local ok, err = pcall(rewards.FillState, player, data, state)
-		if not ok then
-			warn("[EconomyService] Belohnungs-Daten fehlgeschlagen: " .. tostring(err))
-		end
-	end
-
-	-- Index, Pässe und Statistik nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden)
+	-- Selten geänderte Teile nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden alles)
 	local clock = os.clock()
 	local full = clock - (fullStateAt[player] or -math.huge) >= FULL_STATE_INTERVAL
 	if full then
 		fullStateAt[player] = clock
 	end
+
+	-- 🎁 Geschenke, 🎡 Glücksrad (Spins, FreeSpinIn), 📜 Aufgaben – ein Fehler dort darf den State nie stoppen.
+	-- (Geschenke/Aufgaben schickt der RewardService auch nur bei Änderung bzw. wenn full = true.)
+	local rewards = Services.RewardService
+	if rewards then
+		local ok, err = pcall(rewards.FillState, player, data, state, full)
+		if not ok then
+			warn("[EconomyService] Belohnungs-Daten fehlgeschlagen: " .. tostring(err))
+		end
+	end
+
+	-- Index, Pässe und Statistik nur bei Änderung (oder wenn full = true)
 	if full or sentIndexCount[player] ~= indexCount then
 		-- Der Index wächst nur (Reset leert ihn) -> die Anzahl reicht als Änderungs-Merkmal
 		sentIndexCount[player] = indexCount
@@ -6001,6 +6135,13 @@ local function tickPlayer(player: Player, data, plot, dt: number)
 	dirty[player] = true
 end
 
+-- Eingefroren (Falle / Admin-Freeze = HumanoidRootPart verankert)? Dann kein Teleport (Home, Laufbänder)
+local function isFrozen(player: Player): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return root ~= nil and root:IsA("BasePart") and root.Anchored
+end
+
 -- Gadget mit Cash kaufen (GadgetService prüft Cash, zieht ab, gibt das Tool)
 local function buyGadget(player: Player, id: any): (boolean, string)
 	local gadgets = Services.GadgetService
@@ -6039,7 +6180,11 @@ function EconomyService.Start()
 		local ok, message = false, "Unbekannt"
 		local extra: { [string]: any }? = nil
 		local rewards = Services.RewardService
-		if (action == "ClaimGift" or action == "Spin" or action == "ClaimQuest") and not rewards then
+		local rewardAction = action == "ClaimGift"
+			or action == "Spin"
+			or action == "ClaimQuest"
+			or action == "RerollQuest"
+		if rewardAction and not rewards then
 			ok, message = false, "🎁 Belohnungen kommen bald!"
 		elseif action == "ClaimGift" then
 			ok, message = rewards.ClaimGift(player, arg)
@@ -6047,6 +6192,8 @@ function EconomyService.Start()
 			ok, message, extra = rewards.Spin(player)
 		elseif action == "ClaimQuest" then
 			ok, message = rewards.ClaimQuest(player, arg)
+		elseif action == "RerollQuest" then
+			ok, message = rewards.RerollQuest(player, arg)
 		elseif action == "BuyGadget" then
 			ok, message = buyGadget(player, arg)
 		elseif action == "Rebirth" then
@@ -6067,6 +6214,8 @@ function EconomyService.Start()
 		elseif action == "Home" then
 			if Services.CarryService.IsCarrying(player) then
 				ok, message = false, "Mit Beute musst du laufen! 🏃"
+			elseif isFrozen(player) then
+				ok, message = false, "🧊 Du bist eingefroren!"
 			else
 				Services.PlotService.TeleportHome(player)
 				ok, message = true, ""
@@ -6074,6 +6223,8 @@ function EconomyService.Start()
 		elseif action == "Treadmills" then
 			if Services.CarryService.IsCarrying(player) then
 				ok, message = false, "Mit Beute musst du laufen! 🏃"
+			elseif isFrozen(player) then
+				ok, message = false, "🧊 Du bist eingefroren!"
 			elseif Services.PlotService.TeleportToTreadmills(player) then
 				ok, message = true, "🏃 Ab aufs Laufband!"
 			else
@@ -6151,8 +6302,11 @@ return EconomyService
 --                   Fremde frieren Config.TrapFreezeTime Sekunden ein, getragene Beute ist weg.
 --   🔨 Super-Bonk – ersetzt den normalen Bonk (Schlag-Logik in CarryService)
 --   👻 Umhang     – Klick: Config.CloakDuration Sekunden unsichtbar und nicht bonkbar,
---                   danach Config.CloakCooldown Sekunden Abklingzeit
+--                   danach Config.CloakCooldown Sekunden Abklingzeit (ab dem Sichtbarwerden).
+--                   Wer klaut, wird sofort sichtbar (CarryService), mit Beute geht er nicht an.
 -- Alles wird hier auf dem Server geprüft und gebremst (Klicks kommen vom Client).
+-- Fallen lösen über Touched UND über eine eigene Server-Prüfung aus (Touched meldet der Client –
+-- wer das lokal abschaltet, läuft trotzdem nicht einfach drüber).
 
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
@@ -6169,6 +6323,11 @@ local SYNC_INTERVAL = 2 -- so oft wird geprüft, ob jeder seine Werkzeuge hat
 local TRAP_PLACE_COOLDOWN = 1 -- Sekunden zwischen zwei Fallen
 local TRAP_SIZE = 4.5
 local TRAP_HEIGHT = 0.6 -- so hoch, dass Füße beim Drüberlaufen sicher die Falle berühren
+local TRAP_EDGE_MARGIN = TRAP_SIZE / 2 + 1 -- Fallen-Mitte so weit innerhalb der Base (nichts ragt raus)
+local TRAP_IMMUNE_EXTRA = 5 -- nach dem Auftauen so viele Sekunden immun (keine Endlos-Falle)
+local TRAP_CHECK_INTERVAL = 0.2 -- so oft prüft der Server selbst, ob jemand auf einer Falle steht
+local TRAP_REACH = TRAP_SIZE / 2 + 1 -- waagrechter Abstand Fallen-Mitte <-> HumanoidRootPart
+local TRAP_MAX_HEIGHT = 5 -- so hoch über der Falle zählt der HumanoidRootPart noch als "draufgetreten"
 
 -- Werkzeug-Namen im Rucksack (Super-Bonk heißt in CarryService "Super-Bonk")
 local TOOL_NAMES = {
@@ -6180,6 +6339,7 @@ local TOOL_NAMES = {
 -- Fallen pro Besitzer (eine Base pro Spieler): [player] = { Falle, ... }
 local trapsByOwner: { [Player]: { BasePart } } = {}
 local trapPlacedAt: { [Player]: number } = {}
+local trapImmuneUntil: { [Player]: number } = {} -- gerade aus einer Falle aufgetaut -> kurz immun
 -- Umhang: [player] = { Character, Changed = { [Instance] = alte Transparenz }, Conn, ... }
 type CloakState = {
 	Character: Model,
@@ -6324,22 +6484,23 @@ local function freeze(root: BasePart, seconds: number)
 	end)
 end
 
-local function onTrapTouched(owner: Player, trap: BasePart, hit: BasePart)
-	if trap:GetAttribute("Sprung") == true or not trap.Parent then
+-- Falle schnappt zu (über Touched oder die Server-Prüfung). Nur für Fremde, die IN der Base des
+-- Besitzers stehen (wer am Eingang vorbeiläuft, wird nicht erwischt) und nicht gerade erst aufgetaut sind.
+local function springTrap(owner: Player, trap: BasePart, victim: Player)
+	if trap:GetAttribute("Sprung") == true or not trap.Parent or victim == owner then
 		return
 	end
-	local character = hit:FindFirstAncestorOfClass("Model")
-	local victim = character and Players:GetPlayerFromCharacter(character)
-	if not victim or victim == owner or not character then
+	if os.clock() < (trapImmuneUntil[victim] or 0) then
 		return
 	end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+	local _, humanoid, root = aliveCharacter(victim)
+	local plot = Services.PlotService.GetPlot(owner)
+	if not humanoid or not root or not plot or not Services.PlotService.IsInside(plot, root.Position) then
 		return
 	end
 	trap:SetAttribute("Sprung", true)
 	trap:Destroy()
+	trapImmuneUntil[victim] = os.clock() + Config.TrapFreezeTime + TRAP_IMMUNE_EXTRA
 	if not root.Anchored then
 		freeze(root, Config.TrapFreezeTime) -- (schon vom Admin eingefroren -> so lassen)
 	end
@@ -6353,6 +6514,39 @@ local function onTrapTouched(owner: Player, trap: BasePart, hit: BasePart)
 		"Error"
 	)
 	Services.EconomyService.Notify(owner, "🪤 " .. victim.DisplayName .. " ist in deine Falle getappt!", "Success")
+end
+
+local function onTrapTouched(owner: Player, trap: BasePart, hit: BasePart)
+	local character = hit:FindFirstAncestorOfClass("Model")
+	local victim = character and Players:GetPlayerFromCharacter(character)
+	if victim and victim.Character == character then
+		springTrap(owner, trap, victim)
+	end
+end
+
+-- Server-Prüfung (alle TRAP_CHECK_INTERVAL Sekunden): steht ein Fremder auf einer Falle?
+local function checkTraps()
+	for owner, list in pairs(trapsByOwner) do
+		for _, trap in ipairs(list) do
+			if trap.Parent and trap:GetAttribute("Sprung") ~= true then
+				local center = trap.Position
+				for _, victim in ipairs(Players:GetPlayers()) do
+					local character = victim.Character
+					local root = character and character:FindFirstChild("HumanoidRootPart")
+					if victim ~= owner and root and root:IsA("BasePart") then
+						local offset = root.Position - center
+						local flatSq = offset.X * offset.X + offset.Z * offset.Z
+						if flatSq <= TRAP_REACH * TRAP_REACH and offset.Y > -1 and offset.Y < TRAP_MAX_HEIGHT then
+							springTrap(owner, trap, victim)
+							if trap:GetAttribute("Sprung") == true then
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+	end
 end
 
 local function buildTrap(position: Vector3): BasePart
@@ -6434,6 +6628,13 @@ local function placeTrap(player: Player)
 	if not floor or not Services.PlotService.IsInside(plot, floor) then
 		return
 	end
+	-- Die ganze Falle muss in der Base liegen (am Rand würde sie vor den Eingang ragen)
+	local localFloor = plot.CFrame:PointToObjectSpace(floor)
+	local limit = (plot.HalfSize or 36) - TRAP_EDGE_MARGIN
+	if math.abs(localFloor.X) > limit or math.abs(localFloor.Z) > limit then
+		Services.EconomyService.Notify(player, "🪤 Zu nah am Rand – stell die Falle weiter innen auf!", "Error")
+		return
+	end
 	trapPlacedAt[player] = t
 	local folder = plot.Model:FindFirstChild("Traps")
 	if not folder then
@@ -6498,12 +6699,15 @@ local function setOverheadTag(character: Model)
 	end
 end
 
+-- Umhang beenden (Zeit um, Klauen, Respawn, Admin-Unsichtbar). Die Abklingzeit zählt ab JETZT.
+-- silent = keine Nachricht
 local function endCloak(player: Player, silent: boolean?)
 	local state = cloaks[player]
 	if not state then
 		return
 	end
 	cloaks[player] = nil
+	cloakReadyAt[player] = os.clock() + Config.CloakCooldown
 	state.Conn:Disconnect()
 	for inst, transparency in pairs(state.Changed) do
 		if inst.Parent then
@@ -6526,6 +6730,7 @@ local function endCloak(player: Player, silent: boolean?)
 		)
 	end
 end
+GadgetService.EndCloak = endCloak
 
 local function activateCloak(player: Player)
 	if not useLimiter.Check(player) or not GadgetService.Owns(player, "Cloak") then
@@ -6540,11 +6745,16 @@ local function activateCloak(player: Player)
 		Services.EconomyService.Notify(player, "👻 Umhang lädt noch " .. math.ceil(readyAt - t) .. " s", "Error")
 		return
 	end
+	if Services.CarryService.IsCarrying(player) then
+		Services.EconomyService.Notify(player, "👻 Mit Beute geht der Umhang nicht – erst heimbringen!", "Error")
+		return
+	end
 	local character, humanoid = aliveCharacter(player)
 	if not character or not humanoid then
 		return
 	end
-	cloakReadyAt[player] = t + Config.CloakCooldown
+	-- (falls endCloak nie kommt, z.B. Fehler: spätestens dann wieder bereit)
+	cloakReadyAt[player] = t + Config.CloakDuration + Config.CloakCooldown
 	local state: CloakState = {
 		Character = character,
 		Changed = {},
@@ -6565,7 +6775,7 @@ local function activateCloak(player: Player)
 	player:SetAttribute("CloakedUntil", workspace:GetServerTimeNow() + Config.CloakDuration)
 	Services.EconomyService.Notify(
 		player,
-		"👻 " .. Config.CloakDuration .. " s unsichtbar – niemand kann dich bonken!",
+		"👻 " .. Config.CloakDuration .. " s unsichtbar – niemand kann dich bonken! (Klauen macht sichtbar)",
 		"Success"
 	)
 	task.delay(Config.CloakDuration, function()
@@ -6772,7 +6982,19 @@ function GadgetService.Start()
 		clearTraps(player)
 		cloakReadyAt[player] = nil
 		trapPlacedAt[player] = nil
+		trapImmuneUntil[player] = nil
 		useLimiter.Clear(player)
+	end)
+
+	-- Fallen selbst prüfen (Touched allein reicht nicht – das meldet der Client)
+	task.spawn(function()
+		while true do
+			task.wait(TRAP_CHECK_INTERVAL)
+			local ok, err = pcall(checkTraps)
+			if not ok then
+				warn("[GadgetService] Fallen-Prüfung: " .. tostring(err))
+			end
+		end
 	end)
 
 	-- Sicherheitsnetz: fehlende Werkzeuge nachreichen (z.B. Gadget per Spielstand geschenkt)
@@ -7622,7 +7844,13 @@ local function buildBelt(map: Folder): BeltInfo
 	local titleAnchor = anchorPart("TitleSign", CFrame.new(0, PORTAL_HEIGHT + 9, startZ + PORTAL_LENGTH / 2), deco)
 	worldSign(titleAnchor, "Sign", 46, 11, Vector3.zero, 700, {
 		{ Name = "Title", Text = "☄️ METEOR HEIST ☄️", Color = Color3.fromRGB(255, 170, 60), Height = 0.62 },
-		{ Name = "Hint", Text = "😈 E = Klauen (gratis) • 🛒 F = Kaufen", Color = WHITE, Height = 0.38 },
+		-- geräteneutral (am Handy gibt es keine E/F-Tasten): halten = klauen, kurz = kaufen
+		{
+			Name = "Hint",
+			Text = "😈 Halten = Klauen (gratis) • 🛒 Kaufen = Lieferung",
+			Color = WHITE,
+			Height = 0.38,
+		},
 	})
 
 	return {
@@ -8355,6 +8583,7 @@ return MapBuilder
             <string name="Source"><![CDATA[-- Baut das Aussehen eines Meteors: Größe nach Seltenheit, Licht/Feuer/Funken für seltene,
 -- Material/Farbe nach Mutation, Spezial-Effekte der Admin-Meteore, Namensschild darüber.
 -- Lichter und Feuer gibt es bewusst sparsam (viele Meteore gleichzeitig = sonst Lag).
+-- Dazu: Prompts anlegen (AddPrompt) und serverseitig prüfen, ob lange genug gehalten wurde (OnHeldTrigger).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
@@ -8368,6 +8597,7 @@ local LIGHT_FROM = { Base = 5, Ground = 5, Belt = 6, Carry = 7 }
 local FIRE_FROM = { Base = 7, Ground = 7, Belt = 99, Carry = 99 }
 local SPARKLES_FROM = { Base = 6, Ground = 6, Belt = 7, Carry = 99 }
 local SHADOW_MIN_SIZE = 3.5 -- nur große Meteore werfen Schatten
+local FROST_WHITEN = 0.4 -- Frost-Meteore etwas weißer als die Mutationsfarbe (sonst fast wie Diamond)
 
 local GREEN = Color3.fromRGB(120, 255, 120)
 local YELLOW = Color3.fromRGB(255, 230, 90)
@@ -8545,6 +8775,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		part.Material = Enum.Material.Foil
 		part.Color = mut.Color
 	elseif mut.Name == "Diamond" then
+		-- türkises Glas + Glitzern (unten bei den Effekten) – so sieht man den Unterschied zu Frost
 		part.Material = Enum.Material.Glass
 		part.Transparency = 0.15
 		part.Color = mut.Color
@@ -8553,11 +8784,11 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		part.Material = Enum.Material.Neon
 		part.Color = mut.Color
 	elseif mut.Name == "Frost" then
-		-- hellblaues Eis
+		-- hellblaues Eis: heller und weißlicher als Diamond, dazu fallen Schneeflocken (unten)
 		part.Material = Enum.Material.Glass
 		part.Transparency = 0.1
 		part.Reflectance = 0.15
-		part.Color = mut.Color
+		part.Color = mut.Color:Lerp(Color3.new(1, 1, 1), FROST_WHITEN)
 	elseif mut.Rainbow == true then
 		-- Regenbogen: der Client färbt alle Teile mit dem Attribut "Rainbow" lokal durch
 		part.Material = Enum.Material.Neon
@@ -8588,15 +8819,38 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		fire.Parent = part
 	end
 	if mut.Name == "Lava" and not part:FindFirstChildOfClass("Fire") then
-		-- Lava-Mutation: kleines Feuer (auch am Band – Lava ist selten genug)
+		-- Lava-Mutation: kleines Feuer. Am Förderband startet es AUS (mit Glück-Events liegen dort
+		-- viele Lava-Meteore): der Client schaltet nur die nächsten paar ein (Attribut "LavaFire", WorldFX).
 		local fire = Instance.new("Fire")
 		fire.Color = mut.Color
 		fire.SecondaryColor = Color3.fromRGB(120, 20, 0)
 		fire.Size = math.max(1.5, size * 0.45)
 		fire.Heat = 3
+		if mode == "Belt" then
+			fire.Enabled = false
+			fire:SetAttribute("LavaFire", true)
+		end
 		fire.Parent = part
 	end
-	local specialMut = mut.Name == "Cosmic" or mut.Rainbow == true
+	if mut.Name == "Frost" then
+		-- Frost-Mutation: ein paar Schneeflocken rieseln herunter
+		local snow = Instance.new("ParticleEmitter")
+		snow.Name = "FrostSnow"
+		snow.Color = ColorSequence.new(Color3.new(1, 1, 1))
+		snow.LightEmission = 0.5
+		snow.LightInfluence = 0
+		snow.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, math.clamp(size * 0.07, 0.15, 0.45)),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		snow.Lifetime = NumberRange.new(1, 1.6)
+		snow.Speed = NumberRange.new(0.5, 1.5)
+		snow.SpreadAngle = Vector2.new(180, 180)
+		snow.Acceleration = Vector3.new(0, -4, 0)
+		snow.Rate = if mode == "Belt" then 3 else 6
+		snow.Parent = part
+	end
+	local specialMut = mut.Name == "Cosmic" or mut.Name == "Diamond" or mut.Rainbow == true
 	if (rarityIndex >= (SPARKLES_FROM[mode] or 99) or (specialMut and mode ~= "Carry")) and not isAdmin then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or rarity.Color
@@ -8681,6 +8935,49 @@ function MeteorFactory.AddPrompt(
 	return prompt
 end
 
+-- -------------------------------------------------------------------
+-- HALTEN PRÜFEN (gegen "sofort auslösen"-Cheats)
+-- "Triggered" schickt der Client. Ein Cheater kann einen Prompt auch ohne Halten auslösen
+-- (z.B. HoldDuration lokal auf 0). Deshalb merkt sich der Server, wann der Spieler angefangen
+-- hat zu halten (PromptButtonHoldBegan kommt auch auf dem Server an), und ruft callback nur auf,
+-- wenn wirklich so lange gehalten wurde, wie die HoldDuration HIER auf dem Server sagt.
+-- -------------------------------------------------------------------
+local HOLD_TOLERANCE = 0.15 -- Sekunden Spielraum für Netzwerk-Schwankungen
+local HOLD_MAX_EXTRA = 3 -- ein Halten zählt höchstens so lange über die HoldDuration hinaus
+
+function MeteorFactory.OnHeldTrigger(prompt: ProximityPrompt, callback: (player: Player) -> ())
+	local started: { [Player]: number } = {}
+	local ended: { [Player]: number } = {}
+	prompt.PromptButtonHoldBegan:Connect(function(player: Player)
+		started[player] = os.clock()
+		ended[player] = nil
+	end)
+	prompt.PromptButtonHoldEnded:Connect(function(player: Player)
+		-- (kommt evtl. kurz VOR Triggered an -> Zeitpunkt merken statt löschen)
+		if started[player] then
+			ended[player] = os.clock()
+		end
+	end)
+	prompt.Triggered:Connect(function(player: Player)
+		local hold = prompt.HoldDuration
+		if hold > 0 then
+			local t = os.clock()
+			local begin = started[player]
+			local release = ended[player]
+			started[player] = nil
+			ended[player] = nil
+			if not begin then
+				return -- nie angefangen zu halten
+			end
+			local heldUntil = if release then math.min(release, t) else t
+			if heldUntil - begin < hold - HOLD_TOLERANCE or t - begin > hold + HOLD_MAX_EXTRA then
+				return -- zu kurz gehalten (oder ein uraltes Halten)
+			end
+		end
+		callback(player)
+	end)
+end
+
 return MeteorFactory
 ]]></string>
           </Properties>
@@ -8702,6 +8999,10 @@ return MeteorFactory
 -- Jeder Client rechnet die Position selbst aus (Attribute BeltT0, BeltSpeed, BeltStart, BeltDir):
 --   Position = BeltStart + BeltDir * BeltSpeed * (Serverzeit - BeltT0)
 -- Der Server prüft beim Kaufen/Klauen mit genau dieser Formel.
+-- METEORITENSCHAUER: Meteore fahren auf zwei Spuren (BeltStart seitlich versetzt), damit wirklich
+-- viel mehr aufs Band passen. Jede Spur hat ihren eigenen Mindestabstand.
+-- ANTI-CHEAT: Halten wird serverseitig geprüft (MeteorFactory.OnHeldTrigger), Klauen/Kaufen ist
+-- pro Spieler gebremst, Eingefrorene (Falle/Admin) können nichts nehmen.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8729,20 +9030,36 @@ local groundFolder: Folder
 
 -- Warteschlange für Förderband-Meteore (Admin-Regen etc.), damit sie sich nicht überlappen
 local beltQueue = {}
-local lastBeltT0 = -math.huge
-local lastBeltRadius = 0
+-- Letzter Meteor je Spur (für den Mindestabstand). Spur 0 = Bandmitte,
+-- -1 / 1 = links / rechts davon (nur im Meteoritenschauer)
+local laneLast: { [number]: { T0: number, Radius: number } } = {}
+local nextSideLane = 1
 local pendingNatural = nil -- schon gewürfelter nächster Meteor, wartet auf Platz
 local nextNaturalAt = 0
 
 local BELT_GAP = 0.6 -- Mindestabstand (Studs) zwischen zwei Meteoren auf dem Band
-local BELT_PROMPT_REACH_EXTRA = 8 -- großzügige Toleranz beim Kaufen/Klauen (Ping, Bandbewegung)
+local LANE_MAX_RADIUS = 2.5 -- größere Meteore fahren auch im Schauer in der Bandmitte
+-- Toleranz beim Kaufen/Klauen am Band: ENTLANG des Bands großzügig (Ping, der Meteor fährt weiter),
+-- QUER zum Band nur wenig mehr als beim Client (sonst klaut man vom eigenen Base-Eingang aus)
+local BELT_PROMPT_REACH_EXTRA = 8
+local BELT_ACROSS_EXTRA = 4
+-- Eier am Boden liegen still: Spielraum nur für die Bewegung des Spielers während der Ping-Zeit
+local STATIC_REACH_BASE = 2
+local STATIC_REACH_PER_SPEED = 0.1 -- pro Laufgeschwindigkeit
+local STATIC_REACH_MIN = 3
+local STATIC_REACH_MAX = 10
 -- Reichweite am Förderband: wer am Geländer steht, ist ca. 10 Studs von der Bandmitte weg
 local BELT_CLIENT_REACH = 15
 local FALL_TIME = 0.9 -- so lange fliegt ein Meteor vom Himmel bzw. in die Base (Client-Effekt)
 -- Zwei Knöpfe am selben Meteor: Klauen oben, Kaufen darunter (Pixel), sonst liegen sie übereinander
 local GRAB_UI_OFFSET = Vector2.new(0, -40)
 local BUY_UI_OFFSET = Vector2.new(0, 40)
-local RARE_GRAB_ANNOUNCE = 6 -- ab Mythic wird allen gesagt, wer gerade vom Band klaut
+local RARE_GRAB_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen sagen, wer gerade vom Band klaut
+local RARE_SPAWN_ANNOUNCE = Config.RarityIndex.Celestial or 7 -- ab Celestial: "fährt aufs Förderband"
+local ADMIN_SPAWN_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- vom Admin bestellte Meteore: schon ab Mythic
+local RARE_ANNOUNCE_GAP = 4 -- solche Ansagen höchstens alle 4 Sekunden (sonst ist der Bildschirm voll)
+-- Kaufen/Klauen/Schnappen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
+local actionLimiter = Util.RateLimiter(6, 1)
 
 -- Egg Rush: Eier fallen nacheinander (sieht nach Regen aus) aus dieser Höhe
 local EGG_RUSH_SKY = 120
@@ -8763,6 +9080,7 @@ local showerUntil = 0
 local nextShowerAt = 0
 local eggRushUntil = 0
 local nextEggRushAt = 0
+local lastRareAnnounce = -math.huge
 
 -- -------------------------------------------------------------------
 -- GLÜCK & EVENTS
@@ -8778,6 +9096,17 @@ local function publishAttributes()
 	ReplicatedStorage:SetAttribute("NextShowerAt", nextShowerAt)
 	ReplicatedStorage:SetAttribute("EggRushUntil", eggRushUntil)
 	ReplicatedStorage:SetAttribute("NextEggRushAt", nextEggRushAt)
+end
+
+-- Ansage an alle für seltene Eier (Förderband, Klauen) – höchstens alle RARE_ANNOUNCE_GAP Sekunden,
+-- überzählige fallen weg (sonst verdrängen sie wichtige eigene Meldungen wie den Diebstahl-Alarm)
+local function rareAnnounce(text: string)
+	local t = os.clock()
+	if t - lastRareAnnounce < RARE_ANNOUNCE_GAP then
+		return
+	end
+	lastRareAnnounce = t
+	Services.EconomyService.NotifyAll(text, "Event")
 end
 
 function MeteorService.IsShowerActive(): boolean
@@ -8981,6 +9310,26 @@ local function aliveRoot(player: Player): BasePart?
 	return root
 end
 
+-- Eingefroren (Falle / Admin-Freeze = HumanoidRootPart verankert)? Dann wird nichts genommen.
+local function isFrozen(player: Player, root: BasePart): boolean
+	if root.Anchored then
+		Services.EconomyService.Notify(player, "🧊 Du bist eingefroren!", "Error")
+		return true
+	end
+	return false
+end
+
+-- Liegt diese Stelle in einer gesperrten Base (Lock oder Base-Schild)? -> diese Base, sonst nil
+local function lockedPlotAt(position: Vector3)
+	local Plot = Services.PlotService
+	for _, plot in ipairs(Plot.Plots) do
+		if plot.Owner and Plot.IsInside(plot, position) and Plot.IsLocked(plot) then
+			return plot
+		end
+	end
+	return nil
+end
+
 -- Steht der Spieler nah genug dran (analytisch, mit Toleranz) und hat sich nicht unmöglich schnell
 -- bewegt? Gibt die aktuelle Meteor-Position zurück, sonst nil (Hinweis wurde dann schon geschickt).
 local function checkReach(player: Player, record, root: BasePart): Vector3?
@@ -8988,12 +9337,27 @@ local function checkReach(player: Player, record, root: BasePart): Vector3?
 	if not position then
 		return nil
 	end
-	-- gleiche Reichweite wie beim Client (ClientMaxDistance) + großzügige Toleranz
-	local reach = (record.ClientReach or 10) + BELT_PROMPT_REACH_EXTRA
+	-- Grundlage: gleiche Reichweite wie beim Client (ClientMaxDistance)
+	local clientReach = record.ClientReach or 10
+	local offset = root.Position - position
+	local tooFar
 	if record.Kind == "Belt" then
-		reach += record.Speed * 0.5 -- Band bewegt sich während der Ping-Zeit weiter
+		-- entlang des Bands großzügig (der Meteor fährt während der Ping-Zeit weiter),
+		-- quer zum Band nur wenig mehr als beim Client
+		local along = offset:Dot(record.Dir)
+		local across = (offset - record.Dir * along).Magnitude
+		tooFar = math.abs(along) > clientReach + BELT_PROMPT_REACH_EXTRA + record.Speed * 0.5
+			or across > clientReach + BELT_ACROSS_EXTRA
+	else
+		-- liegt still: nur Spielraum für die eigene Bewegung (schnelle Spieler etwas mehr)
+		local character = root.Parent
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local walkSpeed = if humanoid then humanoid.WalkSpeed else Config.NormalWalkSpeed
+		local extra =
+			math.clamp(STATIC_REACH_BASE + walkSpeed * STATIC_REACH_PER_SPEED, STATIC_REACH_MIN, STATIC_REACH_MAX)
+		tooFar = offset.Magnitude > clientReach + extra
 	end
-	if (root.Position - position).Magnitude > reach then
+	if tooFar then
 		Services.EconomyService.Notify(player, "🏃 Zu weit weg – lauf näher ran!", "Error")
 		return nil
 	end
@@ -9011,12 +9375,15 @@ local function tryClaim(player: Player, record)
 	if record.Claimed or not record.Part or record.Landed == false then
 		return
 	end
+	if not actionLimiter.Check(player) then
+		return -- zu viele Versuche auf einmal (Cheat) -> still ignorieren
+	end
 	local data = Services.DataService.Get(player)
 	if not data or not Services.EconomyService.IsReady(player) then
 		return
 	end
 	local root = aliveRoot(player)
-	if not root then
+	if not root or isFrozen(player, root) then
 		return
 	end
 	local position = checkReach(player, record, root)
@@ -9030,22 +9397,18 @@ local function tryClaim(player: Player, record)
 	end
 	local slot = Services.PlotService.FreeSlot(player)
 	if not slot then
-		Services.EconomyService.Notify(player, "📦 Deine Base ist voll! Verkaufe etwas (F).", "Error")
+		Services.EconomyService.Notify(player, "📦 Deine Base ist voll! Verkaufe erst etwas.", "Error")
 		return
 	end
 	local def = Config.MeteorsById[record.Entry.Id]
 	if record.Price > 0 then
-		-- Rebirth-Anforderung gilt nur fürs KAUFEN – klauen (E) geht immer
+		-- Rebirth-Anforderung gilt nur fürs KAUFEN – klauen geht immer
 		local rarity = Config.RaritiesByName[def.Rarity]
 		local required = rarity.RequiredRebirths or 0
 		if data.Rebirths < required then
 			Services.EconomyService.Notify(
 				player,
-				"🔥 "
-					.. def.Rarity
-					.. " braucht "
-					.. required
-					.. " Rebirth(s) zum Kaufen – aber klauen (E) geht! 😈",
+				"🔥 " .. def.Rarity .. " braucht " .. required .. " Rebirth(s) zum Kaufen – aber klauen geht! 😈",
 				"Error"
 			)
 			return
@@ -9055,7 +9418,7 @@ local function tryClaim(player: Player, record)
 				player,
 				"💸 Nicht genug Cash! Du brauchst "
 					.. Util.FormatCash(record.Price)
-					.. " – oder klau ihn mit E! 😈",
+					.. " – oder klau ihn gratis! 😈",
 				"Error"
 			)
 			return
@@ -9079,12 +9442,15 @@ local function tryGrab(player: Player, record)
 	if record.Claimed or not record.Part or record.Landed == false then
 		return
 	end
+	if not actionLimiter.Check(player) then
+		return -- zu viele Versuche auf einmal (Cheat) -> still ignorieren
+	end
 	local data = Services.DataService.Get(player)
 	if not data or not Services.EconomyService.IsReady(player) then
 		return
 	end
 	local root = aliveRoot(player)
-	if not root then
+	if not root or isFrozen(player, root) then
 		return
 	end
 	if Services.CarryService.IsCarrying(player) then
@@ -9097,8 +9463,16 @@ local function tryGrab(player: Player, record)
 		return
 	end
 	if not Services.PlotService.FreeSlot(player) then
-		Services.EconomyService.Notify(player, "📦 Deine Base ist voll! Verkaufe etwas (F).", "Error")
+		Services.EconomyService.Notify(player, "📦 Deine Base ist voll! Verkaufe erst etwas.", "Error")
 		return
+	end
+	if record.Kind == "Drop" then
+		-- Ei liegt in einer gesperrten Base (Lock / Base-Schild): nur der Besitzer darf es nehmen
+		local lockedPlot = lockedPlotAt(record.Position)
+		if lockedPlot and lockedPlot.Owner ~= player then
+			Services.EconomyService.Notify(player, "🔒 Das Ei liegt in einer gesperrten Base!", "Error")
+			return
+		end
 	end
 	local position = checkReach(player, record, root)
 	if not position then
@@ -9116,7 +9490,7 @@ local function tryGrab(player: Player, record)
 	local def = Config.MeteorsById[entry.Id]
 	if fromBelt and def and Config.RarityIndex[def.Rarity] >= RARE_GRAB_ANNOUNCE then
 		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
-		Services.EconomyService.NotifyAll(
+		rareAnnounce(
 			"😈 "
 				.. player.DisplayName
 				.. " klaut "
@@ -9124,8 +9498,7 @@ local function tryGrab(player: Player, record)
 				.. " "
 				.. mut
 				.. def.Name
-				.. " vom Band – BONK IHN! 🔨",
-			"Event"
+				.. " vom Band – BONK IHN! 🔨"
 		)
 	end
 end
@@ -9156,7 +9529,8 @@ local function attachBeltPrompts(record, serverReach: number)
 	-- Der Client stellt die echte Reichweite lokal ein (die Server-Reichweite ist absichtlich riesig,
 	-- weil der Meteor auf dem Server am Bandstart bleibt).
 	grab:SetAttribute("ClientMaxDistance", clientReach)
-	grab.Triggered:Connect(function(player)
+	-- gratis -> der Server prüft, ob wirklich so lange gehalten wurde
+	MeteorFactory.OnHeldTrigger(grab, function(player)
 		tryGrab(player, record)
 	end)
 
@@ -9195,9 +9569,14 @@ local function attachClaimPrompt(record)
 	)
 	prompt:SetAttribute("ClientMaxDistance", reach)
 	prompt.Enabled = record.Landed ~= false
-	prompt.Triggered:Connect(function(player)
+	local function onClaim(player: Player)
 		tryClaim(player, record)
-	end)
+	end
+	if record.Price > 0 then
+		prompt.Triggered:Connect(onClaim) -- wer bezahlt, braucht keine Halte-Prüfung
+	else
+		MeteorFactory.OnHeldTrigger(prompt, onClaim) -- gratis -> wirklich halten
+	end
 	return prompt
 end
 
@@ -9217,7 +9596,7 @@ local function attachDropPrompt(record)
 	)
 	prompt:SetAttribute("ClientMaxDistance", reach)
 	prompt.Enabled = record.Landed ~= false
-	prompt.Triggered:Connect(function(player)
+	MeteorFactory.OnHeldTrigger(prompt, function(player)
 		tryGrab(player, record)
 	end)
 	return prompt
@@ -9240,8 +9619,10 @@ end
 -- -------------------------------------------------------------------
 -- FÖRDERBAND – Spawnen
 -- -------------------------------------------------------------------
--- Legt einen Meteor sofort an den Bandstart (ohne Platzprüfung – dafür sorgt die Schleife)
-local function spawnOnBelt(entry, price: number, shouldAnnounce: boolean?)
+-- Legt einen Meteor sofort an den Bandstart der Spur "lane" (ohne Platzprüfung – dafür sorgt die Schleife).
+-- lane: 0 = Bandmitte, -1 / 1 = Schauer-Spuren links / rechts
+-- shouldAnnounce: nil = natürlicher Meteor (Ansage ab Celestial, gebremst), true = vom Admin bestellt
+local function spawnOnBelt(entry, price: number, lane: number, shouldAnnounce: boolean?)
 	local belt = getBelt()
 	if not belt then
 		return nil
@@ -9250,7 +9631,8 @@ local function spawnOnBelt(entry, price: number, shouldAnnounce: boolean?)
 	local size = MeteorFactory.GetSize(entry)
 	local radius = size / 2
 	local t0 = now()
-	local start = belt.Start + Vector3.new(0, radius, 0)
+	local side = belt.Dir:Cross(Vector3.yAxis) -- waagrecht quer zum Band
+	local start = belt.Start + Vector3.new(0, radius, 0) + side * (lane * Config.BeltLaneOffset)
 
 	local part = MeteorFactory.Create(entry, "Belt", price)
 	part.CFrame = CFrame.new(start)
@@ -9277,23 +9659,55 @@ local function spawnOnBelt(entry, price: number, shouldAnnounce: boolean?)
 	attachBeltPrompts(record, belt.Length + 60)
 	part.Parent = beltFolder
 
-	lastBeltT0 = t0
-	lastBeltRadius = radius
+	laneLast[lane] = { T0 = t0, Radius = radius }
 
 	local def = Config.MeteorsById[entry.Id]
-	if shouldAnnounce ~= false and Config.RarityIndex[def.Rarity] >= 6 then
+	local index = Config.RarityIndex[def.Rarity]
+	if shouldAnnounce == true and index >= ADMIN_SPAWN_ANNOUNCE then
 		announce(entry, "☄️ Ein %s fährt aufs Förderband!")
+	elseif shouldAnnounce == nil and index >= RARE_SPAWN_ANNOUNCE then
+		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
+		rareAnnounce("☄️ Ein " .. def.Rarity .. " " .. mut .. def.Name .. " fährt aufs Förderband!")
 	end
 	return record
 end
 
--- Ist am Bandstart genug Platz für einen Meteor mit diesem Radius?
-local function beltHasRoom(radius: number): boolean
-	local travelled = (now() - lastBeltT0) * Config.BeltSpeed
-	return travelled >= lastBeltRadius + radius + BELT_GAP
+-- Ist am Bandstart der Spur "lane" genug Platz für einen Meteor mit diesem Radius?
+-- Geprüft wird gegen den letzten Meteor JEDER Spur: Kugeln auf Nachbarspuren berühren sich nur,
+-- wenn sie seitlich näher sind als ihre Radien zusammen.
+local function laneHasRoom(lane: number, radius: number): boolean
+	local t = now()
+	for otherLane, last in pairs(laneLast) do
+		local apart = math.abs(otherLane - lane) * Config.BeltLaneOffset
+		local needed = last.Radius + radius + BELT_GAP
+		if apart < needed then
+			local alongNeeded = math.sqrt(needed * needed - apart * apart)
+			if (t - last.T0) * Config.BeltSpeed < alongNeeded then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- Freie Spur für einen Meteor mit diesem Radius (nil = gerade kein Platz, kurz warten).
+-- Normal: Bandmitte. Im Meteoritenschauer: kleine Meteore abwechselnd links/rechts, große in die Mitte.
+local function pickLane(radius: number): number?
+	if not MeteorService.IsShowerActive() or radius > LANE_MAX_RADIUS then
+		return if laneHasRoom(0, radius) then 0 else nil
+	end
+	for _ = 1, 2 do
+		local lane = nextSideLane
+		nextSideLane = -nextSideLane
+		if laneHasRoom(lane, radius) then
+			return lane
+		end
+	end
+	return nil
 end
 
 -- opts: { Id?, Mut?, Rarity?, Free?, Announce? } -> kommt so bald wie möglich aufs Band
+-- (Announce = true: allen ansagen, ab Mythic)
 function MeteorService.QueueBelt(opts)
 	table.insert(beltQueue, opts or {})
 end
@@ -9306,7 +9720,9 @@ local function beltStep()
 	while beltRecords[1] and t >= beltRecords[1].Expires do
 		removeRecord(beltRecords[1])
 	end
-	if #beltRecords >= Config.MaxBeltMeteors then
+	local shower = MeteorService.IsShowerActive()
+	local cap = if shower then math.max(Config.MaxBeltMeteors, Config.ShowerMaxBeltMeteors) else Config.MaxBeltMeteors
+	if #beltRecords >= cap then
 		return
 	end
 	local queued = beltQueue[1]
@@ -9318,10 +9734,12 @@ local function beltStep()
 				return
 			end
 		end
-		if beltHasRoom(MeteorFactory.GetSize(queued.Entry) / 2) then
+		local lane = pickLane(MeteorFactory.GetSize(queued.Entry) / 2)
+		if lane then
 			table.remove(beltQueue, 1)
 			local price = queued.Free and 0 or math.floor(Config.MeteorValue(queued.Entry))
-			spawnOnBelt(queued.Entry, price, queued.Announce)
+			-- vom Admin bestellt: Announce true/false, sonst (z.B. Meteorregen) keine Ansage
+			spawnOnBelt(queued.Entry, price, lane, queued.Announce == true)
 		end
 		return
 	end
@@ -9330,13 +9748,16 @@ local function beltStep()
 	end
 	if not pendingNatural and t >= nextNaturalAt then
 		pendingNatural = MeteorService.RollEntry()
-		local interval = MeteorService.IsShowerActive() and Config.ShowerBeltInterval or Config.BeltSpawnInterval
+		local interval = if shower then Config.ShowerBeltInterval else Config.BeltSpawnInterval
 		nextNaturalAt = t + interval
 	end
-	if pendingNatural and beltHasRoom(MeteorFactory.GetSize(pendingNatural) / 2) then
-		local entry = pendingNatural
-		pendingNatural = nil
-		spawnOnBelt(entry, math.floor(Config.MeteorValue(entry)))
+	if pendingNatural then
+		local lane = pickLane(MeteorFactory.GetSize(pendingNatural) / 2)
+		if lane then
+			local entry = pendingNatural
+			pendingNatural = nil
+			spawnOnBelt(entry, math.floor(Config.MeteorValue(entry)), lane, nil)
+		end
 	end
 end
 
@@ -9744,6 +10165,7 @@ function MeteorService.ClearGround()
 		removeRecord(beltRecords[i])
 	end
 	table.clear(beltQueue)
+	table.clear(laneLast)
 	pendingNatural = nil
 end
 
@@ -9804,6 +10226,9 @@ function MeteorService.Start()
 	nextShowerAt = t + Config.ShowerInterval
 	nextEggRushAt = t + Config.EggRushInterval / 2 -- versetzt: erster Egg Rush lange vor dem ersten Schauer
 	publishAttributes()
+	Players.PlayerRemoving:Connect(function(player)
+		actionLimiter.Clear(player)
+	end)
 
 	-- Förderband-Schleife (nur Rechnen + gelegentlich ein neues Part – kein Bewegen!)
 	task.spawn(function()
@@ -10036,7 +10461,7 @@ local function grantStarterPack(player: Player): boolean
 		table.insert(parts, 2, "🎡 " .. STARTER_SPINS .. " Drehs")
 	end
 	local _, eggText =
-		Services.RewardService.GiveEgg(player, STARTER_EGG_RARITY, { Fixed = restricted, RandomMutation = false })
+		Services.RewardService.GiveEgg(player, STARTER_EGG_RARITY, { Fixed = restricted, FullValue = true })
 	data.StarterBought = true
 
 	Economy.Notify(player, "⭐ STARTER-PAKET: " .. table.concat(parts, ", ") .. " – danke!", "Success")
@@ -10111,8 +10536,8 @@ local function grantProduct(player: Player, product): boolean
 		Economy.Effect(player, "Confetti", 1.5)
 		return true
 	elseif product.Type == "Meteor" then
-		-- Base voll -> Wert als Cash, damit der Kauf nie verloren geht (macht GiveEgg)
-		local ok, text = Services.RewardService.GiveEgg(player, product.Rarity)
+		-- Base voll -> voller Wert als Cash, damit der Kauf nie verloren geht (macht GiveEgg)
+		local ok, text = Services.RewardService.GiveEgg(player, product.Rarity, { FullValue = true })
 		if not ok then
 			return false
 		end
@@ -10484,7 +10909,8 @@ function PlotService.RenderSlot(plot, slot: number)
 	)
 	local sellPrompt =
 		MeteorFactory.AddPrompt(promptPart, "SellPrompt", sellText(entry), name, 1, Enum.KeyCode.F, reach)
-	stealPrompt.Triggered:Connect(function(player)
+	-- Klauen: der Server prüft, ob wirklich Config.StealHoldDuration lang gehalten wurde
+	MeteorFactory.OnHeldTrigger(stealPrompt, function(player)
 		Services.CarryService.TrySteal(player, plot, slot)
 	end)
 	sellPrompt.Triggered:Connect(function(player)
@@ -10999,11 +11425,14 @@ return {
           <Properties>
             <string name="Name">RewardService</string>
             <string name="Source"><![CDATA[-- Belohnungen, die zum Wiederkommen locken (v2.1):
---  * 🎁 SPIELZEIT-GESCHENKE: pro Sitzung nach 2, 5, 10 ... 60 Minuten ein Geschenk (Zeit ab Beitritt)
+--  * 🎁 SPIELZEIT-GESCHENKE: nach 2, 5, 10 ... 60 Minuten Spielzeit ein Geschenk. Die Spielzeit zählt
+--    pro UTC-Tag über ALLE Besuche und steht im Spielstand (data.Gifts) – neu beitreten setzt sie
+--    nicht zurück (sonst könnte man alle 10 Minuten neu beitreten und dieselben Geschenke abholen).
 --  * 🎡 GLÜCKSRAD: Drehs (data.Spins) + alle Config.FreeSpinHours Stunden ein Gratis-Dreh
---  * 📜 TAGESAUFGABEN: pro UTC-Tag 3 Aufgaben (Klauen, Schlüpfen, Laufen ...) -> Cash + 1 Dreh
+--  * 📜 TAGESAUFGABEN: pro UTC-Tag 3 Aufgaben (Klauen, Schlüpfen, Laufen ...) -> Cash + 1 Dreh,
+--    eine davon darf man einmal am Tag tauschen (z.B. "Bonk 3 Diebe" auf einem leeren Server)
 -- Gewürfelt und gutgeschrieben wird NUR hier auf dem Server. Der Client zeigt nur an (State)
--- und schickt Anfragen ("ClaimGift", "Spin", "ClaimQuest" über den EconomyService).
+-- und schickt Anfragen ("ClaimGift", "Spin", "ClaimQuest", "RerollQuest" über den EconomyService).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -11029,6 +11458,8 @@ local SPIN_COOLDOWN = 2 -- Sekunden zwischen zwei Drehs (der Client dreht das Ra
 local SPIN_REVEAL_DELAY = 5 -- große Gewinne erst ansagen, wenn das Rad beim Gewinner stehen geblieben ist
 local SPIN_ANNOUNCE_RARITY = "Legendary" -- ab dieser Seltenheit wird ein Ei-Gewinn allen angesagt
 local FIRST_NOTIFY_DELAY = 8 -- "Gratis-Dreh bereit" erst nach den Willkommens-Nachrichten
+local MAX_TICK = 5 -- Spielzeit: nach einem Server-Hänger höchstens so viele Sekunden auf einmal
+local MAX_GIFT_SECONDS = 86400 -- mehr als ein Tag Spielzeit geht an einem Tag nicht
 
 -- Tagesaufgaben: Goals = feste Auswahl, Scale = wächst mit dem Fortschritt des Spielers.
 -- Social = braucht andere Spieler (Klauen aus Basen, Bonken) -> höchstens eine davon pro Tag.
@@ -11056,12 +11487,16 @@ end
 
 local TRACK_KINDS = { Grab = true, Steal = true, Hatch = true, Steps = true, Collect = true, Bonk = true }
 
--- Sitzungs-Daten (nicht gespeichert)
+-- Sitzungs-Daten (nicht gespeichert – die Spielzeit für Geschenke steht in data.Gifts)
 local joinedAt: { [Player]: number } = {}
-local claimedGifts: { [Player]: { [number]: boolean } } = {}
+local lastTick: { [Player]: number } = {}
 local notifiedGifts: { [Player]: { [number]: boolean } } = {}
+local notifiedDay: { [Player]: string } = {}
 local freeSpinNotified: { [Player]: boolean } = {}
 local lastSpin: { [Player]: number } = {}
+-- Zuletzt geschickte Geschenke/Aufgaben (nur bei Änderung neu schicken, spart Netzwerk)
+local sentGiftKey: { [Player]: string } = {}
+local sentQuestKey: { [Player]: string } = {}
 
 -- -------------------------------------------------------------------
 -- HELFER
@@ -11111,7 +11546,7 @@ local function markDirty(player: Player)
 	Services.EconomyService.MarkDirty(player)
 end
 
--- Sekunden seit dem Beitritt (Spielzeit-Geschenke)
+-- Sekunden seit dem Beitritt (nur für den ersten Hinweis, NICHT für die Geschenke)
 local function sessionSeconds(player: Player): number
 	local t = joinedAt[player]
 	if not t then
@@ -11121,19 +11556,44 @@ local function sessionSeconds(player: Player): number
 	return os.clock() - t
 end
 
+-- 🎁 Spielzeit von heute (UTC) aus dem Spielstand: { Day, Seconds, Claimed = { ["1"] = true } }.
+-- Neuer Tag oder kaputte Daten -> wieder bei 0, alle Geschenke neu.
+type GiftData = { Day: string, Seconds: number, Claimed: { [string]: boolean } }
+
+local function giftData(data): GiftData
+	local gifts = data.Gifts
+	local day = today()
+	if
+		type(gifts) ~= "table"
+		or gifts.Day ~= day
+		or type(gifts.Claimed) ~= "table"
+		or type(gifts.Seconds) ~= "number"
+		or gifts.Seconds ~= gifts.Seconds
+	then
+		gifts = { Day = day, Seconds = 0, Claimed = {} }
+		data.Gifts = gifts
+	end
+	return gifts
+end
+
 local function prizeType(prize): string
 	return tostring(prize.Type or prize.Kind or "Cash")
 end
 
--- Einkommen + Schritte-Tempo einmal ausrechnen (für mehrere Belohnungstexte auf einmal)
+-- Einkommen + Schritte-Tempo einmal ausrechnen (für mehrere Belohnungstexte auf einmal).
+-- state (optional) = schon gebauter State: dann werden Income/StepsMult daraus genommen statt neu gerechnet.
 type Rates = { Income: number, StepsPerSecond: number }
 
-local function rates(player: Player, data): Rates
+local function rates(player: Player, data, state: { [string]: any }?): Rates
 	local best = Config.BestTreadmill(data.Steps)
 	local rate = best and best.Rate or 1
+	local income = state and tonumber(state.Income)
+	local stepsMult = state and tonumber(state.StepsMult)
 	return {
-		Income = finite(Services.EconomyService.GetIncome(player)),
-		StepsPerSecond = finite(rate / Config.TreadmillTick * Services.EconomyService.GetStepsMult(player)),
+		Income = finite(income or Services.EconomyService.GetIncome(player)),
+		StepsPerSecond = finite(
+			rate / Config.TreadmillTick * (stepsMult or Services.EconomyService.GetStepsMult(player))
+		),
 	}
 end
 
@@ -11175,14 +11635,16 @@ end
 -- -------------------------------------------------------------------
 -- EIER & PREISE GUTSCHREIBEN
 -- -------------------------------------------------------------------
--- Ei (Meteor) einer Seltenheit in die Base. Base voll / keine Base -> Wert als Cash.
+-- Ei (Meteor) einer Seltenheit in die Base. Base voll / keine Base -> Geld statt Ei:
+--   Gratis-Belohnung (Geschenk, Glücksrad): der Verkaufswert (Wert * Config.SellRatio) – sonst lohnt
+--   es sich, die Base absichtlich voll zu lassen. opts.FullValue (Robux-Käufe): der volle Wert.
 -- opts.Fixed = immer der günstigste Meteor der Seltenheit (z.B. Länder ohne Zufalls-Käufe)
 -- opts.RandomMutation = Mutation würfeln (Gold, Frost ...), sonst "Normal"
 -- Gibt (true, Text) zurück – false nur, wenn es die Seltenheit nicht gibt.
 function RewardService.GiveEgg(
 	player: Player,
 	rarityName: string,
-	opts: { Fixed: boolean?, RandomMutation: boolean? }?
+	opts: { Fixed: boolean?, RandomMutation: boolean?, FullValue: boolean? }?
 ): (boolean, string)
 	local Meteor = Services.MeteorService
 	local def = nil
@@ -11208,7 +11670,8 @@ function RewardService.GiveEgg(
 	if Services.EconomyService.GiveMeteor(player, entry, true) then
 		return true, "🥚 " .. label .. " fliegt in deine Base!"
 	end
-	local value = math.floor(Config.MeteorValue(entry))
+	local ratio = if opts and opts.FullValue then 1 else Config.SellRatio
+	local value = math.floor(Config.MeteorValue(entry) * ratio)
 	Services.EconomyService.AddCash(player, value)
 	return true, "📦 Base voll – du bekommst " .. Util.FormatCash(value) .. " statt " .. label
 end
@@ -11408,11 +11871,60 @@ function RewardService.ClaimQuest(player: Player, index: any): (boolean, string)
 	return true, "📜 Belohnung: +" .. Util.FormatCash(cash) .. " und +" .. spinsWord(QUEST_REWARD_SPINS) .. " 🎡!"
 end
 
+-- 🔄 Einmal pro Tag eine (noch nicht geschaffte) Aufgabe tauschen – z.B. "Bonk 3 Diebe" auf einem
+-- leeren Server. Die neue Aufgabe braucht nie andere Spieler und ist von einer Art, die heute noch fehlt.
+function RewardService.RerollQuest(player: Player, index: any): (boolean, string)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return false, "Lädt noch... ⏳"
+	end
+	if ensureQuests(player, data) then
+		return false, "📜 Neuer Tag – neue Aufgaben!"
+	end
+	local quests = data.Quests
+	if quests.Rerolled == true then
+		return false, "🔄 Heute schon getauscht – morgen wieder!"
+	end
+	local i = tonumber(index)
+	local quest = i and quests.List[i]
+	if type(quest) ~= "table" then
+		return false, "Unbekannte Aufgabe"
+	end
+	if quest.Claimed or quest.Progress >= quest.Goal then
+		return false, "✅ Die hast du schon geschafft!"
+	end
+	local used = {}
+	for _, other in ipairs(quests.List) do
+		used[other.Id] = true
+	end
+	local options = {}
+	for _, def in ipairs(QUEST_POOL) do
+		if not def.Social and not used[def.Id] then
+			table.insert(options, def)
+		end
+	end
+	if #options == 0 then
+		return false, "🔄 Gerade keine andere Aufgabe frei"
+	end
+	local def = options[rng:NextInteger(1, #options)]
+	local fresh = {
+		Id = def.Id,
+		Kind = def.Kind,
+		Goal = questGoal(def, rates(player, data)),
+		Progress = 0,
+		Claimed = false,
+	}
+	quests.List[i] = fresh
+	quests.Rerolled = true
+	markDirty(player)
+	return true, "🔄 Neue Aufgabe: " .. questText(fresh)
+end
+
 -- -------------------------------------------------------------------
--- 🎁 SPIELZEIT-GESCHENKE
+-- 🎁 SPIELZEIT-GESCHENKE (Spielzeit von heute, siehe giftData)
 -- -------------------------------------------------------------------
-local function giftReadyIn(player: Player, gift): number
-	return math.max(0, math.ceil((tonumber(gift.Minutes) or 0) * 60 - sessionSeconds(player)))
+local function giftReadyIn(gifts: GiftData, gift): number
+	return math.max(0, math.ceil((tonumber(gift.Minutes) or 0) * 60 - gifts.Seconds))
 end
 
 function RewardService.ClaimGift(player: Player, index: any): (boolean, string)
@@ -11425,19 +11937,16 @@ function RewardService.ClaimGift(player: Player, index: any): (boolean, string)
 	if type(gift) ~= "table" or not i then
 		return false, "Unbekanntes Geschenk"
 	end
-	local claimed = claimedGifts[player]
-	if not claimed then
-		claimed = {}
-		claimedGifts[player] = claimed
-	end
-	if claimed[i] then
+	local gifts = giftData(data)
+	local key = tostring(i)
+	if gifts.Claimed[key] then
 		return false, "✅ Schon abgeholt!"
 	end
-	local remaining = giftReadyIn(player, gift)
+	local remaining = giftReadyIn(gifts, gift)
 	if remaining > 0 then
 		return false, "⏳ Noch " .. Util.FormatTime(remaining) .. " spielen!"
 	end
-	claimed[i] = true
+	gifts.Claimed[key] = true
 	local text = grantPrize(player, data, gift, true)
 	Services.EconomyService.Effect(player, "Confetti", 1)
 	markDirty(player)
@@ -11506,56 +12015,84 @@ end
 
 -- -------------------------------------------------------------------
 -- DATEN AN DEN CLIENT (EconomyService ruft das bei jedem State auf)
+--   Spins, FreeSpinIn, QuestReroll: klein -> immer
+--   Gifts (+ GiftsAt), Quests: nur bei Änderung oder wenn full = true (alle ~20 s). Der Client behält
+--   sonst die alten. ReadyIn gilt ab GiftsAt (Serverzeit) – so zählt der Client auch mit einem
+--   älteren Paket richtig herunter.
 -- -------------------------------------------------------------------
-function RewardService.FillState(player: Player, data, state)
+function RewardService.FillState(player: Player, data, state, full: boolean?)
 	ensureQuests(player, data)
-	local r = rates(player, data)
-
-	local gifts = {}
-	local claimed = claimedGifts[player]
-	for i, gift in ipairs(giftList()) do
-		gifts[i] = {
-			Minutes = tonumber(gift.Minutes) or 0,
-			Claimed = claimed ~= nil and claimed[i] == true,
-			ReadyIn = giftReadyIn(player, gift),
-			Text = prizeText(gift, r),
-		}
-	end
-
-	local quests = {}
-	local rewardText = "💵 " .. Util.FormatCash(questRewardCash(r)) .. " + 🎡 " .. spinsWord(QUEST_REWARD_SPINS)
-	for i, quest in ipairs(data.Quests.List) do
-		quests[i] = {
-			Text = questText(quest),
-			Kind = quest.Kind, -- z.B. "Collect" -> der Client zeigt den Fortschritt mit $
-			Goal = quest.Goal,
-			Progress = quest.Progress,
-			Claimed = quest.Claimed == true,
-			RewardText = rewardText,
-		}
-	end
+	local r = rates(player, data, state)
+	local gifts = giftData(data)
 
 	state.Spins = tonumber(data.Spins) or 0
 	state.FreeSpinIn = RewardService.FreeSpinIn(data)
-	state.Gifts = gifts
-	state.Quests = quests
+	state.QuestReroll = data.Quests.Rerolled ~= true -- heute noch eine Aufgabe tauschbar?
+
+	local giftRows = {}
+	local giftKey = { gifts.Day }
+	for i, gift in ipairs(giftList()) do
+		local claimed = gifts.Claimed[tostring(i)] == true
+		local text = prizeText(gift, r)
+		giftRows[i] = {
+			Minutes = tonumber(gift.Minutes) or 0,
+			Claimed = claimed,
+			ReadyIn = giftReadyIn(gifts, gift),
+			Text = text,
+		}
+		table.insert(giftKey, (if claimed then "1" else "0") .. text)
+	end
+	local giftSignature = table.concat(giftKey, "|")
+	if full or sentGiftKey[player] ~= giftSignature then
+		sentGiftKey[player] = giftSignature
+		state.Gifts = giftRows
+		state.GiftsAt = workspace:GetServerTimeNow()
+	end
+
+	local quests = {}
+	local questKey = { data.Quests.Day }
+	local rewardText = "💵 " .. Util.FormatCash(questRewardCash(r)) .. " + 🎡 " .. spinsWord(QUEST_REWARD_SPINS)
+	for i, quest in ipairs(data.Quests.List) do
+		local text = questText(quest)
+		local claimed = quest.Claimed == true
+		quests[i] = {
+			Text = text,
+			Kind = quest.Kind, -- z.B. "Collect" -> der Client zeigt den Fortschritt mit $
+			Goal = quest.Goal,
+			Progress = quest.Progress,
+			Claimed = claimed,
+			RewardText = rewardText,
+		}
+		table.insert(questKey, text .. "#" .. tostring(quest.Progress) .. (if claimed then "1" else "0"))
+	end
+	table.insert(questKey, rewardText)
+	local questSignature = table.concat(questKey, "|")
+	if full or sentQuestKey[player] ~= questSignature then
+		sentQuestKey[player] = questSignature
+		state.Quests = quests
+	end
 end
 
--- Jede Sekunde: "Geschenk bereit" / "Gratis-Dreh bereit" melden (je einmal)
-local function checkPlayer(player: Player)
+-- Jede Sekunde: Spielzeit hochzählen, "Geschenk bereit" / "Gratis-Dreh bereit" melden (je einmal)
+local function tickPlayer(player: Player, dt: number)
 	local data = Services.DataService.Get(player)
-	if not data or sessionSeconds(player) < FIRST_NOTIFY_DELAY then
+	if not data then
+		return
+	end
+	local gifts = giftData(data)
+	gifts.Seconds = math.min(MAX_GIFT_SECONDS, gifts.Seconds + dt)
+	if sessionSeconds(player) < FIRST_NOTIFY_DELAY then
 		return
 	end
 	local notified = notifiedGifts[player]
-	if not notified then
-		notified = {}
+	if not notified or notifiedDay[player] ~= gifts.Day then
+		notified = {} -- neuer Tag -> alle Geschenke wieder neu melden
 		notifiedGifts[player] = notified
+		notifiedDay[player] = gifts.Day
 	end
-	local claimed = claimedGifts[player]
 	local ready = 0
 	for i, gift in ipairs(giftList()) do
-		if not notified[i] and not (claimed and claimed[i]) and giftReadyIn(player, gift) <= 0 then
+		if not notified[i] and not gifts.Claimed[tostring(i)] and giftReadyIn(gifts, gift) <= 0 then
 			notified[i] = true
 			ready += 1
 		end
@@ -11585,10 +12122,13 @@ function RewardService.Start()
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		joinedAt[player] = nil
-		claimedGifts[player] = nil
+		lastTick[player] = nil
 		notifiedGifts[player] = nil
+		notifiedDay[player] = nil
 		freeSpinNotified[player] = nil
 		lastSpin[player] = nil
+		sentGiftKey[player] = nil
+		sentQuestKey[player] = nil
 	end)
 
 	task.spawn(function()
@@ -11596,7 +12136,11 @@ function RewardService.Start()
 			task.wait(1)
 			for _, player in ipairs(Players:GetPlayers()) do
 				if Services.EconomyService.IsReady(player) then
-					local ok, err = pcall(checkPlayer, player)
+					-- echte vergangene Zeit (task.wait ist nie genau 1 s), nach Hängern gedeckelt
+					local clock = os.clock()
+					local dt = math.clamp(clock - (lastTick[player] or clock), 0, MAX_TICK)
+					lastTick[player] = clock
+					local ok, err = pcall(tickPlayer, player, dt)
 					if not ok then
 						warn("[RewardService] Fehler bei " .. player.Name .. ": " .. tostring(err))
 					end
@@ -11995,9 +12539,9 @@ local function refreshAll()
 	WorldFX.UpdateTreadmills(tonumber(state.Steps) or 0, state.BestTreadmill)
 end
 
--- Selten geänderte Teile (Index, Pässe, Statistik) schickt der Server nur bei Änderung mit.
--- Fehlen sie in einem Paket, gelten die zuletzt bekommenen weiter.
-local STICKY_KEYS = { "Index", "Passes", "Stats" }
+-- Selten geänderte Teile (Index, Pässe, Statistik, Geschenke + GiftsAt, Aufgaben) schickt der Server
+-- nur bei Änderung mit. Fehlen sie in einem Paket, gelten die zuletzt bekommenen weiter.
+local STICKY_KEYS = { "Index", "Passes", "Stats", "Gifts", "GiftsAt", "Quests" }
 
 Remotes.State.OnClientEvent:Connect(function(newState)
 	if type(newState) ~= "table" then
@@ -12058,9 +12602,20 @@ end
 player:GetAttributeChangedSignal("IsAdmin"):Connect(checkAdmin)
 checkAdmin()
 
-UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Klau Eier am Förderband [E] – gratis!", "Event")
+-- Willkommen – mit den Tasten des Geräts (Handy: halten/tippen, Controller: [X]/[Y], PC: [E]/[F])
+local inputStyle = Hud.InputStyle()
+local grabKey = if inputStyle == "Touch" then "halten" elseif inputStyle == "Gamepad" then "[X] halten" else "[E] halten"
+local buyKey = if inputStyle == "Touch" then "tippen" elseif inputStyle == "Gamepad" then "[Y]" else "[F]"
+UI.Toast(
+	"☄️ Willkommen bei "
+		.. tostring(Config.GameName)
+		.. "! Klau Eier am Förderband ("
+		.. grabKey
+		.. ") – gratis!",
+	"Event"
+)
 task.delay(4, function()
-	UI.Toast("🏃 Schnell heimtragen – oder kauf sie mit [F], dann werden sie geliefert!", "Info")
+	UI.Toast("🏃 Schnell heimtragen – oder kaufen (" .. buyKey .. "), dann werden sie geliefert!", "Info")
 end)
 task.delay(8, function()
 	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld!", "Info")
@@ -12783,7 +13338,8 @@ return AdminPanel
 --   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base
 --                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter)
 --   "Hatch"    -> Funken-Explosion + Lichtblitz, wenn ein Alien schlüpft
---   "HatchReveal" -> große Karte in der Bildschirmmitte (seltenes Alien geschlüpft) + Konfetti
+--   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) + Konfetti,
+--                    sonst bzw. beim Tragen kleine Karte oben rechts
 --   "Shake", "Confetti", "Alarm" wie bisher
 --  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
@@ -12982,6 +13538,12 @@ end
 local BURST_RANGE = 450 -- weiter weg sieht man es eh nicht -> nichts tun
 local FLASH_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local SHELL_INFO = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+-- Viele Explosionen auf einmal (z.B. mehrere Eier schlüpfen gleichzeitig): höchstens MAX_FLASHES
+-- Lichtblitze pro FLASH_WINDOW Sekunden, darüber nur noch halb so viele Funken
+local FLASH_WINDOW = 0.25
+local MAX_FLASHES = 3
+local flashWindowStart = 0
+local flashCount = 0
 
 local function localPart(props: { [string]: any }): Part
 	local base: { [string]: any } = {
@@ -13029,6 +13591,18 @@ local function burst(position: Vector3, color: Color3, amount: number, flash: bo
 	local camera = workspace.CurrentCamera
 	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
 		return
+	end
+	if flash then
+		local t = os.clock()
+		if t - flashWindowStart > FLASH_WINDOW then
+			flashWindowStart = t
+			flashCount = 0
+		end
+		flashCount += 1
+		if flashCount > MAX_FLASHES then
+			flash = false
+			amount *= 0.5
+		end
 	end
 	local holder = localPart({
 		Name = "Burst",
@@ -13290,11 +13864,15 @@ end
 -- ---------------------------------------------------------------------
 -- HATCH REVEAL: große Karte in der Mitte (Name in Seltenheits-Farbe, Stufe, Mutation)
 -- Eine Karte wird einmal gebaut und wiederverwendet; mehrere hintereinander warten kurz.
+-- Groß + Konfetti nur für Besonderes (Ultra oder ab Epic). "Selten"-Aliens aus kleinen Eiern und
+-- alles, während du Beute trägst, kommt als kleine Karte oben rechts (verdeckt nicht die Mitte).
 -- ---------------------------------------------------------------------
 local REVEAL_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local REVEAL_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 local REVEAL_SPIN_INFO = TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
 local REVEAL_TIME = 3.2
+local MINI_REVEAL_TIME = 1.8
+local MINI_REVEAL_SCALE = 0.45
 local MAX_REVEAL_QUEUE = 4
 -- Ersatz-Symbole (Config.Mutations -> Icon hat Vorrang; gleiche Symbole wie an Aliens und Meteoren)
 local MUTATION_ICONS: { [string]: string } = {
@@ -13568,6 +14146,23 @@ local function fillReveal(ui: RevealUI, data: any): boolean
 	return true
 end
 
+-- Große Karte (Mitte, Konfetti) oder kleine (oben rechts)?
+local function revealIsBig(data: any): boolean
+	local state = ctx.State
+	if state and state.Carrying == true then
+		return false -- beim Wegrennen mit Beute nicht die Bildschirmmitte zudecken
+	end
+	local def = ctx.Aliens.ById[data.AlienId]
+	if not def then
+		return false
+	end
+	if def.Tier == "Ultra" then
+		return true
+	end
+	local Config = ctx.Config
+	return (Config.RarityIndex[def.Rarity] or 0) >= (Config.RarityIndex.Epic or 4)
+end
+
 local function showNextReveal()
 	if revealBusy then
 		return
@@ -13578,18 +14173,25 @@ local function showNextReveal()
 		local ui = reveal or buildReveal()
 		reveal = ui
 		if ui and not hidden and fillReveal(ui, data) then
+			local big = revealIsBig(data)
 			revealSkip = false
+			ui.Holder.AnchorPoint = if big then Vector2.new(0.5, 0.5) else Vector2.new(1, 0)
+			ui.Holder.Position = if big then UDim2.fromScale(0.5, 0.45) else UDim2.new(1, -14, 0, 56)
+			ui.Rays.Visible = big
 			ui.Holder.Visible = true
 			ui.Scale.Scale = 0.2
 			ui.Rays.Rotation = 0
 			local rayTween = TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 })
 			ui.RayTween = rayTween
 			rayTween:Play()
-			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = 1 }):Play()
-			confetti(1.6)
-			shake(0.35)
+			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = if big then 1 else MINI_REVEAL_SCALE }):Play()
+			if big then
+				confetti(1.6)
+				shake(0.35)
+			end
+			local showTime = if big then REVEAL_TIME else MINI_REVEAL_TIME
 			local shown = 0
-			while shown < REVEAL_TIME and not revealSkip and not hidden do
+			while shown < showTime and not revealSkip and not hidden do
 				shown += task.wait(0.1)
 			end
 			local out = TweenService:Create(ui.Scale, REVEAL_OUT_INFO, { Scale = 0 })
@@ -13970,6 +14572,7 @@ local incomeLabel: TextLabel
 local infoLabel: TextLabel
 local offerButton: UI.Button? = nil
 local starterButton: UI.Button? = nil
+local starterSubText = "Super-Angebot!"
 local dailyBadge: Frame
 local giftBadge: Frame
 local wheelBadge: Frame
@@ -14105,10 +14708,8 @@ local function buildLeft()
 			Visible = false, -- erst zeigen, wenn der State sagt: noch nicht gekauft
 			Parent = bar,
 		}, function()
-			local state = ctx.State
-			if starter.Id ~= 0 and not (state and state.StarterBought == true) then
-				MarketplaceService:PromptProductPurchase(player, starter.Id)
-			end
+			-- nur einmal kaufbar: Windows sperrt den Knopf bis zur Antwort (kein Doppelkauf per Doppelklick)
+			ctx.Windows.BuyStarter()
 		end)
 		button.Stroke.Color = Color3.fromRGB(255, 255, 255)
 		TweenService:Create(button.Stroke, OFFER_GLOW_INFO, { Thickness = 5 }):Play()
@@ -14117,7 +14718,8 @@ local function buildLeft()
 		starterButton = button
 		UI.FetchPrice(starter.Id, Enum.InfoType.Product, function(price)
 			if price then
-				button.SetSub("🔥 NUR " .. price .. " R$ 🔥")
+				starterSubText = "🔥 NUR " .. price .. " R$ 🔥"
+				button.SetSub(starterSubText)
 			end
 		end)
 	end
@@ -14451,15 +15053,25 @@ end
 -- ---------------------------------------------------------------------
 -- PROMPT-HINWEIS (Prompts meldet, welche Art Prompt gerade sichtbar ist)
 -- ---------------------------------------------------------------------
+-- "Touch" (Handy/Tablet), "Gamepad" (Controller) oder "Keyboard" (PC) – nach der letzten Eingabe,
+-- vor der ersten Eingabe nach dem Gerät geraten
 local function inputStyle(): string
 	local last = UserInputService:GetLastInputType()
 	if last == Enum.UserInputType.Touch then
 		return "Touch"
 	elseif last.Name:sub(1, 7) == "Gamepad" then
 		return "Gamepad"
+	elseif last == Enum.UserInputType.Keyboard or last.Name:sub(1, 5) == "Mouse" then
+		return "Keyboard"
+	end
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+		return "Touch"
+	elseif UserInputService.GamepadEnabled and not UserInputService.KeyboardEnabled then
+		return "Gamepad"
 	end
 	return "Keyboard"
 end
+Hud.InputStyle = inputStyle
 
 local function hintText(kind: string, state: any): string
 	local style = inputStyle()
@@ -14692,6 +15304,21 @@ local function setCarrying(now: boolean)
 	end
 end
 
+-- ⭐ Starter-Paket-Knopf: zeigen, solange nicht gekauft und eingerichtet. Läuft gerade ein Kauf,
+-- steht "⏳" darauf (ein zweiter Klick wäre ein zweiter Kauf – Windows.BuyStarter ignoriert ihn).
+local function updateStarter(state: any)
+	local starter = starterButton
+	if not starter or not state then
+		return
+	end
+	local product = ctx.Config.ProductsByKey.StarterPack
+	local show = product ~= nil and product.Id ~= 0 and state.StarterBought == false
+	if starter.Frame.Visible ~= show then
+		starter.Frame.Visible = show
+	end
+	starter.SetSub(if ctx.Windows.StarterPending() then "⏳ Kauf läuft..." else starterSubText)
+end
+
 function Hud.Refresh(state: any)
 	if not state then
 		return
@@ -14734,11 +15361,7 @@ function Hud.Refresh(state: any)
 		local owned = state.Passes and state.Passes.SpeedBoots == true
 		offer.Frame.Visible = boots ~= nil and boots.Id ~= 0 and not owned
 	end
-	local starter = starterButton
-	if starter then
-		local product = ctx.Config.ProductsByKey.StarterPack
-		starter.Frame.Visible = product ~= nil and product.Id ~= 0 and state.StarterBought == false
-	end
+	updateStarter(state)
 	dailyBadge.Visible = state.DailyReady == true
 	updateBadges(state)
 
@@ -14826,6 +15449,7 @@ function Hud.Tick()
 	local state = ctx.State
 	if state then
 		updateBadges(state)
+		updateStarter(state)
 	end
 	-- Eingabegerät gewechselt (Tastatur <-> Handy/Controller)? Hinweis neu schreiben
 	updateHint()
@@ -15012,6 +15636,7 @@ return PhotoMode
 --  Dazu: Hinweis unten im HUD, solange ein Förderband-/Boden-Prompt sichtbar ist
 --  (E = Klauen gratis, F = Kaufen). Der Server prüft beim Auslösen trotzdem alles.
 --  Halte-Sperre: Wer E an einem Band-Meteor hält, dem springt der Prompt nicht zum nächsten Meteor.
+--  Eingefroren (Falle / Admin): Klauen und Schnappen sind aus.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -15033,6 +15658,7 @@ local grabPrompts: { [ProximityPrompt]: boolean } = {}
 local shownPrompts: { [ProximityPrompt]: string } = {}
 local photoMode = false
 local carrying = false
+local frozen = false -- eigener HumanoidRootPart verankert (Falle / Admin-Freeze)
 local tipShown = false
 
 -- Klauen am Förderband: Während E gehalten wird (Config.BeltGrabHold), fährt das Band weiter.
@@ -15099,8 +15725,14 @@ local function updatePrompt(prompt: ProximityPrompt, plot: Instance | false)
 	if prompt.Name == "SellPrompt" then
 		setEnabled(prompt, isMine)
 	elseif prompt.Name == "StealPrompt" then
-		setEnabled(prompt, not isMine and not locked and not carrying)
+		setEnabled(prompt, not isMine and not locked and not carrying and not frozen)
 	end
+end
+
+local function isFrozen(): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return root ~= nil and root:IsA("BasePart") and root.Anchored
 end
 
 local function track(inst: Instance)
@@ -15145,7 +15777,7 @@ local function hintKind(prompt: ProximityPrompt): string?
 end
 
 local function updateGrab(prompt: ProximityPrompt)
-	if photoMode or carrying then
+	if photoMode or carrying or frozen then
 		-- auch merken, wenn er schon aus war (z.B. vom Foto-Modus) -> später sicher wieder an
 		grabPrompts[prompt] = true
 		setEnabled(prompt, false)
@@ -15165,7 +15797,13 @@ local function releaseHold()
 	holdToken += 1
 	for prompt in pairs(holdDisabled) do
 		holdDisabled[prompt] = nil
-		if prompt:IsDescendantOf(workspace) and not photoMode and not carrying and grabPrompts[prompt] == false then
+		if
+			prompt:IsDescendantOf(workspace)
+			and not photoMode
+			and not carrying
+			and not frozen
+			and grabPrompts[prompt] == false
+		then
 			setEnabled(prompt, true)
 		end
 	end
@@ -15231,6 +15869,13 @@ end
 function Prompts.UpdateAll()
 	table.clear(mineCache)
 	table.clear(lockedCache)
+	frozen = isFrozen()
+	-- Sicherheitsnetz für die Halte-Sperre: der gehaltene Meteor ist weg (geklaut, gekauft, Bandende)
+	-- und Roblox hat kein "losgelassen" mehr gemeldet -> sofort freigeben statt erst nach HOLD_SAFETY
+	local held = holdPrompt
+	if held and not holdTriggered and not held:IsDescendantOf(workspace) then
+		releaseHold()
+	end
 	for prompt, plot in pairs(tracked) do
 		-- IsDescendantOf statt Parent: wird nur das Alien-Model zerstört, behält der Prompt
 		-- (je nach Destroy-Replikation) seinen Parent – er hängt dann aber nicht mehr in der Welt.
@@ -15301,11 +15946,16 @@ function Prompts.Init(map: Instance, context: any)
 			shownPrompts[prompt] = nil
 			refreshHint()
 		end
+		-- Der gehaltene Prompt verschwindet (Meteor geklaut/gekauft/am Bandende, außer Reichweite):
+		-- Halte-Sperre gleich aufheben, sonst kann man bis zu HOLD_SAFETY Sekunden nichts schnappen
+		if prompt == holdPrompt and not holdTriggered then
+			scheduleRelease(HOLD_RELEASE_AFTER_CANCEL)
+		end
 	end)
 
 	-- Halte-Sperre am Förderband (siehe oben): E auf einem Band-Meteor halten -> andere GrabPrompts aus
 	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
-		if prompt.Name ~= "GrabPrompt" or meteorFolderKind(prompt) ~= "Belt" or photoMode or carrying then
+		if prompt.Name ~= "GrabPrompt" or meteorFolderKind(prompt) ~= "Belt" or photoMode or carrying or frozen then
 			return
 		end
 		releaseHold()
@@ -15355,8 +16005,9 @@ return Prompts
               <string name="Source"><![CDATA[-- =====================================================================
 --  BELOHNUNGS-FENSTER: 🎁 Geschenke, 🎡 Glücksrad, 📜 Tagesaufgaben
 --  Gewürfelt und gutgeschrieben wird NUR auf dem Server. Hier wird angezeigt und angefragt
---  ("ClaimGift", "Spin", "ClaimQuest"). Countdowns im State gelten ab seiner Ankunft
---  (ctx.StateTime) und laufen lokal weiter – ohne dass der Server jede Sekunde senden muss.
+--  ("ClaimGift", "Spin", "ClaimQuest", "RerollQuest"). Countdowns laufen lokal weiter – ohne dass
+--  der Server jede Sekunde senden muss: FreeSpinIn gilt ab der Ankunft des States (ctx.StateTime),
+--  die Geschenke kommen nur bei Änderung und zählen ab GiftsAt (Serverzeit).
 --  Das Glücksrad dreht flüssig mit Ease-Out genau auf das Feld, das der Server gewürfelt hat.
 -- =====================================================================
 
@@ -15387,6 +16038,16 @@ local function sinceState(): number
 		return 0
 	end
 	return math.max(0, os.clock() - t)
+end
+
+-- Sekunden, seit die Geschenk-Countdowns (ReadyIn) gelten. Der Server schickt die Geschenke nur bei
+-- Änderung – deshalb zählen sie ab GiftsAt (Serverzeit), nicht ab dem letzten State.
+local function sinceGifts(state: any): number
+	local at = type(state) == "table" and tonumber(state.GiftsAt)
+	if at then
+		return math.max(0, workspace:GetServerTimeNow() - at)
+	end
+	return sinceState()
 end
 
 -- "👟 2x Schritte" + Icon "👟" -> Icon nicht doppelt
@@ -15421,6 +16082,7 @@ export type Summary = {
 
 function Rewards.Summary(state: any): Summary
 	local elapsed = sinceState()
+	local giftElapsed = sinceGifts(state)
 	local giftsReady = 0
 	local nextGift: number? = nil
 	local quests = 0
@@ -15428,7 +16090,7 @@ function Rewards.Summary(state: any): Summary
 		if type(state.Gifts) == "table" then
 			for _, gift in ipairs(state.Gifts) do
 				if type(gift) == "table" and gift.Claimed ~= true then
-					local left = (tonumber(gift.ReadyIn) or 0) - elapsed
+					local left = (tonumber(gift.ReadyIn) or 0) - giftElapsed
 					if left <= 0 then
 						giftsReady += 1
 					elseif nextGift == nil or left < nextGift then
@@ -15556,7 +16218,7 @@ function Rewards.RefreshGifts(state: any)
 		return
 	end
 	local list = if type(state.Gifts) == "table" then state.Gifts else {}
-	local elapsed = sinceState()
+	local elapsed = sinceGifts(state)
 	local playSeconds: number? = nil
 	for i, card in ipairs(giftCards) do
 		local gift = list[i]
@@ -15577,7 +16239,7 @@ function Rewards.RefreshGifts(state: any)
 			elseif left <= 0 then
 				subText, buttonText, color, gold = "🎁 Bereit – hol es dir!", "🎁 Abholen", Theme.Green, true
 			else
-				subText = "nach " .. minutes .. " Min. Spielzeit"
+				subText = "nach " .. minutes .. " Min. Spielzeit heute"
 				buttonText, color, gold = "⏳ " .. ctx.Util.FormatTime(math.ceil(left)), GRAY, false
 			end
 			if card.Sub.Text ~= subText then
@@ -15597,11 +16259,11 @@ function Rewards.RefreshGifts(state: any)
 	if #list == 0 then
 		info = "🎁 Geschenke werden geladen..."
 	elseif playSeconds then
-		info = "⏱️ Spielzeit: "
+		info = "⏱️ Spielzeit heute: "
 			.. ctx.Util.FormatTime(math.max(0, playSeconds))
 			.. "  •  bleib dran für mehr! 🎁"
 	else
-		info = "🏆 Alle Geschenke freigeschaltet – stark!"
+		info = "🏆 Alle Geschenke von heute freigeschaltet – morgen gibt's neue!"
 	end
 	if giftInfo.Text ~= info then
 		giftInfo.Text = info
@@ -16074,6 +16736,7 @@ type QuestCard = {
 	Bar: UI.Bar,
 	Reward: TextLabel,
 	Button: UI.Button,
+	Reroll: UI.Button, -- 🔄 einmal am Tag tauschen
 }
 
 local questCards: { QuestCard } = {}
@@ -16105,7 +16768,7 @@ local function ensureQuestCard(i: number): QuestCard
 	})
 	local reward = UI.Label({
 		Position = UDim2.new(0, 12, 1, -46),
-		Size = UDim2.new(1, -190, 0, 36),
+		Size = UDim2.new(1, -246, 0, 36),
 		Text = "",
 		Font = Enum.Font.GothamBold,
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -16125,6 +16788,19 @@ local function ensureQuestCard(i: number): QuestCard
 	}, function()
 		ctx.Request("ClaimQuest", i)
 	end)
+	-- 🔄 Tauschen (einmal am Tag, z.B. wenn keine anderen Spieler zum Bonken da sind)
+	local reroll = UI.Button({
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -178, 1, -8),
+		Size = UDim2.fromOffset(50, 42),
+		Text = "🔄",
+		Color = Theme.Purple,
+		MaxText = 22,
+		Visible = false,
+		Parent = card,
+	}, function()
+		ctx.Request("RerollQuest", i)
+	end)
 	local entry: QuestCard = {
 		Card = card,
 		Stroke = stroke,
@@ -16132,6 +16808,7 @@ local function ensureQuestCard(i: number): QuestCard
 		Bar = bar,
 		Reward = reward,
 		Button = button,
+		Reroll = reroll,
 	}
 	questCards[i] = entry
 	return entry
@@ -16174,7 +16851,11 @@ function Rewards.RefreshQuests(state: any)
 	end
 	local Util = ctx.Util
 	local list = if type(state.Quests) == "table" then state.Quests else {}
-	local header = "⏰ Neue Aufgaben in " .. Util.FormatTime(secondsToNewDay()) .. "  •  Belohnung: 💵 + 🎡"
+	local canReroll = state.QuestReroll == true
+	local header = "⏰ Neue Aufgaben in "
+		.. Util.FormatTime(secondsToNewDay())
+		.. "  •  Belohnung: 💵 + 🎡"
+		.. (if canReroll then "  •  🔄 1x tauschen" else "")
 	if questHeader.Text ~= header then
 		questHeader.Text = header
 	end
@@ -16207,6 +16888,10 @@ function Rewards.RefreshQuests(state: any)
 			else
 				card.Button.SetText("⏳ " .. math.floor(progress / goal * 100) .. "%")
 				card.Button.SetColor(GRAY)
+			end
+			local showReroll = canReroll and not done and not claimed
+			if card.Reroll.Frame.Visible ~= showReroll then
+				card.Reroll.Frame.Visible = showReroll
 			end
 			local gold = done and not claimed
 			local strokeColor = if gold then Theme.Gold else BLACK
@@ -17050,6 +17735,7 @@ type ToastEntry = {
 	LabelStroke: UIStroke?,
 	Leaving: boolean,
 	Token: number,
+	Kind: string,
 }
 
 local TOAST_COLORS: { [string]: Color3 } = {
@@ -17059,6 +17745,17 @@ local TOAST_COLORS: { [string]: Color3 } = {
 	Event = Color3.fromRGB(235, 120, 20),
 	Alarm = Color3.fromRGB(230, 20, 30),
 	Announce = Color3.fromRGB(60, 95, 230),
+}
+
+-- Zu viele Toasts: zuerst fliegt der älteste mit der KLEINSTEN Wichtigkeit raus.
+-- So verdrängen Ansagen an alle ("Event") nie den eigenen Diebstahl-Alarm oder eine Fehlermeldung.
+local TOAST_PRIORITY: { [string]: number } = {
+	Info = 1,
+	Event = 1,
+	Success = 2,
+	Error = 2,
+	Announce = 2,
+	Alarm = 3,
 }
 
 local toastHolder: Frame? = nil
@@ -17104,7 +17801,21 @@ local function newToastEntry(): ToastEntry
 		LabelStroke = label:FindFirstChildOfClass("UIStroke"),
 		Leaving = false,
 		Token = 0,
+		Kind = "Info",
 	}
+end
+
+-- Welcher Toast soll weichen? Der älteste mit der kleinsten Wichtigkeit.
+local function toastToDrop(): ToastEntry
+	local drop = activeToasts[1]
+	local lowest = math.huge
+	for _, entry in ipairs(activeToasts) do
+		local priority = TOAST_PRIORITY[entry.Kind] or 1
+		if priority < lowest then
+			drop, lowest = entry, priority
+		end
+	end
+	return drop
 end
 
 -- Ein-/Ausblenden über die Transparenz der einzelnen Teile. Gibt den Tween der Fläche zurück.
@@ -17171,6 +17882,7 @@ function UI.Toast(text: string, kind: string?)
 	local entry = table.remove(toastPool) or newToastEntry()
 	entry.Token += 1
 	entry.Leaving = false
+	entry.Kind = if kind and TOAST_COLORS[kind] then kind else "Info"
 	local token = entry.Token
 	entry.Gradient.Color = UI.ButtonSequence(color)
 	entry.Label.Text = text
@@ -17184,7 +17896,7 @@ function UI.Toast(text: string, kind: string?)
 	TweenService:Create(entry.Inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
 	fadeToast(entry, TOAST_FADE_INFO, 0)
 	while #activeToasts > MAX_TOASTS do
-		removeToast(activeToasts[1])
+		removeToast(toastToDrop())
 	end
 	task.delay((kind == "Announce" or kind == "Event") and 7 or 4, function()
 		if entry.Token == token then
@@ -17506,7 +18218,7 @@ local function productInfoText(product: any, state: any): string
 			tostring(product.Minutes or 15)
 		)
 	elseif kind == "Shower" then
-		return "🌠 Sofort mehr + bessere Meteore für alle!"
+		return "🌠 Sofort für alle: zwei Spuren voller Meteore, 3x Glück, keine Locks!"
 	elseif kind == "Meteor" then
 		return oddsText(product.Rarity)
 	elseif kind == "StarterPack" then
@@ -17554,6 +18266,28 @@ local function ownsGadget(state: any, id: string): boolean
 	return type(owned) == "table" and table.find(owned, id) ~= nil
 end
 
+-- ⭐ STARTER-PAKET: nur einmal! Ein Developer Product kann der Server nicht auf einen Kauf begrenzen
+-- (bezahlt ist bezahlt, er muss liefern). Deshalb bleibt der Kauf-Knopf nach dem Klick gesperrt,
+-- bis Roblox "abgebrochen" meldet oder der Server "gekauft" (State StarterBought).
+local STARTER_LOCK_SAFETY = 30 -- Sekunden: spätestens dann ist der Knopf wieder frei (z.B. ohne Antwort)
+local starterPendingUntil = 0
+
+function Windows.StarterPending(): boolean
+	return os.clock() < starterPendingUntil
+end
+
+function Windows.BuyStarter()
+	local product = ctx.Config.ProductsByKey and ctx.Config.ProductsByKey.StarterPack
+	local state = ctx.State
+	if not product or product.Id == 0 or (state and state.StarterBought == true) or Windows.StarterPending() then
+		return
+	end
+	starterPendingUntil = os.clock() + STARTER_LOCK_SAFETY
+	Windows.RefreshShop(state)
+	ctx.Hud.Refresh(state)
+	MarketplaceService:PromptProductPurchase(player, product.Id)
+end
+
 function Windows.RefreshShop(state: any)
 	for _, entry in ipairs(passCards) do
 		local pass = entry.Pass
@@ -17582,6 +18316,9 @@ function Windows.RefreshShop(state: any)
 			entry.Button.SetColor(GRAY)
 		elseif product.Type == "StarterPack" and state and state.StarterBought == true then
 			entry.Button.SetText("✅ Gekauft")
+			entry.Button.SetColor(GRAY)
+		elseif product.Type == "StarterPack" and Windows.StarterPending() then
+			entry.Button.SetText("⏳ Kauf läuft...")
 			entry.Button.SetColor(GRAY)
 		else
 			entry.Button.SetText(if entry.Price then ("R$ " .. entry.Price) else "Kaufen")
@@ -17739,11 +18476,13 @@ local function buildBoostPage(page: Frame)
 			MaxText = 20,
 			Parent = card,
 		}, function()
-			local state = ctx.State
-			if product.Id == 0 or (starter and state and state.StarterBought == true) then
+			if starter then
+				Windows.BuyStarter() -- nur einmal kaufbar (mit Sperre gegen Doppelkauf)
 				return
 			end
-			MarketplaceService:PromptProductPurchase(player, product.Id)
+			if product.Id ~= 0 then
+				MarketplaceService:PromptProductPurchase(player, product.Id)
+			end
 		end)
 		local entry: ProductCard = { Product = product, Info = info, Button = buy, Price = nil }
 		table.insert(productCards, entry)
@@ -18545,6 +19284,22 @@ function Windows.Init(context: any)
 		end
 	end
 	Windows.RefreshShop(nil)
+
+	-- ⭐ Starter-Paket: abgebrochen -> Knopf wieder frei. Gekauft -> bleibt gesperrt, bis der Server
+	-- "gekauft" meldet (danach verschwindet der Knopf ganz)
+	local starter = ctx.Config.ProductsByKey and ctx.Config.ProductsByKey.StarterPack
+	MarketplaceService.PromptProductPurchaseFinished:Connect(function(userId, productId, purchased)
+		if userId ~= player.UserId or not starter or productId ~= starter.Id then
+			return
+		end
+		if not purchased then
+			starterPendingUntil = 0
+		end
+		Windows.RefreshShop(ctx.State)
+		if ctx.State then
+			ctx.Hud.Refresh(ctx.State)
+		end
+	end)
 end
 
 return Windows
@@ -18557,10 +19312,11 @@ return Windows
               <string name="Source"><![CDATA[-- =====================================================================
 --  WELT-ANIMATIONEN (alles lokal auf deinem Gerät -> butterweich, kein Server-Lag)
 --   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start)
---     (sichtbare in der Nähe jedes Frame, weit weg / hinter der Kamera seltener)
+--     (sichtbare in der Nähe jedes Frame, weit weg seltener, außerhalb des Sichtfelds noch seltener)
 --   • Streifen auf dem Laufband und auf den Treadmills laufen mit
 --   • Aliens wippen sanft, Regenbogen-Teile färben sich durch
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
+--   • Lava-Feuer an Band-Meteoren (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
 --  Arbeit pro Frame ist begrenzt: weit entfernte Dinge werden seltener oder gar nicht bewegt.
@@ -18575,11 +19331,12 @@ local WorldFX = {}
 local ctx: any = nil
 local fxFolder: Folder? = nil
 
-local NEAR_DISTANCE = 260 -- näher dran: jedes Frame bewegen
+local NEAR_DISTANCE = 120 -- sichtbar und näher dran: jedes Frame bewegen (weiter weg fällt der 4er-Takt nicht auf)
 local FAR_FRAME_SKIP = 4 -- weiter weg: nur jedes 4. Frame
-local BEHIND_FRAME_SKIP = 8 -- hinter der Kamera (nicht zu sehen): nur jedes 8. Frame
+local BEHIND_FRAME_SKIP = 8 -- außerhalb des Sichtfelds (nicht zu sehen): nur jedes 8. Frame
 local CLOSE_DISTANCE = 40 -- so nah immer jedes Frame (auch knapp hinter/neben der Kamera sichtbar)
-local STRIPE_NEAR = 180 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
+local VIEW_MARGIN = math.rad(12) -- Sichtfeld etwas größer rechnen (große Meteore am Bildrand)
+local STRIPE_NEAR = 100 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
 local BOB_RANGE = 100 -- Aliens nur in der Nähe wippen lassen
 local MAX_BOB = 24 -- höchstens so viele (die nächsten) wippen gleichzeitig
@@ -18588,6 +19345,8 @@ local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens wippen / we
 local CLEANUP_INTERVAL = 1 -- so oft fliegen zerstörte Objekte aus den Listen
 local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die nächsten)
 local HIGHLIGHT_RANGE = 150
+local MAX_LAVA_FIRES = 6 -- so viele Lava-Feuer am Förderband brennen höchstens gleichzeitig (die nächsten)
+local LAVA_FIRE_RANGE = 60
 local HATCH_INTERVAL = 0.2 -- Schlüpf-Countdown 5x pro Sekunde
 local HATCH_RANGE = 170
 local RAINBOW_RANGE = 400
@@ -18612,6 +19371,7 @@ type BeltRecord = {
 	MaxDist: number,
 	Phase: number,
 	Slot: number,
+	Fresh: boolean, -- gerade angekommen -> sofort an die richtige Stelle (steht sonst am Bandstart)
 }
 
 local beltRecords: { BeltRecord } = {}
@@ -18652,6 +19412,7 @@ local function addBeltMeteor(inst: Instance): boolean
 		MaxDist = beltLength + 6,
 		Phase = math.random() * math.pi * 2,
 		Slot = math.random(0, BEHIND_FRAME_SKIP - 1),
+		Fresh = true,
 	}
 	beltByPart[inst] = record
 	table.insert(beltRecords, record)
@@ -18673,10 +19434,20 @@ local function watchBeltMeteor(inst: Instance)
 	end)
 end
 
+-- Kosinus des halben Sichtfelds (Bild-Diagonale + Rand): rel:Dot(look) < Abstand * viewCos = nicht im Bild
+local function viewCos(camera: Camera): number
+	local size = camera.ViewportSize
+	local aspect = if size.Y > 0 then size.X / size.Y else 16 / 9
+	local halfVertical = math.rad(camera.FieldOfView) / 2
+	local halfDiagonal = math.atan(math.tan(halfVertical) * math.sqrt(1 + aspect * aspect))
+	return math.cos(math.min(halfDiagonal + VIEW_MARGIN, math.pi / 2))
+end
+
 -- Gibt die Anzahl der eingetragenen Teile zurück.
--- Viele Meteore (bis ~110): sichtbare in der Nähe jedes Frame, weit weg jedes 4., hinter der
--- Kamera nur jedes 8. Frame (dreht man sich um, sind sie spätestens nach 8 Frames richtig).
-local function stepBelt(now: number, camPos: Vector3, look: Vector3, count: number): number
+-- Viele Meteore (bis ~160 im Schauer): ganz nahe immer, sichtbare in der Nähe jedes Frame, sichtbare
+-- weit weg jedes 4., außerhalb des Sichtfelds nur jedes 8. Frame (dreht man sich, sind sie
+-- spätestens nach 8 Frames richtig).
+local function stepBelt(now: number, camPos: Vector3, look: Vector3, cosLimit: number, count: number): number
 	for i = #beltRecords, 1, -1 do
 		local record = beltRecords[i]
 		local part = record.Part
@@ -18689,13 +19460,16 @@ local function stepBelt(now: number, camPos: Vector3, look: Vector3, count: numb
 			local rel = pos - camPos
 			local distance = rel.Magnitude
 			local slot = frameNumber + record.Slot
-			local due
-			if distance >= CLOSE_DISTANCE and rel:Dot(look) < -8 then
-				due = slot % BEHIND_FRAME_SKIP == 0 -- hinter der Kamera
-			elseif distance < NEAR_DISTANCE then
-				due = true
-			else
-				due = slot % FAR_FRAME_SKIP == 0
+			-- ganz nah (Prompts!), sichtbar in der Nähe und neu angekommen: jedes Frame
+			local due = true
+			if record.Fresh then
+				record.Fresh = false
+			elseif distance >= CLOSE_DISTANCE then
+				if rel:Dot(look) < distance * cosLimit then
+					due = slot % BEHIND_FRAME_SKIP == 0 -- außerhalb des Sichtfelds
+				elseif distance >= NEAR_DISTANCE then
+					due = slot % FAR_FRAME_SKIP == 0 -- sichtbar, aber weit weg
+				end
 			end
 			if due then
 				local angle = elapsed * BELT_SPIN + record.Phase
@@ -18786,7 +19560,7 @@ local function makeStripeSet(
 	return set
 end
 
-local function stepStripes(now: number, camPos: Vector3, count: number): number
+local function stepStripes(now: number, camPos: Vector3, look: Vector3, cosLimit: number, count: number): number
 	for _, set in ipairs(stripeSets) do
 		if set.Always or (set.Center - camPos).Magnitude < STRIPE_RANGE then
 			local rot = set.Rot
@@ -18797,7 +19571,15 @@ local function stepStripes(now: number, camPos: Vector3, count: number): number
 			for i, stripe in ipairs(set.Parts) do
 				local s = ((i - 0.5) * set.Spacing + shift) % set.Length
 				local pos = set.Origin + set.Dir * s
-				if not thin or (frameNumber + i) % FAR_FRAME_SKIP == 0 or (pos - camPos).Magnitude < STRIPE_NEAR then
+				local rel = pos - camPos
+				local distance = rel.Magnitude
+				local due = true
+				if distance >= CLOSE_DISTANCE and rel:Dot(look) < distance * cosLimit then
+					due = (frameNumber + i) % BEHIND_FRAME_SKIP == 0 -- nicht im Bild
+				elseif thin and distance >= STRIPE_NEAR then
+					due = (frameNumber + i) % FAR_FRAME_SKIP == 0
+				end
+				if due then
 					count += 1
 					moveParts[count] = stripe
 					moveCFrames[count] = CFrame.new(pos.X, pos.Y, pos.Z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
@@ -19196,24 +19978,69 @@ local function stepRainbow(now: number, camPos: Vector3)
 end
 
 -- ---------------------------------------------------------------------
--- UMRISSE (Highlights): nur die nächsten MAX_HIGHLIGHTS in Reichweite einschalten.
--- Der Server legt sie ausgeschaltet an.
+-- NUR DIE NÄCHSTEN EINSCHALTEN: Umrisse (Highlights, Roblox zeigt max. 31) und Lava-Feuer an
+-- Förderband-Meteoren (sonst brennen bei Glück-Events Dutzende gleichzeitig).
+-- Der Server legt beide ausgeschaltet an; hier werden alle SCAN_INTERVAL Sekunden die nächsten
+-- "Max" in Reichweite eingeschaltet, alle anderen aus.
 -- ---------------------------------------------------------------------
-local highlightRecords: { Highlight } = {}
-local highlightSeen: { [Instance]: boolean } = {}
-local highlightCandidates: { Highlight } = {}
-local highlightDist: { [Highlight]: number } = {}
+type NearestSet = {
+	Items: { Instance },
+	Seen: { [Instance]: boolean },
+	Candidates: { Instance },
+	Dist: { [Instance]: number },
+	Max: number,
+	Range: number,
+	ByDistance: (a: Instance, b: Instance) -> boolean,
+}
 
-local function addHighlight(inst: Instance)
-	if inst:IsA("Highlight") and not highlightSeen[inst] then
-		highlightSeen[inst] = true
-		inst.Enabled = false -- bis zum nächsten Durchlauf aus
-		table.insert(highlightRecords, inst)
+local function newNearestSet(maxOn: number, range: number): NearestSet
+	local dist: { [Instance]: number } = {}
+	return {
+		Items = {},
+		Seen = {},
+		Candidates = {},
+		Dist = dist,
+		Max = maxOn,
+		Range = range,
+		ByDistance = function(a: Instance, b: Instance): boolean
+			return (dist[a] or math.huge) < (dist[b] or math.huge)
+		end,
+	}
+end
+
+local highlightSet = newNearestSet(MAX_HIGHLIGHTS, HIGHLIGHT_RANGE)
+local lavaSet = newNearestSet(MAX_LAVA_FIRES, LAVA_FIRE_RANGE)
+
+-- Highlight oder Fire (beide haben "Enabled")
+local function setOn(inst: Instance, on: boolean)
+	local item = inst :: any
+	if item.Enabled ~= on then
+		item.Enabled = on
 	end
 end
 
-local function highlightPosition(highlight: Highlight): Vector3?
-	local target = highlight.Adornee or highlight.Parent
+local function nearestAdd(set: NearestSet, inst: Instance)
+	if not set.Seen[inst] then
+		set.Seen[inst] = true
+		setOn(inst, false) -- bis zum nächsten Durchlauf aus
+		table.insert(set.Items, inst)
+	end
+end
+
+local function addHighlight(inst: Instance)
+	if inst:IsA("Highlight") then
+		nearestAdd(highlightSet, inst)
+	elseif inst:IsA("Fire") and inst:GetAttribute("LavaFire") == true then
+		nearestAdd(lavaSet, inst)
+	end
+end
+
+-- Highlight: sein Adornee (oder Parent); Feuer: sein Meteor
+local function effectPosition(inst: Instance): Vector3?
+	local target = inst.Parent
+	if inst:IsA("Highlight") and inst.Adornee then
+		target = inst.Adornee
+	end
 	if target and target:IsA("BasePart") then
 		return target.Position
 	elseif target and target:IsA("Model") then
@@ -19222,44 +20049,42 @@ local function highlightPosition(highlight: Highlight): Vector3?
 	return nil
 end
 
-local function byHighlightDistance(a: Highlight, b: Highlight): boolean
-	return (highlightDist[a] or math.huge) < (highlightDist[b] or math.huge)
-end
-
-local function scanHighlights(camPos: Vector3)
-	table.clear(highlightDist)
+local function scanNearest(set: NearestSet, camPos: Vector3)
+	local items, candidates, dist = set.Items, set.Candidates, set.Dist
+	table.clear(dist)
 	local count = 0
-	for i = #highlightRecords, 1, -1 do
-		local highlight = highlightRecords[i]
-		if highlight.Parent == nil or not highlight:IsDescendantOf(workspace) then
-			highlightSeen[highlight] = nil
-			highlightRecords[i] = highlightRecords[#highlightRecords]
-			highlightRecords[#highlightRecords] = nil
+	for i = #items, 1, -1 do
+		local inst = items[i]
+		if inst.Parent == nil or not inst:IsDescendantOf(workspace) then
+			set.Seen[inst] = nil
+			items[i] = items[#items]
+			items[#items] = nil
 		else
-			local pos = highlightPosition(highlight)
-			local dist = if pos then (pos - camPos).Magnitude else math.huge
-			if dist <= HIGHLIGHT_RANGE then
+			local pos = effectPosition(inst)
+			local d = if pos then (pos - camPos).Magnitude else math.huge
+			if d <= set.Range then
 				count += 1
-				highlightCandidates[count] = highlight
-				highlightDist[highlight] = dist
-			elseif highlight.Enabled then
-				highlight.Enabled = false
+				candidates[count] = inst
+				dist[inst] = d
+			else
+				setOn(inst, false)
 			end
 		end
 	end
-	for i = #highlightCandidates, count + 1, -1 do
-		highlightCandidates[i] = nil
+	for i = #candidates, count + 1, -1 do
+		candidates[i] = nil
 	end
-	if count > MAX_HIGHLIGHTS then
-		table.sort(highlightCandidates, byHighlightDistance)
+	if count > set.Max then
+		table.sort(candidates, set.ByDistance)
 	end
 	for i = 1, count do
-		local highlight = highlightCandidates[i]
-		local on = i <= MAX_HIGHLIGHTS
-		if highlight.Enabled ~= on then
-			highlight.Enabled = on
-		end
+		setOn(candidates[i], i <= set.Max)
 	end
+end
+
+local function scanHighlights(camPos: Vector3)
+	scanNearest(highlightSet, camPos)
+	scanNearest(lavaSet, camPos)
 end
 
 -- ---------------------------------------------------------------------
@@ -19391,7 +20216,7 @@ function WorldFX.Init(context: any, map: Instance)
 			addHatchCandidate(inst)
 		end
 	end)
-	-- Regenbogen + Umrisse auch an getragenen Aliens (die hängen am Charakter, nicht in der Map)
+	-- Regenbogen + Umrisse (+ Lava-Feuer) überall – auch an getragenen Aliens (hängen am Charakter, nicht in der Map)
 	local function onWorldDescendant(inst: Instance)
 		considerRainbow(inst)
 		addHighlight(inst)
@@ -19418,8 +20243,10 @@ function WorldFX.Init(context: any, map: Instance)
 
 		table.clear(moveParts)
 		table.clear(moveCFrames)
-		local count = stepBelt(now, camPos, camCFrame.LookVector, 0)
-		count = stepStripes(now, camPos, count)
+		local look = camCFrame.LookVector
+		local cosLimit = viewCos(camera)
+		local count = stepBelt(now, camPos, look, cosLimit, 0)
+		count = stepStripes(now, camPos, look, cosLimit, count)
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end

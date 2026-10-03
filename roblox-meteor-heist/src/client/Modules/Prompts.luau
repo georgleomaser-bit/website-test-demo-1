@@ -9,6 +9,7 @@
 --  Dazu: Hinweis unten im HUD, solange ein Förderband-/Boden-Prompt sichtbar ist
 --  (E = Klauen gratis, F = Kaufen). Der Server prüft beim Auslösen trotzdem alles.
 --  Halte-Sperre: Wer E an einem Band-Meteor hält, dem springt der Prompt nicht zum nächsten Meteor.
+--  Eingefroren (Falle / Admin): Klauen und Schnappen sind aus.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -30,6 +31,7 @@ local grabPrompts: { [ProximityPrompt]: boolean } = {}
 local shownPrompts: { [ProximityPrompt]: string } = {}
 local photoMode = false
 local carrying = false
+local frozen = false -- eigener HumanoidRootPart verankert (Falle / Admin-Freeze)
 local tipShown = false
 
 -- Klauen am Förderband: Während E gehalten wird (Config.BeltGrabHold), fährt das Band weiter.
@@ -96,8 +98,14 @@ local function updatePrompt(prompt: ProximityPrompt, plot: Instance | false)
 	if prompt.Name == "SellPrompt" then
 		setEnabled(prompt, isMine)
 	elseif prompt.Name == "StealPrompt" then
-		setEnabled(prompt, not isMine and not locked and not carrying)
+		setEnabled(prompt, not isMine and not locked and not carrying and not frozen)
 	end
+end
+
+local function isFrozen(): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return root ~= nil and root:IsA("BasePart") and root.Anchored
 end
 
 local function track(inst: Instance)
@@ -142,7 +150,7 @@ local function hintKind(prompt: ProximityPrompt): string?
 end
 
 local function updateGrab(prompt: ProximityPrompt)
-	if photoMode or carrying then
+	if photoMode or carrying or frozen then
 		-- auch merken, wenn er schon aus war (z.B. vom Foto-Modus) -> später sicher wieder an
 		grabPrompts[prompt] = true
 		setEnabled(prompt, false)
@@ -162,7 +170,13 @@ local function releaseHold()
 	holdToken += 1
 	for prompt in pairs(holdDisabled) do
 		holdDisabled[prompt] = nil
-		if prompt:IsDescendantOf(workspace) and not photoMode and not carrying and grabPrompts[prompt] == false then
+		if
+			prompt:IsDescendantOf(workspace)
+			and not photoMode
+			and not carrying
+			and not frozen
+			and grabPrompts[prompt] == false
+		then
 			setEnabled(prompt, true)
 		end
 	end
@@ -228,6 +242,13 @@ end
 function Prompts.UpdateAll()
 	table.clear(mineCache)
 	table.clear(lockedCache)
+	frozen = isFrozen()
+	-- Sicherheitsnetz für die Halte-Sperre: der gehaltene Meteor ist weg (geklaut, gekauft, Bandende)
+	-- und Roblox hat kein "losgelassen" mehr gemeldet -> sofort freigeben statt erst nach HOLD_SAFETY
+	local held = holdPrompt
+	if held and not holdTriggered and not held:IsDescendantOf(workspace) then
+		releaseHold()
+	end
 	for prompt, plot in pairs(tracked) do
 		-- IsDescendantOf statt Parent: wird nur das Alien-Model zerstört, behält der Prompt
 		-- (je nach Destroy-Replikation) seinen Parent – er hängt dann aber nicht mehr in der Welt.
@@ -298,11 +319,16 @@ function Prompts.Init(map: Instance, context: any)
 			shownPrompts[prompt] = nil
 			refreshHint()
 		end
+		-- Der gehaltene Prompt verschwindet (Meteor geklaut/gekauft/am Bandende, außer Reichweite):
+		-- Halte-Sperre gleich aufheben, sonst kann man bis zu HOLD_SAFETY Sekunden nichts schnappen
+		if prompt == holdPrompt and not holdTriggered then
+			scheduleRelease(HOLD_RELEASE_AFTER_CANCEL)
+		end
 	end)
 
 	-- Halte-Sperre am Förderband (siehe oben): E auf einem Band-Meteor halten -> andere GrabPrompts aus
 	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
-		if prompt.Name ~= "GrabPrompt" or meteorFolderKind(prompt) ~= "Belt" or photoMode or carrying then
+		if prompt.Name ~= "GrabPrompt" or meteorFolderKind(prompt) ~= "Belt" or photoMode or carrying or frozen then
 			return
 		end
 		releaseHold()

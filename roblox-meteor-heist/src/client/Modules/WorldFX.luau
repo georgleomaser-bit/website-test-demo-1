@@ -1,10 +1,11 @@
 -- =====================================================================
 --  WELT-ANIMATIONEN (alles lokal auf deinem Gerät -> butterweich, kein Server-Lag)
 --   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start)
---     (sichtbare in der Nähe jedes Frame, weit weg / hinter der Kamera seltener)
+--     (sichtbare in der Nähe jedes Frame, weit weg seltener, außerhalb des Sichtfelds noch seltener)
 --   • Streifen auf dem Laufband und auf den Treadmills laufen mit
 --   • Aliens wippen sanft, Regenbogen-Teile färben sich durch
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
+--   • Lava-Feuer an Band-Meteoren (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
 --  Arbeit pro Frame ist begrenzt: weit entfernte Dinge werden seltener oder gar nicht bewegt.
@@ -19,11 +20,12 @@ local WorldFX = {}
 local ctx: any = nil
 local fxFolder: Folder? = nil
 
-local NEAR_DISTANCE = 260 -- näher dran: jedes Frame bewegen
+local NEAR_DISTANCE = 120 -- sichtbar und näher dran: jedes Frame bewegen (weiter weg fällt der 4er-Takt nicht auf)
 local FAR_FRAME_SKIP = 4 -- weiter weg: nur jedes 4. Frame
-local BEHIND_FRAME_SKIP = 8 -- hinter der Kamera (nicht zu sehen): nur jedes 8. Frame
+local BEHIND_FRAME_SKIP = 8 -- außerhalb des Sichtfelds (nicht zu sehen): nur jedes 8. Frame
 local CLOSE_DISTANCE = 40 -- so nah immer jedes Frame (auch knapp hinter/neben der Kamera sichtbar)
-local STRIPE_NEAR = 180 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
+local VIEW_MARGIN = math.rad(12) -- Sichtfeld etwas größer rechnen (große Meteore am Bildrand)
+local STRIPE_NEAR = 100 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
 local BOB_RANGE = 100 -- Aliens nur in der Nähe wippen lassen
 local MAX_BOB = 24 -- höchstens so viele (die nächsten) wippen gleichzeitig
@@ -32,6 +34,8 @@ local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens wippen / we
 local CLEANUP_INTERVAL = 1 -- so oft fliegen zerstörte Objekte aus den Listen
 local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die nächsten)
 local HIGHLIGHT_RANGE = 150
+local MAX_LAVA_FIRES = 6 -- so viele Lava-Feuer am Förderband brennen höchstens gleichzeitig (die nächsten)
+local LAVA_FIRE_RANGE = 60
 local HATCH_INTERVAL = 0.2 -- Schlüpf-Countdown 5x pro Sekunde
 local HATCH_RANGE = 170
 local RAINBOW_RANGE = 400
@@ -56,6 +60,7 @@ type BeltRecord = {
 	MaxDist: number,
 	Phase: number,
 	Slot: number,
+	Fresh: boolean, -- gerade angekommen -> sofort an die richtige Stelle (steht sonst am Bandstart)
 }
 
 local beltRecords: { BeltRecord } = {}
@@ -96,6 +101,7 @@ local function addBeltMeteor(inst: Instance): boolean
 		MaxDist = beltLength + 6,
 		Phase = math.random() * math.pi * 2,
 		Slot = math.random(0, BEHIND_FRAME_SKIP - 1),
+		Fresh = true,
 	}
 	beltByPart[inst] = record
 	table.insert(beltRecords, record)
@@ -117,10 +123,20 @@ local function watchBeltMeteor(inst: Instance)
 	end)
 end
 
+-- Kosinus des halben Sichtfelds (Bild-Diagonale + Rand): rel:Dot(look) < Abstand * viewCos = nicht im Bild
+local function viewCos(camera: Camera): number
+	local size = camera.ViewportSize
+	local aspect = if size.Y > 0 then size.X / size.Y else 16 / 9
+	local halfVertical = math.rad(camera.FieldOfView) / 2
+	local halfDiagonal = math.atan(math.tan(halfVertical) * math.sqrt(1 + aspect * aspect))
+	return math.cos(math.min(halfDiagonal + VIEW_MARGIN, math.pi / 2))
+end
+
 -- Gibt die Anzahl der eingetragenen Teile zurück.
--- Viele Meteore (bis ~110): sichtbare in der Nähe jedes Frame, weit weg jedes 4., hinter der
--- Kamera nur jedes 8. Frame (dreht man sich um, sind sie spätestens nach 8 Frames richtig).
-local function stepBelt(now: number, camPos: Vector3, look: Vector3, count: number): number
+-- Viele Meteore (bis ~160 im Schauer): ganz nahe immer, sichtbare in der Nähe jedes Frame, sichtbare
+-- weit weg jedes 4., außerhalb des Sichtfelds nur jedes 8. Frame (dreht man sich, sind sie
+-- spätestens nach 8 Frames richtig).
+local function stepBelt(now: number, camPos: Vector3, look: Vector3, cosLimit: number, count: number): number
 	for i = #beltRecords, 1, -1 do
 		local record = beltRecords[i]
 		local part = record.Part
@@ -133,13 +149,16 @@ local function stepBelt(now: number, camPos: Vector3, look: Vector3, count: numb
 			local rel = pos - camPos
 			local distance = rel.Magnitude
 			local slot = frameNumber + record.Slot
-			local due
-			if distance >= CLOSE_DISTANCE and rel:Dot(look) < -8 then
-				due = slot % BEHIND_FRAME_SKIP == 0 -- hinter der Kamera
-			elseif distance < NEAR_DISTANCE then
-				due = true
-			else
-				due = slot % FAR_FRAME_SKIP == 0
+			-- ganz nah (Prompts!), sichtbar in der Nähe und neu angekommen: jedes Frame
+			local due = true
+			if record.Fresh then
+				record.Fresh = false
+			elseif distance >= CLOSE_DISTANCE then
+				if rel:Dot(look) < distance * cosLimit then
+					due = slot % BEHIND_FRAME_SKIP == 0 -- außerhalb des Sichtfelds
+				elseif distance >= NEAR_DISTANCE then
+					due = slot % FAR_FRAME_SKIP == 0 -- sichtbar, aber weit weg
+				end
 			end
 			if due then
 				local angle = elapsed * BELT_SPIN + record.Phase
@@ -230,7 +249,7 @@ local function makeStripeSet(
 	return set
 end
 
-local function stepStripes(now: number, camPos: Vector3, count: number): number
+local function stepStripes(now: number, camPos: Vector3, look: Vector3, cosLimit: number, count: number): number
 	for _, set in ipairs(stripeSets) do
 		if set.Always or (set.Center - camPos).Magnitude < STRIPE_RANGE then
 			local rot = set.Rot
@@ -241,7 +260,15 @@ local function stepStripes(now: number, camPos: Vector3, count: number): number
 			for i, stripe in ipairs(set.Parts) do
 				local s = ((i - 0.5) * set.Spacing + shift) % set.Length
 				local pos = set.Origin + set.Dir * s
-				if not thin or (frameNumber + i) % FAR_FRAME_SKIP == 0 or (pos - camPos).Magnitude < STRIPE_NEAR then
+				local rel = pos - camPos
+				local distance = rel.Magnitude
+				local due = true
+				if distance >= CLOSE_DISTANCE and rel:Dot(look) < distance * cosLimit then
+					due = (frameNumber + i) % BEHIND_FRAME_SKIP == 0 -- nicht im Bild
+				elseif thin and distance >= STRIPE_NEAR then
+					due = (frameNumber + i) % FAR_FRAME_SKIP == 0
+				end
+				if due then
 					count += 1
 					moveParts[count] = stripe
 					moveCFrames[count] = CFrame.new(pos.X, pos.Y, pos.Z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
@@ -640,24 +667,69 @@ local function stepRainbow(now: number, camPos: Vector3)
 end
 
 -- ---------------------------------------------------------------------
--- UMRISSE (Highlights): nur die nächsten MAX_HIGHLIGHTS in Reichweite einschalten.
--- Der Server legt sie ausgeschaltet an.
+-- NUR DIE NÄCHSTEN EINSCHALTEN: Umrisse (Highlights, Roblox zeigt max. 31) und Lava-Feuer an
+-- Förderband-Meteoren (sonst brennen bei Glück-Events Dutzende gleichzeitig).
+-- Der Server legt beide ausgeschaltet an; hier werden alle SCAN_INTERVAL Sekunden die nächsten
+-- "Max" in Reichweite eingeschaltet, alle anderen aus.
 -- ---------------------------------------------------------------------
-local highlightRecords: { Highlight } = {}
-local highlightSeen: { [Instance]: boolean } = {}
-local highlightCandidates: { Highlight } = {}
-local highlightDist: { [Highlight]: number } = {}
+type NearestSet = {
+	Items: { Instance },
+	Seen: { [Instance]: boolean },
+	Candidates: { Instance },
+	Dist: { [Instance]: number },
+	Max: number,
+	Range: number,
+	ByDistance: (a: Instance, b: Instance) -> boolean,
+}
 
-local function addHighlight(inst: Instance)
-	if inst:IsA("Highlight") and not highlightSeen[inst] then
-		highlightSeen[inst] = true
-		inst.Enabled = false -- bis zum nächsten Durchlauf aus
-		table.insert(highlightRecords, inst)
+local function newNearestSet(maxOn: number, range: number): NearestSet
+	local dist: { [Instance]: number } = {}
+	return {
+		Items = {},
+		Seen = {},
+		Candidates = {},
+		Dist = dist,
+		Max = maxOn,
+		Range = range,
+		ByDistance = function(a: Instance, b: Instance): boolean
+			return (dist[a] or math.huge) < (dist[b] or math.huge)
+		end,
+	}
+end
+
+local highlightSet = newNearestSet(MAX_HIGHLIGHTS, HIGHLIGHT_RANGE)
+local lavaSet = newNearestSet(MAX_LAVA_FIRES, LAVA_FIRE_RANGE)
+
+-- Highlight oder Fire (beide haben "Enabled")
+local function setOn(inst: Instance, on: boolean)
+	local item = inst :: any
+	if item.Enabled ~= on then
+		item.Enabled = on
 	end
 end
 
-local function highlightPosition(highlight: Highlight): Vector3?
-	local target = highlight.Adornee or highlight.Parent
+local function nearestAdd(set: NearestSet, inst: Instance)
+	if not set.Seen[inst] then
+		set.Seen[inst] = true
+		setOn(inst, false) -- bis zum nächsten Durchlauf aus
+		table.insert(set.Items, inst)
+	end
+end
+
+local function addHighlight(inst: Instance)
+	if inst:IsA("Highlight") then
+		nearestAdd(highlightSet, inst)
+	elseif inst:IsA("Fire") and inst:GetAttribute("LavaFire") == true then
+		nearestAdd(lavaSet, inst)
+	end
+end
+
+-- Highlight: sein Adornee (oder Parent); Feuer: sein Meteor
+local function effectPosition(inst: Instance): Vector3?
+	local target = inst.Parent
+	if inst:IsA("Highlight") and inst.Adornee then
+		target = inst.Adornee
+	end
 	if target and target:IsA("BasePart") then
 		return target.Position
 	elseif target and target:IsA("Model") then
@@ -666,44 +738,42 @@ local function highlightPosition(highlight: Highlight): Vector3?
 	return nil
 end
 
-local function byHighlightDistance(a: Highlight, b: Highlight): boolean
-	return (highlightDist[a] or math.huge) < (highlightDist[b] or math.huge)
-end
-
-local function scanHighlights(camPos: Vector3)
-	table.clear(highlightDist)
+local function scanNearest(set: NearestSet, camPos: Vector3)
+	local items, candidates, dist = set.Items, set.Candidates, set.Dist
+	table.clear(dist)
 	local count = 0
-	for i = #highlightRecords, 1, -1 do
-		local highlight = highlightRecords[i]
-		if highlight.Parent == nil or not highlight:IsDescendantOf(workspace) then
-			highlightSeen[highlight] = nil
-			highlightRecords[i] = highlightRecords[#highlightRecords]
-			highlightRecords[#highlightRecords] = nil
+	for i = #items, 1, -1 do
+		local inst = items[i]
+		if inst.Parent == nil or not inst:IsDescendantOf(workspace) then
+			set.Seen[inst] = nil
+			items[i] = items[#items]
+			items[#items] = nil
 		else
-			local pos = highlightPosition(highlight)
-			local dist = if pos then (pos - camPos).Magnitude else math.huge
-			if dist <= HIGHLIGHT_RANGE then
+			local pos = effectPosition(inst)
+			local d = if pos then (pos - camPos).Magnitude else math.huge
+			if d <= set.Range then
 				count += 1
-				highlightCandidates[count] = highlight
-				highlightDist[highlight] = dist
-			elseif highlight.Enabled then
-				highlight.Enabled = false
+				candidates[count] = inst
+				dist[inst] = d
+			else
+				setOn(inst, false)
 			end
 		end
 	end
-	for i = #highlightCandidates, count + 1, -1 do
-		highlightCandidates[i] = nil
+	for i = #candidates, count + 1, -1 do
+		candidates[i] = nil
 	end
-	if count > MAX_HIGHLIGHTS then
-		table.sort(highlightCandidates, byHighlightDistance)
+	if count > set.Max then
+		table.sort(candidates, set.ByDistance)
 	end
 	for i = 1, count do
-		local highlight = highlightCandidates[i]
-		local on = i <= MAX_HIGHLIGHTS
-		if highlight.Enabled ~= on then
-			highlight.Enabled = on
-		end
+		setOn(candidates[i], i <= set.Max)
 	end
+end
+
+local function scanHighlights(camPos: Vector3)
+	scanNearest(highlightSet, camPos)
+	scanNearest(lavaSet, camPos)
 end
 
 -- ---------------------------------------------------------------------
@@ -835,7 +905,7 @@ function WorldFX.Init(context: any, map: Instance)
 			addHatchCandidate(inst)
 		end
 	end)
-	-- Regenbogen + Umrisse auch an getragenen Aliens (die hängen am Charakter, nicht in der Map)
+	-- Regenbogen + Umrisse (+ Lava-Feuer) überall – auch an getragenen Aliens (hängen am Charakter, nicht in der Map)
 	local function onWorldDescendant(inst: Instance)
 		considerRainbow(inst)
 		addHighlight(inst)
@@ -862,8 +932,10 @@ function WorldFX.Init(context: any, map: Instance)
 
 		table.clear(moveParts)
 		table.clear(moveCFrames)
-		local count = stepBelt(now, camPos, camCFrame.LookVector, 0)
-		count = stepStripes(now, camPos, count)
+		local look = camCFrame.LookVector
+		local cosLimit = viewCos(camera)
+		local count = stepBelt(now, camPos, look, cosLimit, 0)
+		count = stepStripes(now, camPos, look, cosLimit, count)
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end

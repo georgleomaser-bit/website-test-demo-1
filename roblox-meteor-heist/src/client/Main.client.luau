@@ -149,9 +149,9 @@ local function refreshAll()
 	WorldFX.UpdateTreadmills(tonumber(state.Steps) or 0, state.BestTreadmill)
 end
 
--- Selten geänderte Teile (Index, Pässe, Statistik) schickt der Server nur bei Änderung mit.
--- Fehlen sie in einem Paket, gelten die zuletzt bekommenen weiter.
-local STICKY_KEYS = { "Index", "Passes", "Stats" }
+-- Selten geänderte Teile (Index, Pässe, Statistik, Geschenke + GiftsAt, Aufgaben) schickt der Server
+-- nur bei Änderung mit. Fehlen sie in einem Paket, gelten die zuletzt bekommenen weiter.
+local STICKY_KEYS = { "Index", "Passes", "Stats", "Gifts", "GiftsAt", "Quests" }
 
 Remotes.State.OnClientEvent:Connect(function(newState)
 	if type(newState) ~= "table" then
@@ -212,9 +212,20 @@ end
 player:GetAttributeChangedSignal("IsAdmin"):Connect(checkAdmin)
 checkAdmin()
 
-UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Klau Eier am Förderband [E] – gratis!", "Event")
+-- Willkommen – mit den Tasten des Geräts (Handy: halten/tippen, Controller: [X]/[Y], PC: [E]/[F])
+local inputStyle = Hud.InputStyle()
+local grabKey = if inputStyle == "Touch" then "halten" elseif inputStyle == "Gamepad" then "[X] halten" else "[E] halten"
+local buyKey = if inputStyle == "Touch" then "tippen" elseif inputStyle == "Gamepad" then "[Y]" else "[F]"
+UI.Toast(
+	"☄️ Willkommen bei "
+		.. tostring(Config.GameName)
+		.. "! Klau Eier am Förderband ("
+		.. grabKey
+		.. ") – gratis!",
+	"Event"
+)
 task.delay(4, function()
-	UI.Toast("🏃 Schnell heimtragen – oder kauf sie mit [F], dann werden sie geliefert!", "Info")
+	UI.Toast("🏃 Schnell heimtragen – oder kaufen (" .. buyKey .. "), dann werden sie geliefert!", "Info")
 end)
 task.delay(8, function()
 	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld!", "Info")

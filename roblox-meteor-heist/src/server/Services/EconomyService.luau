@@ -35,6 +35,8 @@ local REVEAL_RARITY = Config.RarityIndex.Epic or 4 -- ab Epic: große Schlüpf-K
 local LUCKY_PASS_MULT = 2 -- Gamepass "2x Glück": Selten/Ultra beim Schlüpfen doppelt so wahrscheinlich
 local MAX_COIL_BONUS = 1 + (Config.SpeedCoilBonus or 0.3) -- Speed Coil: +30% (auch über MaxWalkSpeed)
 local TIER_RANK = { Normal = 1, Selten = 2, Ultra = 3 }
+-- "Alle Eier sofort schlüpfen": höchstens so viele Schlüpf-Explosionen an alle (sonst ruckelt es bei allen)
+local HATCH_ALL_BURSTS = 3
 
 -- -------------------------------------------------------------------
 -- NACHRICHTEN & EFFEKTE
@@ -162,12 +164,18 @@ local function gadgetSpeedBonus(player: Player): number
 	return math.clamp(factor, 1, MAX_COIL_BONUS)
 end
 
--- Beim Tragen: Config.CarrySpeedFactor, mit Gamepass "Volle Speed beim Tragen" kein Abzug
+-- Beim Tragen: Config.CarrySpeedFactor, seltene (schwere) Beute noch langsamer (Config.HeavyCarry),
+-- mit Gamepass "Volle Speed beim Tragen" gar kein Abzug
 local function carryFactor(player: Player): number
 	if Services.MonetizationService.HasPass(player, "CarryFast") then
 		return 1
 	end
-	return Config.CarrySpeedFactor
+	local factor = Config.CarrySpeedFactor
+	local heavy = Config.HeavyFactor(Services.CarryService.CarriedEntry(player))
+	if heavy then
+		factor = math.min(factor, heavy)
+	end
+	return factor
 end
 
 -- Echte Laufgeschwindigkeit: Schritte-Tempo x Speed Coil (Deckel MaxWalkSpeed * 1.3), beim Tragen langsamer
@@ -362,8 +370,13 @@ local function alienScore(def, tier: string): number
 	return (def and Config.RarityIndex[def.Rarity] or 0) * 10 + (TIER_RANK[tier] or 1)
 end
 
+-- Stelle der Schlüpf-Explosion über einem Slot
+local function hatchPosition(plot, slot: number): Vector3
+	return Services.PlotService.SlotTopCFrame(plot, slot).Position + Vector3.new(0, 2, 0)
+end
+
 -- Meteor in Slot schlüpft jetzt -> Alien würfeln, Index, Effekt, neu anzeigen. Gibt die Alien-Id zurück.
--- quiet = keine Einzel-Nachrichten/-Karten (z.B. "Alle Eier sofort schlüpfen" meldet gesammelt)
+-- quiet = keine Einzel-Nachrichten/-Karten/-Explosionen (z.B. "Alle Eier sofort schlüpfen" meldet gesammelt)
 function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: number?, quiet: boolean?): string
 	local alienId = Aliens.Roll(entry.Id, EconomyService.HatchLuck(player, luck))
 	entry.Alien = alienId
@@ -374,9 +387,14 @@ function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: n
 
 	local alien = Aliens.ById[alienId]
 	local def = Config.MeteorsById[entry.Id]
-	local position = Services.PlotService.SlotTopCFrame(plot, slot).Position + Vector3.new(0, 2, 0)
 	Services.PlotService.RenderSlot(plot, slot)
-	EconomyService.EffectAll("Hatch", 0, { Position = position, Rarity = def and def.Rarity or "Common" })
+	if not quiet then
+		EconomyService.EffectAll(
+			"Hatch",
+			0,
+			{ Position = hatchPosition(plot, slot), Rarity = def and def.Rarity or "Common" }
+		)
+	end
 
 	local name = alien and alien.Name or alienId
 	local tier = alien and alien.Tier or "Normal"
@@ -412,17 +430,31 @@ function EconomyService.HatchAll(player: Player): number
 	local indexBefore = EconomyService.IndexCount(data)
 	local count = 0
 	local bestId, bestMut, bestScore = nil, nil, -1
+	local bursts: { { Position: Vector3, Rarity: string, Score: number } } = {}
 	for key, entry in pairs(data.Meteors) do
 		local slot = tonumber(key)
 		if slot and entry.Alien == nil and not Services.CarryService.IsSlotBeingStolen(plot, slot) then
 			local alienId = EconomyService.Hatch(player, plot, slot, entry, luck, true)
 			count += 1
 			local alien = Aliens.ById[alienId]
-			local score = alienScore(Config.MeteorsById[entry.Id], alien and alien.Tier or "Normal")
+			local def = Config.MeteorsById[entry.Id]
+			local score = alienScore(def, alien and alien.Tier or "Normal")
 			if score > bestScore then
 				bestId, bestMut, bestScore = alienId, entry.Mut, score
 			end
+			table.insert(bursts, {
+				Position = hatchPosition(plot, slot),
+				Rarity = def and def.Rarity or "Common",
+				Score = score,
+			})
 		end
+	end
+	-- Nur die besten paar Explosionen an alle schicken (18 auf einmal = Ruckeln bei jedem Spieler)
+	table.sort(bursts, function(a, b)
+		return a.Score > b.Score
+	end)
+	for i = 1, math.min(HATCH_ALL_BURSTS, #bursts) do
+		EconomyService.EffectAll("Hatch", 0, { Position = bursts[i].Position, Rarity = bursts[i].Rarity })
 	end
 	if count > 0 then
 		local discovered = EconomyService.IndexCount(data) - indexBefore
@@ -561,21 +593,24 @@ local function buildState(player: Player)
 		Gadgets = ownedGadgets(data),
 		StarterBought = data.StarterBought == true,
 	}
-	-- 🎁 Geschenke, 🎡 Glücksrad (Spins, FreeSpinIn), 📜 Aufgaben – ein Fehler dort darf den State nie stoppen
-	local rewards = Services.RewardService
-	if rewards then
-		local ok, err = pcall(rewards.FillState, player, data, state)
-		if not ok then
-			warn("[EconomyService] Belohnungs-Daten fehlgeschlagen: " .. tostring(err))
-		end
-	end
-
-	-- Index, Pässe und Statistik nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden)
+	-- Selten geänderte Teile nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden alles)
 	local clock = os.clock()
 	local full = clock - (fullStateAt[player] or -math.huge) >= FULL_STATE_INTERVAL
 	if full then
 		fullStateAt[player] = clock
 	end
+
+	-- 🎁 Geschenke, 🎡 Glücksrad (Spins, FreeSpinIn), 📜 Aufgaben – ein Fehler dort darf den State nie stoppen.
+	-- (Geschenke/Aufgaben schickt der RewardService auch nur bei Änderung bzw. wenn full = true.)
+	local rewards = Services.RewardService
+	if rewards then
+		local ok, err = pcall(rewards.FillState, player, data, state, full)
+		if not ok then
+			warn("[EconomyService] Belohnungs-Daten fehlgeschlagen: " .. tostring(err))
+		end
+	end
+
+	-- Index, Pässe und Statistik nur bei Änderung (oder wenn full = true)
 	if full or sentIndexCount[player] ~= indexCount then
 		-- Der Index wächst nur (Reset leert ihn) -> die Anzahl reicht als Änderungs-Merkmal
 		sentIndexCount[player] = indexCount
@@ -783,6 +818,13 @@ local function tickPlayer(player: Player, data, plot, dt: number)
 	dirty[player] = true
 end
 
+-- Eingefroren (Falle / Admin-Freeze = HumanoidRootPart verankert)? Dann kein Teleport (Home, Laufbänder)
+local function isFrozen(player: Player): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	return root ~= nil and root:IsA("BasePart") and root.Anchored
+end
+
 -- Gadget mit Cash kaufen (GadgetService prüft Cash, zieht ab, gibt das Tool)
 local function buyGadget(player: Player, id: any): (boolean, string)
 	local gadgets = Services.GadgetService
@@ -821,7 +863,11 @@ function EconomyService.Start()
 		local ok, message = false, "Unbekannt"
 		local extra: { [string]: any }? = nil
 		local rewards = Services.RewardService
-		if (action == "ClaimGift" or action == "Spin" or action == "ClaimQuest") and not rewards then
+		local rewardAction = action == "ClaimGift"
+			or action == "Spin"
+			or action == "ClaimQuest"
+			or action == "RerollQuest"
+		if rewardAction and not rewards then
 			ok, message = false, "🎁 Belohnungen kommen bald!"
 		elseif action == "ClaimGift" then
 			ok, message = rewards.ClaimGift(player, arg)
@@ -829,6 +875,8 @@ function EconomyService.Start()
 			ok, message, extra = rewards.Spin(player)
 		elseif action == "ClaimQuest" then
 			ok, message = rewards.ClaimQuest(player, arg)
+		elseif action == "RerollQuest" then
+			ok, message = rewards.RerollQuest(player, arg)
 		elseif action == "BuyGadget" then
 			ok, message = buyGadget(player, arg)
 		elseif action == "Rebirth" then
@@ -849,6 +897,8 @@ function EconomyService.Start()
 		elseif action == "Home" then
 			if Services.CarryService.IsCarrying(player) then
 				ok, message = false, "Mit Beute musst du laufen! 🏃"
+			elseif isFrozen(player) then
+				ok, message = false, "🧊 Du bist eingefroren!"
 			else
 				Services.PlotService.TeleportHome(player)
 				ok, message = true, ""
@@ -856,6 +906,8 @@ function EconomyService.Start()
 		elseif action == "Treadmills" then
 			if Services.CarryService.IsCarrying(player) then
 				ok, message = false, "Mit Beute musst du laufen! 🏃"
+			elseif isFrozen(player) then
+				ok, message = false, "🧊 Du bist eingefroren!"
 			elseif Services.PlotService.TeleportToTreadmills(player) then
 				ok, message = true, "🏃 Ab aufs Laufband!"
 			else

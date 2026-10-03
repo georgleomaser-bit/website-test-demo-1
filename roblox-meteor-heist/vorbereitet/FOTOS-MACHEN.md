@@ -115,7 +115,7 @@ Das dauert ungefähr **15 Minuten**.
 2. Ins Feld **Minuten** zum Beispiel `3` schreiben. So lange dauert der Schauer.
 3. Auf **🌠 Meteoritenschauer** klicken. Jetzt kommen ganz viele Meteore aufs Laufband.
 4. Noch mehr gute Meteore? Bereich **🌧️ Meteorregen** → zum Beispiel **Legendary** oder **Mythic** klicken.
-   Das Band ist jetzt richtig voll. Im Schauer kommen ungefähr 5 Meteore pro Sekunde.
+   Das Band ist jetzt richtig voll. Im Schauer fahren die Meteore auf zwei Spuren, anfangs bis zu 5 pro Sekunde.
 5. Panel zu. Drück **G** und flieg über das Laufband in der Map-Mitte.
 6. Schau schräg von oben auf das Band, sodass man viele Meteore sieht.
 7. **H**, warten, Screenshot, **H**.
@@ -135,6 +135,7 @@ Das dauert ungefähr **15 Minuten**.
 6. Datei **`tragen`** nennen.
 
 > 💡 Du hast **60 Sekunden** Zeit. Danach fällt das Ei auf den Boden. Nicht schlimm: mit **E** wieder schnappen.
+> Große, seltene Eier sind **schwer**: Mit ihnen läufst du langsamer. Fürs Foto ist das egal.
 > Klauen geht nur, wenn deine Base noch einen freien Platz hat.
 
 **Weg B – ein Alien aus einer fremden Base klauen (noch krasser):**
