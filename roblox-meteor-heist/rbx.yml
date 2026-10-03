@@ -1,0 +1,21 @@
+---
+base: luau
+name: rbx
+globals:
+  game: {any: true}
+  workspace: {any: true}
+  script: {any: true}
+  Instance: {any: true}
+  Vector3: {any: true}
+  Vector2: {any: true}
+  CFrame: {any: true}
+  Color3: {any: true}
+  UDim: {any: true}
+  UDim2: {any: true}
+  Enum: {any: true}
+  task: {any: true}
+  Random: {any: true}
+  TweenInfo: {any: true}
+  typeof: {any: true}
+  warn: {any: true}
+  tick: {any: true}

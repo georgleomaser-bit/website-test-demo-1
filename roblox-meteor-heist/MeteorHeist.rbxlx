@@ -1,0 +1,5575 @@
+<roblox version="4">
+  <Item class="Players" referent="0">
+    <Properties>
+      <string name="Name">Players</string>
+      <bool name="CharacterAutoLoads">true</bool>
+    </Properties>
+  </Item>
+  <Item class="ReplicatedStorage" referent="1">
+    <Properties>
+      <string name="Name">ReplicatedStorage</string>
+    </Properties>
+    <Item class="Folder" referent="2">
+      <Properties>
+        <string name="Name">Shared</string>
+      </Properties>
+      <Item class="ModuleScript" referent="3">
+        <Properties>
+          <string name="Name">Config</string>
+          <string name="Source"><![CDATA[-- =====================================================================
+--  METEOR HEIST – ZENTRALE EINSTELLUNGEN
+--  Hier stellst du (fast) alles ein, ohne anderen Code anzufassen.
+-- =====================================================================
+
+local Config = {}
+
+Config.GameName = "Meteor Heist"
+
+-- ---------------------------------------------------------------------
+-- 1) ADMINS – NUR diese UserIds sehen und benutzen das Admin-Panel.
+--    Deine UserId steht in der Adresszeile deines Roblox-Profils:
+--    https://www.roblox.com/users/123456789/profile  ->  123456789
+-- ---------------------------------------------------------------------
+Config.AdminUserIds = {
+	0, -- <<< HIER DEINE USERID EINTRAGEN (z.B. 123456789)
+}
+
+-- Beim Testen in Roblox Studio ist jeder Tester Admin (praktisch zum Ausprobieren).
+-- Im veröffentlichten Spiel zählt NUR die Liste oben.
+Config.StudioIsAdmin = true
+
+-- ---------------------------------------------------------------------
+-- 2) MONETARISIERUNG – IDs aus dem Creator Dashboard eintragen.
+--    0 = noch nicht eingerichtet (Button im Shop ist dann ausgegraut).
+-- ---------------------------------------------------------------------
+Config.GamePasses = {
+	{
+		Key = "DoubleCash",
+		Id = 0,
+		Name = "2x Cash",
+		Description = "Verdopple dein Einkommen für immer!",
+		Icon = "💰",
+	},
+	{ Key = "VIP", Id = 0, Name = "VIP", Description = "+25% Cash, 90s Lock, VIP-Tag", Icon = "👑" },
+	{
+		Key = "ExtraSlots",
+		Id = 0,
+		Name = "+5 Meteor-Plätze",
+		Description = "15 statt 10 Plätze in deiner Base",
+		Icon = "☄️",
+	},
+	{
+		Key = "AutoCollect",
+		Id = 0,
+		Name = "Auto Collect",
+		Description = "Geld wird automatisch eingesammelt",
+		Icon = "🤖",
+	},
+	{
+		Key = "FastCharge",
+		Id = 0,
+		Name = "2x Aufladen",
+		Description = "Deine Meteore laden doppelt so schnell auf",
+		Icon = "⚡",
+	},
+	{ Key = "SpeedBoots", Id = 0, Name = "Speed Boots", Description = "+10 Speed für immer", Icon = "👟" },
+}
+
+-- Developer Products (beliebig oft kaufbar).
+-- Type "Cash": Spieler bekommt "Minutes" Minuten seines Einkommens, mindestens "Min".
+Config.Products = {
+	{ Key = "CashSmall", Id = 0, Name = "Cash Paket S", Icon = "💵", Type = "Cash", Minutes = 10, Min = 2500 },
+	{ Key = "CashMedium", Id = 0, Name = "Cash Paket M", Icon = "💰", Type = "Cash", Minutes = 60, Min = 20000 },
+	{ Key = "CashLarge", Id = 0, Name = "Cash Paket XL", Icon = "🏦", Type = "Cash", Minutes = 360, Min = 150000 },
+	{
+		Key = "ServerLuck",
+		Id = 0,
+		Name = "2x Glück für den Server (15 Min)",
+		Icon = "🍀",
+		Type = "ServerLuck",
+		Mult = 2,
+		Minutes = 15,
+	},
+	{ Key = "Speed10", Id = 0, Name = "+10 Speed-Level", Icon = "🏃", Type = "Speed", Levels = 10 },
+	{ Key = "MeteorShower", Id = 0, Name = "Meteoritenschauer JETZT", Icon = "🌠", Type = "Shower" },
+	{
+		Key = "LegendaryMeteor",
+		Id = 0,
+		Name = "Zufälliger Legendary Meteor",
+		Icon = "🌟",
+		Type = "Meteor",
+		Rarity = "Legendary",
+	},
+	{
+		Key = "MythicMeteor",
+		Id = 0,
+		Name = "Zufälliger Mythic Meteor",
+		Icon = "🔮",
+		Type = "Meteor",
+		Rarity = "Mythic",
+	},
+}
+
+-- ---------------------------------------------------------------------
+-- 3) SPIEL-BALANCE
+-- ---------------------------------------------------------------------
+Config.StartCash = 100
+Config.BaseSlots = 10
+Config.ExtraSlotsAmount = 5
+Config.MaxPlots = 8 -- Spieler pro Server (in den Game Settings "Max Players" = 8 setzen!)
+Config.SellRatio = 0.5 -- Verkauf = 50% vom Wert
+
+Config.LockDuration = 60 -- Sekunden Base-Sperre
+Config.LockDurationVIP = 90
+
+Config.GrabHoldDuration = 0.3 -- E halten zum Kaufen/Schnappen
+Config.StealHoldDuration = 1.5 -- E halten zum Klauen
+Config.CarryTimeout = 60 -- Sekunden Zeit, um den Meteor in die Base zu bringen
+Config.NormalWalkSpeed = 16
+Config.CarrySpeedFactor = 0.65 -- beim Tragen: 65% vom eigenen Tempo
+
+-- SPEED FARM: Speed-Level mit Cash kaufen (schneller = Meteore zuerst schnappen & entkommen)
+Config.SpeedPerLevel = 1 -- +1 WalkSpeed pro Level
+Config.MaxSpeedLevel = 60
+Config.SpeedBaseCost = 150 -- Kosten = Basis * SpeedCostGrowth ^ Level (Level 60 ~ 15 Mrd.)
+Config.SpeedCostGrowth = 1.36
+Config.SpeedBootsBonus = 10
+
+Config.BonkCooldown = 0.8
+Config.BonkRange = 9
+Config.BonkForce = 70
+
+-- AUFLADEN: Meteore in deiner Base laden sich auf (Level 1 -> MaxLevel).
+-- Zeit bis zum nächsten Level = ChargeSecondsPerLevel * aktuelles Level
+Config.MaxLevel = 20
+Config.ChargeSecondsPerLevel = 60 -- Level 1->20 dauert ca. 3 Stunden Spielzeit
+Config.IncomePerLevel = 0.1 -- +10% Einkommen pro Level
+
+-- INDEX: jeder neu entdeckte Meteor-Typ gibt dauerhaft +2% Einkommen
+Config.IndexBonusPerMeteor = 0.02
+
+-- METEOR-REGEN in der Krater-Mitte
+Config.SpawnInterval = 2.5 -- alle X Sekunden schlägt ein Meteor ein
+Config.MaxGroundMeteors = 14
+Config.GroundLifetime = 35 -- Sekunden bis ein liegender Meteor zerbröselt
+Config.DroppedLifetime = 25 -- fallengelassene (gratis!) Meteore
+
+-- METEORITENSCHAUER-EVENT: alle X Sekunden, Y Sekunden lang, mehr + bessere Meteore
+Config.ShowerInterval = 480
+Config.ShowerDuration = 60
+Config.ShowerSpawnInterval = 0.7
+Config.ShowerLuck = 3
+
+Config.OfflineIncomeRate = 0.25 -- 25% Einkommen während man offline ist
+Config.OfflineMaxSeconds = 3 * 3600
+
+-- REBIRTH: Cash + Meteore weg, dafür +50% Einkommen für immer
+-- und höhere Seltenheiten kaufbar. Speed-Level und Index bleiben erhalten.
+Config.RebirthBaseCost = 50000000 -- Kosten = Basis * RebirthCostGrowth ^ Rebirths
+Config.RebirthCostGrowth = 3
+Config.RebirthMultPerLevel = 0.5
+
+Config.DailyRewardMinCash = 500
+Config.DailyRewardIncomeSeconds = 120 -- Tagesbonus = 2 Min Einkommen x Streak (max 7)
+
+Config.PremiumBonus = 0.1 -- +10% für Roblox Premium (bringt dir mehr Premium-Payouts)
+Config.VIPBonus = 0.25
+
+-- ---------------------------------------------------------------------
+-- 4) SELTENHEITEN – Weight = Spawnchance (relativ), Size = Größe des Meteors
+--    Kleine kommen oft, große & seltene kaum -> "erst kleine, dann immer bessere"
+--    RequiredRebirths = so viele Rebirths braucht man, um diese Seltenheit zu KAUFEN
+--    (klauen geht immer!)
+-- ---------------------------------------------------------------------
+Config.Rarities = {
+	{ Name = "Common", Weight = 50, Size = 2, Color = Color3.fromRGB(200, 200, 200) },
+	{ Name = "Uncommon", Weight = 26, Size = 2.5, Color = Color3.fromRGB(85, 220, 95) },
+	{ Name = "Rare", Weight = 13, Size = 3, Color = Color3.fromRGB(70, 150, 255) },
+	{ Name = "Epic", Weight = 6.5, Size = 3.6, Color = Color3.fromRGB(180, 80, 255) },
+	{ Name = "Legendary", Weight = 3, Size = 4.2, Color = Color3.fromRGB(255, 190, 40) },
+	{ Name = "Mythic", Weight = 1.1, Size = 4.9, Color = Color3.fromRGB(255, 60, 90) },
+	{ Name = "Celestial", Weight = 0.3, Size = 5.6, Color = Color3.fromRGB(90, 230, 255), RequiredRebirths = 1 },
+	{ Name = "Divine", Weight = 0.08, Size = 6.4, Color = Color3.fromRGB(255, 240, 150), RequiredRebirths = 3 },
+	{ Name = "Secret", Weight = 0.02, Size = 7.2, Color = Color3.fromRGB(255, 255, 255), RequiredRebirths = 5 },
+}
+
+-- Mutationen multiplizieren Wert UND Einkommen
+Config.Mutations = {
+	{ Name = "Normal", Weight = 88, Mult = 1 },
+	{ Name = "Gold", Weight = 10, Mult = 2, Color = Color3.fromRGB(255, 205, 50) },
+	{ Name = "Diamond", Weight = 1.8, Mult = 4, Color = Color3.fromRGB(120, 230, 255) },
+	{ Name = "Cosmic", Weight = 0.2, Mult = 10, Color = Color3.fromRGB(150, 70, 255) },
+}
+
+-- ---------------------------------------------------------------------
+-- 5) METEORE – einfach Zeilen hinzufügen (Id muss einmalig sein!)
+--    Spawnable = false -> nur über Admin-Panel / Produkte erhältlich
+-- ---------------------------------------------------------------------
+Config.Meteors = {
+	{
+		Id = "Pebble",
+		Name = "Pebble Rock",
+		Rarity = "Common",
+		Price = 25,
+		Income = 1,
+		Color = Color3.fromRGB(130, 125, 120),
+	},
+	{
+		Id = "Dusty",
+		Name = "Dusty Chunk",
+		Rarity = "Common",
+		Price = 64,
+		Income = 2,
+		Color = Color3.fromRGB(150, 120, 90),
+	},
+	{
+		Id = "Ember",
+		Name = "Ember Stone",
+		Rarity = "Common",
+		Price = 160,
+		Income = 5,
+		Color = Color3.fromRGB(200, 90, 50),
+	},
+	{
+		Id = "Comet",
+		Name = "Ice Comet",
+		Rarity = "Uncommon",
+		Price = 410,
+		Income = 12,
+		Color = Color3.fromRGB(170, 230, 255),
+	},
+	{
+		Id = "Sulfur",
+		Name = "Sulfur Shard",
+		Rarity = "Uncommon",
+		Price = 1100,
+		Income = 30,
+		Color = Color3.fromRGB(230, 220, 70),
+	},
+	{
+		Id = "Moss",
+		Name = "Moss Rock",
+		Rarity = "Uncommon",
+		Price = 2700,
+		Income = 66,
+		Color = Color3.fromRGB(80, 140, 60),
+	},
+	{
+		Id = "Cobalt",
+		Name = "Cobalt Core",
+		Rarity = "Rare",
+		Price = 6900,
+		Income = 150,
+		Color = Color3.fromRGB(40, 80, 200),
+	},
+	{
+		Id = "Magma",
+		Name = "Magma Heart",
+		Rarity = "Rare",
+		Price = 18000,
+		Income = 360,
+		Color = Color3.fromRGB(255, 80, 20),
+	},
+	{
+		Id = "Quartz",
+		Name = "Rose Quartz",
+		Rarity = "Rare",
+		Price = 45000,
+		Income = 810,
+		Color = Color3.fromRGB(255, 150, 190),
+	},
+	{
+		Id = "Starlight",
+		Name = "Starlight Shard",
+		Rarity = "Epic",
+		Price = 110000,
+		Income = 1800,
+		Color = Color3.fromRGB(255, 250, 200),
+	},
+	{
+		Id = "Plasma",
+		Name = "Plasma Orb",
+		Rarity = "Epic",
+		Price = 290000,
+		Income = 4300,
+		Color = Color3.fromRGB(200, 80, 255),
+	},
+	{
+		Id = "Thunder",
+		Name = "Thunder Rock",
+		Rarity = "Epic",
+		Price = 740000,
+		Income = 9900,
+		Color = Color3.fromRGB(255, 235, 60),
+	},
+	{
+		Id = "Solar",
+		Name = "Solar Flare",
+		Rarity = "Legendary",
+		Price = 1900000,
+		Income = 23000,
+		Color = Color3.fromRGB(255, 170, 0),
+	},
+	{
+		Id = "Aurora",
+		Name = "Aurora Crystal",
+		Rarity = "Legendary",
+		Price = 4800000,
+		Income = 52000,
+		Color = Color3.fromRGB(80, 255, 180),
+	},
+	{
+		Id = "Titan",
+		Name = "Titan Boulder",
+		Rarity = "Legendary",
+		Price = 12000000,
+		Income = 120000,
+		Color = Color3.fromRGB(110, 90, 80),
+	},
+	{
+		Id = "Nebula",
+		Name = "Nebula Heart",
+		Rarity = "Mythic",
+		Price = 31000000,
+		Income = 280000,
+		Color = Color3.fromRGB(120, 50, 200),
+	},
+	{
+		Id = "BlackHole",
+		Name = "Black Hole Fragment",
+		Rarity = "Mythic",
+		Price = 80000000,
+		Income = 650000,
+		Color = Color3.fromRGB(15, 0, 30),
+	},
+	{
+		Id = "Pulsar",
+		Name = "Pulsar Gem",
+		Rarity = "Mythic",
+		Price = 200000000,
+		Income = 1500000,
+		Color = Color3.fromRGB(0, 220, 255),
+	},
+	{
+		Id = "Supernova",
+		Name = "Supernova Shard",
+		Rarity = "Celestial",
+		Price = 520000000,
+		Income = 3400000,
+		Color = Color3.fromRGB(255, 120, 40),
+	},
+	{
+		Id = "Quasar",
+		Name = "Quasar Core",
+		Rarity = "Celestial",
+		Price = 1300000000,
+		Income = 7800000,
+		Color = Color3.fromRGB(255, 255, 140),
+	},
+	{
+		Id = "Galaxy",
+		Name = "Galaxy Spiral",
+		Rarity = "Celestial",
+		Price = 3400000000,
+		Income = 18000000,
+		Color = Color3.fromRGB(150, 90, 255),
+	},
+	{
+		Id = "Halo",
+		Name = "Halo Stone",
+		Rarity = "Divine",
+		Price = 8600000000,
+		Income = 42000000,
+		Color = Color3.fromRGB(255, 245, 210),
+	},
+	{
+		Id = "Seraph",
+		Name = "Seraph Crystal",
+		Rarity = "Divine",
+		Price = 22000000000,
+		Income = 98000000,
+		Color = Color3.fromRGB(255, 220, 120),
+	},
+	{
+		Id = "Eternity",
+		Name = "Eternity Orb",
+		Rarity = "Divine",
+		Price = 56000000000,
+		Income = 230000000,
+		Color = Color3.fromRGB(200, 255, 255),
+	},
+	{
+		Id = "BigBang",
+		Name = "Big Bang Core",
+		Rarity = "Secret",
+		Price = 140000000000,
+		Income = 510000000,
+		Color = Color3.fromRGB(255, 255, 255),
+	},
+	{
+		Id = "Singularity",
+		Name = "Singularity",
+		Rarity = "Secret",
+		Price = 360000000000,
+		Income = 1200000000,
+		Color = Color3.fromRGB(5, 5, 5),
+	},
+	{
+		Id = "Multiverse",
+		Name = "Multiverse Key",
+		Rarity = "Secret",
+		Price = 930000000000,
+		Income = 2800000000,
+		Color = Color3.fromRGB(255, 60, 200),
+	},
+	{
+		Id = "Omega",
+		Name = "Omega Core",
+		Rarity = "Secret",
+		Price = 5000000000000,
+		Income = 15000000000,
+		Color = Color3.fromRGB(255, 0, 80),
+		Spawnable = false,
+	},
+}
+
+-- ---------------------------------------------------------------------
+-- 6) TECHNIK (nur ändern, wenn du weißt was du tust)
+--    ACHTUNG: DataStoreName ändern = alle Spielstände sind weg!
+-- ---------------------------------------------------------------------
+Config.DataStoreName = "MeteorHeist_PlayerData_v1"
+Config.LeaderboardStoreName = "MeteorHeist_TopEarned_v1"
+Config.MessagingTopic = "MeteorHeist_Admin_v1"
+Config.AutoSaveInterval = 90
+
+-- =====================================================================
+-- Ab hier: automatisch erzeugte Nachschlage-Tabellen (nicht ändern)
+-- =====================================================================
+Config.MeteorsById = {}
+Config.RaritiesByName = {}
+Config.RarityIndex = {}
+Config.MutationsByName = {}
+Config.GamePassesByKey = {}
+Config.ProductsById = {}
+Config.ProductsByKey = {}
+Config.MeteorsByRarity = {}
+
+for i, rarity in ipairs(Config.Rarities) do
+	Config.RaritiesByName[rarity.Name] = rarity
+	Config.RarityIndex[rarity.Name] = i
+	Config.MeteorsByRarity[rarity.Name] = {}
+end
+for _, meteor in ipairs(Config.Meteors) do
+	assert(Config.MeteorsById[meteor.Id] == nil, "Doppelte Meteor-Id: " .. meteor.Id)
+	assert(Config.RaritiesByName[meteor.Rarity], "Unbekannte Rarity bei " .. meteor.Id)
+	Config.MeteorsById[meteor.Id] = meteor
+	if meteor.Spawnable ~= false then
+		table.insert(Config.MeteorsByRarity[meteor.Rarity], meteor)
+	end
+end
+for _, mutation in ipairs(Config.Mutations) do
+	Config.MutationsByName[mutation.Name] = mutation
+end
+for _, pass in ipairs(Config.GamePasses) do
+	Config.GamePassesByKey[pass.Key] = pass
+end
+for _, product in ipairs(Config.Products) do
+	Config.ProductsByKey[product.Key] = product
+	if product.Id ~= 0 then
+		assert(Config.ProductsById[product.Id] == nil, "Doppelte Product-Id: " .. product.Id)
+		Config.ProductsById[product.Id] = product
+	end
+end
+
+-- Hilfsfunktionen, die Server und Client gleich rechnen
+function Config.LevelMult(level: number): number
+	return 1 + Config.IncomePerLevel * (math.max(1, level) - 1)
+end
+
+function Config.MeteorIncome(entry): number
+	local def = Config.MeteorsById[entry.Id]
+	local mut = Config.MutationsByName[entry.Mut] or Config.Mutations[1]
+	if not def then
+		return 0
+	end
+	return def.Income * mut.Mult * Config.LevelMult(entry.Lv or 1)
+end
+
+function Config.MeteorValue(entry): number
+	local def = Config.MeteorsById[entry.Id]
+	local mut = Config.MutationsByName[entry.Mut] or Config.Mutations[1]
+	if not def then
+		return 0
+	end
+	return def.Price * mut.Mult * Config.LevelMult(entry.Lv or 1)
+end
+
+function Config.ChargeTime(level: number): number
+	return Config.ChargeSecondsPerLevel * level
+end
+
+function Config.SpeedCost(level: number): number
+	return math.floor(Config.SpeedBaseCost * Config.SpeedCostGrowth ^ level)
+end
+
+function Config.RebirthCost(rebirths: number): number
+	return Config.RebirthBaseCost * Config.RebirthCostGrowth ^ rebirths
+end
+
+return Config
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="4">
+        <Properties>
+          <string name="Name">Util</string>
+          <string name="Source"><![CDATA[-- Kleine Helfer, die Server UND Client benutzen.
+
+local Util = {}
+
+local SUFFIXES = { "", "K", "M", "B", "T", "Qa", "Qi", "Sx", "Sp", "Oc", "No", "Dc" }
+
+-- 1234 -> "1.23K", 15000000 -> "15M"
+function Util.FormatNumber(n: number): string
+	if n ~= n then
+		return "0"
+	end
+	local negative = n < 0
+	n = math.abs(n)
+	if n < 1000 then
+		local s = tostring(math.floor(n))
+		return negative and ("-" .. s) or s
+	end
+	local index = 1
+	while n >= 1000 and index < #SUFFIXES do
+		n = n / 1000
+		index += 1
+	end
+	local text
+	if n >= 100 then
+		text = string.format("%d", math.floor(n))
+	elseif n >= 10 then
+		text = string.format("%.1f", math.floor(n * 10) / 10)
+	else
+		text = string.format("%.2f", math.floor(n * 100) / 100)
+	end
+	if text:find("%.") then
+		text = text:gsub("0+$", ""):gsub("%.$", "")
+	end
+	return (negative and "-" or "") .. text .. SUFFIXES[index]
+end
+
+function Util.FormatCash(n: number): string
+	return "$" .. Util.FormatNumber(n)
+end
+
+-- 75 -> "1:15"
+function Util.FormatTime(seconds: number): string
+	seconds = math.max(0, math.floor(seconds))
+	local h = math.floor(seconds / 3600)
+	local m = math.floor((seconds % 3600) / 60)
+	local s = seconds % 60
+	if h > 0 then
+		return string.format("%d:%02d:%02d", h, m, s)
+	end
+	return string.format("%d:%02d", m, s)
+end
+
+function Util.DeepCopy<T>(value: T): T
+	if type(value) ~= "table" then
+		return value
+	end
+	local copy = {}
+	for k, v in pairs(value :: any) do
+		copy[k] = Util.DeepCopy(v)
+	end
+	return copy :: any
+end
+
+-- Ergänzt fehlende Felder aus "template" (für Spielstände nach Updates).
+function Util.Reconcile(target: { [any]: any }, template: { [any]: any })
+	for k, v in pairs(template) do
+		if target[k] == nil then
+			target[k] = Util.DeepCopy(v)
+		elseif type(v) == "table" and type(target[k]) == "table" then
+			Util.Reconcile(target[k], v)
+		end
+	end
+end
+
+-- Gewichtete Zufallsauswahl: list = { {Weight = 5, ...}, ... }
+function Util.WeightedPick(list: { any }, weightOf: ((any) -> number)?, rng: Random?)
+	local total = 0
+	for _, item in ipairs(list) do
+		total += weightOf and weightOf(item) or item.Weight
+	end
+	local roll = (rng or Random.new()):NextNumber() * total
+	for _, item in ipairs(list) do
+		roll -= weightOf and weightOf(item) or item.Weight
+		if roll <= 0 then
+			return item
+		end
+	end
+	return list[#list]
+end
+
+-- Einfache Spam-Bremse pro Spieler.
+function Util.RateLimiter(maxCalls: number, perSeconds: number)
+	local buckets: { [any]: { number } } = {}
+	local limiter = {}
+	function limiter.Check(key: any): boolean
+		local now = os.clock()
+		local bucket = buckets[key]
+		if not bucket then
+			bucket = {}
+			buckets[key] = bucket
+		end
+		while bucket[1] and now - bucket[1] > perSeconds do
+			table.remove(bucket, 1)
+		end
+		if #bucket >= maxCalls then
+			return false
+		end
+		table.insert(bucket, now)
+		return true
+	end
+	function limiter.Clear(key: any)
+		buckets[key] = nil
+	end
+	return limiter
+end
+
+return Util
+]]></string>
+        </Properties>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="ServerScriptService" referent="5">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Folder" referent="6">
+      <Properties>
+        <string name="Name">Server</string>
+      </Properties>
+      <Item class="Script" referent="7">
+        <Properties>
+          <string name="Name">Main</string>
+          <token name="RunContext">0</token>
+          <string name="Source"><![CDATA[-- =====================================================================
+--  METEOR HEIST – Server-Start
+--  Lädt alle Services in der richtigen Reihenfolge. Hier musst du nichts ändern.
+-- =====================================================================
+
+local Players = game:GetService("Players")
+local ServicesFolder = script.Parent:WaitForChild("Services")
+
+local order = {
+	"DataService",
+	"MonetizationService",
+	"PlotService",
+	"MeteorService",
+	"CarryService",
+	"EconomyService",
+	"AdminService",
+	"LeaderboardService",
+}
+
+local Services = {}
+for _, name in ipairs(order) do
+	Services[name] = require(ServicesFolder:WaitForChild(name))
+end
+
+-- Phase 1: Init (Map bauen, Verweise setzen)
+for _, name in ipairs(order) do
+	local service = Services[name]
+	if service.Init then
+		service.Init(Services)
+	end
+end
+
+-- Phase 2: Start (Schleifen + Events). DataService zuletzt, damit alle
+-- "Spielstand geladen"-Callbacks schon registriert sind.
+for _, name in ipairs(order) do
+	local service = Services[name]
+	if name ~= "DataService" and service.Start then
+		service.Start()
+	end
+end
+Services.DataService.Start()
+
+Players.CharacterAutoLoads = true
+print("[Meteor Heist] Server gestartet ✅")
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="Folder" referent="8">
+        <Properties>
+          <string name="Name">Services</string>
+        </Properties>
+        <Item class="ModuleScript" referent="9">
+          <Properties>
+            <string name="Name">AdminService</string>
+            <string name="Source"><![CDATA[-- Admin-Panel (Server-Seite). JEDE Aktion prüft hier auf dem Server, ob der Spieler
+-- in Config.AdminUserIds steht. Exploiter können das Panel also nicht benutzen,
+-- selbst wenn sie es sich im Client anzeigen lassen.
+
+local MessagingService = game:GetService("MessagingService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local Remotes = require(script.Parent:WaitForChild("Remotes"))
+
+local AdminService = {}
+local Services
+local limiter = Util.RateLimiter(12, 1)
+
+function AdminService.IsAdmin(player: Player): boolean
+	if table.find(Config.AdminUserIds, player.UserId) then
+		return true
+	end
+	return RunService:IsStudio() and Config.StudioIsAdmin
+end
+
+-- "me", "all", "others" oder (Teil vom) Namen
+local function resolveTargets(admin: Player, text: any): { Player }
+	if type(text) ~= "string" or text == "" or text:lower() == "me" then
+		return { admin }
+	end
+	local lower = text:lower()
+	if lower == "all" then
+		return Players:GetPlayers()
+	end
+	if lower == "others" then
+		local list = {}
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= admin then
+				table.insert(list, p)
+			end
+		end
+		return list
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Name:lower() == lower or p.DisplayName:lower() == lower then
+			return { p }
+		end
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Name:lower():sub(1, #lower) == lower or p.DisplayName:lower():sub(1, #lower) == lower then
+			return { p }
+		end
+	end
+	return {}
+end
+
+local function num(value: any, default: number, min: number, max: number): number
+	local n = tonumber(value)
+	if not n or n ~= n then
+		return default
+	end
+	return math.clamp(n, min, max)
+end
+
+local function names(list: { Player }): string
+	local out = {}
+	for _, p in ipairs(list) do
+		table.insert(out, p.DisplayName)
+	end
+	return table.concat(out, ", ")
+end
+
+local function filterBroadcast(text: string, fromUserId: number): string?
+	local ok, result = pcall(function()
+		local filtered = TextService:FilterStringAsync(text, fromUserId, Enum.TextFilterContext.PublicChat)
+		return filtered:GetNonChatStringForBroadcastAsync()
+	end)
+	return ok and result or nil
+end
+
+-- -------------------------------------------------------------------
+-- SERVERÜBERGREIFEND (alle Server gleichzeitig)
+-- -------------------------------------------------------------------
+local function handleGlobal(message)
+	if type(message) ~= "table" then
+		return
+	end
+	if message.Type == "Announce" and type(message.Text) == "string" then
+		Services.EconomyService.NotifyAll("📢 " .. message.Text, "Announce")
+	elseif message.Type == "Luck" then
+		Services.MeteorService.SetServerLuck(num(message.Mult, 1, 1, 100), num(message.Until, 0, 0, math.huge))
+		Services.EconomyService.NotifyAll(
+			"🍀 ADMIN-EVENT: " .. message.Mult .. "x Glück auf ALLEN Servern!",
+			"Event"
+		)
+	elseif message.Type == "Shower" then
+		Services.MeteorService.StartShower(num(message.Seconds, Config.ShowerDuration, 10, 3600))
+	end
+end
+
+local function publishGlobal(message): boolean
+	local ok, err = pcall(MessagingService.PublishAsync, MessagingService, Config.MessagingTopic, message)
+	if not ok then
+		warn("[Admin] Global senden fehlgeschlagen: " .. tostring(err))
+		handleGlobal(message) -- wenigstens auf diesem Server
+	end
+	return ok
+end
+
+-- -------------------------------------------------------------------
+-- AKTIONEN
+-- -------------------------------------------------------------------
+local Actions = {}
+
+function Actions.GetPlayers(_admin)
+	local list = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		local data = Services.DataService.Get(p)
+		table.insert(list, {
+			Name = p.Name,
+			DisplayName = p.DisplayName,
+			UserId = p.UserId,
+			Cash = data and data.Cash or 0,
+			Rebirths = data and data.Rebirths or 0,
+		})
+	end
+	return true, "OK", list
+end
+
+function Actions.SpawnMeteor(admin, args)
+	local id = args.MeteorId
+	if not Config.MeteorsById[id] then
+		return false, "Unbekannter Meteor"
+	end
+	local count = num(args.Count, 1, 1, 25)
+	local position = nil
+	if args.Where == "Me" then
+		local root = admin.Character and admin.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			position = (root :: BasePart).Position + (root :: BasePart).CFrame.LookVector * 8
+		end
+	end
+	for i = 1, count do
+		local pos = position and (position + Vector3.new((i - 1) % 5 * 6, 0, math.floor((i - 1) / 5) * 6)) or nil
+		Services.MeteorService.SpawnMeteor({
+			Id = id,
+			Mut = Config.MutationsByName[args.Mutation] and args.Mutation or "Normal",
+			Position = pos,
+			Free = args.Free == true,
+			Announce = i == 1,
+		})
+	end
+	return true, count .. "x " .. Config.MeteorsById[id].Name .. " gespawnt"
+end
+
+function Actions.MeteorRain(_admin, args)
+	local rarity = Config.RaritiesByName[args.Rarity] and args.Rarity or nil
+	local count = num(args.Count, 10, 1, 40)
+	task.spawn(function()
+		for _ = 1, count do
+			Services.MeteorService.SpawnMeteor({ Rarity = rarity, Announce = false })
+			task.wait(0.25)
+		end
+	end)
+	Services.EconomyService.NotifyAll(
+		"☄️ ADMIN-METEORREGEN" .. (rarity and (" (" .. rarity .. ")") or "") .. "!",
+		"Event"
+	)
+	return true, count .. " Meteore regnen herab"
+end
+
+function Actions.GiveMeteor(admin, args)
+	if not Config.MeteorsById[args.MeteorId] then
+		return false, "Unbekannter Meteor"
+	end
+	local targets = resolveTargets(admin, args.Target)
+	local given = 0
+	for _, p in ipairs(targets) do
+		local ok = Services.EconomyService.GiveMeteor(p, {
+			Id = args.MeteorId,
+			Mut = args.Mutation,
+			Lv = num(args.Level, 1, 1, Config.MaxLevel),
+		})
+		if ok then
+			given += 1
+			Services.EconomyService.Notify(
+				p,
+				"🎁 Ein Admin hat dir " .. Config.MeteorsById[args.MeteorId].Name .. " geschenkt!",
+				"Success"
+			)
+		end
+	end
+	return given > 0, "An " .. given .. " Spieler gegeben" .. (given < #targets and " (manche Basen voll)" or "")
+end
+
+function Actions.GiveCash(admin, args)
+	local amount = num(args.Amount, 0, -1e18, 1e18)
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		Services.EconomyService.AddCash(p, amount)
+	end
+	return #targets > 0, Util.FormatCash(amount) .. " an " .. names(targets)
+end
+
+function Actions.SetCash(admin, args)
+	local amount = num(args.Amount, 0, 0, 1e18)
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		local data = Services.DataService.Get(p)
+		if data then
+			data.Cash = amount
+			Services.EconomyService.MarkDirty(p)
+		end
+	end
+	return #targets > 0, "Cash = " .. Util.FormatCash(amount) .. " für " .. names(targets)
+end
+
+function Actions.SetRebirths(admin, args)
+	local amount = math.floor(num(args.Amount, 0, 0, 1000))
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		local data = Services.DataService.Get(p)
+		if data then
+			data.Rebirths = amount
+			Services.EconomyService.MarkDirty(p)
+		end
+	end
+	return #targets > 0, "Rebirths = " .. amount .. " für " .. names(targets)
+end
+
+function Actions.SetSpeed(admin, args)
+	local amount = math.floor(num(args.Amount, 0, 0, Config.MaxSpeedLevel))
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		local data = Services.DataService.Get(p)
+		if data then
+			data.SpeedLevel = amount
+			Services.EconomyService.ApplySpeed(p)
+			Services.EconomyService.MarkDirty(p)
+		end
+	end
+	return #targets > 0, "Speed-Level = " .. amount .. " für " .. names(targets)
+end
+
+function Actions.GivePass(admin, args)
+	if not Config.GamePassesByKey[args.PassKey] then
+		return false, "Unbekannter Pass"
+	end
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		Services.MonetizationService.GrantPassSession(p, args.PassKey)
+	end
+	return #targets > 0, args.PassKey .. " (bis Server-Wechsel) für " .. names(targets)
+end
+
+function Actions.StartShower(_admin, args)
+	local seconds = num(args.Seconds, Config.ShowerDuration, 10, 3600)
+	if args.Global then
+		publishGlobal({ Type = "Shower", Seconds = seconds })
+		return true, "Schauer auf ALLEN Servern"
+	end
+	Services.MeteorService.StartShower(seconds)
+	return true, "Meteoritenschauer gestartet (" .. seconds .. "s)"
+end
+
+function Actions.ServerLuck(_admin, args)
+	local mult = num(args.Mult, 2, 1, 100)
+	local minutes = num(args.Minutes, 10, 1, 24 * 60)
+	local untilTime = workspace:GetServerTimeNow() + minutes * 60
+	if args.Global then
+		publishGlobal({ Type = "Luck", Mult = mult, Until = untilTime })
+		return true, mult .. "x Glück auf ALLEN Servern für " .. minutes .. " Min"
+	end
+	Services.MeteorService.SetServerLuck(mult, untilTime)
+	Services.EconomyService.NotifyAll(
+		"🍀 ADMIN-EVENT: " .. mult .. "x Glück für " .. minutes .. " Minuten!",
+		"Event"
+	)
+	return true, mult .. "x Glück für " .. minutes .. " Min"
+end
+
+function Actions.Announce(admin, args)
+	if type(args.Text) ~= "string" or #args.Text == 0 or #args.Text > 200 then
+		return false, "Text 1-200 Zeichen"
+	end
+	local filtered = filterBroadcast(args.Text, admin.UserId)
+	if not filtered then
+		return false, "Text-Filter nicht erreichbar"
+	end
+	if args.Global then
+		publishGlobal({ Type = "Announce", Text = filtered })
+		return true, "An ALLE Server gesendet"
+	end
+	Services.EconomyService.NotifyAll("📢 " .. filtered, "Announce")
+	return true, "Gesendet"
+end
+
+function Actions.Kick(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	local reason = type(args.Reason) == "string" and args.Reason ~= "" and args.Reason or "Vom Admin gekickt"
+	local kicked = {}
+	for _, p in ipairs(targets) do
+		if p ~= admin then
+			table.insert(kicked, p.DisplayName)
+			p:Kick(reason)
+		end
+	end
+	return #kicked > 0, "Gekickt: " .. table.concat(kicked, ", ")
+end
+
+function Actions.Ban(admin, args)
+	local userId = tonumber(args.Target)
+	local display = tostring(args.Target)
+	if not userId then
+		local targets = resolveTargets(admin, args.Target)
+		if #targets ~= 1 or targets[1] == admin then
+			return false, "Genau EINEN Spieler (Name oder UserId) angeben"
+		end
+		userId = targets[1].UserId
+		display = targets[1].DisplayName
+	end
+	if userId == admin.UserId or table.find(Config.AdminUserIds, userId) then
+		return false, "Admins können nicht gebannt werden"
+	end
+	local days = num(args.Days, 0, 0, 3650)
+	local reason = type(args.Reason) == "string" and args.Reason ~= "" and args.Reason or "Regelverstoß"
+	local ok, err = pcall(function()
+		Players:BanAsync({
+			UserIds = { userId },
+			ApplyToUniverse = true,
+			Duration = days > 0 and math.floor(days * 86400) or -1,
+			DisplayReason = reason,
+			PrivateReason = "Gebannt von " .. admin.Name .. " (" .. admin.UserId .. ")",
+			ExcludeAltAccounts = false,
+		})
+	end)
+	if not ok then
+		return false, "Bann fehlgeschlagen: " .. tostring(err)
+	end
+	return true, display .. " gebannt (" .. (days > 0 and (days .. " Tage") or "für immer") .. ")"
+end
+
+function Actions.Unban(_admin, args)
+	local userId = tonumber(args.Target)
+	if not userId then
+		return false, "UserId (Zahl) angeben"
+	end
+	local ok, err = pcall(function()
+		Players:UnbanAsync({ UserIds = { userId }, ApplyToUniverse = true })
+	end)
+	if not ok then
+		return false, "Entbannen fehlgeschlagen: " .. tostring(err)
+	end
+	return true, userId .. " entbannt"
+end
+
+function Actions.ClearBase(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		local data = Services.DataService.Get(p)
+		local plot = Services.PlotService.GetPlot(p)
+		if data then
+			if plot then
+				Services.CarryService.CancelStealsFromPlot(plot, "cancelled")
+			end
+			data.Meteors = {}
+			if plot then
+				Services.PlotService.RenderAll(plot)
+			end
+			Services.EconomyService.MarkDirty(p)
+		end
+	end
+	return #targets > 0, "Base geleert: " .. names(targets)
+end
+
+function Actions.ResetData(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		local plot = Services.PlotService.GetPlot(p)
+		if Services.CarryService.IsCarrying(p) then
+			Services.CarryService.Fail(p, "cancelled")
+		end
+		if plot then
+			Services.CarryService.CancelStealsFromPlot(plot, "cancelled")
+		end
+		Services.DataService.Reset(p)
+		if plot then
+			Services.PlotService.RenderAll(plot)
+		end
+		Services.EconomyService.ApplySpeed(p)
+		Services.EconomyService.MarkDirty(p)
+	end
+	return #targets > 0, "Spielstand zurückgesetzt: " .. names(targets)
+end
+
+function Actions.TeleportTo(admin, args)
+	local target = resolveTargets(admin, args.Target)[1]
+	local root = target and target.Character and target.Character:FindFirstChild("HumanoidRootPart")
+	if not root or not admin.Character then
+		return false, "Spieler nicht gefunden"
+	end
+	admin.Character:PivotTo((root :: BasePart).CFrame * CFrame.new(0, 0, 4))
+	return true, "Zu " .. target.DisplayName .. " teleportiert"
+end
+
+function Actions.Bring(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	local root = admin.Character and admin.Character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return false, "Kein Charakter"
+	end
+	for i, p in ipairs(targets) do
+		if p ~= admin and p.Character then
+			p.Character:PivotTo((root :: BasePart).CFrame * CFrame.new(i * 3, 0, -4))
+		end
+	end
+	return #targets > 0, "Geholt: " .. names(targets)
+end
+
+function Actions.ClearGround(_admin)
+	Services.MeteorService.ClearGround()
+	return true, "Krater geleert"
+end
+
+-- -------------------------------------------------------------------
+function AdminService.Init(services)
+	Services = services
+end
+
+function AdminService.Start()
+	local function onPlayer(player: Player)
+		if AdminService.IsAdmin(player) then
+			player:SetAttribute("IsAdmin", true)
+		end
+	end
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		onPlayer(player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		limiter.Clear(player)
+	end)
+
+	Remotes.Admin.OnServerInvoke = function(player: Player, action: any, args: any)
+		if not AdminService.IsAdmin(player) then
+			warn("[Admin] Unerlaubter Zugriff von " .. player.Name .. " (" .. player.UserId .. ")")
+			return { Ok = false, Message = "Kein Zugriff" }
+		end
+		if not limiter.Check(player) then
+			return { Ok = false, Message = "Zu schnell" }
+		end
+		if type(action) ~= "string" or not Actions[action] then
+			return { Ok = false, Message = "Unbekannte Aktion" }
+		end
+		if type(args) ~= "table" then
+			args = {}
+		end
+		local ok, success, message, payload = pcall(Actions[action], player, args)
+		if not ok then
+			warn("[Admin] Fehler bei " .. action .. ": " .. tostring(success))
+			return { Ok = false, Message = "Fehler: " .. tostring(success) }
+		end
+		print(("[Admin] %s -> %s: %s"):format(player.Name, action, tostring(message)))
+		return { Ok = success, Message = message, Data = payload }
+	end
+
+	task.spawn(function()
+		local ok, err = pcall(function()
+			MessagingService:SubscribeAsync(Config.MessagingTopic, function(packet)
+				handleGlobal(packet.Data)
+			end)
+		end)
+		if not ok then
+			warn("[Admin] MessagingService nicht verfügbar (in Studio normal): " .. tostring(err))
+		end
+	end)
+end
+
+return AdminService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="10">
+          <Properties>
+            <string name="Name">CarryService</string>
+            <string name="Source"><![CDATA[-- Tragen & Klauen:
+--  * Gekaufte Meteore muss man in die eigene Base tragen.
+--  * Fremde Meteore kann man klauen (wenn die Base nicht gesperrt ist).
+--  * Wer gebonkt wird oder stirbt, verliert den Meteor:
+--      geklaut   -> fliegt zurück zum Besitzer
+--      gekauft   -> fällt auf den Boden und ist GRATIS für alle
+--  * Bonk-Schläger zum Verteidigen.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris = game:GetService("Debris")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
+
+local CarryService = {}
+local Services
+
+local carrying: { [Player]: any } = {}
+local stealing: { [any]: { [number]: Player } } = {} -- [plot][slot] = Dieb
+local lastBonk: { [Player]: number } = {}
+
+function CarryService.IsCarrying(player: Player): boolean
+	return carrying[player] ~= nil
+end
+
+function CarryService.IsSlotBeingStolen(plot, slot: number): boolean
+	local map = stealing[plot]
+	return map ~= nil and map[slot] ~= nil
+end
+
+local function clearStealMark(info)
+	if info.Source == "Plot" and stealing[info.VictimPlot] then
+		stealing[info.VictimPlot][info.Slot] = nil
+	end
+end
+
+local function cleanup(player: Player, info)
+	carrying[player] = nil
+	if info.Visual then
+		info.Visual:Destroy()
+		info.Visual = nil
+	end
+	Services.EconomyService.ApplySpeed(player)
+	Services.EconomyService.MarkDirty(player)
+end
+
+local function createVisual(player: Player, entry): BasePart?
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not character or not root then
+		return nil
+	end
+	local visual = MeteorFactory.Create(entry, "Base")
+	visual.Name = "CarriedMeteor"
+	visual.Anchored = false
+	visual.Massless = true
+	visual.CanCollide = false
+	visual.CanQuery = false
+	visual.CFrame = root.CFrame * CFrame.new(0, 2.5 + visual.Size.Y / 2, 0)
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = root
+	weld.Part1 = visual
+	weld.Parent = visual
+	visual.Parent = character
+	return visual
+end
+
+-- info: { Source = "Ground" } oder { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef }
+function CarryService.StartCarry(player: Player, entry, info)
+	info.Entry = entry
+	info.Started = os.clock()
+	info.Visual = createVisual(player, entry)
+	carrying[player] = info
+	Services.EconomyService.ApplySpeed(player)
+	Services.EconomyService.MarkDirty(player)
+	Services.EconomyService.Notify(player, "🏃 Bring den Meteor in deine Base!", "Info")
+end
+
+local function succeed(player: Player)
+	local info = carrying[player]
+	if not info then
+		return
+	end
+	local data = Services.DataService.Get(player)
+	local plot = Services.PlotService.GetPlot(player)
+	local slot = Services.PlotService.FreeSlot(player)
+	local def = Config.MeteorsById[info.Entry.Id]
+
+	if info.Source == "Plot" then
+		local victim = info.VictimPlayer
+		local victimData = victim and victim.Parent and Services.DataService.Get(victim)
+		local key = tostring(info.Slot)
+		if not data or not plot or not slot or not victimData or victimData.Meteors[key] ~= info.EntryRef then
+			CarryService.Fail(player, "invalid")
+			return
+		end
+		victimData.Meteors[key] = nil
+		data.Meteors[tostring(slot)] = info.EntryRef
+		data.Stats.Stolen += 1
+		victimData.Stats.Robbed += 1
+		clearStealMark(info)
+		cleanup(player, info)
+		Services.EconomyService.Discover(player, info.Entry.Id)
+		Services.PlotService.RenderSlot(plot, slot)
+		Services.PlotService.RenderSlot(info.VictimPlot, info.Slot)
+		Services.EconomyService.MarkDirty(victim)
+		Services.EconomyService.Notify(player, "😈 Geklaut: " .. def.Name .. "!", "Success")
+		Services.EconomyService.Notify(
+			victim,
+			"💔 " .. player.DisplayName .. " hat deinen " .. def.Name .. " geklaut!",
+			"Error"
+		)
+		Services.EconomyService.Effect(player, "Confetti", 1)
+		return
+	end
+
+	-- Gekaufter / geschnappter Meteor
+	if not data or not plot or not slot then
+		CarryService.Fail(player, "full")
+		return
+	end
+	data.Meteors[tostring(slot)] = info.Entry
+	cleanup(player, info)
+	Services.EconomyService.Discover(player, info.Entry.Id)
+	Services.PlotService.RenderSlot(plot, slot)
+	Services.EconomyService.Notify(player, "✅ " .. def.Name .. " ist in deiner Base!", "Success")
+	Services.EconomyService.Effect(player, "Confetti", 0.5)
+end
+
+function CarryService.Fail(player: Player, reason: string)
+	local info = carrying[player]
+	if not info then
+		return
+	end
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local position = (info.Visual and info.Visual.Position) or (root and root.Position) or Vector3.zero
+	clearStealMark(info)
+	cleanup(player, info)
+	local def = Config.MeteorsById[info.Entry.Id]
+
+	if info.Source == "Plot" then
+		-- zurück zum Besitzer
+		if info.VictimPlot.Owner == info.VictimPlayer then
+			Services.PlotService.RenderSlot(info.VictimPlot, info.Slot)
+			if reason ~= "victimLeft" then
+				Services.EconomyService.Notify(
+					info.VictimPlayer,
+					"🛡️ Dein " .. def.Name .. " ist zurück!",
+					"Success"
+				)
+			end
+		end
+		if reason == "bonked" then
+			Services.EconomyService.Notify(player, "💥 Gebonkt! Der Meteor fliegt zurück.", "Error")
+		elseif reason == "timeout" then
+			Services.EconomyService.Notify(player, "⏰ Zu langsam! Der Meteor fliegt zurück.", "Error")
+		end
+	else
+		-- gekaufter Meteor fällt auf den Boden -> gratis für alle
+		Services.MeteorService.DropMeteor(info.Entry, position)
+		if reason == "bonked" then
+			Services.EconomyService.Notify(player, "💥 Gebonkt! Du hast den Meteor fallen lassen!", "Error")
+		elseif reason == "timeout" then
+			Services.EconomyService.Notify(player, "⏰ Zu langsam! Der Meteor ist runtergefallen.", "Error")
+		elseif reason == "full" then
+			Services.EconomyService.Notify(player, "Deine Base ist voll – Meteor fallen gelassen!", "Error")
+		end
+	end
+end
+
+function CarryService.TrySteal(thief: Player, plot, slot: number)
+	local owner = plot.Owner
+	if not owner or owner == thief then
+		return
+	end
+	local thiefData = Services.DataService.Get(thief)
+	local ownerData = Services.DataService.Get(owner)
+	if not thiefData or not ownerData then
+		return
+	end
+	if Services.PlotService.IsLocked(plot) then
+		Services.EconomyService.Notify(thief, "🔒 Diese Base ist gesperrt!", "Error")
+		return
+	end
+	if CarryService.IsSlotBeingStolen(plot, slot) or carrying[thief] then
+		return
+	end
+	local entry = ownerData.Meteors[tostring(slot)]
+	if not entry then
+		return
+	end
+	if not Services.PlotService.GetPlot(thief) then
+		Services.EconomyService.Notify(thief, "Du hast keine Base auf diesem Server.", "Error")
+		return
+	end
+	if not Services.PlotService.FreeSlot(thief) then
+		Services.EconomyService.Notify(thief, "Deine Base ist voll! Verkaufe erst einen Meteor.", "Error")
+		return
+	end
+	local character = thief.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local meteor = plot.MeteorParts[slot]
+	if not root or not humanoid or humanoid.Health <= 0 or not meteor then
+		return
+	end
+	if (root.Position - meteor.Position).Magnitude > meteor.Size.X / 2 + 14 then
+		return -- zu weit weg
+	end
+
+	stealing[plot] = stealing[plot] or {}
+	stealing[plot][slot] = thief
+	Services.PlotService.RenderSlot(plot, slot) -- macht den Meteor in der Base unsichtbar
+	CarryService.StartCarry(thief, entry, {
+		Source = "Plot",
+		VictimPlot = plot,
+		VictimPlayer = owner,
+		Slot = slot,
+		EntryRef = entry,
+	})
+	local def = Config.MeteorsById[entry.Id]
+	Services.EconomyService.Notify(
+		owner,
+		"🚨 " .. thief.DisplayName .. " klaut deinen " .. def.Name .. "! BONK IHN!",
+		"Alarm"
+	)
+	Services.EconomyService.Effect(owner, "Alarm", 1)
+end
+
+-- Alle laufenden Diebstähle aus einer Base abbrechen (Rebirth, Reset, Verlassen)
+function CarryService.CancelStealsFromPlot(plot, reason: string?)
+	for thief, info in pairs(carrying) do
+		if info.Source == "Plot" and info.VictimPlot == plot then
+			CarryService.Fail(thief, reason or "cancelled")
+		end
+	end
+end
+
+-- -------------------------------------------------------------------
+-- BONK-SCHLÄGER
+-- -------------------------------------------------------------------
+local function bonk(player: Player, tool: Tool)
+	local t = os.clock()
+	if t - (lastBonk[player] or 0) < Config.BonkCooldown then
+		return
+	end
+	lastBonk[player] = t
+
+	-- Schlag-Animation über das Standard-Animate-Skript
+	local anim = Instance.new("StringValue")
+	anim.Name = "toolanim"
+	anim.Value = "Slash"
+	anim.Parent = tool
+	Debris:AddItem(anim, 1)
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not root then
+		return
+	end
+	local best, bestDist = nil, Config.BonkRange
+	for _, other in ipairs(Players:GetPlayers()) do
+		if other ~= player then
+			local otherRoot = other.Character and other.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			local otherHum = other.Character and other.Character:FindFirstChildOfClass("Humanoid")
+			if otherRoot and otherHum and otherHum.Health > 0 then
+				local offset = otherRoot.Position - root.Position
+				local dist = offset.Magnitude
+				local facing = dist < 3 or root.CFrame.LookVector:Dot(offset.Unit) > 0.1
+				if dist <= bestDist and facing then
+					best, bestDist = other, dist
+				end
+			end
+		end
+	end
+	if not best then
+		return
+	end
+	local targetRoot = best.Character and best.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not targetRoot then
+		return
+	end
+	local direction = targetRoot.Position - root.Position
+	direction = Vector3.new(direction.X, 0, direction.Z)
+	direction = direction.Magnitude > 0.01 and direction.Unit or root.CFrame.LookVector
+
+	-- Rückstoß (läuft beim getroffenen Spieler, weil der seine Physik besitzt)
+	local attachment = Instance.new("Attachment")
+	attachment.Parent = targetRoot
+	local velocity = Instance.new("LinearVelocity")
+	velocity.Attachment0 = attachment
+	velocity.MaxForce = 1e6
+	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	velocity.VectorVelocity = direction * Config.BonkForce + Vector3.new(0, 30, 0)
+	velocity.Parent = targetRoot
+	Debris:AddItem(velocity, 0.18)
+	Debris:AddItem(attachment, 0.18)
+
+	Services.EconomyService.Effect(best, "Shake", 0.6)
+	if carrying[best] then
+		CarryService.Fail(best, "bonked")
+		Services.EconomyService.Notify(
+			player,
+			"💥 Treffer! " .. best.DisplayName .. " hat den Meteor verloren!",
+			"Success"
+		)
+	end
+end
+
+local function createBonkTool(): Tool
+	local tool = Instance.new("Tool")
+	tool.Name = "Bonk"
+	tool.ToolTip = "Klick = Bonk! Diebe verlieren ihren Meteor."
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool.Grip = CFrame.new(0, 0, -1.6) * CFrame.Angles(math.rad(-90), 0, 0)
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.6, 0.6, 4.2)
+	handle.Color = Color3.fromRGB(255, 170, 60)
+	handle.Material = Enum.Material.SmoothPlastic
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.Parent = tool
+
+	local head = Instance.new("Part")
+	head.Name = "Head"
+	head.Shape = Enum.PartType.Ball
+	head.Size = Vector3.new(1.6, 1.6, 1.6)
+	head.Color = Color3.fromRGB(255, 90, 60)
+	head.Material = Enum.Material.SmoothPlastic
+	head.CanCollide = false
+	head.Massless = true
+	head.CFrame = handle.CFrame * CFrame.new(0, 0, -2.2)
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = handle
+	weld.Part1 = head
+	weld.Parent = head
+	head.Parent = tool
+	return tool
+end
+
+local bonkTemplate: Tool
+
+local function giveTool(player: Player)
+	local backpack = player:WaitForChild("Backpack", 10)
+	if not backpack or backpack:FindFirstChild("Bonk") then
+		return
+	end
+	local tool = bonkTemplate:Clone()
+	tool.Activated:Connect(function()
+		bonk(player, tool)
+	end)
+	tool.Parent = backpack
+end
+
+function CarryService.Init(services)
+	Services = services
+	bonkTemplate = createBonkTool()
+end
+
+function CarryService.Start()
+	local function onPlayer(player: Player)
+		player.CharacterAdded:Connect(function(character)
+			-- neuer Charakter -> alter Meteor ist weg
+			if carrying[player] then
+				CarryService.Fail(player, "died")
+			end
+			local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
+			if humanoid then
+				humanoid.Died:Connect(function()
+					CarryService.Fail(player, "died")
+				end)
+			end
+			giveTool(player)
+			Services.EconomyService.ApplySpeed(player)
+		end)
+		if player.Character then
+			task.spawn(giveTool, player)
+		end
+	end
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayer, player)
+	end
+
+	-- Beim Verlassen (vor dem Speichern): Diebstähle sauber beenden.
+	-- Kann zweimal aufgerufen werden (PlayerRemoving + Speichern) – ist harmlos.
+	local function onLeaving(player: Player)
+		lastBonk[player] = nil
+		local info = carrying[player]
+		local data = Services.DataService.Get(player)
+		if info and info.Source == "Ground" and data then
+			-- gekaufter Meteor geht beim Verlassen nicht verloren
+			local slot = Services.PlotService.FreeSlot(player)
+			if slot then
+				data.Meteors[tostring(slot)] = info.Entry
+				cleanup(player, info)
+			end
+		end
+		if carrying[player] then
+			CarryService.Fail(player, "left")
+		end
+	end
+	Services.DataService.OnProfileReleasing(onLeaving)
+	Players.PlayerRemoving:Connect(onLeaving)
+
+	-- Prüfen: angekommen? gestorben? zu langsam?
+	task.spawn(function()
+		while true do
+			task.wait(0.15)
+			for player, info in pairs(carrying) do
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+				local plot = Services.PlotService.GetPlot(player)
+				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
+					CarryService.Fail(player, "died")
+				elseif os.clock() - info.Started > Config.CarryTimeout then
+					CarryService.Fail(player, "timeout")
+				elseif plot and Services.PlotService.IsInside(plot, root.Position) then
+					succeed(player)
+				end
+			end
+		end
+	end)
+end
+
+return CarryService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="11">
+          <Properties>
+            <string name="Name">DataService</string>
+            <string name="Source"><![CDATA[-- Speichert Spielstände sicher:
+--  * Session-Lock: ein Spielstand ist immer nur in EINEM Server offen (keine Duplikate)
+--  * Wiederholungen bei DataStore-Fehlern, Auto-Save, Speichern beim Server-Ende
+--  * Wenn Laden fehlschlägt, wird der Spieler gekickt statt mit leerem Stand zu spielen
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Util = require(Shared:WaitForChild("Util"))
+
+local DataService = {}
+DataService.Profiles = {} :: { [Player]: any }
+
+local DEFAULT_DATA = {
+	Cash = Config.StartCash,
+	Pending = 0,
+	Meteors = {}, -- ["1"] = { Id = "Pebble", Mut = "Normal", Lv = 1, Xp = 0 }
+	Rebirths = 0,
+	SpeedLevel = 0,
+	TotalEarned = 0,
+	Index = {}, -- ["Pebble"] = true -> schon entdeckt (bleibt bei Rebirth)
+	Stats = { Stolen = 0, Robbed = 0, Bought = 0, RobuxSpent = 0 },
+	Daily = { Last = 0, Streak = 0 },
+	Receipts = {}, -- zuletzt verarbeitete Käufe (gegen doppelte Gutschrift)
+	LastOnline = 0,
+}
+
+local LOCK_EXPIRE = 30 * 60 -- ein Lock älter als 30 Min gilt als verwaist
+local LOAD_ATTEMPTS = 6
+local LOCK_WAIT = 5
+
+local store = nil
+local storeOk = pcall(function()
+	store = DataStoreService:GetDataStore(Config.DataStoreName)
+end)
+
+local loadedCallbacks = {}
+local releasingCallbacks = {}
+
+local function keyFor(userId: number): string
+	return "Player_" .. userId
+end
+
+local function jobId(): string
+	return game.JobId ~= "" and game.JobId or "studio"
+end
+
+function DataService.OnProfileLoaded(callback)
+	table.insert(loadedCallbacks, callback)
+end
+
+-- Wird VOR dem finalen Speichern aufgerufen (z.B. um laufende Diebstähle abzubrechen)
+function DataService.OnProfileReleasing(callback)
+	table.insert(releasingCallbacks, callback)
+end
+
+function DataService.Get(player: Player)
+	local profile = DataService.Profiles[player]
+	if profile and profile.Loaded then
+		return profile.Data
+	end
+	return nil
+end
+
+function DataService.IsLoaded(player: Player): boolean
+	local profile = DataService.Profiles[player]
+	return profile ~= nil and profile.Loaded == true
+end
+
+local function loadData(userId: number): (boolean, any)
+	if not storeOk or not store then
+		return false, "DataStore nicht verfügbar"
+	end
+	for attempt = 1, LOAD_ATTEMPTS do
+		local lockedByOther = false
+		local forceTake = attempt == LOAD_ATTEMPTS
+		local ok, result = pcall(function()
+			return store:UpdateAsync(keyFor(userId), function(old)
+				old = old or {}
+				local lock = old.Lock
+				if lock and lock.JobId ~= jobId() and os.time() - (lock.Time or 0) < LOCK_EXPIRE and not forceTake then
+					lockedByOther = true
+					return nil -- nichts schreiben
+				end
+				old.Lock = { JobId = jobId(), Time = os.time() }
+				return old
+			end)
+		end)
+		if ok and not lockedByOther then
+			local data = (result and result.Data) or Util.DeepCopy(DEFAULT_DATA)
+			Util.Reconcile(data, DEFAULT_DATA)
+			return true, data
+		end
+		if not ok then
+			warn("[DataService] Laden fehlgeschlagen (Versuch " .. attempt .. "): " .. tostring(result))
+		end
+		task.wait(lockedByOther and LOCK_WAIT or (attempt * 1.5))
+	end
+	return false, "Konnte Spielstand nicht laden"
+end
+
+local function saveData(userId: number, data, release: boolean): boolean
+	if not storeOk or not store then
+		return false
+	end
+	for attempt = 1, 4 do
+		local lostLock = false
+		local ok, err = pcall(function()
+			store:UpdateAsync(keyFor(userId), function(old)
+				old = old or {}
+				if old.Lock and old.Lock.JobId ~= jobId() then
+					-- Ein anderer Server hat den Spielstand übernommen -> NICHT überschreiben
+					lostLock = true
+					return nil
+				end
+				return {
+					Data = data,
+					Lock = (not release) and { JobId = jobId(), Time = os.time() } or nil,
+				}
+			end)
+		end)
+		if ok then
+			return not lostLock
+		end
+		warn("[DataService] Speichern fehlgeschlagen (Versuch " .. attempt .. "): " .. tostring(err))
+		task.wait(attempt * 1.5)
+	end
+	return false
+end
+
+function DataService.Save(player: Player): boolean
+	local profile = DataService.Profiles[player]
+	if not profile or not profile.Loaded or profile.NoSave or profile.Releasing then
+		return profile ~= nil and profile.NoSave == true
+	end
+	profile.Data.LastOnline = os.time()
+	return saveData(player.UserId, profile.Data, false)
+end
+
+local function onPlayerAdded(player: Player)
+	local profile = { Loaded = false, Data = nil, NoSave = false }
+	DataService.Profiles[player] = profile
+
+	local ok, data = loadData(player.UserId)
+	if not ok then
+		if RunService:IsStudio() then
+			warn(
+				"[DataService] Studio: Speichern ist AUS. Aktiviere in Game Settings > Security 'Enable Studio Access to API Services'."
+			)
+			data = Util.DeepCopy(DEFAULT_DATA)
+			profile.NoSave = true
+		else
+			DataService.Profiles[player] = nil
+			if player.Parent then
+				player:Kick(
+					"Dein Spielstand konnte nicht geladen werden. Bitte tritt erneut bei. (Roblox-Server ausgelastet)"
+				)
+			end
+			return
+		end
+	end
+
+	if not player.Parent then
+		-- Spieler hat das Spiel während des Ladens verlassen -> Lock freigeben
+		if not profile.NoSave then
+			saveData(player.UserId, data, true)
+		end
+		DataService.Profiles[player] = nil
+		return
+	end
+
+	profile.Data = data
+	profile.Loaded = true
+	for _, callback in ipairs(loadedCallbacks) do
+		task.spawn(callback, player, data)
+	end
+end
+
+local function releaseProfile(player: Player)
+	local profile = DataService.Profiles[player]
+	if not profile then
+		return
+	end
+	if profile.Releasing then
+		-- wird bereits gespeichert (PlayerRemoving + BindToClose gleichzeitig)
+		while DataService.Profiles[player] == profile do
+			task.wait(0.1)
+		end
+		return
+	end
+	profile.Releasing = true
+	if profile.Loaded then
+		for _, callback in ipairs(releasingCallbacks) do
+			local ok, err = pcall(callback, player, profile.Data)
+			if not ok then
+				warn("[DataService] Releasing-Callback Fehler: " .. tostring(err))
+			end
+		end
+		if not profile.NoSave then
+			profile.Data.LastOnline = os.time()
+			saveData(player.UserId, profile.Data, true)
+		end
+	end
+	DataService.Profiles[player] = nil
+end
+
+-- Spielstand komplett zurücksetzen (Admin)
+function DataService.Reset(player: Player)
+	local profile = DataService.Profiles[player]
+	if profile and profile.Loaded then
+		local fresh = Util.DeepCopy(DEFAULT_DATA)
+		fresh.Receipts = profile.Data.Receipts -- Käufe bleiben verbucht
+		for k in pairs(profile.Data) do
+			profile.Data[k] = nil
+		end
+		for k, v in pairs(fresh) do
+			profile.Data[k] = v
+		end
+	end
+end
+
+function DataService.Start()
+	Players.PlayerAdded:Connect(onPlayerAdded)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayerAdded, player)
+	end
+	Players.PlayerRemoving:Connect(releaseProfile)
+
+	-- Auto-Save
+	task.spawn(function()
+		while true do
+			task.wait(Config.AutoSaveInterval)
+			for player in pairs(DataService.Profiles) do
+				if player.Parent then
+					task.spawn(DataService.Save, player)
+					task.wait(0.5) -- verteilen, um Limits zu schonen
+				end
+			end
+		end
+	end)
+
+	-- Server fährt herunter: alles speichern (Roblox gibt max. 30 Sekunden)
+	game:BindToClose(function()
+		local pending = 0
+		for _, player in ipairs(Players:GetPlayers()) do
+			pending += 1
+			task.spawn(function()
+				releaseProfile(player)
+				pending -= 1
+			end)
+		end
+		local start = os.clock()
+		while pending > 0 and os.clock() - start < 25 do
+			task.wait(0.1)
+		end
+	end)
+end
+
+return DataService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="12">
+          <Properties>
+            <string name="Name">EconomyService</string>
+            <string name="Source"><![CDATA[-- Geld & Fortschritt: Einkommen, Aufladen (Level), Einsammeln, Verkaufen,
+-- Speed Farm, Rebirth, Tagesbonus, Index, Leaderstats und Daten an den Client.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local Remotes = require(script.Parent:WaitForChild("Remotes"))
+
+local EconomyService = {}
+local Services
+
+local dirty: { [Player]: boolean } = {}
+local requestLimiter = Util.RateLimiter(8, 1)
+
+-- -------------------------------------------------------------------
+-- NACHRICHTEN
+-- -------------------------------------------------------------------
+function EconomyService.Notify(player: Player?, text: string, kind: string?)
+	if player and player.Parent then
+		Remotes.Notify:FireClient(player, text, kind or "Info")
+	end
+end
+
+function EconomyService.NotifyAll(text: string, kind: string?)
+	Remotes.Notify:FireAllClients(text, kind or "Info")
+end
+
+function EconomyService.Effect(player: Player?, name: string, strength: number?)
+	if player and player.Parent then
+		Remotes.Effect:FireClient(player, name, strength or 1)
+	end
+end
+
+function EconomyService.MarkDirty(player: Player?)
+	if player then
+		dirty[player] = true
+	end
+end
+
+-- -------------------------------------------------------------------
+-- RECHNEN
+-- -------------------------------------------------------------------
+function EconomyService.IndexCount(data): number
+	local count = 0
+	for id in pairs(data.Index) do
+		if Config.MeteorsById[id] then
+			count += 1
+		end
+	end
+	return count
+end
+
+function EconomyService.GetMultiplier(player: Player): number
+	local data = Services.DataService.Get(player)
+	if not data then
+		return 1
+	end
+	local Monetization = Services.MonetizationService
+	local mult = 1 + data.Rebirths * Config.RebirthMultPerLevel
+	if Monetization.HasPass(player, "DoubleCash") then
+		mult *= 2
+	end
+	local bonus = 1 + EconomyService.IndexCount(data) * Config.IndexBonusPerMeteor
+	if Monetization.HasPass(player, "VIP") then
+		bonus += Config.VIPBonus
+	end
+	if player.MembershipType == Enum.MembershipType.Premium then
+		bonus += Config.PremiumBonus
+	end
+	return mult * bonus
+end
+
+function EconomyService.GetIncome(player: Player): number
+	local data = Services.DataService.Get(player)
+	if not data then
+		return 0
+	end
+	local plot = Services.PlotService.GetPlot(player)
+	local base = 0
+	for key, entry in pairs(data.Meteors) do
+		local slot = tonumber(key)
+		if not (plot and slot and Services.CarryService.IsSlotBeingStolen(plot, slot)) then
+			base += Config.MeteorIncome(entry)
+		end
+	end
+	return base * EconomyService.GetMultiplier(player)
+end
+
+function EconomyService.GetSpeed(player: Player): number
+	local data = Services.DataService.Get(player)
+	local speed = Config.NormalWalkSpeed
+	if data then
+		speed += data.SpeedLevel * Config.SpeedPerLevel
+	end
+	if Services.MonetizationService.HasPass(player, "SpeedBoots") then
+		speed += Config.SpeedBootsBonus
+	end
+	return speed
+end
+
+function EconomyService.ApplySpeed(player: Player)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local speed = EconomyService.GetSpeed(player)
+	if Services.CarryService.IsCarrying(player) then
+		speed = math.max(8, speed * Config.CarrySpeedFactor)
+	end
+	humanoid.WalkSpeed = speed
+end
+
+-- -------------------------------------------------------------------
+-- GELD
+-- -------------------------------------------------------------------
+function EconomyService.AddCash(player: Player, amount: number)
+	local data = Services.DataService.Get(player)
+	if not data or amount ~= amount then
+		return
+	end
+	data.Cash = math.max(0, data.Cash + amount)
+	if amount > 0 then
+		data.TotalEarned += amount
+	end
+	dirty[player] = true
+end
+
+function EconomyService.Collect(player: Player)
+	local data = Services.DataService.Get(player)
+	if not data or data.Pending < 1 then
+		return
+	end
+	local amount = math.floor(data.Pending)
+	data.Pending -= amount
+	EconomyService.AddCash(player, amount)
+	EconomyService.Effect(player, "Collect", amount)
+	local plot = Services.PlotService.GetPlot(player)
+	if plot then
+		plot.CollectLabel.Text = "💰 " .. Util.FormatCash(data.Pending)
+	end
+end
+
+function EconomyService.Discover(player: Player, meteorId: string)
+	local data = Services.DataService.Get(player)
+	if data and Config.MeteorsById[meteorId] and not data.Index[meteorId] then
+		data.Index[meteorId] = true
+		local def = Config.MeteorsById[meteorId]
+		EconomyService.Notify(
+			player,
+			"📖 NEU im Index: "
+				.. def.Name
+				.. "! (+"
+				.. math.floor(Config.IndexBonusPerMeteor * 100)
+				.. "% Einkommen)",
+			"Success"
+		)
+		dirty[player] = true
+	end
+end
+
+-- Meteor direkt in die Base legen (Admin, Produkte). Gibt true zurück, wenn Platz war.
+function EconomyService.GiveMeteor(player: Player, entry): boolean
+	local data = Services.DataService.Get(player)
+	local plot = Services.PlotService.GetPlot(player)
+	local slot = Services.PlotService.FreeSlot(player)
+	if not data or not plot or not slot or not Config.MeteorsById[entry.Id] then
+		return false
+	end
+	data.Meteors[tostring(slot)] = {
+		Id = entry.Id,
+		Mut = Config.MutationsByName[entry.Mut] and entry.Mut or "Normal",
+		Lv = math.clamp(math.floor(entry.Lv or 1), 1, Config.MaxLevel),
+		Xp = 0,
+	}
+	EconomyService.Discover(player, entry.Id)
+	Services.PlotService.RenderSlot(plot, slot)
+	dirty[player] = true
+	return true
+end
+
+function EconomyService.Sell(player: Player, plot, slot: number)
+	if plot.Owner ~= player then
+		return
+	end
+	local data = Services.DataService.Get(player)
+	local key = tostring(slot)
+	local entry = data and data.Meteors[key]
+	if not entry or Services.CarryService.IsSlotBeingStolen(plot, slot) then
+		return
+	end
+	local value = math.floor(Config.MeteorValue(entry) * Config.SellRatio)
+	data.Meteors[key] = nil
+	EconomyService.AddCash(player, value)
+	Services.PlotService.RenderSlot(plot, slot)
+	EconomyService.Notify(player, "Verkauft für " .. Util.FormatCash(value), "Success")
+end
+
+-- -------------------------------------------------------------------
+-- SPEED FARM / REBIRTH / DAILY
+-- -------------------------------------------------------------------
+function EconomyService.BuySpeed(player: Player, amount: number): (boolean, string)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return false, "Lädt noch..."
+	end
+	amount = math.clamp(math.floor(amount), 1, Config.MaxSpeedLevel)
+	local bought = 0
+	while bought < amount and data.SpeedLevel < Config.MaxSpeedLevel do
+		local cost = Config.SpeedCost(data.SpeedLevel)
+		if data.Cash < cost then
+			break
+		end
+		data.Cash -= cost
+		data.SpeedLevel += 1
+		bought += 1
+	end
+	dirty[player] = true
+	if bought == 0 then
+		if data.SpeedLevel >= Config.MaxSpeedLevel then
+			return false, "Maximales Speed-Level erreicht!"
+		end
+		return false, "Nicht genug Cash! (" .. Util.FormatCash(Config.SpeedCost(data.SpeedLevel)) .. ")"
+	end
+	EconomyService.ApplySpeed(player)
+	return true, "🏃 +" .. bought .. " Speed! (Level " .. data.SpeedLevel .. ")"
+end
+
+function EconomyService.Rebirth(player: Player): (boolean, string)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return false, "Lädt noch..."
+	end
+	if Services.CarryService.IsCarrying(player) then
+		return false, "Bring erst deinen Meteor nach Hause!"
+	end
+	local cost = Config.RebirthCost(data.Rebirths)
+	if data.Cash < cost then
+		return false, "Du brauchst " .. Util.FormatCash(cost) .. " für den Rebirth!"
+	end
+	local plot = Services.PlotService.GetPlot(player)
+	if plot then
+		Services.CarryService.CancelStealsFromPlot(plot, "cancelled")
+	end
+	data.Rebirths += 1
+	data.Cash = Config.StartCash
+	data.Pending = 0
+	data.Meteors = {}
+	if plot then
+		Services.PlotService.RenderAll(plot)
+	end
+	dirty[player] = true
+	EconomyService.NotifyAll("🔥 " .. player.DisplayName .. " hat Rebirth " .. data.Rebirths .. " erreicht!", "Event")
+	EconomyService.Effect(player, "Confetti", 2)
+	return true, "Rebirth! Jetzt " .. Util.FormatNumber(EconomyService.GetMultiplier(player) * 100) .. "% Einkommen"
+end
+
+local DAY = 24 * 3600
+
+function EconomyService.DailyStatus(data): (boolean, number)
+	local elapsed = os.time() - data.Daily.Last
+	return elapsed >= DAY, math.max(0, DAY - elapsed)
+end
+
+function EconomyService.ClaimDaily(player: Player): (boolean, string)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return false, "Lädt noch..."
+	end
+	local ready, remaining = EconomyService.DailyStatus(data)
+	if not ready then
+		return false, "Nächster Bonus in " .. Util.FormatTime(remaining)
+	end
+	local elapsed = os.time() - data.Daily.Last
+	if data.Daily.Last > 0 and elapsed < DAY * 2 then
+		data.Daily.Streak += 1
+	else
+		data.Daily.Streak = 1
+	end
+	data.Daily.Last = os.time()
+	local reward = math.max(
+		Config.DailyRewardMinCash,
+		EconomyService.GetIncome(player) * Config.DailyRewardIncomeSeconds
+	) * math.min(data.Daily.Streak, 7)
+	reward = math.floor(reward)
+	EconomyService.AddCash(player, reward)
+	EconomyService.Effect(player, "Confetti", 1)
+	return true, "🎁 Tag " .. data.Daily.Streak .. ": +" .. Util.FormatCash(reward)
+end
+
+-- -------------------------------------------------------------------
+-- DATEN AN DEN CLIENT
+-- -------------------------------------------------------------------
+local function buildState(player: Player)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return nil
+	end
+	local plot = Services.PlotService.GetPlot(player)
+	local dailyReady, dailyIn = EconomyService.DailyStatus(data)
+	local passes = {}
+	for _, pass in ipairs(Config.GamePasses) do
+		passes[pass.Key] = Services.MonetizationService.HasPass(player, pass.Key)
+	end
+	local index = {}
+	for id in pairs(data.Index) do
+		table.insert(index, id)
+	end
+	return {
+		Cash = data.Cash,
+		Pending = data.Pending,
+		Income = EconomyService.GetIncome(player),
+		Multiplier = EconomyService.GetMultiplier(player),
+		Rebirths = data.Rebirths,
+		RebirthCost = Config.RebirthCost(data.Rebirths),
+		SpeedLevel = data.SpeedLevel,
+		Speed = EconomyService.GetSpeed(player),
+		Slots = Services.PlotService.SlotCount(player),
+		UsedSlots = Services.PlotService.UsedSlots(player),
+		DailyReady = dailyReady,
+		DailyIn = dailyIn,
+		Streak = data.Daily.Streak,
+		Index = index,
+		Passes = passes,
+		Carrying = Services.CarryService.IsCarrying(player),
+		HasPlot = plot ~= nil,
+		Stats = data.Stats,
+		TotalEarned = data.TotalEarned,
+	}
+end
+
+local function updateLeaderstats(player: Player)
+	local data = Services.DataService.Get(player)
+	local stats = player:FindFirstChild("leaderstats")
+	if not data or not stats then
+		return
+	end
+	local cash = stats:FindFirstChild("Cash") :: StringValue?
+	local rebirths = stats:FindFirstChild("Rebirths") :: IntValue?
+	if cash then
+		cash.Value = Util.FormatCash(data.Cash)
+	end
+	if rebirths then
+		rebirths.Value = data.Rebirths
+	end
+end
+
+local function flush(player: Player)
+	local state = buildState(player)
+	if state then
+		Remotes.State:FireClient(player, state)
+		updateLeaderstats(player)
+	end
+end
+
+local function onProfileLoaded(player: Player, data)
+	-- Leaderboard in der Spielerliste
+	local stats = Instance.new("Folder")
+	stats.Name = "leaderstats"
+	local cash = Instance.new("StringValue")
+	cash.Name = "Cash"
+	cash.Parent = stats
+	local rebirths = Instance.new("IntValue")
+	rebirths.Name = "Rebirths"
+	rebirths.Parent = stats
+	stats.Parent = player
+
+	-- alte Spielstände reparieren (gelöschte Meteor-Typen entfernen, Slots kappen)
+	for key, entry in pairs(data.Meteors) do
+		local slot = tonumber(key)
+		if not slot or not Config.MeteorsById[entry.Id] or slot < 1 or slot > 15 then
+			data.Meteors[key] = nil
+		else
+			entry.Lv = math.clamp(math.floor(entry.Lv or 1), 1, Config.MaxLevel)
+			entry.Xp = entry.Xp or 0
+			entry.Mut = Config.MutationsByName[entry.Mut] and entry.Mut or "Normal"
+			data.Index[entry.Id] = true
+		end
+	end
+
+	-- Warten bis die Gamepasses geprüft sind (für Slots / Multiplikator)
+	Services.MonetizationService.LoadPasses(player)
+
+	-- Offline-Einkommen
+	if data.LastOnline > 0 then
+		local offline = math.clamp(os.time() - data.LastOnline, 0, Config.OfflineMaxSeconds)
+		local earned = math.floor(EconomyService.GetIncome(player) * offline * Config.OfflineIncomeRate)
+		if earned > 0 then
+			data.Pending += earned
+			task.delay(3, function()
+				EconomyService.Notify(
+					player,
+					"🌙 Offline verdient: " .. Util.FormatCash(earned) .. " – hol es am Collect-Pad!",
+					"Success"
+				)
+			end)
+		end
+	end
+	data.LastOnline = os.time()
+
+	local plot = Services.PlotService.GetPlot(player)
+	if plot then
+		Services.PlotService.RenderAll(plot)
+	end
+	EconomyService.ApplySpeed(player)
+	flush(player)
+
+	local dailyReady = EconomyService.DailyStatus(data)
+	if dailyReady then
+		task.delay(5, function()
+			EconomyService.Notify(player, "🎁 Dein Tagesbonus wartet! Klick auf 'Daily'.", "Info")
+		end)
+	end
+end
+
+function EconomyService.Init(services)
+	Services = services
+end
+
+function EconomyService.Start()
+	Services.DataService.OnProfileLoaded(onProfileLoaded)
+
+	Remotes.Request.OnServerInvoke = function(player: Player, action: any, arg: any)
+		if not requestLimiter.Check(player) then
+			return { Ok = false, Message = "Langsam!" }
+		end
+		if type(action) ~= "string" then
+			return { Ok = false }
+		end
+		local ok, message = false, "Unbekannt"
+		if action == "Rebirth" then
+			ok, message = EconomyService.Rebirth(player)
+		elseif action == "BuySpeed" then
+			local amount = type(arg) == "number" and arg or 1
+			ok, message = EconomyService.BuySpeed(player, amount)
+		elseif action == "Daily" then
+			ok, message = EconomyService.ClaimDaily(player)
+		elseif action == "Collect" then
+			EconomyService.Collect(player)
+			ok, message = true, ""
+		elseif action == "Home" then
+			Services.PlotService.TeleportHome(player)
+			ok, message = true, ""
+		end
+		dirty[player] = true
+		return { Ok = ok, Message = message }
+	end
+
+	Players.PlayerRemoving:Connect(function(player)
+		dirty[player] = nil
+		requestLimiter.Clear(player)
+	end)
+
+	-- Einkommen + Aufladen jede Sekunde
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			for _, player in ipairs(Players:GetPlayers()) do
+				local data = Services.DataService.Get(player)
+				local plot = Services.PlotService.GetPlot(player)
+				if data and plot then
+					local chargeSpeed = Services.MonetizationService.HasPass(player, "FastCharge") and 2 or 1
+					for key, entry in pairs(data.Meteors) do
+						local slot = tonumber(key)
+						if
+							slot
+							and entry.Lv < Config.MaxLevel
+							and not Services.CarryService.IsSlotBeingStolen(plot, slot)
+						then
+							entry.Xp += chargeSpeed
+							if entry.Xp >= Config.ChargeTime(entry.Lv) then
+								entry.Xp = 0
+								entry.Lv += 1
+								Services.PlotService.RefreshSlot(plot, slot)
+							end
+						end
+					end
+					data.Pending += EconomyService.GetIncome(player)
+					if Services.MonetizationService.HasPass(player, "AutoCollect") then
+						local amount = math.floor(data.Pending)
+						data.Pending -= amount
+						EconomyService.AddCash(player, amount)
+					end
+					plot.CollectLabel.Text = "💰 " .. Util.FormatCash(data.Pending)
+					dirty[player] = true
+				end
+			end
+		end
+	end)
+
+	-- Gesammelte Änderungen max. 5x pro Sekunde an die Clients schicken
+	task.spawn(function()
+		while true do
+			task.wait(0.2)
+			for player in pairs(dirty) do
+				dirty[player] = nil
+				if player.Parent then
+					flush(player)
+				end
+			end
+		end
+	end)
+end
+
+return EconomyService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="13">
+          <Properties>
+            <string name="Name">LeaderboardService</string>
+            <string name="Source"><![CDATA[-- Globale Bestenliste (alle Server): Top 10 "Meistes Geld verdient" in der Lobby.
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+
+local LeaderboardService = {}
+local Services
+
+local UPDATE_INTERVAL = 300 -- alle 5 Minuten (schont DataStore-Limits)
+local MAX_VALUE = 9e18
+
+local store: OrderedDataStore? = nil
+local rowsFrame: Frame
+
+local function buildBoard()
+	local board = Instance.new("Part")
+	board.Name = "Leaderboard"
+	board.Anchored = true
+	board.Size = Vector3.new(36, 24, 1)
+	board.Position = Vector3.new(0, 13, -190)
+	board.Color = Color3.fromRGB(25, 20, 35)
+	board.Material = Enum.Material.SmoothPlastic
+	board.Parent = Services.PlotService.MapFolder
+
+	local gui = Instance.new("SurfaceGui")
+	gui.Face = Enum.NormalId.Back -- zeigt zur Map-Mitte
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 25
+	gui.LightInfluence = 0
+	gui.Parent = board
+
+	local title = Instance.new("TextLabel")
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, 0, 0.14, 0)
+	title.Font = Enum.Font.FredokaOne
+	title.TextScaled = true
+	title.TextColor3 = Color3.fromRGB(255, 190, 60)
+	title.Text = "🏆 TOP 10 – MEISTES GELD 🏆"
+	title.Parent = gui
+
+	rowsFrame = Instance.new("Frame")
+	rowsFrame.BackgroundTransparency = 1
+	rowsFrame.Position = UDim2.new(0.05, 0, 0.16, 0)
+	rowsFrame.Size = UDim2.new(0.9, 0, 0.82, 0)
+	rowsFrame.Parent = gui
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = rowsFrame
+end
+
+local function setRows(rows: { { Name: string, Value: number } })
+	for _, child in ipairs(rowsFrame:GetChildren()) do
+		if child:IsA("TextLabel") then
+			child:Destroy()
+		end
+	end
+	if #rows == 0 then
+		rows = { { Name = "Noch keine Einträge – sei der Erste!", Value = -1 } }
+	end
+	for i, row in ipairs(rows) do
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.new(1, 0, 0.1, 0)
+		label.LayoutOrder = i
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextColor3 = i == 1 and Color3.fromRGB(255, 215, 0)
+			or i == 2 and Color3.fromRGB(220, 220, 230)
+			or i == 3 and Color3.fromRGB(230, 150, 90)
+			or Color3.new(1, 1, 1)
+		label.Text = row.Value >= 0 and (("#%d  %s  –  %s"):format(i, row.Name, Util.FormatCash(row.Value)))
+			or row.Name
+		label.Parent = rowsFrame
+	end
+end
+
+local function savePlayer(player: Player)
+	local data = Services.DataService.Get(player)
+	if not store or not data then
+		return
+	end
+	local value = math.floor(math.clamp(data.TotalEarned, 0, MAX_VALUE))
+	pcall(function()
+		(store :: OrderedDataStore):SetAsync(tostring(player.UserId), value)
+	end)
+end
+
+local nameCache: { [number]: string } = {}
+local function nameFor(userId: number): string
+	if nameCache[userId] then
+		return nameCache[userId]
+	end
+	local ok, name = pcall(Players.GetNameFromUserIdAsync, Players, userId)
+	nameCache[userId] = ok and name or ("User " .. userId)
+	return nameCache[userId]
+end
+
+local function refresh()
+	if not store then
+		return
+	end
+	local ok, pages = pcall(function()
+		return (store :: OrderedDataStore):GetSortedAsync(false, 10)
+	end)
+	if not ok then
+		return
+	end
+	local rows = {}
+	for _, item in ipairs(pages:GetCurrentPage()) do
+		local userId = tonumber(item.key)
+		if userId then
+			table.insert(rows, { Name = nameFor(userId), Value = item.value })
+		end
+	end
+	setRows(rows)
+end
+
+function LeaderboardService.Init(services)
+	Services = services
+	pcall(function()
+		store = DataStoreService:GetOrderedDataStore(Config.LeaderboardStoreName)
+	end)
+	buildBoard()
+	setRows({})
+end
+
+function LeaderboardService.Start()
+	Services.DataService.OnProfileReleasing(function(player)
+		task.spawn(savePlayer, player)
+	end)
+	task.spawn(function()
+		task.wait(10)
+		while true do
+			for _, player in ipairs(Players:GetPlayers()) do
+				savePlayer(player)
+				task.wait(0.5)
+			end
+			refresh()
+			task.wait(UPDATE_INTERVAL)
+		end
+	end)
+end
+
+return LeaderboardService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="14">
+          <Properties>
+            <string name="Name">MeteorFactory</string>
+            <string name="Source"><![CDATA[-- Baut das Aussehen eines Meteors: Größe nach Seltenheit, Licht/Feuer/Funken für seltene,
+-- Material/Farbe nach Mutation, Namensschild darüber.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+
+local MeteorFactory = {}
+
+function MeteorFactory.GetSize(entry): number
+	local def = Config.MeteorsById[entry.Id]
+	local rarity = def and Config.RaritiesByName[def.Rarity] or Config.Rarities[1]
+	return rarity.Size * (1 + 0.025 * ((entry.Lv or 1) - 1))
+end
+
+local function makeLabel(parent: Instance, name: string, order: number, textSize: number): TextLabel
+	local label = Instance.new("TextLabel")
+	label.Name = name
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.new(1, 0, 0, textSize + 4)
+	label.LayoutOrder = order
+	label.Font = Enum.Font.FredokaOne
+	label.TextSize = textSize
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Text = ""
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Parent = label
+	label.Parent = parent
+	return label
+end
+
+-- mode: "Ground" (zeigt Preis) oder "Base" (zeigt Einkommen + Level)
+function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: number?)
+	local gui = part:FindFirstChild("Info")
+	if not gui then
+		return
+	end
+	local frame = gui:FindFirstChild("Frame")
+	local def = Config.MeteorsById[entry.Id]
+	if not frame or not def then
+		return
+	end
+	local rarity = Config.RaritiesByName[def.Rarity]
+	local mut = Config.MutationsByName[entry.Mut] or Config.Mutations[1]
+
+	frame.NameLabel.Text = def.Name
+	frame.NameLabel.TextColor3 = rarity.Color
+	local tag = def.Rarity
+	if mut.Name ~= "Normal" then
+		tag = mut.Name .. " • " .. tag
+	end
+	frame.RarityLabel.Text = tag
+	frame.RarityLabel.TextColor3 = mut.Color or rarity.Color
+	if mode == "Ground" then
+		if price and price <= 0 then
+			frame.ValueLabel.Text = "GRATIS!"
+			frame.ValueLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+		else
+			frame.ValueLabel.Text = Util.FormatCash(price or Config.MeteorValue(entry))
+			frame.ValueLabel.TextColor3 = Color3.fromRGB(255, 230, 90)
+		end
+	else
+		local lv = entry.Lv or 1
+		local lvText = lv >= Config.MaxLevel and "MAX" or tostring(lv)
+		frame.ValueLabel.Text = Util.FormatCash(Config.MeteorIncome(entry)) .. "/s  ⚡Lv " .. lvText
+		frame.ValueLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+	end
+end
+
+function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
+	local def = Config.MeteorsById[entry.Id]
+	assert(def, "Unbekannter Meteor: " .. tostring(entry.Id))
+	local rarity = Config.RaritiesByName[def.Rarity]
+	local rarityIndex = Config.RarityIndex[def.Rarity]
+	local mut = Config.MutationsByName[entry.Mut] or Config.Mutations[1]
+	local size = MeteorFactory.GetSize(entry)
+
+	local part = Instance.new("Part")
+	part.Name = "Meteor"
+	part.Shape = Enum.PartType.Ball
+	part.Size = Vector3.new(size, size, size)
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanTouch = false
+	part.CastShadow = true
+	part.Material = Enum.Material.Slate
+	part.Color = def.Color
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+
+	if mut.Name == "Gold" then
+		part.Material = Enum.Material.Foil
+		part.Color = mut.Color
+	elseif mut.Name == "Diamond" then
+		part.Material = Enum.Material.Glass
+		part.Transparency = 0.15
+		part.Color = mut.Color
+	elseif mut.Name == "Cosmic" then
+		part.Material = Enum.Material.Neon
+		part.Color = mut.Color
+	end
+
+	part:SetAttribute("MeteorId", entry.Id)
+	part:SetAttribute("Mutation", mut.Name)
+
+	-- Leuchten ab Rare, Feuer ab Legendary, Funken ab Mythic
+	if rarityIndex >= 3 then
+		local light = Instance.new("PointLight")
+		light.Color = rarity.Color
+		light.Range = 6 + rarityIndex * 2
+		light.Brightness = 1 + rarityIndex * 0.3
+		light.Parent = part
+	end
+	if rarityIndex >= 5 then
+		local fire = Instance.new("Fire")
+		fire.Color = rarity.Color
+		fire.SecondaryColor = def.Color
+		fire.Size = size * 0.9
+		fire.Heat = 4
+		fire.Parent = part
+	end
+	if rarityIndex >= 6 or mut.Name == "Cosmic" then
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = mut.Color or rarity.Color
+		sparkles.Parent = part
+	end
+
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Info"
+	gui.Size = UDim2.new(0, 220, 0, 70)
+	gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
+	gui.MaxDistance = 70 + rarityIndex * 15
+	gui.LightInfluence = 0
+	gui.Parent = part
+
+	local frame = Instance.new("Frame")
+	frame.Name = "Frame"
+	frame.BackgroundTransparency = 1
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Parent = gui
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	layout.Parent = frame
+
+	makeLabel(frame, "NameLabel", 1, 20)
+	makeLabel(frame, "RarityLabel", 2, 15)
+	makeLabel(frame, "ValueLabel", 3, 17)
+
+	MeteorFactory.UpdateLabel(part, entry, mode, price)
+	return part
+end
+
+-- Passt Größe + Schild nach einem Level-Up an
+function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
+	local size = MeteorFactory.GetSize(entry)
+	local bottom = part.Position.Y - part.Size.Y / 2
+	part.Size = Vector3.new(size, size, size)
+	part.Position = Vector3.new(part.Position.X, bottom + size / 2, part.Position.Z)
+	local gui = part:FindFirstChild("Info")
+	if gui then
+		gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
+	end
+	local fire = part:FindFirstChildOfClass("Fire")
+	if fire then
+		fire.Size = size * 0.9
+	end
+	MeteorFactory.UpdateLabel(part, entry, mode)
+end
+
+function MeteorFactory.AddPrompt(
+	part: BasePart,
+	name: string,
+	action: string,
+	objectText: string,
+	hold: number,
+	key: Enum.KeyCode?
+)
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = name
+	prompt.ActionText = action
+	prompt.ObjectText = objectText
+	prompt.HoldDuration = hold
+	prompt.MaxActivationDistance = math.max(10, part.Size.X / 2 + 7)
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = key or Enum.KeyCode.E
+	prompt.Parent = part
+	return prompt
+end
+
+return MeteorFactory
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="15">
+          <Properties>
+            <string name="Name">MeteorService</string>
+            <string name="Source"><![CDATA[-- Meteor-Regen im Krater: Einschläge, Kaufen/Schnappen, fallengelassene Gratis-Meteore,
+-- Meteoritenschauer-Event und Server-Glück.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
+
+local MeteorService = {}
+local Services
+
+local rng = Random.new()
+local groundMeteors = {} -- Liste von Records
+local folder: Folder
+
+local serverLuckMult = 1
+local serverLuckUntil = 0
+local showerUntil = 0
+local nextShowerAt = 0
+
+-- -------------------------------------------------------------------
+-- GLÜCK & EVENTS
+-- -------------------------------------------------------------------
+local function now(): number
+	return workspace:GetServerTimeNow()
+end
+
+local function publishAttributes()
+	ReplicatedStorage:SetAttribute("LuckMult", serverLuckMult)
+	ReplicatedStorage:SetAttribute("LuckUntil", serverLuckUntil)
+	ReplicatedStorage:SetAttribute("ShowerUntil", showerUntil)
+	ReplicatedStorage:SetAttribute("NextShowerAt", nextShowerAt)
+end
+
+function MeteorService.IsShowerActive(): boolean
+	return showerUntil > now()
+end
+
+function MeteorService.GetLuck(): number
+	local luck = 1
+	if serverLuckUntil > now() then
+		luck *= serverLuckMult
+	end
+	if MeteorService.IsShowerActive() then
+		luck *= Config.ShowerLuck
+	end
+	return luck
+end
+
+-- Verlängert laufendes Glück, statt es zu überschreiben
+function MeteorService.AddServerLuck(mult: number, seconds: number)
+	local t = now()
+	if serverLuckUntil > t and mult <= serverLuckMult then
+		serverLuckUntil += seconds
+	else
+		serverLuckMult = mult
+		serverLuckUntil = math.max(serverLuckUntil, t) + seconds
+	end
+	publishAttributes()
+end
+
+function MeteorService.SetServerLuck(mult: number, untilTime: number)
+	serverLuckMult = mult
+	serverLuckUntil = untilTime
+	publishAttributes()
+end
+
+function MeteorService.StartShower(duration: number?)
+	local t = now()
+	showerUntil = math.max(showerUntil, t) + (duration or Config.ShowerDuration)
+	nextShowerAt = showerUntil + Config.ShowerInterval
+	publishAttributes()
+	-- Im Schauer gibt es keine Locks!
+	for _, plot in ipairs(Services.PlotService.Plots) do
+		Services.PlotService.SetLocked(plot, 0)
+	end
+	Services.EconomyService.NotifyAll(
+		"🌠 METEORITENSCHAUER! Keine Locks, " .. Config.ShowerLuck .. "x Glück!",
+		"Event"
+	)
+end
+
+-- -------------------------------------------------------------------
+-- ZUFALL
+-- -------------------------------------------------------------------
+function MeteorService.RollRarity(luck: number)
+	return Util.WeightedPick(Config.Rarities, function(rarity)
+		local index = Config.RarityIndex[rarity.Name]
+		if #Config.MeteorsByRarity[rarity.Name] == 0 then
+			return 0
+		end
+		return index >= 3 and rarity.Weight * luck or rarity.Weight
+	end, rng)
+end
+
+function MeteorService.RollMutation(luck: number): string
+	local mut = Util.WeightedPick(Config.Mutations, function(m)
+		return m.Name == "Normal" and m.Weight or m.Weight * luck
+	end, rng)
+	return mut.Name
+end
+
+function MeteorService.RandomOfRarity(rarityName: string)
+	local list = Config.MeteorsByRarity[rarityName]
+	if not list or #list == 0 then
+		return nil
+	end
+	return list[rng:NextInteger(1, #list)]
+end
+
+function MeteorService.RollEntry(luck: number?)
+	luck = luck or MeteorService.GetLuck()
+	local rarity = MeteorService.RollRarity(luck :: number)
+	local def = MeteorService.RandomOfRarity(rarity.Name) or Config.Meteors[1]
+	return { Id = def.Id, Mut = MeteorService.RollMutation(luck :: number), Lv = 1, Xp = 0 }
+end
+
+-- -------------------------------------------------------------------
+-- METEORE AM BODEN
+-- -------------------------------------------------------------------
+local function removeRecord(record)
+	local index = table.find(groundMeteors, record)
+	if index then
+		table.remove(groundMeteors, index)
+	end
+	if record.Part then
+		record.Part:Destroy()
+		record.Part = nil
+	end
+end
+
+local function randomLandingSpot(): Vector3
+	local center = Services.PlotService.CraterCenter
+	local radius = Services.PlotService.CraterRadius - 7
+	local best = center
+	for _ = 1, 10 do
+		local angle = rng:NextNumber() * math.pi * 2
+		local dist = math.sqrt(rng:NextNumber()) * radius
+		local pos = center + Vector3.new(math.cos(angle) * dist, 0, math.sin(angle) * dist)
+		local free = true
+		for _, record in ipairs(groundMeteors) do
+			if record.Part and (record.Part.Position - pos).Magnitude < 7 then
+				free = false
+				break
+			end
+		end
+		best = pos
+		if free then
+			break
+		end
+	end
+	return best
+end
+
+local function tryClaim(player: Player, record)
+	if record.Claimed or not record.Landed then
+		return
+	end
+	local data = Services.DataService.Get(player)
+	if not data then
+		return
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or not record.Part then
+		return
+	end
+	if (root.Position - record.Part.Position).Magnitude > record.Part.Size.X / 2 + 14 then
+		return -- zu weit weg (Schutz gegen Exploits)
+	end
+	if not Services.PlotService.GetPlot(player) then
+		Services.EconomyService.Notify(player, "Du hast keine Base auf diesem Server.", "Error")
+		return
+	end
+	if Services.CarryService.IsCarrying(player) then
+		Services.EconomyService.Notify(player, "Du trägst schon einen Meteor!", "Error")
+		return
+	end
+	if not Services.PlotService.FreeSlot(player) then
+		Services.EconomyService.Notify(player, "Deine Base ist voll! Verkaufe einen Meteor (F).", "Error")
+		return
+	end
+	local def = Config.MeteorsById[record.Entry.Id]
+	if record.Price > 0 then
+		local rarity = Config.RaritiesByName[def.Rarity]
+		local required = rarity.RequiredRebirths or 0
+		if data.Rebirths < required then
+			Services.EconomyService.Notify(
+				player,
+				def.Rarity .. " braucht " .. required .. " Rebirth(s) zum Kaufen – aber klauen geht! 😈",
+				"Error"
+			)
+			return
+		end
+		if data.Cash < record.Price then
+			Services.EconomyService.Notify(
+				player,
+				"Nicht genug Cash! Du brauchst " .. Util.FormatCash(record.Price),
+				"Error"
+			)
+			return
+		end
+		data.Cash -= record.Price
+		data.Stats.Bought += 1
+	end
+	record.Claimed = true
+	local entry = record.Entry
+	removeRecord(record)
+	Services.EconomyService.MarkDirty(player)
+	Services.CarryService.StartCarry(player, entry, { Source = "Ground" })
+end
+
+local function attachClaimPrompt(record)
+	local def = Config.MeteorsById[record.Entry.Id]
+	local action = record.Price > 0 and ("Kaufen " .. Util.FormatCash(record.Price)) or "Schnappen (GRATIS)"
+	local prompt = MeteorFactory.AddPrompt(record.Part, "BuyPrompt", action, def.Name, Config.GrabHoldDuration)
+	prompt.Enabled = record.Landed
+	prompt.Triggered:Connect(function(player)
+		tryClaim(player, record)
+	end)
+	return prompt
+end
+
+local function impactEffect(position: Vector3, size: number)
+	local explosion = Instance.new("Explosion")
+	explosion.Position = position
+	explosion.BlastRadius = 0
+	explosion.BlastPressure = 0
+	explosion.DestroyJointRadiusPercent = 0
+	explosion.ExplosionType = Enum.ExplosionType.NoCraters
+	explosion.Visible = true
+	explosion.Parent = workspace
+	if size >= 4 then
+		for _, player in ipairs(Players:GetPlayers()) do
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and (root.Position - position).Magnitude < 80 then
+				Services.EconomyService.Effect(player, "Shake", size / 8)
+			end
+		end
+	end
+end
+
+-- opts: { Id?, Mut?, Rarity?, Position?, Free?, Instant?, Announce? }
+function MeteorService.SpawnMeteor(opts)
+	opts = opts or {}
+	local entry
+	if opts.Id and Config.MeteorsById[opts.Id] then
+		entry = { Id = opts.Id, Mut = opts.Mut or MeteorService.RollMutation(MeteorService.GetLuck()), Lv = 1, Xp = 0 }
+	elseif opts.Rarity and Config.RaritiesByName[opts.Rarity] then
+		local def = MeteorService.RandomOfRarity(opts.Rarity)
+		if not def then
+			return nil
+		end
+		entry = { Id = def.Id, Mut = opts.Mut or MeteorService.RollMutation(MeteorService.GetLuck()), Lv = 1, Xp = 0 }
+	else
+		entry = MeteorService.RollEntry()
+	end
+	if not Config.MutationsByName[entry.Mut] then
+		entry.Mut = "Normal"
+	end
+
+	-- Platz schaffen: ältesten entfernen, wenn zu viele daliegen
+	while #groundMeteors >= Config.MaxGroundMeteors + 10 do
+		removeRecord(groundMeteors[1])
+	end
+
+	local price = opts.Free and 0 or math.floor(Config.MeteorValue(entry))
+	local part = MeteorFactory.Create(entry, "Ground", price)
+	local size = part.Size.Y
+	local landing = opts.Position or randomLandingSpot()
+	local landCF = CFrame.new(landing.X, 0.4 + size / 2, landing.Z)
+
+	local record = {
+		Entry = entry,
+		Part = part,
+		Price = price,
+		Landed = false,
+		Claimed = false,
+		Expires = os.clock() + (opts.Free and Config.DroppedLifetime or Config.GroundLifetime),
+	}
+	table.insert(groundMeteors, record)
+	attachClaimPrompt(record)
+
+	local def = Config.MeteorsById[entry.Id]
+	local rarityIndex = Config.RarityIndex[def.Rarity]
+	if opts.Announce ~= false and rarityIndex >= 5 then
+		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
+		Services.EconomyService.NotifyAll(
+			"☄️ Ein " .. def.Rarity .. " " .. mut .. def.Name .. " schlägt ein!",
+			"Event"
+		)
+	end
+
+	if opts.Instant then
+		part.CFrame = landCF
+		part.Parent = folder
+		record.Landed = true
+		local prompt = part:FindFirstChild("BuyPrompt") :: ProximityPrompt?
+		if prompt then
+			prompt.Enabled = true
+		end
+		return record
+	end
+
+	-- Fall-Animation: schräg vom Himmel mit Feuerschweif
+	local trail = Instance.new("Fire")
+	trail.Name = "FallFire"
+	trail.Size = size * 1.5
+	trail.Heat = 20
+	trail.Color = Color3.fromRGB(255, 140, 40)
+	trail.SecondaryColor = Color3.fromRGB(255, 60, 20)
+	trail.Parent = part
+	part.CFrame = landCF + Vector3.new(rng:NextNumber(-60, 60), 260, rng:NextNumber(-60, 60))
+	part.Parent = folder
+	local tween = TweenService:Create(
+		part,
+		TweenInfo.new(1.4 + size * 0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+		{ CFrame = landCF }
+	)
+	tween:Play()
+	tween.Completed:Connect(function()
+		if record.Part ~= part then
+			return
+		end
+		trail:Destroy()
+		record.Landed = true
+		local prompt = part:FindFirstChild("BuyPrompt") :: ProximityPrompt?
+		if prompt then
+			prompt.Enabled = true
+		end
+		impactEffect(landCF.Position, size)
+	end)
+	return record
+end
+
+-- Ein Spieler lässt einen gekauften Meteor fallen (gebonkt/gestorben) -> gratis für alle!
+function MeteorService.DropMeteor(entry, position: Vector3)
+	local map = Services.PlotService
+	local pos = Vector3.new(position.X, 0, position.Z)
+	if pos.Magnitude > 200 then
+		pos = map.CraterCenter
+	end
+	-- Nicht in einer fremden Base ablegen
+	for _, plot in ipairs(map.Plots) do
+		if map.IsInside(plot, pos) then
+			pos = plot.EntranceCFrame.Position * Vector3.new(1, 0, 1)
+			break
+		end
+	end
+	return MeteorService.SpawnMeteor({
+		Id = entry.Id,
+		Mut = entry.Mut,
+		Position = pos,
+		Free = true,
+		Instant = true,
+		Announce = false,
+	})
+end
+
+function MeteorService.ClearGround()
+	for i = #groundMeteors, 1, -1 do
+		removeRecord(groundMeteors[i])
+	end
+end
+
+function MeteorService.Init(services)
+	Services = services
+	folder = Instance.new("Folder")
+	folder.Name = "GroundMeteors"
+	folder.Parent = Services.PlotService.MapFolder
+end
+
+function MeteorService.Start()
+	nextShowerAt = now() + Config.ShowerInterval
+	publishAttributes()
+
+	-- Spawn-Schleife
+	task.spawn(function()
+		while true do
+			local interval = MeteorService.IsShowerActive() and Config.ShowerSpawnInterval or Config.SpawnInterval
+			task.wait(interval)
+			local landedCount = 0
+			for _, record in ipairs(groundMeteors) do
+				if record.Price > 0 then
+					landedCount += 1
+				end
+			end
+			local limit = MeteorService.IsShowerActive() and Config.MaxGroundMeteors * 2 or Config.MaxGroundMeteors
+			if #Players:GetPlayers() > 0 and landedCount < limit then
+				local ok, err = pcall(MeteorService.SpawnMeteor, {})
+				if not ok then
+					warn("[MeteorService] Spawn-Fehler: " .. tostring(err))
+				end
+			end
+		end
+	end)
+
+	-- Zerbröseln + Event-Timer
+	task.spawn(function()
+		local wasShower = false
+		while true do
+			task.wait(1)
+			local clock = os.clock()
+			for i = #groundMeteors, 1, -1 do
+				local record = groundMeteors[i]
+				if not record.Claimed and clock > record.Expires then
+					removeRecord(record)
+				end
+			end
+			local t = now()
+			if not MeteorService.IsShowerActive() and t >= nextShowerAt then
+				MeteorService.StartShower()
+			end
+			local active = MeteorService.IsShowerActive()
+			if wasShower and not active then
+				Services.EconomyService.NotifyAll("Der Meteoritenschauer ist vorbei. Locks gehen wieder!", "Info")
+			end
+			wasShower = active
+		end
+	end)
+end
+
+return MeteorService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="16">
+          <Properties>
+            <string name="Name">MonetizationService</string>
+            <string name="Source"><![CDATA[-- Robux-Einnahmen: Gamepasses + Developer Products.
+-- ProcessReceipt ist doppelt abgesichert: jeder Kauf wird im Spielstand vermerkt,
+-- damit niemand etwas doppelt bekommt und niemand leer ausgeht.
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+
+local MonetizationService = {}
+local Services
+
+local owned: { [Player]: { [string]: boolean } } = {}
+local loading: { [Player]: boolean } = {}
+local adminGranted: { [Player]: { [string]: boolean } } = {} -- vom Admin geschenkte Pässe (nur diese Sitzung)
+
+local MAX_RECEIPTS = 60
+
+function MonetizationService.HasPass(player: Player, key: string): boolean
+	local passes = owned[player]
+	local gifts = adminGranted[player]
+	return (passes ~= nil and passes[key] == true) or (gifts ~= nil and gifts[key] == true)
+end
+
+function MonetizationService.LoadPasses(player: Player)
+	if owned[player] then
+		return
+	end
+	if loading[player] then
+		while loading[player] and player.Parent do
+			task.wait(0.1)
+		end
+		return
+	end
+	loading[player] = true
+	local result = {}
+	for _, pass in ipairs(Config.GamePasses) do
+		if pass.Id ~= 0 then
+			for attempt = 1, 3 do
+				local ok, has =
+					pcall(MarketplaceService.UserOwnsGamePassAsync, MarketplaceService, player.UserId, pass.Id)
+				if ok then
+					result[pass.Key] = has
+					break
+				end
+				task.wait(attempt)
+			end
+		end
+	end
+	loading[player] = nil
+	if not player.Parent then
+		return
+	end
+	owned[player] = result
+	if result.VIP then
+		player:SetAttribute("VIP", true)
+	end
+end
+
+-- Admin kann Pässe für Tests verschenken (nicht gespeichert)
+function MonetizationService.GrantPassSession(player: Player, key: string)
+	adminGranted[player] = adminGranted[player] or {}
+	adminGranted[player][key] = true
+	if key == "VIP" then
+		player:SetAttribute("VIP", true)
+	end
+	MonetizationService.OnPassChanged(player)
+end
+
+function MonetizationService.OnPassChanged(player: Player)
+	Services.EconomyService.ApplySpeed(player)
+	local plot = Services.PlotService.GetPlot(player)
+	if plot then
+		Services.PlotService.UpdateSlotColors(plot)
+	end
+	Services.EconomyService.MarkDirty(player)
+end
+
+-- -------------------------------------------------------------------
+-- PRODUKTE GUTSCHREIBEN
+-- -------------------------------------------------------------------
+local function grantProduct(player: Player, product): boolean
+	local Economy = Services.EconomyService
+	if product.Type == "Cash" then
+		local amount = math.max(product.Min, Economy.GetIncome(player) * 60 * product.Minutes)
+		amount = math.floor(amount)
+		Economy.AddCash(player, amount)
+		Economy.Notify(player, "💰 +" .. Util.FormatCash(amount) .. " – danke für deinen Kauf!", "Success")
+		Economy.Effect(player, "Confetti", 1.5)
+		return true
+	elseif product.Type == "ServerLuck" then
+		Services.MeteorService.AddServerLuck(product.Mult, product.Minutes * 60)
+		Economy.NotifyAll(
+			"🍀 "
+				.. player.DisplayName
+				.. " hat "
+				.. product.Mult
+				.. "x Glück für ALLE gekauft! ("
+				.. product.Minutes
+				.. " Min)",
+			"Event"
+		)
+		return true
+	elseif product.Type == "Shower" then
+		Services.MeteorService.StartShower()
+		Economy.NotifyAll("🌠 " .. player.DisplayName .. " hat einen Meteoritenschauer gestartet!", "Event")
+		return true
+	elseif product.Type == "Speed" then
+		local data = Services.DataService.Get(player)
+		if not data then
+			return false
+		end
+		data.SpeedLevel = math.min(Config.MaxSpeedLevel, data.SpeedLevel + product.Levels)
+		Economy.ApplySpeed(player)
+		Economy.MarkDirty(player)
+		Economy.Notify(player, "🏃 +" .. product.Levels .. " Speed-Level!", "Success")
+		return true
+	elseif product.Type == "Meteor" then
+		local def = Services.MeteorService.RandomOfRarity(product.Rarity)
+		if not def then
+			return false
+		end
+		local entry = { Id = def.Id, Mut = "Normal", Lv = 1 }
+		if Economy.GiveMeteor(player, entry) then
+			Economy.Notify(player, "🌟 " .. def.Name .. " ist in deiner Base!", "Success")
+		else
+			-- Base voll -> Wert als Cash, damit der Kauf nie verloren geht
+			local value = math.floor(Config.MeteorValue(entry))
+			Economy.AddCash(player, value)
+			Economy.Notify(
+				player,
+				"Base voll – du bekommst " .. Util.FormatCash(value) .. " statt " .. def.Name,
+				"Info"
+			)
+		end
+		Economy.Effect(player, "Confetti", 2)
+		return true
+	end
+	warn("[Monetization] Unbekannter Produkt-Typ: " .. tostring(product.Type))
+	return false
+end
+
+local function processReceipt(receipt)
+	local player = Players:GetPlayerByUserId(receipt.PlayerId)
+	if not player then
+		return Enum.ProductPurchaseDecision.NotProcessedYet -- Roblox versucht es später erneut
+	end
+	local data = Services.DataService.Get(player)
+	if not data then
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	local product = Config.ProductsById[receipt.ProductId]
+	if not product then
+		warn(
+			"[Monetization] Unbekannte ProductId "
+				.. tostring(receipt.ProductId)
+				.. " – in Config.Products eintragen!"
+		)
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	-- Schon gutgeschrieben? (z.B. nach Server-Absturz)
+	if table.find(data.Receipts, receipt.PurchaseId) then
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+
+	local ok, granted = pcall(grantProduct, player, product)
+	if not ok or not granted then
+		warn("[Monetization] Gutschrift fehlgeschlagen: " .. tostring(granted))
+		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+	table.insert(data.Receipts, receipt.PurchaseId)
+	while #data.Receipts > MAX_RECEIPTS do
+		table.remove(data.Receipts, 1)
+	end
+	data.Stats.RobuxSpent += receipt.CurrencySpent or 0
+
+	-- Sofort speichern, damit der Kauf sicher verbucht ist
+	if Services.DataService.Save(player) then
+		return Enum.ProductPurchaseDecision.PurchaseGranted
+	end
+	-- Speichern ging nicht: Kauf ist im Spielstand vermerkt, beim nächsten Versuch wird
+	-- er als "schon gutgeschrieben" erkannt und nicht doppelt vergeben.
+	return Enum.ProductPurchaseDecision.NotProcessedYet
+end
+
+function MonetizationService.Init(services)
+	Services = services
+end
+
+function MonetizationService.Start()
+	MarketplaceService.ProcessReceipt = processReceipt
+
+	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, gamePassId, purchased)
+		if not purchased then
+			return
+		end
+		for _, pass in ipairs(Config.GamePasses) do
+			if pass.Id == gamePassId then
+				owned[player] = owned[player] or {}
+				owned[player][pass.Key] = true
+				if pass.Key == "VIP" then
+					player:SetAttribute("VIP", true)
+				end
+				MonetizationService.OnPassChanged(player)
+				Services.EconomyService.Notify(player, "🎉 " .. pass.Name .. " freigeschaltet! Danke!", "Success")
+				Services.EconomyService.NotifyAll(
+					"⭐ " .. player.DisplayName .. " hat " .. pass.Name .. " gekauft!",
+					"Event"
+				)
+				Services.EconomyService.Effect(player, "Confetti", 2)
+			end
+		end
+	end)
+
+	Players.PlayerAdded:Connect(function(player)
+		task.spawn(MonetizationService.LoadPasses, player)
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		owned[player] = nil
+		loading[player] = nil
+		adminGranted[player] = nil
+	end)
+end
+
+return MonetizationService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="17">
+          <Properties>
+            <string name="Name">PlotService</string>
+            <string name="Source"><![CDATA[-- Baut die komplette Map per Code (Krater, 8 Basen, Lobby) und verwaltet die Basen:
+-- Zuweisung, Meteore anzeigen, Collect-Pad, Lock-Pad, Schutz gegen Eindringlinge.
+
+local Players = game:GetService("Players")
+local Lighting = game:GetService("Lighting")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
+
+local PlotService = {}
+PlotService.Plots = {} -- Liste aller Basen
+PlotService.ByPlayer = {} :: { [Player]: any }
+PlotService.MapFolder = nil :: Folder?
+PlotService.CraterCenter = Vector3.new(0, 0, 0)
+PlotService.CraterRadius = 45
+PlotService.LobbySpawn = CFrame.new(0, 4, -150)
+
+local Services
+local PLOT_SIZE = 56
+local HALF = PLOT_SIZE / 2
+local PLOT_X = 90
+local PLOT_Z = { -96, -32, 32, 96 }
+local PLOT_COLORS = {
+	Color3.fromRGB(255, 99, 99),
+	Color3.fromRGB(255, 170, 60),
+	Color3.fromRGB(255, 230, 80),
+	Color3.fromRGB(110, 220, 110),
+	Color3.fromRGB(80, 200, 255),
+	Color3.fromRGB(110, 120, 255),
+	Color3.fromRGB(200, 110, 255),
+	Color3.fromRGB(255, 120, 200),
+}
+local SLOT_COLS = { -20, -10, 0, 10, 20 }
+local SLOT_ROWS = { -4, 8, 20 }
+
+local function part(props): Part
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	for k, v in pairs(props) do
+		if k ~= "Parent" then
+			(p :: any)[k] = v
+		end
+	end
+	p.Parent = props.Parent
+	return p
+end
+
+local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDistance: number): (BillboardGui, TextLabel)
+	local gui = Instance.new("BillboardGui")
+	gui.Size = size
+	gui.StudsOffset = offset
+	gui.MaxDistance = maxDistance
+	gui.LightInfluence = 0
+	gui.Parent = parent
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.TextColor3 = Color3.new(1, 1, 1)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 3
+	stroke.Parent = label
+	label.Parent = gui
+	return gui, label
+end
+
+-- -------------------------------------------------------------------
+-- MAP BAUEN
+-- -------------------------------------------------------------------
+local function buildMap()
+	-- Alte Standard-Objekte aus dem Baseplate-Template entfernen
+	for _, child in ipairs(workspace:GetChildren()) do
+		if child.Name == "Baseplate" or child:IsA("SpawnLocation") then
+			child:Destroy()
+		end
+	end
+	local old = workspace:FindFirstChild("MeteorHeistMap")
+	if old then
+		old:Destroy()
+	end
+
+	local map = Instance.new("Folder")
+	map.Name = "MeteorHeistMap"
+	map.Parent = workspace
+	PlotService.MapFolder = map
+
+	-- Licht: Abendhimmel mit Sternen, aber hell genug zum Spielen
+	Lighting.ClockTime = 18.6
+	Lighting.Brightness = 2
+	Lighting.Ambient = Color3.fromRGB(110, 100, 130)
+	Lighting.OutdoorAmbient = Color3.fromRGB(150, 140, 170)
+	Lighting.GlobalShadows = true
+
+	part({
+		Name = "Ground",
+		Size = Vector3.new(440, 1, 440),
+		Position = Vector3.new(0, -0.5, 0),
+		Material = Enum.Material.Ground,
+		Color = Color3.fromRGB(70, 62, 85),
+		Parent = map,
+	})
+
+	-- Krater in der Mitte
+	part({
+		Name = "CraterRim",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.4, PlotService.CraterRadius * 2 + 10, PlotService.CraterRadius * 2 + 10),
+		CFrame = CFrame.new(0, 0.05, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Rock,
+		Color = Color3.fromRGB(95, 75, 65),
+		CanCollide = false,
+		Parent = map,
+	})
+	part({
+		Name = "Crater",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.5, PlotService.CraterRadius * 2, PlotService.CraterRadius * 2),
+		CFrame = CFrame.new(0, 0.1, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.CrackedLava,
+		Color = Color3.fromRGB(45, 35, 40),
+		CanCollide = false,
+		Parent = map,
+	})
+	local craterSign = part({
+		Name = "CraterSign",
+		Size = Vector3.new(1, 1, 1),
+		Position = Vector3.new(0, 30, 0),
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+		Parent = map,
+	})
+	local _, craterLabel = billboard(craterSign, UDim2.new(0, 400, 0, 60), Vector3.zero, 400)
+	craterLabel.Text = "☄️ METEOR-KRATER ☄️"
+	craterLabel.TextColor3 = Color3.fromRGB(255, 170, 60)
+	PlotService.CraterLabel = craterLabel
+
+	-- Unsichtbare Wände am Map-Rand
+	local edge = 215
+	for _, data in ipairs({
+		{ Vector3.new(edge, 40, 0), Vector3.new(2, 80, edge * 2) },
+		{ Vector3.new(-edge, 40, 0), Vector3.new(2, 80, edge * 2) },
+		{ Vector3.new(0, 40, edge), Vector3.new(edge * 2, 80, 2) },
+		{ Vector3.new(0, 40, -edge), Vector3.new(edge * 2, 80, 2) },
+	}) do
+		part({ Name = "Boundary", Position = data[1], Size = data[2], Transparency = 1, Parent = map })
+	end
+
+	-- Lobby-Spawn (für Spieler ohne Base, z.B. wenn der Server voll ist)
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = "LobbySpawn"
+	spawn.Anchored = true
+	spawn.Size = Vector3.new(12, 1, 12)
+	spawn.Position = Vector3.new(0, 0.5, -150)
+	spawn.Material = Enum.Material.Neon
+	spawn.Color = Color3.fromRGB(255, 170, 60)
+	spawn.Duration = 0
+	spawn.Neutral = true
+	spawn.Parent = map
+
+	-- Basen
+	local plotsFolder = Instance.new("Folder")
+	plotsFolder.Name = "Plots"
+	plotsFolder.Parent = map
+
+	local index = 0
+	for _, side in ipairs({ -1, 1 }) do
+		for _, z in ipairs(PLOT_Z) do
+			index += 1
+			if index > Config.MaxPlots then
+				break
+			end
+			local center = Vector3.new(side * PLOT_X, 0, z)
+			-- Eingang zeigt zur Map-Mitte (lokales -Z = vorne)
+			local cf = CFrame.lookAt(center, center + Vector3.new(-side, 0, 0))
+			local color = PLOT_COLORS[index]
+
+			local model = Instance.new("Model")
+			model.Name = "Plot" .. index
+			model:SetAttribute("PlotIndex", index)
+			model:SetAttribute("OwnerUserId", 0)
+			model:SetAttribute("LockedUntil", 0)
+			model.Parent = plotsFolder
+
+			part({
+				Name = "Floor",
+				Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
+				CFrame = cf * CFrame.new(0, 0.5, 0),
+				Material = Enum.Material.Concrete,
+				Color = color:Lerp(Color3.fromRGB(40, 40, 50), 0.7),
+				Parent = model,
+			})
+			part({
+				Name = "BackWall",
+				Size = Vector3.new(PLOT_SIZE, 8, 1),
+				CFrame = cf * CFrame.new(0, 5, HALF - 0.5),
+				Material = Enum.Material.SmoothPlastic,
+				Color = color,
+				Parent = model,
+			})
+			for _, sx in ipairs({ -1, 1 }) do
+				part({
+					Name = "SideWall",
+					Size = Vector3.new(1, 8, PLOT_SIZE),
+					CFrame = cf * CFrame.new(sx * (HALF - 0.5), 5, 0),
+					Material = Enum.Material.SmoothPlastic,
+					Color = color,
+					Parent = model,
+				})
+				part({
+					Name = "Post",
+					Size = Vector3.new(2, 10, 2),
+					CFrame = cf * CFrame.new(sx * (HALF - 1), 5, -HALF + 1),
+					Material = Enum.Material.Metal,
+					Color = Color3.fromRGB(60, 60, 70),
+					Parent = model,
+				})
+			end
+			local barrier = part({
+				Name = "Barrier",
+				Size = Vector3.new(PLOT_SIZE - 4, 8, 0.4),
+				CFrame = cf * CFrame.new(0, 5, -HALF + 1),
+				Material = Enum.Material.ForceField,
+				Color = Color3.fromRGB(255, 40, 40),
+				Transparency = 1,
+				CanCollide = false,
+				CanQuery = false,
+				CanTouch = false,
+				Parent = model,
+			})
+
+			local slots = {}
+			local slotNumber = 0
+			for _, row in ipairs(SLOT_ROWS) do
+				for _, col in ipairs(SLOT_COLS) do
+					slotNumber += 1
+					local slotPart = part({
+						Name = "Slot" .. slotNumber,
+						Size = Vector3.new(7, 0.3, 7),
+						CFrame = cf * CFrame.new(col, 1.15, row),
+						Material = Enum.Material.SmoothPlastic,
+						Color = Color3.fromRGB(35, 35, 45),
+						CanCollide = false,
+						Parent = model,
+					})
+					slots[slotNumber] = slotPart
+				end
+			end
+
+			local collectPad = part({
+				Name = "CollectPad",
+				Size = Vector3.new(10, 0.3, 6),
+				CFrame = cf * CFrame.new(-16, 1.15, -18),
+				Material = Enum.Material.Neon,
+				Color = Color3.fromRGB(60, 220, 90),
+				CanCollide = false,
+				Parent = model,
+			})
+			local _, collectLabel = billboard(collectPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
+			collectLabel.Text = "💰 $0"
+
+			local lockPad = part({
+				Name = "LockPad",
+				Size = Vector3.new(8, 0.3, 6),
+				CFrame = cf * CFrame.new(16, 1.15, -18),
+				Material = Enum.Material.Neon,
+				Color = Color3.fromRGB(230, 60, 60),
+				CanCollide = false,
+				Parent = model,
+			})
+			local _, lockLabel = billboard(lockPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
+			lockLabel.Text = "🔒 LOCK"
+
+			local signPart = part({
+				Name = "Sign",
+				Size = Vector3.new(1, 1, 1),
+				CFrame = cf * CFrame.new(0, 14, HALF - 0.5),
+				Transparency = 1,
+				CanCollide = false,
+				CanQuery = false,
+				CanTouch = false,
+				Parent = model,
+			})
+			local _, signLabel = billboard(signPart, UDim2.new(0, 320, 0, 60), Vector3.zero, 300)
+			signLabel.Text = "Freie Base"
+			signLabel.TextColor3 = color
+
+			local meteorFolder = Instance.new("Folder")
+			meteorFolder.Name = "Meteors"
+			meteorFolder.Parent = model
+
+			table.insert(PlotService.Plots, {
+				Index = index,
+				Model = model,
+				CFrame = cf,
+				Color = color,
+				Owner = nil :: Player?,
+				Slots = slots,
+				MeteorParts = {} :: { [number]: BasePart },
+				MeteorFolder = meteorFolder,
+				CollectPad = collectPad,
+				CollectLabel = collectLabel,
+				LockPad = lockPad,
+				LockLabel = lockLabel,
+				Barrier = barrier,
+				SignLabel = signLabel,
+				LockedUntil = 0,
+				SpawnCFrame = cf * CFrame.new(0, 4, -10),
+				EntranceCFrame = cf * CFrame.new(0, 4, -HALF - 8),
+			})
+		end
+	end
+end
+
+-- -------------------------------------------------------------------
+-- ABFRAGEN
+-- -------------------------------------------------------------------
+function PlotService.GetPlot(player: Player)
+	return PlotService.ByPlayer[player]
+end
+
+function PlotService.IsInside(plot, position: Vector3): boolean
+	local localPos = plot.CFrame:PointToObjectSpace(position)
+	return math.abs(localPos.X) <= HALF and math.abs(localPos.Z) <= HALF and localPos.Y > -6 and localPos.Y < 40
+end
+
+function PlotService.IsLocked(plot): boolean
+	return plot.LockedUntil > workspace:GetServerTimeNow()
+end
+
+function PlotService.SlotCount(player: Player): number
+	local extra = Services.MonetizationService.HasPass(player, "ExtraSlots") and Config.ExtraSlotsAmount or 0
+	return math.min(Config.BaseSlots + extra, #SLOT_COLS * #SLOT_ROWS)
+end
+
+function PlotService.FreeSlot(player: Player): number?
+	local data = Services.DataService.Get(player)
+	if not data then
+		return nil
+	end
+	for slot = 1, PlotService.SlotCount(player) do
+		if data.Meteors[tostring(slot)] == nil then
+			return slot
+		end
+	end
+	return nil
+end
+
+function PlotService.UsedSlots(player: Player): number
+	local data = Services.DataService.Get(player)
+	local count = 0
+	if data then
+		for _ in pairs(data.Meteors) do
+			count += 1
+		end
+	end
+	return count
+end
+
+-- -------------------------------------------------------------------
+-- METEORE IN DER BASE ANZEIGEN
+-- -------------------------------------------------------------------
+function PlotService.RenderSlot(plot, slot: number)
+	local existing = plot.MeteorParts[slot]
+	if existing then
+		existing:Destroy()
+		plot.MeteorParts[slot] = nil
+	end
+	if not plot.Owner then
+		return
+	end
+	local data = Services.DataService.Get(plot.Owner)
+	local entry = data and data.Meteors[tostring(slot)]
+	if not entry or not Config.MeteorsById[entry.Id] then
+		return
+	end
+	if Services.CarryService.IsSlotBeingStolen(plot, slot) then
+		return -- wird gerade geklaut -> unsichtbar in der Base
+	end
+	local meteor = MeteorFactory.Create(entry, "Base")
+	local slotPart = plot.Slots[slot]
+	meteor.CFrame = slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2 + meteor.Size.Y / 2, 0)
+	meteor:SetAttribute("PlotIndex", plot.Index)
+	meteor:SetAttribute("Slot", slot)
+	local def = Config.MeteorsById[entry.Id]
+	local stealPrompt =
+		MeteorFactory.AddPrompt(meteor, "StealPrompt", "Klauen", def.Name, Config.StealHoldDuration, Enum.KeyCode.E)
+	local sellPrompt = MeteorFactory.AddPrompt(
+		meteor,
+		"SellPrompt",
+		"Verkaufen " .. Util.FormatCash(Config.MeteorValue(entry) * Config.SellRatio),
+		def.Name,
+		1,
+		Enum.KeyCode.F
+	)
+	stealPrompt.Triggered:Connect(function(player)
+		Services.CarryService.TrySteal(player, plot, slot)
+	end)
+	sellPrompt.Triggered:Connect(function(player)
+		Services.EconomyService.Sell(player, plot, slot)
+	end)
+	meteor.Parent = plot.MeteorFolder
+	plot.MeteorParts[slot] = meteor
+end
+
+-- Nach Level-Up nur Größe/Schild anpassen statt neu bauen
+function PlotService.RefreshSlot(plot, slot: number)
+	local meteor = plot.MeteorParts[slot]
+	local data = plot.Owner and Services.DataService.Get(plot.Owner)
+	local entry = data and data.Meteors[tostring(slot)]
+	if not meteor or not entry then
+		return
+	end
+	MeteorFactory.Refresh(meteor, entry, "Base")
+	local sellPrompt = meteor:FindFirstChild("SellPrompt")
+	if sellPrompt then
+		(sellPrompt :: ProximityPrompt).ActionText = "Verkaufen "
+			.. Util.FormatCash(Config.MeteorValue(entry) * Config.SellRatio)
+	end
+end
+
+function PlotService.RenderAll(plot)
+	for slot = 1, #plot.Slots do
+		PlotService.RenderSlot(plot, slot)
+	end
+	PlotService.UpdateSlotColors(plot)
+end
+
+function PlotService.UpdateSlotColors(plot)
+	local count = plot.Owner and PlotService.SlotCount(plot.Owner) or 0
+	for slot, slotPart in ipairs(plot.Slots) do
+		if slot <= count then
+			slotPart.Color = plot.Color:Lerp(Color3.new(1, 1, 1), 0.3)
+			slotPart.Transparency = 0
+		else
+			slotPart.Color = Color3.fromRGB(35, 35, 45)
+			slotPart.Transparency = 0.5
+		end
+	end
+end
+
+-- -------------------------------------------------------------------
+-- LOCK
+-- -------------------------------------------------------------------
+function PlotService.UpdateLockVisual(plot)
+	local now = workspace:GetServerTimeNow()
+	local showerActive = Services.MeteorService and Services.MeteorService.IsShowerActive()
+	if plot.LockedUntil > now then
+		plot.Barrier.Transparency = 0.35
+		plot.LockLabel.Text = "🔒 " .. math.ceil(plot.LockedUntil - now) .. "s"
+		plot.LockPad.Color = Color3.fromRGB(90, 90, 90)
+	else
+		plot.Barrier.Transparency = 1
+		plot.LockLabel.Text = showerActive and "🌠 KEIN LOCK IM SCHAUER" or "🔒 LOCK"
+		plot.LockPad.Color = Color3.fromRGB(230, 60, 60)
+	end
+end
+
+function PlotService.SetLocked(plot, untilTime: number)
+	plot.LockedUntil = untilTime
+	plot.Model:SetAttribute("LockedUntil", untilTime)
+	PlotService.UpdateLockVisual(plot)
+end
+
+local function tryLock(player: Player, plot)
+	if plot.Owner ~= player or PlotService.IsLocked(plot) then
+		return
+	end
+	if Services.MeteorService.IsShowerActive() then
+		Services.EconomyService.Notify(player, "🌠 Während des Meteoritenschauers gibt es keine Locks!", "Error")
+		return
+	end
+	local duration = Services.MonetizationService.HasPass(player, "VIP") and Config.LockDurationVIP
+		or Config.LockDuration
+	PlotService.SetLocked(plot, workspace:GetServerTimeNow() + duration)
+	Services.EconomyService.Notify(player, "🔒 Base für " .. duration .. " Sekunden gesperrt!", "Success")
+end
+
+-- -------------------------------------------------------------------
+-- ZUWEISUNG
+-- -------------------------------------------------------------------
+local function teleportToPlot(player: Player)
+	local character = player.Character
+	local plot = PlotService.ByPlayer[player]
+	if not character then
+		return
+	end
+	local target = plot and plot.SpawnCFrame or PlotService.LobbySpawn
+	character:PivotTo(target)
+end
+
+function PlotService.AssignPlot(player: Player)
+	if PlotService.ByPlayer[player] then
+		return PlotService.ByPlayer[player]
+	end
+	for _, plot in ipairs(PlotService.Plots) do
+		if plot.Owner == nil then
+			plot.Owner = player
+			plot.Model:SetAttribute("OwnerUserId", player.UserId)
+			plot.SignLabel.Text = player.DisplayName .. "s Base"
+			PlotService.ByPlayer[player] = plot
+			PlotService.SetLocked(plot, 0)
+			PlotService.UpdateSlotColors(plot)
+			return plot
+		end
+	end
+	return nil
+end
+
+function PlotService.ReleasePlot(player: Player)
+	local plot = PlotService.ByPlayer[player]
+	if not plot then
+		return
+	end
+	PlotService.ByPlayer[player] = nil
+	plot.Owner = nil
+	plot.Model:SetAttribute("OwnerUserId", 0)
+	plot.SignLabel.Text = "Freie Base"
+	plot.CollectLabel.Text = "💰 $0"
+	PlotService.SetLocked(plot, 0)
+	for slot, meteor in pairs(plot.MeteorParts) do
+		meteor:Destroy()
+		plot.MeteorParts[slot] = nil
+	end
+	PlotService.UpdateSlotColors(plot)
+end
+
+function PlotService.TeleportHome(player: Player)
+	teleportToPlot(player)
+end
+
+function PlotService.Init(services)
+	Services = services
+	buildMap()
+end
+
+function PlotService.Start()
+	local function onCharacter(player: Player, character: Model)
+		character:WaitForChild("HumanoidRootPart", 10)
+		task.wait(0.1)
+		if character.Parent and player.Character == character then
+			teleportToPlot(player)
+		end
+	end
+
+	local function onPlayer(player: Player)
+		local plot = PlotService.AssignPlot(player)
+		if not plot then
+			task.delay(3, function()
+				if player.Parent then
+					Services.EconomyService.Notify(
+						player,
+						"Server voll – keine Base frei. Wechsle den Server!",
+						"Error"
+					)
+				end
+			end)
+		end
+		player.CharacterAdded:Connect(function(character)
+			onCharacter(player, character)
+		end)
+		if player.Character then
+			task.spawn(onCharacter, player, player.Character)
+		end
+	end
+
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayer, player)
+	end
+
+	-- Pads: Collect + Lock (Touched mit Entprellung)
+	local debounce: { [Player]: number } = {}
+	for _, plot in ipairs(PlotService.Plots) do
+		plot.CollectPad.CanTouch = true
+		plot.LockPad.CanTouch = true
+		plot.CollectPad.Touched:Connect(function(hit)
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if player and player == plot.Owner and os.clock() - (debounce[player] or 0) > 0.5 then
+				debounce[player] = os.clock()
+				Services.EconomyService.Collect(player)
+			end
+		end)
+		plot.LockPad.Touched:Connect(function(hit)
+			local player = Players:GetPlayerFromCharacter(hit.Parent)
+			if player and player == plot.Owner then
+				tryLock(player, plot)
+			end
+		end)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		debounce[player] = nil
+		local plot = PlotService.ByPlayer[player]
+		if plot then
+			-- laufende Diebstähle aus dieser Base abbrechen, dann Base freigeben
+			Services.CarryService.CancelStealsFromPlot(plot, "victimLeft")
+		end
+		PlotService.ReleasePlot(player)
+	end)
+
+	-- Eindringlinge aus gesperrten Basen werfen + Lock-Anzeige aktualisieren
+	task.spawn(function()
+		local tick = 0
+		while true do
+			task.wait(0.25)
+			tick += 1
+			for _, plot in ipairs(PlotService.Plots) do
+				if plot.Owner and PlotService.IsLocked(plot) then
+					for _, other in ipairs(Players:GetPlayers()) do
+						local character = other.Character
+						local root = character and character:FindFirstChild("HumanoidRootPart")
+						if other ~= plot.Owner and root and PlotService.IsInside(plot, root.Position) then
+							character:PivotTo(plot.EntranceCFrame)
+							Services.EconomyService.Notify(other, "🔒 Diese Base ist gesperrt!", "Error")
+						end
+					end
+				end
+				if tick % 4 == 0 then
+					PlotService.UpdateLockVisual(plot)
+				end
+			end
+		end
+	end)
+end
+
+return PlotService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="18">
+          <Properties>
+            <string name="Name">Remotes</string>
+            <string name="Source"><![CDATA[-- Erstellt alle RemoteEvents/RemoteFunctions in ReplicatedStorage.Remotes
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local folder = ReplicatedStorage:FindFirstChild("Remotes")
+if not folder then
+	folder = Instance.new("Folder")
+	folder.Name = "Remotes"
+	folder.Parent = ReplicatedStorage
+end
+
+local function make(className: string, name: string)
+	local existing = folder:FindFirstChild(name)
+	if existing then
+		return existing
+	end
+	local remote = Instance.new(className)
+	remote.Name = name
+	remote.Parent = folder
+	return remote
+end
+
+return {
+	Notify = make("RemoteEvent", "Notify") :: RemoteEvent, -- Server -> Client: Toast-Nachricht
+	State = make("RemoteEvent", "State") :: RemoteEvent, -- Server -> Client: Cash, Einkommen, ...
+	Effect = make("RemoteEvent", "Effect") :: RemoteEvent, -- Server -> Client: Effekte (Kamera-Wackeln etc.)
+	Request = make("RemoteFunction", "Request") :: RemoteFunction, -- Client -> Server: Rebirth, Speed, Daily
+	Admin = make("RemoteFunction", "Admin") :: RemoteFunction, -- Client -> Server: Admin-Aktionen (geprüft!)
+}
+]]></string>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+  <Item class="StarterPlayer" referent="19">
+    <Properties>
+      <string name="Name">StarterPlayer</string>
+    </Properties>
+    <Item class="StarterPlayerScripts" referent="20">
+      <Properties>
+        <string name="Name">StarterPlayerScripts</string>
+      </Properties>
+      <Item class="Folder" referent="21">
+        <Properties>
+          <string name="Name">Client</string>
+        </Properties>
+        <Item class="LocalScript" referent="22">
+          <Properties>
+            <string name="Name">Main</string>
+            <string name="Source"><![CDATA[-- =====================================================================
+--  METEOR HEIST – Client (alles, was der Spieler sieht)
+--  HUD, Shop, Speed Farm, Rebirth, Daily, Index, Admin-Panel, Effekte.
+--  Die gesamte Oberfläche wird per Code gebaut – du musst nichts in Studio zusammenklicken.
+-- =====================================================================
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MarketplaceService = game:GetService("MarketplaceService")
+local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Lighting = game:GetService("Lighting")
+
+local player = Players.LocalPlayer
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Util = require(Shared:WaitForChild("Util"))
+local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
+local Remotes = {
+	Notify = RemotesFolder:WaitForChild("Notify") :: RemoteEvent,
+	State = RemotesFolder:WaitForChild("State") :: RemoteEvent,
+	Effect = RemotesFolder:WaitForChild("Effect") :: RemoteEvent,
+	Request = RemotesFolder:WaitForChild("Request") :: RemoteFunction,
+	Admin = RemotesFolder:WaitForChild("Admin") :: RemoteFunction,
+}
+
+local state = nil -- letzte Daten vom Server
+
+-- ---------------------------------------------------------------------
+-- STIL
+-- ---------------------------------------------------------------------
+local THEME = {
+	Panel = Color3.fromRGB(24, 20, 38),
+	PanelLight = Color3.fromRGB(40, 34, 62),
+	Accent = Color3.fromRGB(255, 160, 50),
+	Green = Color3.fromRGB(70, 210, 100),
+	Red = Color3.fromRGB(230, 70, 70),
+	Blue = Color3.fromRGB(70, 150, 255),
+	Purple = Color3.fromRGB(160, 90, 255),
+	Gray = Color3.fromRGB(90, 90, 105),
+	Text = Color3.new(1, 1, 1),
+	SubText = Color3.fromRGB(190, 185, 210),
+}
+
+local function create(className: string, props: { [string]: any }?, children: { Instance }?): any
+	local inst = Instance.new(className)
+	local parent = nil
+	for k, v in pairs(props or {}) do
+		if k == "Parent" then
+			parent = v
+		else
+			(inst :: any)[k] = v
+		end
+	end
+	for _, child in ipairs(children or {}) do
+		child.Parent = inst
+	end
+	inst.Parent = parent
+	return inst
+end
+
+local function corner(radius: number?)
+	return create("UICorner", { CornerRadius = UDim.new(0, radius or 12) })
+end
+
+local function stroke(color: Color3?, thickness: number?)
+	return create("UIStroke", {
+		Color = color or THEME.Accent,
+		Thickness = thickness or 2,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	})
+end
+
+local function textStroke()
+	return create("UIStroke", { Thickness = 2, Color = Color3.new(0, 0, 0), Transparency = 0.2 })
+end
+
+local function label(props)
+	local base = {
+		BackgroundTransparency = 1,
+		Font = Enum.Font.FredokaOne,
+		TextColor3 = THEME.Text,
+		TextScaled = true,
+		Text = "",
+	}
+	for k, v in pairs(props) do
+		if k ~= "MaxText" then
+			base[k] = v
+		end
+	end
+	local l = create("TextLabel", base, { create("UITextSizeConstraint", { MaxTextSize = props.MaxText or 28 }) })
+	return l
+end
+
+local function button(props, onClick: () -> ())
+	local color = props.Color or THEME.Accent
+	local base = {
+		BackgroundColor3 = color,
+		AutoButtonColor = true,
+		Font = Enum.Font.FredokaOne,
+		TextColor3 = THEME.Text,
+		TextScaled = true,
+		Text = "",
+	}
+	for k, v in pairs(props) do
+		if k ~= "Color" and k ~= "MaxText" then
+			base[k] = v
+		end
+	end
+	local b = create("TextButton", base, {
+		corner(10),
+		create("UITextSizeConstraint", { MaxTextSize = props.MaxText or 22 }),
+		textStroke(),
+		create("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }),
+	})
+	local busy = false
+	b.Activated:Connect(function()
+		if busy then
+			return
+		end
+		busy = true
+		task.spawn(function()
+			local ok, err = pcall(onClick)
+			if not ok then
+				warn(err)
+			end
+			busy = false
+		end)
+	end)
+	return b
+end
+
+local function textBox(props)
+	local base = {
+		BackgroundColor3 = THEME.PanelLight,
+		Font = Enum.Font.GothamBold,
+		TextColor3 = THEME.Text,
+		PlaceholderColor3 = THEME.SubText,
+		TextScaled = true,
+		ClearTextOnFocus = false,
+		Text = "",
+	}
+	for k, v in pairs(props) do
+		base[k] = v
+	end
+	return create("TextBox", base, {
+		corner(8),
+		create("UITextSizeConstraint", { MaxTextSize = 18 }),
+		create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+	})
+end
+
+-- ---------------------------------------------------------------------
+-- GRUNDGERÜST
+-- ---------------------------------------------------------------------
+local gui = create("ScreenGui", {
+	Name = "MeteorHeistUI",
+	ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	IgnoreGuiInset = false,
+	Parent = player:WaitForChild("PlayerGui"),
+})
+local uiScale = create("UIScale", { Parent = gui })
+local function updateScale()
+	local camera = workspace.CurrentCamera
+	if camera then
+		local size = camera.ViewportSize
+		uiScale.Scale = math.clamp(math.min(size.X / 1280, size.Y / 760), 0.55, 1.15)
+	end
+end
+updateScale()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+end
+
+-- Oben: Cash + Einkommen
+local topBar = create("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 8),
+	Size = UDim2.new(0, 360, 0, 86),
+	BackgroundColor3 = THEME.Panel,
+	BackgroundTransparency = 0.15,
+	Parent = gui,
+}, { corner(16), stroke() })
+local cashLabel = label({
+	Position = UDim2.new(0, 10, 0, 4),
+	Size = UDim2.new(1, -20, 0, 42),
+	Text = "$0",
+	TextColor3 = Color3.fromRGB(255, 225, 90),
+	MaxText = 40,
+	Parent = topBar,
+})
+textStroke().Parent = cashLabel
+local incomeLabel = label({
+	Position = UDim2.new(0, 10, 0, 44),
+	Size = UDim2.new(1, -20, 0, 20),
+	Text = "+$0/s",
+	TextColor3 = THEME.Green,
+	MaxText = 20,
+	Parent = topBar,
+})
+local infoLabel = label({
+	Position = UDim2.new(0, 10, 0, 64),
+	Size = UDim2.new(1, -20, 0, 18),
+	Text = "",
+	TextColor3 = THEME.SubText,
+	Font = Enum.Font.GothamBold,
+	MaxText = 14,
+	Parent = topBar,
+})
+
+-- Event-Banner
+local eventBanner = create("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 100),
+	Size = UDim2.new(0, 420, 0, 34),
+	BackgroundColor3 = Color3.fromRGB(120, 40, 20),
+	BackgroundTransparency = 0.1,
+	Visible = false,
+	Parent = gui,
+}, { corner(10), stroke(Color3.fromRGB(255, 120, 40)) })
+local eventLabel = label({ Size = UDim2.fromScale(1, 1), Text = "", MaxText = 20, Parent = eventBanner })
+local nextShowerLabel = label({
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 100),
+	Size = UDim2.new(0, 300, 0, 20),
+	Text = "",
+	TextColor3 = THEME.SubText,
+	Font = Enum.Font.GothamBold,
+	MaxText = 14,
+	Parent = gui,
+})
+
+-- Trage-Hinweis unten
+local carryLabel = label({
+	AnchorPoint = Vector2.new(0.5, 1),
+	Position = UDim2.new(0.5, 0, 1, -110),
+	Size = UDim2.new(0, 520, 0, 40),
+	Text = "🏃 BRING DEN METEOR IN DEINE BASE!",
+	TextColor3 = Color3.fromRGB(255, 220, 80),
+	Visible = false,
+	MaxText = 30,
+	Parent = gui,
+})
+textStroke().Parent = carryLabel
+
+-- Benachrichtigungen
+local toastHolder = create("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 142),
+	Size = UDim2.new(0, 460, 0, 300),
+	BackgroundTransparency = 1,
+	Parent = gui,
+}, {
+	create("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		Padding = UDim.new(0, 6),
+	}),
+})
+local toastCount = 0
+local TOAST_COLORS = {
+	Info = Color3.fromRGB(45, 40, 70),
+	Success = Color3.fromRGB(30, 110, 55),
+	Error = Color3.fromRGB(140, 35, 35),
+	Event = Color3.fromRGB(150, 70, 10),
+	Alarm = Color3.fromRGB(200, 20, 20),
+	Announce = Color3.fromRGB(40, 60, 160),
+}
+
+local function toast(text: string, kind: string?)
+	toastCount += 1
+	local frame = create("Frame", {
+		Size = UDim2.new(1, 0, 0, 38),
+		BackgroundColor3 = TOAST_COLORS[kind or "Info"] or TOAST_COLORS.Info,
+		BackgroundTransparency = 0.05,
+		LayoutOrder = toastCount,
+		Parent = toastHolder,
+	}, { corner(10) })
+	local l = label({
+		Position = UDim2.new(0, 10, 0, 0),
+		Size = UDim2.new(1, -20, 1, 0),
+		Text = text,
+		MaxText = 18,
+		Parent = frame,
+	})
+	textStroke().Parent = l
+	local children = {}
+	for _, child in ipairs(toastHolder:GetChildren()) do
+		if child:IsA("Frame") then
+			table.insert(children, child)
+		end
+	end
+	if #children > 5 then
+		table.sort(children, function(a, b)
+			return a.LayoutOrder < b.LayoutOrder
+		end)
+		children[1]:Destroy()
+	end
+	task.delay(kind == "Announce" and 8 or 4, function()
+		if frame.Parent then
+			TweenService:Create(frame, TweenInfo.new(0.4), { BackgroundTransparency = 1 }):Play()
+			TweenService:Create(l, TweenInfo.new(0.4), { TextTransparency = 1 }):Play()
+			task.wait(0.45)
+			frame:Destroy()
+		end
+	end)
+end
+
+-- ---------------------------------------------------------------------
+-- FENSTER (immer nur eins offen)
+-- ---------------------------------------------------------------------
+local windows = {}
+local function makeWindow(title: string, width: number, height: number)
+	local frame = create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.52),
+		Size = UDim2.new(0, width, 0, height),
+		BackgroundColor3 = THEME.Panel,
+		BackgroundTransparency = 0.05,
+		Visible = false,
+		ZIndex = 5,
+		Parent = gui,
+	}, { corner(18), stroke() })
+	label({
+		Position = UDim2.new(0, 16, 0, 8),
+		Size = UDim2.new(1, -70, 0, 40),
+		Text = title,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = THEME.Accent,
+		MaxText = 32,
+		Parent = frame,
+	})
+	button({
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -10, 0, 10),
+		Size = UDim2.new(0, 38, 0, 38),
+		Text = "X",
+		Color = THEME.Red,
+		Parent = frame,
+	}, function()
+		frame.Visible = false
+	end)
+	local content = create("ScrollingFrame", {
+		Position = UDim2.new(0, 12, 0, 56),
+		Size = UDim2.new(1, -24, 1, -68),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 6,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		Parent = frame,
+	}, {
+		create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }),
+		create("UIPadding", { PaddingRight = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8) }),
+	})
+	table.insert(windows, frame)
+	return frame, content
+end
+
+local function openWindow(frame: Frame)
+	local wasOpen = frame.Visible
+	for _, w in ipairs(windows) do
+		w.Visible = false
+	end
+	frame.Visible = not wasOpen
+end
+
+local function section(parent: Instance, text: string, order: number)
+	return label({
+		Size = UDim2.new(1, 0, 0, 26),
+		Text = text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = THEME.Accent,
+		LayoutOrder = order,
+		MaxText = 22,
+		Parent = parent,
+	})
+end
+
+local function row(parent: Instance, order: number, height: number?)
+	return create("Frame", {
+		Size = UDim2.new(1, 0, 0, height or 40),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Parent = parent,
+	}, {
+		create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 6),
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+	})
+end
+
+local function grid(parent: Instance, order: number, cellX: number, cellY: number)
+	return create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Parent = parent,
+	}, {
+		create("UIGridLayout", {
+			CellSize = UDim2.new(0, cellX, 0, cellY),
+			CellPadding = UDim2.new(0, 6, 0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+end
+
+local function request(action: string, arg: any?)
+	local ok, result = pcall(function()
+		return Remotes.Request:InvokeServer(action, arg)
+	end)
+	if ok and type(result) == "table" then
+		if result.Message and result.Message ~= "" then
+			toast(result.Message, result.Ok and "Success" or "Error")
+		end
+		return result.Ok
+	end
+	return false
+end
+
+-- ---------------------------------------------------------------------
+-- SHOP
+-- ---------------------------------------------------------------------
+local priceCache = {}
+local function fetchPrice(id: number, infoType: Enum.InfoType, target: TextButton, prefix: string)
+	if id == 0 then
+		target.Text = "Bald verfügbar"
+		target.BackgroundColor3 = THEME.Gray
+		return
+	end
+	task.spawn(function()
+		local price = priceCache[id]
+		if not price then
+			local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, id, infoType)
+			price = ok and info and info.PriceInRobux or nil
+			priceCache[id] = price
+		end
+		if target.Parent then
+			target.Text = prefix .. (price and ("R$ " .. price) or "Kaufen")
+		end
+	end)
+end
+
+local shopWindow, shopContent = makeWindow("🛒 SHOP", 560, 470)
+local passButtons = {}
+section(shopContent, "⭐ Gamepasses (für immer)", 1)
+local passGrid = grid(shopContent, 2, 255, 120)
+for i, pass in ipairs(Config.GamePasses) do
+	local card = create("Frame", {
+		BackgroundColor3 = THEME.PanelLight,
+		LayoutOrder = i,
+		Parent = passGrid,
+	}, { corner(12) })
+	label({
+		Position = UDim2.new(0, 8, 0, 6),
+		Size = UDim2.new(1, -16, 0, 26),
+		Text = pass.Icon .. " " .. pass.Name,
+		Parent = card,
+		MaxText = 22,
+	})
+	label({
+		Position = UDim2.new(0, 8, 0, 32),
+		Size = UDim2.new(1, -16, 0, 34),
+		Text = pass.Description,
+		Font = Enum.Font.Gotham,
+		TextColor3 = THEME.SubText,
+		TextWrapped = true,
+		MaxText = 14,
+		Parent = card,
+	})
+	local buy = button({
+		Position = UDim2.new(0, 8, 1, -42),
+		Size = UDim2.new(1, -16, 0, 34),
+		Text = "...",
+		Color = THEME.Green,
+		Parent = card,
+	}, function()
+		if pass.Id ~= 0 and not (state and state.Passes[pass.Key]) then
+			MarketplaceService:PromptGamePassPurchase(player, pass.Id)
+		end
+	end)
+	passButtons[pass.Key] = buy
+	fetchPrice(pass.Id, Enum.InfoType.GamePass, buy, "")
+end
+
+section(shopContent, "💎 Boosts & Pakete", 3)
+local productGrid = grid(shopContent, 4, 255, 84)
+for i, product in ipairs(Config.Products) do
+	local card = create("Frame", {
+		BackgroundColor3 = THEME.PanelLight,
+		LayoutOrder = i,
+		Parent = productGrid,
+	}, { corner(12) })
+	label({
+		Position = UDim2.new(0, 8, 0, 6),
+		Size = UDim2.new(1, -16, 0, 30),
+		Text = product.Icon .. " " .. product.Name,
+		Parent = card,
+		MaxText = 18,
+		TextWrapped = true,
+	})
+	local buy = button({
+		Position = UDim2.new(0, 8, 1, -40),
+		Size = UDim2.new(1, -16, 0, 32),
+		Text = "...",
+		Color = THEME.Blue,
+		Parent = card,
+	}, function()
+		if product.Id ~= 0 then
+			MarketplaceService:PromptProductPurchase(player, product.Id)
+		end
+	end)
+	fetchPrice(product.Id, Enum.InfoType.Product, buy, "")
+end
+
+-- ---------------------------------------------------------------------
+-- SPEED FARM
+-- ---------------------------------------------------------------------
+local speedWindow, speedContent = makeWindow("🏃 SPEED FARM", 460, 380)
+local speedInfo =
+	label({ Size = UDim2.new(1, 0, 0, 34), Text = "", LayoutOrder = 1, MaxText = 24, Parent = speedContent })
+local speedCost = label({
+	Size = UDim2.new(1, 0, 0, 24),
+	Text = "",
+	LayoutOrder = 2,
+	TextColor3 = Color3.fromRGB(255, 225, 90),
+	MaxText = 20,
+	Parent = speedContent,
+})
+label({
+	Size = UDim2.new(1, 0, 0, 40),
+	Text = "Schneller = Meteore zuerst schnappen und mit Beute entkommen! Speed bleibt bei Rebirth.",
+	Font = Enum.Font.Gotham,
+	TextColor3 = THEME.SubText,
+	TextWrapped = true,
+	LayoutOrder = 3,
+	MaxText = 15,
+	Parent = speedContent,
+})
+local speedRow = row(speedContent, 4, 50)
+for i, amount in ipairs({ 1, 5, 10, Config.MaxSpeedLevel }) do
+	button({
+		Size = UDim2.new(0.25, -5, 1, 0),
+		Text = amount == Config.MaxSpeedLevel and "MAX" or ("+" .. amount),
+		Color = THEME.Green,
+		LayoutOrder = i,
+		Parent = speedRow,
+	}, function()
+		request("BuySpeed", amount)
+	end)
+end
+local speedProduct = Config.ProductsByKey.Speed10
+local speedBoots = Config.GamePassesByKey.SpeedBoots
+local speedRobuxRow = row(speedContent, 5, 46)
+if speedProduct then
+	local b = button(
+		{ Size = UDim2.new(0.5, -3, 1, 0), Text = "...", Color = THEME.Blue, LayoutOrder = 1, Parent = speedRobuxRow },
+		function()
+			if speedProduct.Id ~= 0 then
+				MarketplaceService:PromptProductPurchase(player, speedProduct.Id)
+			end
+		end
+	)
+	fetchPrice(speedProduct.Id, Enum.InfoType.Product, b, "+10 Level ")
+end
+if speedBoots then
+	local b = button(
+		{ Size = UDim2.new(0.5, -3, 1, 0), Text = "...", Color = THEME.Purple, LayoutOrder = 2, Parent = speedRobuxRow },
+		function()
+			if speedBoots.Id ~= 0 then
+				MarketplaceService:PromptGamePassPurchase(player, speedBoots.Id)
+			end
+		end
+	)
+	fetchPrice(speedBoots.Id, Enum.InfoType.GamePass, b, "👟 Boots ")
+end
+
+-- ---------------------------------------------------------------------
+-- REBIRTH
+-- ---------------------------------------------------------------------
+local rebirthWindow, rebirthContent = makeWindow("🔥 REBIRTH", 460, 400)
+local rebirthInfo =
+	label({ Size = UDim2.new(1, 0, 0, 30), Text = "", LayoutOrder = 1, MaxText = 22, Parent = rebirthContent })
+local progressBack = create("Frame", {
+	Size = UDim2.new(1, 0, 0, 30),
+	BackgroundColor3 = THEME.PanelLight,
+	LayoutOrder = 2,
+	Parent = rebirthContent,
+}, { corner(10) })
+local progressFill = create("Frame", {
+	Size = UDim2.new(0, 0, 1, 0),
+	BackgroundColor3 = THEME.Accent,
+	Parent = progressBack,
+}, { corner(10) })
+local progressText = label({ Size = UDim2.fromScale(1, 1), Text = "", MaxText = 18, ZIndex = 2, Parent = progressBack })
+textStroke().Parent = progressText
+local rebirthDetail = label({
+	Size = UDim2.new(1, 0, 0, 110),
+	Text = "",
+	Font = Enum.Font.GothamBold,
+	TextColor3 = THEME.SubText,
+	TextWrapped = true,
+	LayoutOrder = 3,
+	MaxText = 16,
+	Parent = rebirthContent,
+})
+button(
+	{
+		Size = UDim2.new(1, 0, 0, 50),
+		Text = "🔥 REBIRTH!",
+		Color = THEME.Red,
+		LayoutOrder = 4,
+		Parent = rebirthContent,
+	},
+	function()
+		request("Rebirth")
+	end
+)
+
+-- ---------------------------------------------------------------------
+-- DAILY
+-- ---------------------------------------------------------------------
+local dailyWindow, dailyContent = makeWindow("🎁 TAGESBONUS", 400, 260)
+local dailyInfo = label({
+	Size = UDim2.new(1, 0, 0, 60),
+	Text = "",
+	LayoutOrder = 1,
+	TextWrapped = true,
+	MaxText = 20,
+	Parent = dailyContent,
+})
+local dailyButton = button(
+	{ Size = UDim2.new(1, 0, 0, 54), Text = "Abholen", Color = THEME.Green, LayoutOrder = 2, Parent = dailyContent },
+	function()
+		request("Daily")
+	end
+)
+
+-- ---------------------------------------------------------------------
+-- INDEX
+-- ---------------------------------------------------------------------
+local indexWindow, indexContent = makeWindow("📖 METEOR-INDEX", 600, 480)
+local indexHeader =
+	label({ Size = UDim2.new(1, 0, 0, 30), Text = "", LayoutOrder = 1, MaxText = 20, Parent = indexContent })
+local indexGrid = grid(indexContent, 2, 132, 70)
+local indexCards = {}
+for i, def in ipairs(Config.Meteors) do
+	local rarity = Config.RaritiesByName[def.Rarity]
+	local card = create(
+		"Frame",
+		{ BackgroundColor3 = THEME.PanelLight, LayoutOrder = i, Parent = indexGrid },
+		{ corner(10) }
+	)
+	local dot = create("Frame", {
+		Position = UDim2.new(0, 6, 0.5, -14),
+		Size = UDim2.new(0, 28, 0, 28),
+		BackgroundColor3 = def.Color,
+		Parent = card,
+	}, { corner(14) })
+	local nameL = label({
+		Position = UDim2.new(0, 40, 0, 6),
+		Size = UDim2.new(1, -46, 0, 34),
+		Text = def.Name,
+		TextWrapped = true,
+		MaxText = 14,
+		Parent = card,
+	})
+	local rarL = label({
+		Position = UDim2.new(0, 40, 0, 42),
+		Size = UDim2.new(1, -46, 0, 20),
+		Text = def.Rarity,
+		TextColor3 = rarity.Color,
+		MaxText = 12,
+		Parent = card,
+	})
+	indexCards[def.Id] = { Card = card, Dot = dot, Name = nameL, Rarity = rarL, Def = def }
+end
+
+-- ---------------------------------------------------------------------
+-- LINKE BUTTON-LEISTE
+-- ---------------------------------------------------------------------
+local sideBar = create("Frame", {
+	AnchorPoint = Vector2.new(0, 0.5),
+	Position = UDim2.new(0, 10, 0.5, 0),
+	Size = UDim2.new(0, 120, 0, 420),
+	BackgroundTransparency = 1,
+	Parent = gui,
+}, { create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }) })
+
+local function sideButton(text: string, color: Color3, order: number, onClick)
+	return button(
+		{ Size = UDim2.new(1, 0, 0, 48), Text = text, Color = color, LayoutOrder = order, Parent = sideBar },
+		onClick
+	)
+end
+sideButton("🛒 Shop", THEME.Green, 1, function()
+	openWindow(shopWindow)
+end)
+sideButton("🏃 Speed", THEME.Blue, 2, function()
+	openWindow(speedWindow)
+end)
+sideButton("🔥 Rebirth", THEME.Red, 3, function()
+	openWindow(rebirthWindow)
+end)
+local dailySide = sideButton("🎁 Daily", THEME.Purple, 4, function()
+	openWindow(dailyWindow)
+end)
+sideButton("📖 Index", THEME.Accent, 5, function()
+	openWindow(indexWindow)
+end)
+sideButton("🏠 Home", THEME.Gray, 6, function()
+	request("Home")
+end)
+
+-- ---------------------------------------------------------------------
+-- ANZEIGE AKTUALISIEREN
+-- ---------------------------------------------------------------------
+local function nextUnlock(rebirths: number): string?
+	for _, rarity in ipairs(Config.Rarities) do
+		if (rarity.RequiredRebirths or 0) == rebirths + 1 then
+			return rarity.Name
+		end
+	end
+	return nil
+end
+
+local function refresh()
+	if not state then
+		return
+	end
+	cashLabel.Text = Util.FormatCash(state.Cash)
+	incomeLabel.Text = ("+%s/s  •  %s%% Bonus"):format(
+		Util.FormatCash(state.Income),
+		Util.FormatNumber(state.Multiplier * 100)
+	)
+	infoLabel.Text = ("☄️ %d/%d   🏃 %d   🔥 %d   📖 %d/%d"):format(
+		state.UsedSlots,
+		state.Slots,
+		state.Speed,
+		state.Rebirths,
+		#state.Index,
+		#Config.Meteors
+	)
+	carryLabel.Visible = state.Carrying
+
+	-- Speed
+	if state.SpeedLevel >= Config.MaxSpeedLevel then
+		speedInfo.Text = "Speed-Level MAX (" .. state.Speed .. " Tempo)"
+		speedCost.Text = "Du bist maximal schnell! 🚀"
+	else
+		speedInfo.Text = ("Speed-Level %d/%d  •  Tempo %d"):format(
+			state.SpeedLevel,
+			Config.MaxSpeedLevel,
+			state.Speed
+		)
+		speedCost.Text = "Nächstes Level: " .. Util.FormatCash(Config.SpeedCost(state.SpeedLevel))
+	end
+
+	-- Rebirth
+	local ratio = math.clamp(state.Cash / state.RebirthCost, 0, 1)
+	progressFill.Size = UDim2.new(ratio, 0, 1, 0)
+	progressText.Text = Util.FormatCash(state.Cash) .. " / " .. Util.FormatCash(state.RebirthCost)
+	rebirthInfo.Text = "Rebirths: " .. state.Rebirths
+	local unlock = nextUnlock(state.Rebirths)
+	rebirthDetail.Text = ("Belohnung: +%d%% Einkommen für immer%s\n\nDu verlierst: Cash + Meteore.\nDu behältst: Speed, Index, Gamepasses."):format(
+		math.floor(Config.RebirthMultPerLevel * 100),
+		unlock and ("\n🔓 Schaltet " .. unlock .. "-Meteore frei!") or ""
+	)
+
+	-- Daily
+	if state.DailyReady then
+		dailyInfo.Text = "Dein Bonus ist bereit! Streak: " .. state.Streak .. " Tag(e)"
+		dailyButton.Text = "🎁 ABHOLEN"
+		dailyButton.BackgroundColor3 = THEME.Green
+		dailySide.Text = "🎁 Daily ❗"
+	else
+		dailyInfo.Text = "Komm morgen wieder! Streak: " .. state.Streak .. " Tag(e)"
+		dailyButton.Text = "⏳ " .. Util.FormatTime(state.DailyIn)
+		dailyButton.BackgroundColor3 = THEME.Gray
+		dailySide.Text = "🎁 Daily"
+	end
+
+	-- Shop: gekaufte Pässe markieren
+	for key, b in pairs(passButtons) do
+		if state.Passes[key] then
+			b.Text = "✅ Besitzt du"
+			b.BackgroundColor3 = THEME.Gray
+		end
+	end
+
+	-- Index
+	local found = {}
+	for _, id in ipairs(state.Index) do
+		found[id] = true
+	end
+	indexHeader.Text = ("Entdeckt: %d/%d  •  +%d%% Einkommen"):format(
+		#state.Index,
+		#Config.Meteors,
+		math.floor(#state.Index * Config.IndexBonusPerMeteor * 100)
+	)
+	for id, card in pairs(indexCards) do
+		if found[id] then
+			card.Name.Text = card.Def.Name
+			card.Dot.BackgroundColor3 = card.Def.Color
+			card.Card.BackgroundTransparency = 0
+		else
+			card.Name.Text = "???"
+			card.Dot.BackgroundColor3 = Color3.new(0, 0, 0)
+			card.Card.BackgroundTransparency = 0.5
+		end
+	end
+end
+
+Remotes.State.OnClientEvent:Connect(function(newState)
+	state = newState
+	refresh()
+end)
+Remotes.Notify.OnClientEvent:Connect(toast)
+
+-- Event-Banner + Schauer-Stimmung
+local colorCorrection = create("ColorCorrectionEffect", { Name = "ShowerTint", Enabled = false, Parent = Lighting })
+task.spawn(function()
+	while true do
+		local now = workspace:GetServerTimeNow()
+		local showerUntil = ReplicatedStorage:GetAttribute("ShowerUntil") or 0
+		local luckUntil = ReplicatedStorage:GetAttribute("LuckUntil") or 0
+		local luckMult = ReplicatedStorage:GetAttribute("LuckMult") or 1
+		local nextShower = ReplicatedStorage:GetAttribute("NextShowerAt") or 0
+		local parts = {}
+		if showerUntil > now then
+			table.insert(parts, "🌠 METEORITENSCHAUER " .. Util.FormatTime(showerUntil - now) .. " • KEINE LOCKS")
+		end
+		if luckUntil > now and luckMult > 1 then
+			table.insert(parts, "🍀 " .. luckMult .. "x GLÜCK " .. Util.FormatTime(luckUntil - now))
+		end
+		eventBanner.Visible = #parts > 0
+		eventLabel.Text = table.concat(parts, "   ")
+		nextShowerLabel.Visible = #parts == 0 and nextShower > now
+		nextShowerLabel.Text = "🌠 Nächster Meteoritenschauer in " .. Util.FormatTime(nextShower - now)
+		colorCorrection.Enabled = showerUntil > now
+		colorCorrection.TintColor = Color3.fromRGB(255, 200, 170)
+		colorCorrection.Saturation = 0.2
+		if state and not state.DailyReady then
+			state.DailyIn = math.max(0, state.DailyIn - 1)
+			if state.DailyIn == 0 then
+				state.DailyReady = true
+			end
+			refresh()
+		end
+		task.wait(1)
+	end
+end)
+
+-- ---------------------------------------------------------------------
+-- PROMPTS: "Klauen" nur bei fremden Basen, "Verkaufen" nur in der eigenen
+-- ---------------------------------------------------------------------
+local plotsFolder = workspace:WaitForChild("MeteorHeistMap"):WaitForChild("Plots")
+local trackedPrompts: { [ProximityPrompt]: boolean } = {}
+
+local function updatePrompt(prompt: ProximityPrompt)
+	local plotModel = prompt:FindFirstAncestorWhichIsA("Model")
+	if not plotModel then
+		return
+	end
+	local ownerId = plotModel:GetAttribute("OwnerUserId")
+	local isMine = ownerId == player.UserId
+	if prompt.Name == "SellPrompt" then
+		prompt.Enabled = isMine
+	elseif prompt.Name == "StealPrompt" then
+		local locked = (plotModel:GetAttribute("LockedUntil") or 0) > workspace:GetServerTimeNow()
+		prompt.Enabled = not isMine and not locked
+	end
+end
+
+local function track(inst: Instance)
+	if inst:IsA("ProximityPrompt") and (inst.Name == "SellPrompt" or inst.Name == "StealPrompt") then
+		trackedPrompts[inst] = true
+		updatePrompt(inst)
+		inst.AncestryChanged:Connect(function(_, parent)
+			if not parent then
+				trackedPrompts[inst] = nil
+			end
+		end)
+	end
+end
+for _, inst in ipairs(plotsFolder:GetDescendants()) do
+	track(inst)
+end
+plotsFolder.DescendantAdded:Connect(track)
+task.spawn(function()
+	while true do
+		task.wait(0.3)
+		for prompt in pairs(trackedPrompts) do
+			if prompt.Parent then
+				updatePrompt(prompt)
+			else
+				trackedPrompts[prompt] = nil
+			end
+		end
+	end
+end)
+
+-- ---------------------------------------------------------------------
+-- EFFEKTE
+-- ---------------------------------------------------------------------
+local function shake(strength: number)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local start = os.clock()
+	local connection
+	connection = RunService.RenderStepped:Connect(function()
+		local t = os.clock() - start
+		if t > 0.35 or not humanoid.Parent then
+			humanoid.CameraOffset = Vector3.zero
+			connection:Disconnect()
+			return
+		end
+		local power = strength * (1 - t / 0.35)
+		humanoid.CameraOffset = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * power
+	end)
+end
+
+local function confetti(amount: number)
+	local colors = { THEME.Accent, THEME.Green, THEME.Blue, THEME.Purple, THEME.Red }
+	for _ = 1, math.floor(25 * math.clamp(amount, 0.3, 3)) do
+		local piece = create("Frame", {
+			Size = UDim2.new(0, math.random(6, 12), 0, math.random(6, 12)),
+			Position = UDim2.new(math.random(), 0, 0, -20),
+			BackgroundColor3 = colors[math.random(1, #colors)],
+			BorderSizePixel = 0,
+			Rotation = math.random(0, 360),
+			ZIndex = 20,
+			Parent = gui,
+		})
+		local tween = TweenService:Create(
+			piece,
+			TweenInfo.new(math.random(15, 30) / 10, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{
+				Position = UDim2.new(piece.Position.X.Scale + (math.random() - 0.5) * 0.2, 0, 1, 20),
+				Rotation = piece.Rotation + math.random(-360, 360),
+			}
+		)
+		tween:Play()
+		tween.Completed:Connect(function()
+			piece:Destroy()
+		end)
+	end
+end
+
+local function cashPopup(amount: number)
+	local popup = label({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.45),
+		Size = UDim2.new(0, 300, 0, 50),
+		Text = "+" .. Util.FormatCash(amount),
+		TextColor3 = Color3.fromRGB(255, 225, 90),
+		MaxText = 44,
+		ZIndex = 15,
+		Parent = gui,
+	})
+	textStroke().Parent = popup
+	TweenService:Create(popup, TweenInfo.new(1.2, Enum.EasingStyle.Quad), {
+		Position = UDim2.fromScale(0.5, 0.3),
+		TextTransparency = 1,
+	}):Play()
+	task.delay(1.25, function()
+		popup:Destroy()
+	end)
+end
+
+local alarmFrame = create("Frame", {
+	Size = UDim2.fromScale(1, 1),
+	BackgroundColor3 = Color3.fromRGB(255, 0, 0),
+	BackgroundTransparency = 1,
+	ZIndex = 1,
+	Parent = gui,
+})
+local function alarm()
+	for _ = 1, 3 do
+		alarmFrame.BackgroundTransparency = 0.6
+		TweenService:Create(alarmFrame, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
+		task.wait(0.35)
+	end
+end
+
+Remotes.Effect.OnClientEvent:Connect(function(name: string, strength: number)
+	if name == "Shake" then
+		shake(strength)
+	elseif name == "Confetti" then
+		confetti(strength)
+	elseif name == "Collect" then
+		cashPopup(strength)
+	elseif name == "Alarm" then
+		task.spawn(alarm)
+	end
+end)
+
+-- =====================================================================
+-- ADMIN-PANEL (wird nur angezeigt, wenn der Server dich als Admin markiert;
+-- jede Aktion wird zusätzlich auf dem Server geprüft)
+-- =====================================================================
+local function buildAdminPanel()
+	local adminWindow, content = makeWindow("🛠️ ADMIN-PANEL", 640, 560)
+	local status = label({
+		Size = UDim2.new(1, 0, 0, 26),
+		Text = "Bereit.",
+		TextColor3 = THEME.SubText,
+		Font = Enum.Font.GothamBold,
+		LayoutOrder = 0,
+		MaxText = 16,
+		Parent = content,
+	})
+
+	local function admin(action: string, args: { [string]: any }?)
+		local ok, result = pcall(function()
+			return Remotes.Admin:InvokeServer(action, args or {})
+		end)
+		if ok and type(result) == "table" then
+			status.Text = (result.Ok and "✅ " or "❌ ") .. tostring(result.Message)
+			status.TextColor3 = result.Ok and THEME.Green or THEME.Red
+			return result
+		end
+		status.Text = "❌ Keine Antwort vom Server"
+		status.TextColor3 = THEME.Red
+		return nil
+	end
+
+	-- Ziel
+	section(content, "🎯 Ziel-Spieler (me / all / others / Name / UserId)", 1)
+	local targetRow = row(content, 2, 40)
+	local targetBox = textBox({
+		Size = UDim2.new(0.55, 0, 1, 0),
+		Text = "me",
+		PlaceholderText = "me",
+		LayoutOrder = 1,
+		Parent = targetRow,
+	})
+	local playerList = create("ScrollingFrame", {
+		Size = UDim2.new(1, 0, 0, 44),
+		BackgroundTransparency = 1,
+		ScrollBarThickness = 4,
+		AutomaticCanvasSize = Enum.AutomaticSize.X,
+		CanvasSize = UDim2.new(0, 0, 0, 0),
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		LayoutOrder = 3,
+		Parent = content,
+	}, {
+		create("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6) }),
+	})
+	local function refreshPlayers()
+		local result = admin("GetPlayers")
+		for _, child in ipairs(playerList:GetChildren()) do
+			if child:IsA("TextButton") then
+				child:Destroy()
+			end
+		end
+		if result and result.Data then
+			for _, info in ipairs(result.Data) do
+				button({
+					Size = UDim2.new(0, 150, 0, 36),
+					Text = info.DisplayName .. " (" .. Util.FormatCash(info.Cash) .. ")",
+					Color = THEME.PanelLight,
+					MaxText = 14,
+					Parent = playerList,
+				}, function()
+					targetBox.Text = info.Name
+				end)
+			end
+		end
+	end
+	button(
+		{
+			Size = UDim2.new(0.42, 0, 1, 0),
+			Text = "🔄 Spieler laden",
+			Color = THEME.Blue,
+			LayoutOrder = 2,
+			Parent = targetRow,
+		},
+		refreshPlayers
+	)
+
+	-- Meteor-Auswahl
+	section(content, "☄️ Meteor spawnen / geben", 4)
+	local selectedMeteor = Config.Meteors[1].Id
+	local selectedMutation = "Normal"
+	local selectedLabel = label({
+		Size = UDim2.new(1, 0, 0, 24),
+		Text = "",
+		LayoutOrder = 5,
+		MaxText = 18,
+		Parent = content,
+	})
+	local function updateSelected()
+		local def = Config.MeteorsById[selectedMeteor]
+		selectedLabel.Text = "Ausgewählt: " .. selectedMutation .. " " .. def.Name .. " (" .. def.Rarity .. ")"
+		selectedLabel.TextColor3 = Config.RaritiesByName[def.Rarity].Color
+	end
+	local meteorGrid = grid(content, 6, 112, 40)
+	for i, def in ipairs(Config.Meteors) do
+		local b = button({
+			Text = def.Name,
+			Color = Config.RaritiesByName[def.Rarity].Color:Lerp(Color3.new(0, 0, 0), 0.45),
+			LayoutOrder = i,
+			MaxText = 13,
+			Parent = meteorGrid,
+		}, function()
+			selectedMeteor = def.Id
+			updateSelected()
+		end)
+		b.TextWrapped = true
+	end
+	local mutRow = row(content, 7, 36)
+	for i, mut in ipairs(Config.Mutations) do
+		button({
+			Size = UDim2.new(0.25, -5, 1, 0),
+			Text = mut.Name .. " x" .. mut.Mult,
+			Color = (mut.Color or THEME.Gray):Lerp(Color3.new(0, 0, 0), 0.35),
+			LayoutOrder = i,
+			Parent = mutRow,
+		}, function()
+			selectedMutation = mut.Name
+			updateSelected()
+		end)
+	end
+	updateSelected()
+	local countRow = row(content, 8, 36)
+	local countBox = textBox({
+		Size = UDim2.new(0.5, -3, 1, 0),
+		PlaceholderText = "Anzahl (1-25)",
+		Text = "1",
+		LayoutOrder = 1,
+		Parent = countRow,
+	})
+	local levelBox = textBox({
+		Size = UDim2.new(0.5, -3, 1, 0),
+		PlaceholderText = "Level (1-" .. Config.MaxLevel .. ")",
+		Text = "1",
+		LayoutOrder = 2,
+		Parent = countRow,
+	})
+	local spawnRow = row(content, 9, 42)
+	button(
+		{
+			Size = UDim2.new(0.25, -5, 1, 0),
+			Text = "Im Krater",
+			Color = THEME.Accent,
+			LayoutOrder = 1,
+			Parent = spawnRow,
+		},
+		function()
+			admin(
+				"SpawnMeteor",
+				{ MeteorId = selectedMeteor, Mutation = selectedMutation, Count = countBox.Text, Where = "Crater" }
+			)
+		end
+	)
+	button(
+		{ Size = UDim2.new(0.25, -5, 1, 0), Text = "Vor mir", Color = THEME.Accent, LayoutOrder = 2, Parent = spawnRow },
+		function()
+			admin(
+				"SpawnMeteor",
+				{ MeteorId = selectedMeteor, Mutation = selectedMutation, Count = countBox.Text, Where = "Me" }
+			)
+		end
+	)
+	button(
+		{
+			Size = UDim2.new(0.25, -5, 1, 0),
+			Text = "Gratis vor mir",
+			Color = THEME.Green,
+			LayoutOrder = 3,
+			Parent = spawnRow,
+		},
+		function()
+			admin(
+				"SpawnMeteor",
+				{
+					MeteorId = selectedMeteor,
+					Mutation = selectedMutation,
+					Count = countBox.Text,
+					Where = "Me",
+					Free = true,
+				}
+			)
+		end
+	)
+	button(
+		{
+			Size = UDim2.new(0.25, -5, 1, 0),
+			Text = "In Ziel-Base",
+			Color = THEME.Purple,
+			LayoutOrder = 4,
+			Parent = spawnRow,
+		},
+		function()
+			admin(
+				"GiveMeteor",
+				{
+					MeteorId = selectedMeteor,
+					Mutation = selectedMutation,
+					Level = levelBox.Text,
+					Target = targetBox.Text,
+				}
+			)
+		end
+	)
+
+	-- Meteorregen
+	section(content, "🌧️ Meteorregen (Seltenheit wählen)", 10)
+	local rainGrid = grid(content, 11, 92, 36)
+	button({ Text = "Zufall", Color = THEME.Gray, LayoutOrder = 0, Parent = rainGrid }, function()
+		admin("MeteorRain", { Count = countBox.Text ~= "1" and countBox.Text or 15 })
+	end)
+	for i, rarity in ipairs(Config.Rarities) do
+		button(
+			{
+				Text = rarity.Name,
+				Color = rarity.Color:Lerp(Color3.new(0, 0, 0), 0.4),
+				LayoutOrder = i,
+				MaxText = 14,
+				Parent = rainGrid,
+			},
+			function()
+				admin("MeteorRain", { Rarity = rarity.Name, Count = countBox.Text ~= "1" and countBox.Text or 10 })
+			end
+		)
+	end
+
+	-- Geld & Werte
+	section(content, "💰 Geld & Werte (für Ziel-Spieler)", 12)
+	local amountBox = textBox({
+		Size = UDim2.new(1, 0, 0, 36),
+		PlaceholderText = "Betrag (z.B. 1000000)",
+		LayoutOrder = 13,
+		Parent = content,
+	})
+	local moneyRow = row(content, 14, 40)
+	button(
+		{ Size = UDim2.new(0.25, -5, 1, 0), Text = "+ Cash", Color = THEME.Green, LayoutOrder = 1, Parent = moneyRow },
+		function()
+			admin("GiveCash", { Target = targetBox.Text, Amount = amountBox.Text })
+		end
+	)
+	button(
+		{
+			Size = UDim2.new(0.25, -5, 1, 0),
+			Text = "Cash setzen",
+			Color = THEME.Green,
+			LayoutOrder = 2,
+			Parent = moneyRow,
+		},
+		function()
+			admin("SetCash", { Target = targetBox.Text, Amount = amountBox.Text })
+		end
+	)
+	button(
+		{
+			Size = UDim2.new(0.25, -5, 1, 0),
+			Text = "Rebirths setzen",
+			Color = THEME.Red,
+			LayoutOrder = 3,
+			Parent = moneyRow,
+		},
+		function()
+			admin("SetRebirths", { Target = targetBox.Text, Amount = amountBox.Text })
+		end
+	)
+	button(
+		{
+			Size = UDim2.new(0.25, -5, 1, 0),
+			Text = "Speed-Lvl setzen",
+			Color = THEME.Blue,
+			LayoutOrder = 4,
+			Parent = moneyRow,
+		},
+		function()
+			admin("SetSpeed", { Target = targetBox.Text, Amount = amountBox.Text })
+		end
+	)
+	local passGridAdmin = grid(content, 15, 112, 36)
+	for i, pass in ipairs(Config.GamePasses) do
+		button(
+			{
+				Text = pass.Icon .. " " .. pass.Name,
+				Color = THEME.PanelLight,
+				LayoutOrder = i,
+				MaxText = 13,
+				Parent = passGridAdmin,
+			},
+			function()
+				admin("GivePass", { Target = targetBox.Text, PassKey = pass.Key })
+			end
+		)
+	end
+
+	-- Events
+	section(content, "🎉 Events", 16)
+	local globalToggle = false
+	local eventRow1 = row(content, 17, 36)
+	local multBox = textBox({
+		Size = UDim2.new(0.33, -4, 1, 0),
+		PlaceholderText = "Glück x",
+		Text = "2",
+		LayoutOrder = 1,
+		Parent = eventRow1,
+	})
+	local minutesBox = textBox({
+		Size = UDim2.new(0.33, -4, 1, 0),
+		PlaceholderText = "Minuten",
+		Text = "10",
+		LayoutOrder = 2,
+		Parent = eventRow1,
+	})
+	local globalButton
+	globalButton = button(
+		{
+			Size = UDim2.new(0.33, -4, 1, 0),
+			Text = "Nur dieser Server",
+			Color = THEME.Gray,
+			LayoutOrder = 3,
+			MaxText = 14,
+			Parent = eventRow1,
+		},
+		function()
+			globalToggle = not globalToggle
+			globalButton.Text = globalToggle and "🌍 ALLE Server" or "Nur dieser Server"
+			globalButton.BackgroundColor3 = globalToggle and THEME.Purple or THEME.Gray
+		end
+	)
+	local eventRow2 = row(content, 18, 40)
+	button(
+		{
+			Size = UDim2.new(0.5, -3, 1, 0),
+			Text = "🍀 Glück starten",
+			Color = THEME.Green,
+			LayoutOrder = 1,
+			Parent = eventRow2,
+		},
+		function()
+			admin("ServerLuck", { Mult = multBox.Text, Minutes = minutesBox.Text, Global = globalToggle })
+		end
+	)
+	button(
+		{
+			Size = UDim2.new(0.5, -3, 1, 0),
+			Text = "🌠 Meteoritenschauer",
+			Color = THEME.Accent,
+			LayoutOrder = 2,
+			Parent = eventRow2,
+		},
+		function()
+			admin("StartShower", { Seconds = (tonumber(minutesBox.Text) or 1) * 60, Global = globalToggle })
+		end
+	)
+	local announceRow = row(content, 19, 40)
+	local announceBox = textBox({
+		Size = UDim2.new(0.7, -3, 1, 0),
+		PlaceholderText = "Nachricht an alle...",
+		LayoutOrder = 1,
+		Parent = announceRow,
+	})
+	button(
+		{
+			Size = UDim2.new(0.3, -3, 1, 0),
+			Text = "📢 Senden",
+			Color = THEME.Blue,
+			LayoutOrder = 2,
+			Parent = announceRow,
+		},
+		function()
+			admin("Announce", { Text = announceBox.Text, Global = globalToggle })
+		end
+	)
+
+	-- Moderation
+	section(content, "🛡️ Moderation (Ziel oben)", 20)
+	local modRow = row(content, 21, 36)
+	local reasonBox =
+		textBox({ Size = UDim2.new(0.7, -3, 1, 0), PlaceholderText = "Grund", LayoutOrder = 1, Parent = modRow })
+	local daysBox = textBox({
+		Size = UDim2.new(0.3, -3, 1, 0),
+		PlaceholderText = "Tage (0=immer)",
+		LayoutOrder = 2,
+		Parent = modRow,
+	})
+	local modGrid = grid(content, 22, 146, 38)
+	local modActions = {
+		{ "👢 Kick", "Kick", THEME.Red },
+		{ "🔨 Bann", "Ban", THEME.Red },
+		{ "♻️ Entbannen (UserId)", "Unban", THEME.Green },
+		{ "🧹 Base leeren", "ClearBase", THEME.Accent },
+		{ "💣 Daten Reset", "ResetData", THEME.Red },
+		{ "➡️ TP zu Ziel", "TeleportTo", THEME.Blue },
+		{ "⬅️ Ziel holen", "Bring", THEME.Blue },
+		{ "🧽 Krater leeren", "ClearGround", THEME.Gray },
+	}
+	local confirmPending: string? = nil
+	for i, info in ipairs(modActions) do
+		button({ Text = info[1], Color = info[3], LayoutOrder = i, MaxText = 14, Parent = modGrid }, function()
+			local action = info[2]
+			-- gefährliche Aktionen brauchen einen zweiten Klick
+			if (action == "Ban" or action == "ResetData") and confirmPending ~= action then
+				confirmPending = action
+				status.Text = "⚠️ Nochmal klicken zum Bestätigen: " .. info[1]
+				status.TextColor3 = THEME.Accent
+				return
+			end
+			confirmPending = nil
+			admin(action, { Target = targetBox.Text, Reason = reasonBox.Text, Days = daysBox.Text })
+		end)
+	end
+
+	sideButton("🛠️ Admin", Color3.fromRGB(200, 40, 40), 7, function()
+		openWindow(adminWindow)
+	end)
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not processed and input.KeyCode == Enum.KeyCode.P then
+			openWindow(adminWindow)
+		end
+	end)
+	toast("🛠️ Admin-Panel aktiv – Taste P oder Button links", "Info")
+end
+
+local adminBuilt = false
+local function checkAdmin()
+	if player:GetAttribute("IsAdmin") == true and not adminBuilt then
+		adminBuilt = true
+		buildAdminPanel()
+	end
+end
+player:GetAttributeChangedSignal("IsAdmin"):Connect(checkAdmin)
+checkAdmin()
+
+toast("☄️ Willkommen bei " .. Config.GameName .. "! Kauf Meteore im Krater und bring sie in deine Base!", "Event")
+]]></string>
+          </Properties>
+        </Item>
+      </Item>
+    </Item>
+  </Item>
+</roblox>
