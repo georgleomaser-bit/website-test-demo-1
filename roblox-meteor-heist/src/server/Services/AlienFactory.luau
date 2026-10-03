@@ -45,6 +45,7 @@ local MAX_PARTS_ADMIN = 16
 local ADMIN_RANK = 10
 local LEVEL_GROWTH = 0.012 -- +1,2% Größe pro Level (Level 20 = +23%)
 local LABEL_GAP = 1.6
+local SHADOW_MIN_VOLUME = 15 -- nur große Teile werfen Schatten (bewegte Schattenwerfer kosten viel)
 local MODE_SCALE: { [string]: number } = { Base = 1, Photo = 1, Carry = 0.55 }
 
 local DARK = Color3.fromRGB(25, 22, 30)
@@ -267,7 +268,7 @@ local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf:
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
 	local scaled = part.Size
-	part.CastShadow = not ctx.carry and scaled.X * scaled.Y * scaled.Z >= 4
+	part.CastShadow = not ctx.carry and scaled.X * scaled.Y * scaled.Z >= SHADOW_MIN_VOLUME
 	if ctx.carry then
 		part.Massless = true
 	end
@@ -815,9 +816,12 @@ local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s
 	local color = rarityColor(alien.Rarity)
 	local accent = alien.Look.Accent
 
-	if fx.Highlight then
+	-- Umriss: getragen keiner. Startet AUS – der Client schaltet nur die nächsten paar ein
+	-- (Roblox zeigt höchstens 31 Highlights gleichzeitig, jedes kostet einen Render-Durchgang).
+	if fx.Highlight and not carry then
 		local highlight = Instance.new("Highlight")
 		highlight.Name = "Glow"
+		highlight.Enabled = false
 		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 		highlight.FillColor = color
 		highlight.FillTransparency = 0.85
@@ -1091,6 +1095,8 @@ function AlienFactory.Refresh(model: Model, entry: Entry)
 		local scaledRel = CFrame.new(rel.Position * (target / current)) * rel.Rotation
 		body.PivotOffset = scaledRel:Inverse()
 		model:PivotTo(pivot)
+		-- Zähler: der Client (Wippen) merkt daran, dass sich die Teile verändert haben
+		model:SetAttribute("Rev", (tonumber(model:GetAttribute("Rev")) or 0) + 1)
 	end
 	updateLabelOffset(model, body)
 	AlienFactory.UpdateLabel(model, entry)

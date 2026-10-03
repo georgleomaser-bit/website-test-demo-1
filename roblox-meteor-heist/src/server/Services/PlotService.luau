@@ -26,6 +26,9 @@ PlotService.MaxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
 local Services
 
 local EMPTY_SLOT_COLOR = Color3.fromRGB(35, 35, 45)
+local LOCK_NOTIFY_COOLDOWN = 2 -- Lock-Pad im Schauer: Hinweis höchstens alle 2 s (Touched feuert sehr oft)
+
+local lockNotifyAt: { [Player]: number } = {}
 
 -- -------------------------------------------------------------------
 -- ABFRAGEN
@@ -355,7 +358,11 @@ local function tryLock(player: Player, plot)
 		return
 	end
 	if Services.MeteorService.IsShowerActive() then
-		Services.EconomyService.Notify(player, "🌠 Während des Meteoritenschauers gibt es keine Locks!", "Error")
+		local t = os.clock()
+		if t - (lockNotifyAt[player] or -math.huge) >= LOCK_NOTIFY_COOLDOWN then
+			lockNotifyAt[player] = t
+			Services.EconomyService.Notify(player, "🌠 Während des Meteoritenschauers gibt es keine Locks!", "Error")
+		end
 		return
 	end
 	local duration = Services.MonetizationService.HasPass(player, "VIP") and Config.LockDurationVIP
@@ -380,6 +387,7 @@ local function teleportToPlot(player: Player)
 	end
 	local target = plot and plot.SpawnCFrame or PlotService.LobbySpawn
 	character:PivotTo(target)
+	Services.CarryService.NoteTeleport(player, target.Position)
 end
 
 function PlotService.AssignPlot(player: Player)
@@ -423,12 +431,32 @@ function PlotService.TeleportHome(player: Player)
 	teleportToPlot(player)
 end
 
+-- Hinter das beste freigeschaltete Laufband (Neulinge landen so am Holz-Laufband, nicht vor Gold)
+local function treadmillTarget(player: Player): CFrame
+	local data = Services.DataService.Get(player)
+	local best = Config.BestTreadmill(data and data.Steps or 0)
+	local folder = PlotService.TreadmillsFolder
+	if best and folder then
+		for _, model in ipairs(folder:GetChildren()) do
+			local belt = model:IsA("Model") and model:GetAttribute("TreadmillId") == best.Id and model.PrimaryPart
+			if belt then
+				-- Lauffläche: lokales -Z (LookVector) = Laufrichtung -> Einstieg von hinten
+				local spot = belt.Position - belt.CFrame.LookVector * (belt.Size.Z / 2 + 4) + Vector3.new(0, 3.5, 0)
+				return CFrame.lookAt(spot, Vector3.new(belt.Position.X, spot.Y, belt.Position.Z))
+			end
+		end
+	end
+	return PlotService.TreadmillSpawn
+end
+
 function PlotService.TeleportToTreadmills(player: Player): boolean
 	local character = player.Character
 	if not character then
 		return false
 	end
-	character:PivotTo(PlotService.TreadmillSpawn)
+	local target = treadmillTarget(player)
+	character:PivotTo(target)
+	Services.CarryService.NoteTeleport(player, target.Position)
 	return true
 end
 
@@ -557,6 +585,7 @@ function PlotService.Start()
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		debounce[player] = nil
+		lockNotifyAt[player] = nil
 		local plot = PlotService.ByPlayer[player]
 		if plot then
 			-- laufende Diebstähle aus dieser Base abbrechen, dann Base freigeben
@@ -577,7 +606,12 @@ function PlotService.Start()
 						local character = other.Character
 						local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 						if other ~= plot.Owner and character and root and PlotService.IsInside(plot, root.Position) then
+							if Services.CarryService.IsCarrying(other) then
+								-- Dieb noch drin, als gesperrt wurde -> Beute zurück (eigener Hinweis statt "Teleport")
+								Services.CarryService.Fail(other, "locked")
+							end
 							character:PivotTo(plot.EntranceCFrame)
+							Services.CarryService.NoteTeleport(other, plot.EntranceCFrame.Position)
 							Services.EconomyService.Notify(other, "🔒 Diese Base ist gesperrt!", "Error")
 						end
 					end

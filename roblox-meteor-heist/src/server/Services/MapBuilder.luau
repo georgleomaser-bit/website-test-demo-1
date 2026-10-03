@@ -559,7 +559,7 @@ local function buildBelt(map: Folder): BeltInfo
 	local titleAnchor = anchorPart("TitleSign", CFrame.new(0, PORTAL_HEIGHT + 9, startZ + PORTAL_LENGTH / 2), deco)
 	worldSign(titleAnchor, "Sign", 46, 11, Vector3.zero, 700, {
 		{ Name = "Title", Text = "☄️ METEOR HEIST ☄️", Color = Color3.fromRGB(255, 170, 60), Height = 0.62 },
-		{ Name = "Hint", Text = "🛒 Meteore am Laufband kaufen: [E]", Color = WHITE, Height = 0.38 },
+		{ Name = "Hint", Text = "🛒 Meteore am Förderband kaufen: [E]", Color = WHITE, Height = 0.38 },
 	})
 
 	return {

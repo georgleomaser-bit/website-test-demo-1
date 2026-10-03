@@ -22,9 +22,153 @@ local stealing: { [any]: { [number]: Player } } = {} -- [plot][slot] = Dieb
 local lastBonk: { [Player]: number } = {}
 
 local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der Beute)
+-- Mindest-Tragezeit: kürzester möglicher Weg (raus aus der fremden Base, rein in die eigene)
+-- geteilt durch Trage-Tempo * diesen Faktor. Schneller geht es nur mit Teleport/Durch-Wände-Laufen.
+local MIN_CARRY_SPEED_FACTOR = 1.5
 
 function CarryService.IsCarrying(player: Player): boolean
 	return carrying[player] ~= nil
+end
+
+-- -------------------------------------------------------------------
+-- BEWEGUNGS-PRÜFUNG (gegen Teleport- und Speed-Exploits)
+-- -------------------------------------------------------------------
+-- Die Position des Charakters bestimmt der Client. Deshalb hat jeder Spieler ein "Weg-Budget":
+-- Es füllt sich mit dem erlaubten Tempo wieder auf, jede Bewegung verbraucht es (nur waagrecht,
+-- Fallen zählt nicht). Ist es leer, war der Spieler unmöglich schnell -> kurz keine Käufe/Diebstähle,
+-- getragene Beute fliegt zurück. Der Vorrat reicht für kurze Ping-Hänger (Position kommt gesammelt an).
+local MOVE_RATE_FACTOR = 1.5 -- erlaubtes Tempo = WalkSpeed * 1.5 + MOVE_RATE_EXTRA
+local MOVE_RATE_EXTRA = 16 -- Laufbänder schieben, Bonk-Rückstoß, kleine Physik-Sprünge
+local MOVE_BUDGET_SECONDS = 0.75 -- Vorrat = so viele Sekunden erlaubtes Tempo
+local MOVE_FLAG_TIME = 1.5 -- nach einem Verstoß so lange gesperrt
+-- Nach einem Server-Teleport kurz warten: alte Positionen (vor dem Teleport) können noch ankommen.
+-- In der Zeit zählen nur Positionen nahe am Teleport-Ziel, Kaufen/Klauen geht erst danach.
+local TELEPORT_GRACE = 1
+local TELEPORT_ANCHOR_RADIUS = 30
+
+type MoveTrack = {
+	Pos: Vector3?, -- letzte anerkannte Position
+	Time: number,
+	Budget: number,
+	FlaggedUntil: number,
+	GraceUntil: number,
+	Anchor: Vector3?, -- Ziel des letzten Server-Teleports
+}
+local moveTrack: { [Player]: MoveTrack } = {}
+
+-- Server-Teleports (Home, Laufbänder, Lock-Rauswurf, Admin, Respawn) sind erlaubt.
+-- destination = Ziel des Teleports (nil = unbekannt, z.B. neuer Charakter)
+function CarryService.NoteTeleport(player: Player, destination: Vector3?)
+	local now = os.clock()
+	local old = moveTrack[player]
+	moveTrack[player] = {
+		Pos = destination,
+		Time = now,
+		Budget = 0,
+		FlaggedUntil = old and old.FlaggedUntil or 0,
+		GraceUntil = now + TELEPORT_GRACE,
+		Anchor = destination,
+	}
+	local info = carrying[player]
+	if info then
+		info.MinTime = 0 -- vom Server versetzt -> Mindest-Tragezeit gilt nicht mehr
+	end
+end
+
+-- Misst die Bewegung seit der letzten Messung:
+--   "ok"      = alles plausibel (darf kaufen/klauen)
+--   "wait"    = gerade vom Server teleportiert (kurz warten, Beute bleibt)
+--   "flagged" = unmöglich schnell oder noch gesperrt (Beute fliegt zurück)
+function CarryService.MoveStatus(player: Player): string
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return "ok"
+	end
+	local admin = Services.AdminService
+	if admin and admin.IsAdmin(player) then
+		return "ok" -- Admins dürfen fliegen und teleportieren
+	end
+	local now = os.clock()
+	local rate = humanoid.WalkSpeed * MOVE_RATE_FACTOR + MOVE_RATE_EXTRA
+	local cap = rate * MOVE_BUDGET_SECONDS
+	local pos = root.Position
+	local track = moveTrack[player]
+	if not track then
+		track = { Pos = nil, Time = now, Budget = cap, FlaggedUntil = 0, GraceUntil = 0, Anchor = nil }
+		moveTrack[player] = track
+	end
+	if now < track.GraceUntil then
+		local anchor = track.Anchor
+		local dx, dz = 0, 0
+		if anchor then
+			dx, dz = pos.X - anchor.X, pos.Z - anchor.Z
+		end
+		if dx * dx + dz * dz <= TELEPORT_ANCHOR_RADIUS * TELEPORT_ANCHOR_RADIUS then
+			track.Pos = pos
+		end
+		track.Time = now
+		track.Budget = cap
+		return "wait"
+	end
+	local last = track.Pos
+	if not last then
+		-- erste Messung: nur merken (Kaufen/Klauen erst ab der nächsten Messung)
+		track.Pos = pos
+		track.Time = now
+		track.Budget = cap
+		return if now >= track.FlaggedUntil then "wait" else "flagged"
+	end
+	local dx, dz = pos.X - last.X, pos.Z - last.Z
+	local distance = math.sqrt(dx * dx + dz * dz)
+	local budget = math.min(cap, track.Budget + rate * math.max(0, now - track.Time)) - distance
+	track.Pos = pos
+	track.Time = now
+	if budget < 0 then
+		track.Budget = cap
+		track.FlaggedUntil = now + MOVE_FLAG_TIME
+		return "flagged"
+	end
+	track.Budget = budget
+	return if now >= track.FlaggedUntil then "ok" else "flagged"
+end
+
+-- Kürzester möglicher Weg (Studs) von "from" in der fremden Base bis in die eigene Base:
+-- Basen haben nur vorne (lokales -Z) einen Eingang, die Wände sind zu hoch zum Drüberspringen.
+-- Gerechnet wird großzügig (ganze Eingangsbreite, Luftlinie) -> echte Spieler sind immer langsamer.
+local function flat(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function pointSegmentDistance(p: Vector3, a: Vector3, b: Vector3): number
+	local ab = b - a
+	local lengthSq = ab:Dot(ab)
+	local t = lengthSq > 0 and math.clamp((p - a):Dot(ab) / lengthSq, 0, 1) or 0
+	return (p - (a + ab * t)).Magnitude
+end
+
+local function entranceSegment(plot): (Vector3, Vector3)
+	local half = plot.HalfSize or 36
+	local a = plot.CFrame:PointToWorldSpace(Vector3.new(-half, 0, -half))
+	local b = plot.CFrame:PointToWorldSpace(Vector3.new(half, 0, -half))
+	return flat(a), flat(b)
+end
+
+local function minCarryDistance(victimPlot, ownPlot, from: Vector3): number
+	if victimPlot == ownPlot then
+		return 0
+	end
+	local va, vb = entranceSegment(victimPlot)
+	local oa, ob = entranceSegment(ownPlot)
+	local toExit = pointSegmentDistance(flat(from), va, vb)
+	local between = math.min(
+		pointSegmentDistance(va, oa, ob),
+		pointSegmentDistance(vb, oa, ob),
+		pointSegmentDistance(oa, va, vb),
+		pointSegmentDistance(ob, va, vb)
+	)
+	return toExit + between
 end
 
 function CarryService.IsSlotBeingStolen(plot, slot: number): boolean
@@ -117,10 +261,11 @@ local function createVisual(player: Player, entry): Instance?
 	return visual
 end
 
--- info: { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef }
+-- info: { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef, MinTime? }
 function CarryService.StartCarry(player: Player, entry, info)
 	info.Entry = entry
 	info.Started = os.clock()
+	info.MinTime = info.MinTime or 0
 	info.Visual = createVisual(player, entry)
 	carrying[player] = info
 	Services.EconomyService.ApplySpeed(player)
@@ -191,6 +336,8 @@ function CarryService.Fail(player: Player, reason: string)
 		Services.EconomyService.Notify(player, "📦 Deine Base ist voll – die Beute fliegt zurück!", "Error")
 	elseif reason == "teleport" then
 		Services.EconomyService.Notify(player, "🚫 Mit Beute kann man nicht teleportieren!", "Error")
+	elseif reason == "locked" then
+		Services.EconomyService.Notify(player, "🔒 Die Base wurde gesperrt – deine Beute fliegt zurück!", "Error")
 	end
 end
 
@@ -201,7 +348,8 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	end
 	local thiefData = Services.DataService.Get(thief)
 	local ownerData = Services.DataService.Get(owner)
-	if not thiefData or not ownerData then
+	local Economy = Services.EconomyService
+	if not thiefData or not ownerData or not Economy.IsReady(thief) or not Economy.IsReady(owner) then
 		return
 	end
 	if Services.PlotService.IsLocked(plot) then
@@ -215,7 +363,8 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	if not entry then
 		return
 	end
-	if not Services.PlotService.GetPlot(thief) then
+	local thiefPlot = Services.PlotService.GetPlot(thief)
+	if not thiefPlot then
 		Services.EconomyService.Notify(thief, "Du hast keine Base auf diesem Server.", "Error")
 		return
 	end
@@ -234,6 +383,15 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	if (root.Position - objectPos).Magnitude > Services.PlotService.ObjectRadius(object) + 16 then
 		return -- zu weit weg
 	end
+	if not Services.PlotService.IsInside(plot, root.Position) then
+		return -- klauen nur, wer IN der fremden Base steht (nicht durch die Wand aus der Nachbar-Base)
+	end
+	if CarryService.MoveStatus(thief) ~= "ok" then
+		Services.EconomyService.Notify(thief, "⏳ Kurz warten und nochmal versuchen!", "Error")
+		return
+	end
+	local speed = math.max(8, Services.EconomyService.GetSpeed(thief) * Config.CarrySpeedFactor)
+	local minTime = minCarryDistance(plot, thiefPlot, root.Position) / (speed * MIN_CARRY_SPEED_FACTOR)
 
 	stealing[plot] = stealing[plot] or {}
 	stealing[plot][slot] = thief
@@ -244,6 +402,7 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 		VictimPlayer = owner,
 		Slot = slot,
 		EntryRef = entry,
+		MinTime = minTime,
 	})
 	Services.EconomyService.MarkDirty(owner)
 	Services.EconomyService.Notify(
@@ -394,6 +553,7 @@ function CarryService.Start()
 			if carrying[player] then
 				CarryService.Fail(player, "died")
 			end
+			CarryService.NoteTeleport(player) -- neuer Charakter steht woanders
 			local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
 			if humanoid then
 				humanoid.Died:Connect(function()
@@ -416,6 +576,7 @@ function CarryService.Start()
 	-- Kann zweimal aufgerufen werden (PlayerRemoving + Speichern) – ist harmlos.
 	local function onLeaving(player: Player)
 		lastBonk[player] = nil
+		moveTrack[player] = nil
 		if carrying[player] then
 			CarryService.Fail(player, "left")
 		end
@@ -423,37 +584,35 @@ function CarryService.Start()
 	Services.DataService.OnProfileReleasing(onLeaving)
 	Players.PlayerRemoving:Connect(onLeaving)
 
-	-- Prüfen: angekommen? gestorben? zu langsam?
+	-- Prüfen: angekommen? gestorben? zu langsam? teleportiert?
 	task.spawn(function()
 		while true do
 			task.wait(0.15)
+			-- Bewegung ALLER Spieler messen (Anti-Teleport fürs Tragen, Kaufen und Klauen)
+			for _, player in ipairs(Players:GetPlayers()) do
+				if CarryService.MoveStatus(player) == "flagged" and carrying[player] then
+					CarryService.Fail(player, "teleport")
+				end
+			end
 			for player, info in pairs(carrying) do
 				local character = player.Character
 				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				local plot = Services.PlotService.GetPlot(player)
-				local teleported = false
-				if root then
-					-- Anti-Teleport: wer mit Beute unmöglich schnell vorankommt, verliert sie
-					local now = os.clock()
-					if info.LastPos then
-						local dist = (root.Position - info.LastPos).Magnitude
-						local dt = math.max(now - info.LastTime, 0.05)
-						local limit = math.max(humanoid and humanoid.WalkSpeed * 2.5 or 0, 70)
-						teleported = dist > 25 and dist / dt > limit
-					end
-					info.LastPos = root.Position
-					info.LastTime = now
-				end
+				local elapsed = os.clock() - info.Started
 				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
 					-- (Visual weg = Charakter neu gespawnt oder Beute zerstört)
 					CarryService.Fail(player, "died")
-				elseif teleported then
-					CarryService.Fail(player, "teleport")
-				elseif os.clock() - info.Started > Config.CarryTimeout then
+				elseif elapsed > Config.CarryTimeout then
 					CarryService.Fail(player, "timeout")
 				elseif plot and Services.PlotService.IsInside(plot, root.Position) then
-					succeed(player)
+					local admin = Services.AdminService
+					if elapsed < (info.MinTime or 0) and not (admin and admin.IsAdmin(player)) then
+						-- schneller als der kürzeste mögliche Weg -> Teleport oder durch die Wand
+						CarryService.Fail(player, "teleport")
+					else
+						succeed(player)
+					end
 				end
 			end
 		end

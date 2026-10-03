@@ -130,9 +130,21 @@ local function refreshAll()
 	WorldFX.UpdateTreadmills(tonumber(state.Steps) or 0, state.BestTreadmill)
 end
 
+-- Selten geänderte Teile (Index, Pässe, Statistik) schickt der Server nur bei Änderung mit.
+-- Fehlen sie in einem Paket, gelten die zuletzt bekommenen weiter.
+local STICKY_KEYS = { "Index", "Passes", "Stats" }
+
 Remotes.State.OnClientEvent:Connect(function(newState)
 	if type(newState) ~= "table" then
 		return
+	end
+	local old = ctx.State
+	if old then
+		for _, key in ipairs(STICKY_KEYS) do
+			if newState[key] == nil then
+				newState[key] = old[key]
+			end
+		end
 	end
 	ctx.State = newState
 	refreshAll()
@@ -179,7 +191,7 @@ end
 player:GetAttributeChangedSignal("IsAdmin"):Connect(checkAdmin)
 checkAdmin()
 
-UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Kauf Meteore am Laufband [E]!", "Event")
+UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Kauf Meteore am Förderband [E]!", "Event")
 task.delay(4, function()
 	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld!", "Info")
 end)

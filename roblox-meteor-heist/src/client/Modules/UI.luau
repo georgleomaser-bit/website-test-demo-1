@@ -52,6 +52,7 @@ local TOAST_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDir
 local COUNTER_INTERVAL = 1 / 30 -- Zahlen höchstens 30x pro Sekunde neu schreiben
 local TOAST_HEIGHT = 40
 local MAX_TOASTS = 5
+local MAX_TOAST_POOL = 8 -- so viele fertige Toasts werden zum Wiederverwenden aufgehoben
 
 local root: ScreenGui? = nil
 UI.Root = nil :: ScreenGui? -- die ScreenGui der Oberfläche (nach UI.Init gesetzt)
@@ -535,9 +536,14 @@ end
 
 -- ---------------------------------------------------------------------
 -- FENSTER (immer nur eins offen; öffnen = Ploppen + Einblenden)
+-- Der Inhalt steckt nur WÄHREND des Auf-/Zugehens in einer CanvasGroup (für das weiche Einblenden).
+-- Danach hängt er in einem normalen Frame: Eine CanvasGroup malt bei jeder kleinen Änderung
+-- (Text, Balken, Scrollen) ihren ganzen Inhalt neu und macht Schrift auf Handys unscharf.
 -- ---------------------------------------------------------------------
 export type Window = {
-	Group: CanvasGroup,
+	Group: Frame, -- Halter (Position, Größe, sichtbar ja/nein)
+	Fader: CanvasGroup, -- nur während der Animation benutzt
+	Panel: Frame, -- der eigentliche Fensterinhalt
 	Scale: UIScale,
 	Content: ScrollingFrame,
 	IsOpen: boolean,
@@ -547,6 +553,20 @@ export type Window = {
 
 local windows: { Window } = {}
 
+-- Inhalt für die Animation in die CanvasGroup hängen
+local function beginFade(win: Window)
+	if win.Panel.Parent ~= win.Fader then
+		win.Panel.Parent = win.Fader
+	end
+	win.Fader.Visible = true
+end
+
+-- Animation fertig: Inhalt zurück in den normalen Frame, CanvasGroup aus
+local function endFade(win: Window)
+	win.Panel.Parent = win.Group
+	win.Fader.Visible = false
+end
+
 function UI.CloseWindow(win: Window)
 	if not win.IsOpen then
 		return
@@ -554,11 +574,13 @@ function UI.CloseWindow(win: Window)
 	win.IsOpen = false
 	win.Token += 1
 	local token = win.Token
+	beginFade(win)
 	TweenService:Create(win.Scale, CLOSE_INFO, { Scale = 0.9 }):Play()
-	local fade = TweenService:Create(win.Group, CLOSE_INFO, { GroupTransparency = 1 })
+	local fade = TweenService:Create(win.Fader, CLOSE_INFO, { GroupTransparency = 1 })
 	fade.Completed:Connect(function()
 		if win.Token == token then
 			win.Group.Visible = false
+			endFade(win)
 		end
 	end)
 	fade:Play()
@@ -575,12 +597,20 @@ function UI.OpenWindow(win: Window)
 	end
 	win.IsOpen = true
 	win.Token += 1
+	local token = win.Token
+	beginFade(win)
 	if not win.Group.Visible then
-		win.Group.GroupTransparency = 1
+		win.Fader.GroupTransparency = 1
 		win.Scale.Scale = 0.86
 		win.Group.Visible = true
 	end
-	TweenService:Create(win.Group, OPEN_FADE_INFO, { GroupTransparency = 0 }):Play()
+	local fade = TweenService:Create(win.Fader, OPEN_FADE_INFO, { GroupTransparency = 0 })
+	fade.Completed:Connect(function()
+		if win.Token == token and win.IsOpen then
+			endFade(win)
+		end
+	end)
+	fade:Play()
 	TweenService:Create(win.Scale, OPEN_POP_INFO, { Scale = 1 }):Play()
 	if win.OnOpen then
 		task.spawn(win.OnOpen)
@@ -604,18 +634,25 @@ end
 function UI.Window(title: string, width: number, height: number, color: Color3?): Window
 	assert(root, "UI.Init zuerst aufrufen")
 	local accent = color or UI.Theme.Orange
-	local group: CanvasGroup = UI.Create("CanvasGroup", {
+	local group: Frame = UI.Create("Frame", {
 		Name = "Window",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(width, height),
 		BackgroundTransparency = 1,
-		GroupTransparency = 1,
 		Visible = false,
 		ZIndex = 10,
 		Parent = root,
 	})
 	local scale: UIScale = UI.Create("UIScale", { Scale = 0.86, Parent = group })
+	local fader: CanvasGroup = UI.Create("CanvasGroup", {
+		Name = "Fader",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		GroupTransparency = 1,
+		Visible = false,
+		Parent = group,
+	})
 	local panel = UI.Create("Frame", {
 		Name = "Panel",
 		Position = UDim2.fromOffset(4, 4),
@@ -669,6 +706,8 @@ function UI.Window(title: string, width: number, height: number, color: Color3?)
 	})
 	local win: Window = {
 		Group = group,
+		Fader = fader,
+		Panel = panel,
 		Scale = scale,
 		Content = content,
 		IsOpen = false,
@@ -693,8 +732,19 @@ end
 
 -- ---------------------------------------------------------------------
 -- TOASTS (gleiten von rechts herein, rutschen nach oben weg)
+-- Normale Frames (keine CanvasGroup) + ein kleiner Vorrat, der wiederverwendet wird.
 -- ---------------------------------------------------------------------
-type ToastEntry = { Container: Frame, Inner: CanvasGroup, Leaving: boolean }
+type ToastEntry = {
+	Container: Frame,
+	Inner: Frame,
+	Panel: Frame,
+	PanelStroke: UIStroke,
+	Gradient: UIGradient,
+	Label: TextLabel,
+	LabelStroke: UIStroke?,
+	Leaving: boolean,
+	Token: number,
+}
 
 local TOAST_COLORS: { [string]: Color3 } = {
 	Info = Color3.fromRGB(60, 66, 120),
@@ -708,28 +758,101 @@ local TOAST_COLORS: { [string]: Color3 } = {
 local toastHolder: Frame? = nil
 local toastCount = 0
 local activeToasts: { ToastEntry } = {}
+local toastPool: { ToastEntry } = {}
+
+local function newToastEntry(): ToastEntry
+	local container: Frame = UI.Create("Frame", {
+		Name = "Toast",
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+	})
+	local inner: Frame = UI.Create("Frame", {
+		Name = "Inner",
+		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
+		BackgroundTransparency = 1,
+		Parent = container,
+	})
+	local panelStroke = UI.Stroke(BLACK, 3)
+	local gradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
+	local panel: Frame = UI.Create("Frame", {
+		Name = "Panel",
+		Position = UDim2.fromOffset(3, 3),
+		Size = UDim2.new(1, -6, 1, -6),
+		BackgroundColor3 = WHITE,
+		Parent = inner,
+	}, { UI.Corner(12), panelStroke, gradient })
+	local label = UI.Label({
+		Position = UDim2.fromOffset(14, 6),
+		Size = UDim2.new(1, -28, 1, -12),
+		MaxText = 19,
+		Outline = 2,
+		Parent = inner,
+	})
+	return {
+		Container = container,
+		Inner = inner,
+		Panel = panel,
+		PanelStroke = panelStroke,
+		Gradient = gradient,
+		Label = label,
+		LabelStroke = label:FindFirstChildOfClass("UIStroke"),
+		Leaving = false,
+		Token = 0,
+	}
+end
+
+-- Ein-/Ausblenden über die Transparenz der einzelnen Teile. Gibt den Tween der Fläche zurück.
+local function fadeToast(entry: ToastEntry, info: TweenInfo, transparency: number): Tween
+	local panelTween = TweenService:Create(entry.Panel, info, { BackgroundTransparency = transparency })
+	TweenService:Create(entry.PanelStroke, info, { Transparency = transparency }):Play()
+	TweenService:Create(entry.Label, info, { TextTransparency = transparency }):Play()
+	if entry.LabelStroke then
+		TweenService:Create(entry.LabelStroke, info, { Transparency = transparency }):Play()
+	end
+	panelTween:Play()
+	return panelTween
+end
+
+local function setToastTransparency(entry: ToastEntry, transparency: number)
+	entry.Panel.BackgroundTransparency = transparency
+	entry.PanelStroke.Transparency = transparency
+	entry.Label.TextTransparency = transparency
+	if entry.LabelStroke then
+		entry.LabelStroke.Transparency = transparency
+	end
+end
 
 local function removeToast(entry: ToastEntry)
 	if entry.Leaving then
 		return
 	end
 	entry.Leaving = true
+	local token = entry.Token
 	local index = table.find(activeToasts, entry)
 	if index then
 		table.remove(activeToasts, index)
 	end
-	local fade = TweenService:Create(entry.Inner, TOAST_OUT_INFO, {
-		GroupTransparency = 1,
-		Position = UDim2.fromOffset(-50, 0),
-	})
+	TweenService:Create(entry.Inner, TOAST_OUT_INFO, { Position = UDim2.fromOffset(-50, 0) }):Play()
+	local fade = fadeToast(entry, TOAST_OUT_INFO, 1)
 	fade.Completed:Connect(function()
+		if entry.Token ~= token then
+			return
+		end
 		local shrink = TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, 0) })
 		shrink.Completed:Connect(function()
-			entry.Container:Destroy()
+			if entry.Token ~= token then
+				return
+			end
+			-- fertig -> aufheben und später wiederverwenden
+			entry.Container.Parent = nil
+			if #toastPool < MAX_TOAST_POOL then
+				table.insert(toastPool, entry)
+			else
+				entry.Container:Destroy()
+			end
 		end)
 		shrink:Play()
 	end)
-	fade:Play()
 end
 
 function UI.Toast(text: string, kind: string?)
@@ -739,48 +862,28 @@ function UI.Toast(text: string, kind: string?)
 	end
 	toastCount += 1
 	local color = TOAST_COLORS[kind or "Info"] or TOAST_COLORS.Info
-	local container: Frame = UI.Create("Frame", {
-		Name = "Toast",
-		Size = UDim2.new(1, 0, 0, 0),
-		BackgroundTransparency = 1,
-		LayoutOrder = toastCount,
-		Parent = holder,
-	})
-	local inner: CanvasGroup = UI.Create("CanvasGroup", {
-		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
-		Position = UDim2.fromOffset(70, 0),
-		BackgroundTransparency = 1,
-		GroupTransparency = 1,
-		Parent = container,
-	})
-	UI.Create("Frame", {
-		Position = UDim2.fromOffset(3, 3),
-		Size = UDim2.new(1, -6, 1, -6),
-		BackgroundColor3 = WHITE,
-		Parent = inner,
-	}, {
-		UI.Corner(12),
-		UI.Stroke(BLACK, 3),
-		UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(color) }),
-	})
-	UI.Label({
-		Position = UDim2.fromOffset(14, 6),
-		Size = UDim2.new(1, -28, 1, -12),
-		Text = text,
-		MaxText = 19,
-		Outline = 2,
-		Parent = inner,
-	})
-	local entry: ToastEntry = { Container = container, Inner = inner, Leaving = false }
+	local entry = table.remove(toastPool) or newToastEntry()
+	entry.Token += 1
+	entry.Leaving = false
+	local token = entry.Token
+	entry.Gradient.Color = UI.ButtonSequence(color)
+	entry.Label.Text = text
+	entry.Container.Size = UDim2.new(1, 0, 0, 0)
+	entry.Container.LayoutOrder = toastCount
+	entry.Inner.Position = UDim2.fromOffset(70, 0)
+	setToastTransparency(entry, 1)
+	entry.Container.Parent = holder
 	table.insert(activeToasts, entry)
-	TweenService:Create(container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
-	TweenService:Create(inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
-	TweenService:Create(inner, TOAST_FADE_INFO, { GroupTransparency = 0 }):Play()
+	TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
+	TweenService:Create(entry.Inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
+	fadeToast(entry, TOAST_FADE_INFO, 0)
 	while #activeToasts > MAX_TOASTS do
 		removeToast(activeToasts[1])
 	end
 	task.delay((kind == "Announce" or kind == "Event") and 7 or 4, function()
-		removeToast(entry)
+		if entry.Token == token then
+			removeToast(entry)
+		end
 	end)
 end
 

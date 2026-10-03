@@ -18,14 +18,19 @@ local treadmills = {}
 local zoneCenter = Vector3.zero
 local zoneRadius = 0
 local lastLockedNotify: { [Player]: number } = {}
+-- true = beim Server kommt Humanoid.MoveDirection an (schon einmal gesehen) -> keine Ersatz-Prüfung nötig
+local moveDirectionWorks: { [Player]: boolean } = {}
 
-local EDGE_TOLERANCE = 0.75 -- etwas Spielraum am Rand der Lauffläche
 local MAX_HEIGHT = 8 -- HumanoidRootPart höchstens so hoch über der Lauffläche (Springen zählt mit)
 local LOCKED_NOTIFY_COOLDOWN = 3
 local MIN_MOVE = 0.1 -- Humanoid.MoveDirection muss mindestens so lang sein (= Spieler läuft)
--- Zweite Prüfung über die Physik: Wer stillsteht, fährt mit dem Band mit (gleiches Tempo wie das Band).
--- Wer läuft (oder vorne gegen die Konsole läuft), ist deutlich langsamer/schneller als das Band.
+-- Ersatz-Prüfung über die Physik (nur falls MoveDirection beim Server nie ankommt):
+-- Wer stillsteht, fährt mit dem Band mit (gleiches Tempo wie das Band). Wer läuft (oder vorne gegen
+-- die Konsole läuft), ist entlang der Bandrichtung deutlich langsamer/schneller als das Band.
 local MIN_RELATIVE_SPEED = 4
+-- ...und nur, wenn man wirklich AUF dem Band steht: Hüfte in normaler Stehhöhe über der Lauffläche.
+-- Auf dem Seitenrahmen (0,7 höher) oder der Konsole steht man höher -> zählt nicht.
+local STAND_TOLERANCE = 0.45
 local RESCAN_INTERVAL = 5
 
 -- Laufbänder aus der Map einlesen (MapBuilder baut je Eintrag in Config.Treadmills ein Model)
@@ -46,8 +51,10 @@ local function collect()
 					Def = def,
 					Belt = belt,
 					CFrame = belt.CFrame,
-					HalfX = belt.Size.X / 2 + EDGE_TOLERANCE,
-					HalfZ = belt.Size.Z / 2 + EDGE_TOLERANCE,
+					-- Lauffläche OHNE Spielraum: direkt daneben stehen Seitenrahmen, Konsole und Chassis.
+					-- Wer dort stillsteht, darf nicht als "läuft auf dem Band" zählen.
+					HalfX = belt.Size.X / 2,
+					HalfZ = belt.Size.Z / 2,
 					TopY = belt.Size.Y / 2,
 				})
 				sum += belt.Position
@@ -89,6 +96,33 @@ function TreadmillService.FindTreadmill(position: Vector3)
 	return nil
 end
 
+-- Normale Höhe des HumanoidRootPart über dem Boden, wenn man steht (R15 bzw. R6)
+local function standHeight(humanoid: Humanoid, root: BasePart): number
+	if humanoid.RigType == Enum.HumanoidRigType.R15 then
+		return humanoid.HipHeight + root.Size.Y / 2
+	end
+	return root.Size.Y / 2 + 2 -- R6: Beine sind 2 Studs lang
+end
+
+-- Ersatz-Prüfung über die Physik: steht der Spieler auf DIESEM Band und ist er entlang der
+-- Bandrichtung deutlich anders schnell als das Band (= er läuft dagegen an)?
+local function walkingByPhysics(treadmill, humanoid: Humanoid, root: BasePart): boolean
+	local belt: BasePart = treadmill.Belt
+	local localPos = treadmill.CFrame:PointToObjectSpace(root.Position)
+	local height = localPos.Y - treadmill.TopY
+	if math.abs(height - standHeight(humanoid, root)) > STAND_TOLERANCE then
+		return false -- springt, oder steht auf Seitenrahmen/Konsole statt auf dem Band
+	end
+	local beltVelocity = belt.AssemblyLinearVelocity
+	local beltSpeed = beltVelocity.Magnitude
+	if beltSpeed < 0.01 then
+		return false
+	end
+	local along = beltVelocity / beltSpeed
+	local relative = beltSpeed - root.AssemblyLinearVelocity:Dot(along)
+	return math.abs(relative) > MIN_RELATIVE_SPEED
+end
+
 local function tickPlayer(player: Player)
 	local data = Services.DataService.Get(player)
 	local character = player.Character
@@ -97,15 +131,17 @@ local function tickPlayer(player: Player)
 	if not data or not root or not humanoid or humanoid.Health <= 0 then
 		return
 	end
+	-- nur wer läuft, sammelt Schritte
+	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE
+	if walking then
+		moveDirectionWorks[player] = true
+	end
 	local treadmill = TreadmillService.FindTreadmill(root.Position)
 	if not treadmill then
 		return
 	end
-	-- nur wer läuft, sammelt Schritte
-	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE
-	if not walking then
-		local relative = root.AssemblyLinearVelocity - treadmill.Belt.AssemblyLinearVelocity
-		walking = Vector3.new(relative.X, 0, relative.Z).Magnitude > MIN_RELATIVE_SPEED
+	if not walking and not moveDirectionWorks[player] then
+		walking = walkingByPhysics(treadmill, humanoid, root)
 	end
 	if not walking then
 		return
@@ -140,6 +176,7 @@ function TreadmillService.Start()
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastLockedNotify[player] = nil
+		moveDirectionWorks[player] = nil
 	end)
 
 	task.spawn(function()

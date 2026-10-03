@@ -271,7 +271,7 @@ function AdminPanel.Build(ctx: any)
 	})
 	local spawnRow = UI.Row(content, 1200, 44)
 	local spawnActions = {
-		{ "Aufs Laufband", Theme.Orange, { Where = "Belt" } },
+		{ "Aufs Förderband", Theme.Orange, { Where = "Belt" } },
 		{ "Vor mir", Theme.Orange, { Where = "Me" } },
 		{ "Gratis vor mir", Theme.Green, { Where = "Me", Free = true } },
 		{ "🎁 Gratis-Zone", Theme.Green, { Where = "Free", Free = true } },

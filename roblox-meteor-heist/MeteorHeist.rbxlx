@@ -1470,6 +1470,7 @@ local Services
 local limiter = Util.RateLimiter(12, 1)
 
 local adminCache: { [Player]: boolean } = {}
+local warnedDenied: { [Player]: boolean } = {} -- "Unerlaubter Zugriff" nur einmal pro Spieler ins Log
 
 -- Gehört das Spiel diesem Spieler? (Spiel unter dem eigenen Account veröffentlicht)
 -- Bei Gruppen-Spielen: Admins per UserId in Config.AdminUserIds eintragen.
@@ -1784,6 +1785,8 @@ local SHOWCASE_LIFETIME = 300 -- Sekunden
 local PHOTO_RARITIES = { "Legendary", "Mythic", "Celestial", "Divine", "Secret" }
 local PHOTO_LUCK = 8
 local ADMIN_METEOR_LIFETIME = 300 -- Sekunden in der Gratis-Zone
+-- Admin-Meteore haben Umriss, starkes Licht und Aura -> per "Spawnen" höchstens so viele auf einmal
+local MAX_ADMIN_METEOR_SPAWN = 5
 -- Öfter Gold/Diamond/Cosmic als Normal – glänzt schöner auf dem Foto
 local PHOTO_MUTATIONS = {
 	{ Name = "Normal", Weight = 16 },
@@ -1872,6 +1875,9 @@ function Actions.SpawnMeteor(admin, args)
 		return false, "Unbekannter Meteor"
 	end
 	local count = math.floor(num(args.Count, 1, 1, 25))
+	if Config.RaritiesByName[Config.MeteorsById[id].Rarity].AdminOnly then
+		count = math.min(count, MAX_ADMIN_METEOR_SPAWN)
+	end
 	local mutation = Config.MutationsByName[args.Mutation] and args.Mutation or "Normal"
 	local where = args.Where
 	local origin, right, forward = nil, nil, nil
@@ -1906,7 +1912,7 @@ function Actions.SpawnMeteor(admin, args)
 			Services.MeteorService.QueueBelt(opts)
 		end
 	end
-	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "aufs Laufband")
+	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "aufs Förderband")
 	return true, count .. "x " .. Config.MeteorsById[id].Name .. " " .. target
 end
 
@@ -1917,10 +1923,10 @@ function Actions.MeteorRain(_admin, args)
 		Services.MeteorService.QueueBelt({ Rarity = rarity, Announce = false })
 	end
 	Services.EconomyService.NotifyAll(
-		"☄️ ADMIN-METEORREGEN aufs Laufband" .. (rarity and (" (" .. rarity .. ")") or "") .. "! 🏃",
+		"☄️ ADMIN-METEORREGEN aufs Förderband" .. (rarity and (" (" .. rarity .. ")") or "") .. "! 🏃",
 		"Event"
 	)
-	return true, count .. " Meteore kommen aufs Laufband"
+	return true, count .. " Meteore kommen aufs Förderband"
 end
 
 function Actions.GiveMeteor(admin, args)
@@ -2222,7 +2228,9 @@ function Actions.Bring(admin, args)
 	end
 	for i, p in ipairs(targets) do
 		if p ~= admin and p.Character then
-			p.Character:PivotTo((root :: BasePart).CFrame * CFrame.new(i * 3, 0, -4))
+			local target = (root :: BasePart).CFrame * CFrame.new(i * 3, 0, -4)
+			p.Character:PivotTo(target)
+			Services.CarryService.NoteTeleport(p, target.Position)
 		end
 	end
 	return #targets > 0, "Geholt: " .. names(targets)
@@ -2230,7 +2238,7 @@ end
 
 function Actions.ClearGround(_admin)
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Laufband & Gratis-Zone geleert"
+	return true, "🧹 Förderband & Gratis-Zone geleert"
 end
 
 function Actions.AdminAbuse(_admin, args)
@@ -2344,7 +2352,7 @@ function Actions.PhotoClear(admin)
 		Services.PlotService.UpdateSlotColors(plot)
 	end
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Foto-Deko entfernt, Laufband & Gratis-Zone geleert"
+	return true, "🧹 Foto-Deko entfernt, Förderband & Gratis-Zone geleert"
 end
 
 -- -------------------------------------------------------------------
@@ -2376,15 +2384,20 @@ function AdminService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		limiter.Clear(player)
 		adminCache[player] = nil
+		warnedDenied[player] = nil
 	end)
 
 	Remotes.Admin.OnServerInvoke = function(player: Player, action: any, args: any)
-		if not AdminService.IsAdmin(player) then
-			warn("[Admin] Unerlaubter Zugriff von " .. player.Name .. " (" .. player.UserId .. ")")
-			return { Ok = false, Message = "Kein Zugriff" }
-		end
+		-- Spam-Bremse ZUERST (auch für Nicht-Admins, sonst fluten Exploiter das Server-Log)
 		if not limiter.Check(player) then
 			return { Ok = false, Message = "Zu schnell" }
+		end
+		if not AdminService.IsAdmin(player) then
+			if not warnedDenied[player] then
+				warnedDenied[player] = true
+				warn("[Admin] Unerlaubter Zugriff von " .. player.Name .. " (" .. player.UserId .. ")")
+			end
+			return { Ok = false, Message = "Kein Zugriff" }
 		end
 		if type(action) ~= "string" or not Actions[action] then
 			return { Ok = false, Message = "Unbekannte Aktion" }
@@ -2467,6 +2480,7 @@ local MAX_PARTS_ADMIN = 16
 local ADMIN_RANK = 10
 local LEVEL_GROWTH = 0.012 -- +1,2% Größe pro Level (Level 20 = +23%)
 local LABEL_GAP = 1.6
+local SHADOW_MIN_VOLUME = 15 -- nur große Teile werfen Schatten (bewegte Schattenwerfer kosten viel)
 local MODE_SCALE: { [string]: number } = { Base = 1, Photo = 1, Carry = 0.55 }
 
 local DARK = Color3.fromRGB(25, 22, 30)
@@ -2689,7 +2703,7 @@ local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf:
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
 	local scaled = part.Size
-	part.CastShadow = not ctx.carry and scaled.X * scaled.Y * scaled.Z >= 4
+	part.CastShadow = not ctx.carry and scaled.X * scaled.Y * scaled.Z >= SHADOW_MIN_VOLUME
 	if ctx.carry then
 		part.Massless = true
 	end
@@ -3237,9 +3251,12 @@ local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s
 	local color = rarityColor(alien.Rarity)
 	local accent = alien.Look.Accent
 
-	if fx.Highlight then
+	-- Umriss: getragen keiner. Startet AUS – der Client schaltet nur die nächsten paar ein
+	-- (Roblox zeigt höchstens 31 Highlights gleichzeitig, jedes kostet einen Render-Durchgang).
+	if fx.Highlight and not carry then
 		local highlight = Instance.new("Highlight")
 		highlight.Name = "Glow"
+		highlight.Enabled = false
 		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 		highlight.FillColor = color
 		highlight.FillTransparency = 0.85
@@ -3513,6 +3530,8 @@ function AlienFactory.Refresh(model: Model, entry: Entry)
 		local scaledRel = CFrame.new(rel.Position * (target / current)) * rel.Rotation
 		body.PivotOffset = scaledRel:Inverse()
 		model:PivotTo(pivot)
+		-- Zähler: der Client (Wippen) merkt daran, dass sich die Teile verändert haben
+		model:SetAttribute("Rev", (tonumber(model:GetAttribute("Rev")) or 0) + 1)
 	end
 	updateLabelOffset(model, body)
 	AlienFactory.UpdateLabel(model, entry)
@@ -3549,9 +3568,153 @@ local stealing: { [any]: { [number]: Player } } = {} -- [plot][slot] = Dieb
 local lastBonk: { [Player]: number } = {}
 
 local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der Beute)
+-- Mindest-Tragezeit: kürzester möglicher Weg (raus aus der fremden Base, rein in die eigene)
+-- geteilt durch Trage-Tempo * diesen Faktor. Schneller geht es nur mit Teleport/Durch-Wände-Laufen.
+local MIN_CARRY_SPEED_FACTOR = 1.5
 
 function CarryService.IsCarrying(player: Player): boolean
 	return carrying[player] ~= nil
+end
+
+-- -------------------------------------------------------------------
+-- BEWEGUNGS-PRÜFUNG (gegen Teleport- und Speed-Exploits)
+-- -------------------------------------------------------------------
+-- Die Position des Charakters bestimmt der Client. Deshalb hat jeder Spieler ein "Weg-Budget":
+-- Es füllt sich mit dem erlaubten Tempo wieder auf, jede Bewegung verbraucht es (nur waagrecht,
+-- Fallen zählt nicht). Ist es leer, war der Spieler unmöglich schnell -> kurz keine Käufe/Diebstähle,
+-- getragene Beute fliegt zurück. Der Vorrat reicht für kurze Ping-Hänger (Position kommt gesammelt an).
+local MOVE_RATE_FACTOR = 1.5 -- erlaubtes Tempo = WalkSpeed * 1.5 + MOVE_RATE_EXTRA
+local MOVE_RATE_EXTRA = 16 -- Laufbänder schieben, Bonk-Rückstoß, kleine Physik-Sprünge
+local MOVE_BUDGET_SECONDS = 0.75 -- Vorrat = so viele Sekunden erlaubtes Tempo
+local MOVE_FLAG_TIME = 1.5 -- nach einem Verstoß so lange gesperrt
+-- Nach einem Server-Teleport kurz warten: alte Positionen (vor dem Teleport) können noch ankommen.
+-- In der Zeit zählen nur Positionen nahe am Teleport-Ziel, Kaufen/Klauen geht erst danach.
+local TELEPORT_GRACE = 1
+local TELEPORT_ANCHOR_RADIUS = 30
+
+type MoveTrack = {
+	Pos: Vector3?, -- letzte anerkannte Position
+	Time: number,
+	Budget: number,
+	FlaggedUntil: number,
+	GraceUntil: number,
+	Anchor: Vector3?, -- Ziel des letzten Server-Teleports
+}
+local moveTrack: { [Player]: MoveTrack } = {}
+
+-- Server-Teleports (Home, Laufbänder, Lock-Rauswurf, Admin, Respawn) sind erlaubt.
+-- destination = Ziel des Teleports (nil = unbekannt, z.B. neuer Charakter)
+function CarryService.NoteTeleport(player: Player, destination: Vector3?)
+	local now = os.clock()
+	local old = moveTrack[player]
+	moveTrack[player] = {
+		Pos = destination,
+		Time = now,
+		Budget = 0,
+		FlaggedUntil = old and old.FlaggedUntil or 0,
+		GraceUntil = now + TELEPORT_GRACE,
+		Anchor = destination,
+	}
+	local info = carrying[player]
+	if info then
+		info.MinTime = 0 -- vom Server versetzt -> Mindest-Tragezeit gilt nicht mehr
+	end
+end
+
+-- Misst die Bewegung seit der letzten Messung:
+--   "ok"      = alles plausibel (darf kaufen/klauen)
+--   "wait"    = gerade vom Server teleportiert (kurz warten, Beute bleibt)
+--   "flagged" = unmöglich schnell oder noch gesperrt (Beute fliegt zurück)
+function CarryService.MoveStatus(player: Player): string
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return "ok"
+	end
+	local admin = Services.AdminService
+	if admin and admin.IsAdmin(player) then
+		return "ok" -- Admins dürfen fliegen und teleportieren
+	end
+	local now = os.clock()
+	local rate = humanoid.WalkSpeed * MOVE_RATE_FACTOR + MOVE_RATE_EXTRA
+	local cap = rate * MOVE_BUDGET_SECONDS
+	local pos = root.Position
+	local track = moveTrack[player]
+	if not track then
+		track = { Pos = nil, Time = now, Budget = cap, FlaggedUntil = 0, GraceUntil = 0, Anchor = nil }
+		moveTrack[player] = track
+	end
+	if now < track.GraceUntil then
+		local anchor = track.Anchor
+		local dx, dz = 0, 0
+		if anchor then
+			dx, dz = pos.X - anchor.X, pos.Z - anchor.Z
+		end
+		if dx * dx + dz * dz <= TELEPORT_ANCHOR_RADIUS * TELEPORT_ANCHOR_RADIUS then
+			track.Pos = pos
+		end
+		track.Time = now
+		track.Budget = cap
+		return "wait"
+	end
+	local last = track.Pos
+	if not last then
+		-- erste Messung: nur merken (Kaufen/Klauen erst ab der nächsten Messung)
+		track.Pos = pos
+		track.Time = now
+		track.Budget = cap
+		return if now >= track.FlaggedUntil then "wait" else "flagged"
+	end
+	local dx, dz = pos.X - last.X, pos.Z - last.Z
+	local distance = math.sqrt(dx * dx + dz * dz)
+	local budget = math.min(cap, track.Budget + rate * math.max(0, now - track.Time)) - distance
+	track.Pos = pos
+	track.Time = now
+	if budget < 0 then
+		track.Budget = cap
+		track.FlaggedUntil = now + MOVE_FLAG_TIME
+		return "flagged"
+	end
+	track.Budget = budget
+	return if now >= track.FlaggedUntil then "ok" else "flagged"
+end
+
+-- Kürzester möglicher Weg (Studs) von "from" in der fremden Base bis in die eigene Base:
+-- Basen haben nur vorne (lokales -Z) einen Eingang, die Wände sind zu hoch zum Drüberspringen.
+-- Gerechnet wird großzügig (ganze Eingangsbreite, Luftlinie) -> echte Spieler sind immer langsamer.
+local function flat(v: Vector3): Vector3
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function pointSegmentDistance(p: Vector3, a: Vector3, b: Vector3): number
+	local ab = b - a
+	local lengthSq = ab:Dot(ab)
+	local t = lengthSq > 0 and math.clamp((p - a):Dot(ab) / lengthSq, 0, 1) or 0
+	return (p - (a + ab * t)).Magnitude
+end
+
+local function entranceSegment(plot): (Vector3, Vector3)
+	local half = plot.HalfSize or 36
+	local a = plot.CFrame:PointToWorldSpace(Vector3.new(-half, 0, -half))
+	local b = plot.CFrame:PointToWorldSpace(Vector3.new(half, 0, -half))
+	return flat(a), flat(b)
+end
+
+local function minCarryDistance(victimPlot, ownPlot, from: Vector3): number
+	if victimPlot == ownPlot then
+		return 0
+	end
+	local va, vb = entranceSegment(victimPlot)
+	local oa, ob = entranceSegment(ownPlot)
+	local toExit = pointSegmentDistance(flat(from), va, vb)
+	local between = math.min(
+		pointSegmentDistance(va, oa, ob),
+		pointSegmentDistance(vb, oa, ob),
+		pointSegmentDistance(oa, va, vb),
+		pointSegmentDistance(ob, va, vb)
+	)
+	return toExit + between
 end
 
 function CarryService.IsSlotBeingStolen(plot, slot: number): boolean
@@ -3644,10 +3807,11 @@ local function createVisual(player: Player, entry): Instance?
 	return visual
 end
 
--- info: { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef }
+-- info: { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef, MinTime? }
 function CarryService.StartCarry(player: Player, entry, info)
 	info.Entry = entry
 	info.Started = os.clock()
+	info.MinTime = info.MinTime or 0
 	info.Visual = createVisual(player, entry)
 	carrying[player] = info
 	Services.EconomyService.ApplySpeed(player)
@@ -3718,6 +3882,8 @@ function CarryService.Fail(player: Player, reason: string)
 		Services.EconomyService.Notify(player, "📦 Deine Base ist voll – die Beute fliegt zurück!", "Error")
 	elseif reason == "teleport" then
 		Services.EconomyService.Notify(player, "🚫 Mit Beute kann man nicht teleportieren!", "Error")
+	elseif reason == "locked" then
+		Services.EconomyService.Notify(player, "🔒 Die Base wurde gesperrt – deine Beute fliegt zurück!", "Error")
 	end
 end
 
@@ -3728,7 +3894,8 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	end
 	local thiefData = Services.DataService.Get(thief)
 	local ownerData = Services.DataService.Get(owner)
-	if not thiefData or not ownerData then
+	local Economy = Services.EconomyService
+	if not thiefData or not ownerData or not Economy.IsReady(thief) or not Economy.IsReady(owner) then
 		return
 	end
 	if Services.PlotService.IsLocked(plot) then
@@ -3742,7 +3909,8 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	if not entry then
 		return
 	end
-	if not Services.PlotService.GetPlot(thief) then
+	local thiefPlot = Services.PlotService.GetPlot(thief)
+	if not thiefPlot then
 		Services.EconomyService.Notify(thief, "Du hast keine Base auf diesem Server.", "Error")
 		return
 	end
@@ -3761,6 +3929,15 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	if (root.Position - objectPos).Magnitude > Services.PlotService.ObjectRadius(object) + 16 then
 		return -- zu weit weg
 	end
+	if not Services.PlotService.IsInside(plot, root.Position) then
+		return -- klauen nur, wer IN der fremden Base steht (nicht durch die Wand aus der Nachbar-Base)
+	end
+	if CarryService.MoveStatus(thief) ~= "ok" then
+		Services.EconomyService.Notify(thief, "⏳ Kurz warten und nochmal versuchen!", "Error")
+		return
+	end
+	local speed = math.max(8, Services.EconomyService.GetSpeed(thief) * Config.CarrySpeedFactor)
+	local minTime = minCarryDistance(plot, thiefPlot, root.Position) / (speed * MIN_CARRY_SPEED_FACTOR)
 
 	stealing[plot] = stealing[plot] or {}
 	stealing[plot][slot] = thief
@@ -3771,6 +3948,7 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 		VictimPlayer = owner,
 		Slot = slot,
 		EntryRef = entry,
+		MinTime = minTime,
 	})
 	Services.EconomyService.MarkDirty(owner)
 	Services.EconomyService.Notify(
@@ -3921,6 +4099,7 @@ function CarryService.Start()
 			if carrying[player] then
 				CarryService.Fail(player, "died")
 			end
+			CarryService.NoteTeleport(player) -- neuer Charakter steht woanders
 			local humanoid = character:WaitForChild("Humanoid", 10) :: Humanoid?
 			if humanoid then
 				humanoid.Died:Connect(function()
@@ -3943,6 +4122,7 @@ function CarryService.Start()
 	-- Kann zweimal aufgerufen werden (PlayerRemoving + Speichern) – ist harmlos.
 	local function onLeaving(player: Player)
 		lastBonk[player] = nil
+		moveTrack[player] = nil
 		if carrying[player] then
 			CarryService.Fail(player, "left")
 		end
@@ -3950,37 +4130,35 @@ function CarryService.Start()
 	Services.DataService.OnProfileReleasing(onLeaving)
 	Players.PlayerRemoving:Connect(onLeaving)
 
-	-- Prüfen: angekommen? gestorben? zu langsam?
+	-- Prüfen: angekommen? gestorben? zu langsam? teleportiert?
 	task.spawn(function()
 		while true do
 			task.wait(0.15)
+			-- Bewegung ALLER Spieler messen (Anti-Teleport fürs Tragen, Kaufen und Klauen)
+			for _, player in ipairs(Players:GetPlayers()) do
+				if CarryService.MoveStatus(player) == "flagged" and carrying[player] then
+					CarryService.Fail(player, "teleport")
+				end
+			end
 			for player, info in pairs(carrying) do
 				local character = player.Character
 				local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				local plot = Services.PlotService.GetPlot(player)
-				local teleported = false
-				if root then
-					-- Anti-Teleport: wer mit Beute unmöglich schnell vorankommt, verliert sie
-					local now = os.clock()
-					if info.LastPos then
-						local dist = (root.Position - info.LastPos).Magnitude
-						local dt = math.max(now - info.LastTime, 0.05)
-						local limit = math.max(humanoid and humanoid.WalkSpeed * 2.5 or 0, 70)
-						teleported = dist > 25 and dist / dt > limit
-					end
-					info.LastPos = root.Position
-					info.LastTime = now
-				end
+				local elapsed = os.clock() - info.Started
 				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
 					-- (Visual weg = Charakter neu gespawnt oder Beute zerstört)
 					CarryService.Fail(player, "died")
-				elseif teleported then
-					CarryService.Fail(player, "teleport")
-				elseif os.clock() - info.Started > Config.CarryTimeout then
+				elseif elapsed > Config.CarryTimeout then
 					CarryService.Fail(player, "timeout")
 				elseif plot and Services.PlotService.IsInside(plot, root.Position) then
-					succeed(player)
+					local admin = Services.AdminService
+					if elapsed < (info.MinTime or 0) and not (admin and admin.IsAdmin(player)) then
+						-- schneller als der kürzeste mögliche Weg -> Teleport oder durch die Wand
+						CarryService.Fail(player, "teleport")
+					else
+						succeed(player)
+					end
 				end
 			end
 		end
@@ -4365,7 +4543,18 @@ local EconomyService = {}
 local Services
 
 local dirty: { [Player]: boolean } = {}
+-- true = Spielstand fertig eingerichtet (Pässe geprüft, Offline-Zeit verrechnet, Base angezeigt).
+-- Vorher laufen weder Einkommen/Schlüpfen noch Käufe/Diebstähle.
+local readyPlayers: { [Player]: boolean } = {}
 local requestLimiter = Util.RateLimiter(8, 1)
+
+-- Selten geänderte Teile des States (Index, Pässe, Statistik) nur bei Änderung mitschicken.
+-- Der Client behält die alten Werte, wenn ein Feld fehlt. Ab und zu trotzdem alles (Sicherheitsnetz).
+local FULL_STATE_INTERVAL = 20
+local sentIndexCount: { [Player]: number } = {}
+local sentPasses: { [Player]: string } = {}
+local sentStats: { [Player]: string } = {}
+local fullStateAt: { [Player]: number } = {}
 
 local DELIVER_TIME = 0.9 -- so lange fliegt ein gekaufter Meteor in die Base (Client-Effekt)
 local ULTRA_ANNOUNCE_RARITY = 5 -- ab Legendary wird ein Ultra-Alien allen angesagt
@@ -4399,6 +4588,11 @@ function EconomyService.MarkDirty(player: Player?)
 	if player then
 		dirty[player] = true
 	end
+end
+
+-- Ist der Spielstand fertig geladen und eingerichtet? (für Käufe, Diebstähle, Einkommen)
+function EconomyService.IsReady(player: Player): boolean
+	return readyPlayers[player] == true
 end
 
 -- -------------------------------------------------------------------
@@ -4743,18 +4937,9 @@ local function buildState(player: Player)
 	end
 	local plot = Services.PlotService.GetPlot(player)
 	local dailyReady, dailyIn = EconomyService.DailyStatus(data)
-	local passes = {}
-	for _, pass in ipairs(Config.GamePasses) do
-		passes[pass.Key] = Services.MonetizationService.HasPass(player, pass.Key)
-	end
-	local index = {}
-	for id in pairs(data.Index) do
-		if Aliens.ById[id] then
-			table.insert(index, id)
-		end
-	end
+	local indexCount = EconomyService.IndexCount(data)
 	local best = Config.BestTreadmill(data.Steps)
-	return {
+	local state = {
 		Cash = data.Cash,
 		Pending = data.Pending,
 		Income = EconomyService.GetIncome(player),
@@ -4770,14 +4955,53 @@ local function buildState(player: Player)
 		DailyReady = dailyReady,
 		DailyIn = dailyIn,
 		Streak = data.Daily.Streak,
-		Index = index,
-		IndexBonus = #index * Config.IndexBonusPerAlien,
-		Passes = passes,
+		IndexBonus = indexCount * Config.IndexBonusPerAlien,
 		Carrying = Services.CarryService.IsCarrying(player),
 		HasPlot = plot ~= nil,
-		Stats = data.Stats,
 		TotalEarned = data.TotalEarned,
 	}
+
+	-- Index, Pässe und Statistik nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden)
+	local clock = os.clock()
+	local full = clock - (fullStateAt[player] or -math.huge) >= FULL_STATE_INTERVAL
+	if full then
+		fullStateAt[player] = clock
+	end
+	if full or sentIndexCount[player] ~= indexCount then
+		-- Der Index wächst nur (Reset leert ihn) -> die Anzahl reicht als Änderungs-Merkmal
+		sentIndexCount[player] = indexCount
+		local index = {}
+		for id in pairs(data.Index) do
+			if Aliens.ById[id] then
+				table.insert(index, id)
+			end
+		end
+		state.Index = index
+	end
+	local passKey = ""
+	for _, pass in ipairs(Config.GamePasses) do
+		passKey ..= Services.MonetizationService.HasPass(player, pass.Key) and "1" or "0"
+	end
+	if full or sentPasses[player] ~= passKey then
+		sentPasses[player] = passKey
+		local passes = {}
+		for _, pass in ipairs(Config.GamePasses) do
+			passes[pass.Key] = Services.MonetizationService.HasPass(player, pass.Key)
+		end
+		state.Passes = passes
+	end
+	local stats = data.Stats
+	local statsKey = ("%s|%s|%s|%s"):format(
+		tostring(stats.Stolen),
+		tostring(stats.Robbed),
+		tostring(stats.Bought),
+		tostring(stats.RobuxSpent)
+	)
+	if full or sentStats[player] ~= statsKey then
+		sentStats[player] = statsKey
+		state.Stats = stats
+	end
+	return state
 end
 
 local function updateLeaderstats(player: Player)
@@ -4836,14 +5060,18 @@ local function onProfileLoaded(player: Player, data)
 		end
 	end
 
-	-- Warten bis die Gamepasses geprüft sind (für Slots / Multiplikator / Schlüpf-Tempo)
+	-- Zeitpunkt des letzten Besuchs VOR dem Warten merken (ein Auto-Save setzt LastOnline neu)
+	local lastOnline = data.LastOnline
+
+	-- Warten bis die Gamepasses geprüft sind (für Slots / Multiplikator / Schlüpf-Tempo).
+	-- Bis "ready" gesetzt ist, laufen weder Einkommen noch Schlüpfen, Käufe oder Diebstähle.
 	Services.MonetizationService.LoadPasses(player)
 	if not player.Parent then
 		return
 	end
 
 	-- Offline: Schlüpfzeit vergeht auch ohne dich
-	local offline = data.LastOnline > 0 and math.max(0, os.time() - data.LastOnline) or 0
+	local offline = lastOnline > 0 and math.max(0, os.time() - lastOnline) or 0
 	local hatchedOffline = 0
 	if offline > 0 then
 		local speed = Services.PlotService.HatchSpeed(player)
@@ -4862,7 +5090,7 @@ local function onProfileLoaded(player: Player, data)
 	end
 
 	-- Offline-Einkommen
-	if data.LastOnline > 0 then
+	if lastOnline > 0 then
 		local seconds = math.clamp(offline, 0, Config.OfflineMaxSeconds)
 		local earned = math.floor(EconomyService.GetIncome(player) * seconds * Config.OfflineIncomeRate)
 		if earned > 0 then
@@ -4894,6 +5122,7 @@ local function onProfileLoaded(player: Player, data)
 		Services.PlotService.RenderAll(plot)
 		Services.PlotService.SetCollectText(plot, data.Pending)
 	end
+	readyPlayers[player] = true
 	EconomyService.ApplySpeed(player)
 	flush(player)
 
@@ -4954,14 +5183,25 @@ function EconomyService.Start()
 		if type(action) ~= "string" then
 			return { Ok = false, Message = "Unbekannt" }
 		end
+		if not readyPlayers[player] then
+			return { Ok = false, Message = "Lädt noch... ⏳" }
+		end
 		local ok, message = false, "Unbekannt"
 		if action == "Rebirth" then
 			ok, message = EconomyService.Rebirth(player)
 		elseif action == "Daily" then
 			ok, message = EconomyService.ClaimDaily(player)
 		elseif action == "Collect" then
-			EconomyService.Collect(player)
-			ok, message = true, ""
+			-- nur in der eigenen Base (sonst wäre es ein Gratis-"Auto Collect" von überall)
+			local plot = Services.PlotService.GetPlot(player)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if plot and root and Services.PlotService.IsInside(plot, root.Position) then
+				EconomyService.Collect(player)
+				ok, message = true, ""
+			else
+				ok, message = false, "🏠 Einsammeln geht nur in deiner Base!"
+			end
 		elseif action == "Home" then
 			if Services.CarryService.IsCarrying(player) then
 				ok, message = false, "Mit Beute musst du laufen! 🏃"
@@ -4984,6 +5224,11 @@ function EconomyService.Start()
 
 	Players.PlayerRemoving:Connect(function(player)
 		dirty[player] = nil
+		readyPlayers[player] = nil
+		sentIndexCount[player] = nil
+		sentPasses[player] = nil
+		sentStats[player] = nil
+		fullStateAt[player] = nil
 		requestLimiter.Clear(player)
 	end)
 
@@ -4998,7 +5243,7 @@ function EconomyService.Start()
 			for _, player in ipairs(Players:GetPlayers()) do
 				local data = Services.DataService.Get(player)
 				local plot = Services.PlotService.GetPlot(player)
-				if data and plot then
+				if data and plot and readyPlayers[player] then
 					local ok, err = pcall(tickPlayer, player, data, plot, dt)
 					if not ok then
 						warn("[EconomyService] Tick-Fehler bei " .. player.Name .. ": " .. tostring(err))
@@ -5855,7 +6100,7 @@ local function buildBelt(map: Folder): BeltInfo
 	local titleAnchor = anchorPart("TitleSign", CFrame.new(0, PORTAL_HEIGHT + 9, startZ + PORTAL_LENGTH / 2), deco)
 	worldSign(titleAnchor, "Sign", 46, 11, Vector3.zero, 700, {
 		{ Name = "Title", Text = "☄️ METEOR HEIST ☄️", Color = Color3.fromRGB(255, 170, 60), Height = 0.62 },
-		{ Name = "Hint", Text = "🛒 Meteore am Laufband kaufen: [E]", Color = WHITE, Height = 0.38 },
+		{ Name = "Hint", Text = "🛒 Meteore am Förderband kaufen: [E]", Color = WHITE, Height = 0.38 },
 	})
 
 	return {
@@ -6696,8 +6941,10 @@ local function addSpecialEffects(part: BasePart, def, color: Color3, size: numbe
 		part:SetAttribute("Rainbow", true) -- Client färbt lokal durch alle Farben
 	end
 	if fx.Highlight and mode ~= "Carry" then
+		-- startet AUS: der Client schaltet nur die nächsten paar Highlights ein (Roblox-Limit 31)
 		local highlight = Instance.new("Highlight")
 		highlight.Name = "AdminHighlight"
+		highlight.Enabled = false
 		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 		highlight.FillColor = color
 		highlight.FillTransparency = 0.75
@@ -7127,7 +7374,7 @@ local function tryClaim(player: Player, record)
 		return
 	end
 	local data = Services.DataService.Get(player)
-	if not data then
+	if not data or not Services.EconomyService.IsReady(player) then
 		return
 	end
 	local character = player.Character
@@ -7147,6 +7394,12 @@ local function tryClaim(player: Player, record)
 	end
 	if (root.Position - position).Magnitude > reach then
 		Services.EconomyService.Notify(player, "🏃 Zu weit weg – lauf näher ran!", "Error")
+		return
+	end
+	-- Die Position kommt vom Client: wer gerade unmöglich weit "gesprungen" ist (Teleport-Exploit),
+	-- darf nicht schnappen. (Server-Teleports wie Home sind erlaubt, danach kurz warten.)
+	if Services.CarryService.MoveStatus(player) ~= "ok" then
+		Services.EconomyService.Notify(player, "⏳ Kurz warten und nochmal versuchen!", "Error")
 		return
 	end
 	local plot = Services.PlotService.GetPlot(player)
@@ -7267,7 +7520,7 @@ local function spawnOnBelt(entry, price: number, shouldAnnounce: boolean?)
 
 	local def = Config.MeteorsById[entry.Id]
 	if shouldAnnounce ~= false and Config.RarityIndex[def.Rarity] >= 6 then
-		announce(entry, "☄️ Ein %s fährt aufs Laufband! 🏃")
+		announce(entry, "☄️ Ein %s fährt aufs Förderband!")
 	end
 	return record
 end
@@ -7809,6 +8062,9 @@ PlotService.MaxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
 local Services
 
 local EMPTY_SLOT_COLOR = Color3.fromRGB(35, 35, 45)
+local LOCK_NOTIFY_COOLDOWN = 2 -- Lock-Pad im Schauer: Hinweis höchstens alle 2 s (Touched feuert sehr oft)
+
+local lockNotifyAt: { [Player]: number } = {}
 
 -- -------------------------------------------------------------------
 -- ABFRAGEN
@@ -8138,7 +8394,11 @@ local function tryLock(player: Player, plot)
 		return
 	end
 	if Services.MeteorService.IsShowerActive() then
-		Services.EconomyService.Notify(player, "🌠 Während des Meteoritenschauers gibt es keine Locks!", "Error")
+		local t = os.clock()
+		if t - (lockNotifyAt[player] or -math.huge) >= LOCK_NOTIFY_COOLDOWN then
+			lockNotifyAt[player] = t
+			Services.EconomyService.Notify(player, "🌠 Während des Meteoritenschauers gibt es keine Locks!", "Error")
+		end
 		return
 	end
 	local duration = Services.MonetizationService.HasPass(player, "VIP") and Config.LockDurationVIP
@@ -8163,6 +8423,7 @@ local function teleportToPlot(player: Player)
 	end
 	local target = plot and plot.SpawnCFrame or PlotService.LobbySpawn
 	character:PivotTo(target)
+	Services.CarryService.NoteTeleport(player, target.Position)
 end
 
 function PlotService.AssignPlot(player: Player)
@@ -8206,12 +8467,32 @@ function PlotService.TeleportHome(player: Player)
 	teleportToPlot(player)
 end
 
+-- Hinter das beste freigeschaltete Laufband (Neulinge landen so am Holz-Laufband, nicht vor Gold)
+local function treadmillTarget(player: Player): CFrame
+	local data = Services.DataService.Get(player)
+	local best = Config.BestTreadmill(data and data.Steps or 0)
+	local folder = PlotService.TreadmillsFolder
+	if best and folder then
+		for _, model in ipairs(folder:GetChildren()) do
+			local belt = model:IsA("Model") and model:GetAttribute("TreadmillId") == best.Id and model.PrimaryPart
+			if belt then
+				-- Lauffläche: lokales -Z (LookVector) = Laufrichtung -> Einstieg von hinten
+				local spot = belt.Position - belt.CFrame.LookVector * (belt.Size.Z / 2 + 4) + Vector3.new(0, 3.5, 0)
+				return CFrame.lookAt(spot, Vector3.new(belt.Position.X, spot.Y, belt.Position.Z))
+			end
+		end
+	end
+	return PlotService.TreadmillSpawn
+end
+
 function PlotService.TeleportToTreadmills(player: Player): boolean
 	local character = player.Character
 	if not character then
 		return false
 	end
-	character:PivotTo(PlotService.TreadmillSpawn)
+	local target = treadmillTarget(player)
+	character:PivotTo(target)
+	Services.CarryService.NoteTeleport(player, target.Position)
 	return true
 end
 
@@ -8340,6 +8621,7 @@ function PlotService.Start()
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		debounce[player] = nil
+		lockNotifyAt[player] = nil
 		local plot = PlotService.ByPlayer[player]
 		if plot then
 			-- laufende Diebstähle aus dieser Base abbrechen, dann Base freigeben
@@ -8360,7 +8642,12 @@ function PlotService.Start()
 						local character = other.Character
 						local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 						if other ~= plot.Owner and character and root and PlotService.IsInside(plot, root.Position) then
+							if Services.CarryService.IsCarrying(other) then
+								-- Dieb noch drin, als gesperrt wurde -> Beute zurück (eigener Hinweis statt "Teleport")
+								Services.CarryService.Fail(other, "locked")
+							end
 							character:PivotTo(plot.EntranceCFrame)
+							Services.CarryService.NoteTeleport(other, plot.EntranceCFrame.Position)
 							Services.EconomyService.Notify(other, "🔒 Diese Base ist gesperrt!", "Error")
 						end
 					end
@@ -8436,14 +8723,19 @@ local treadmills = {}
 local zoneCenter = Vector3.zero
 local zoneRadius = 0
 local lastLockedNotify: { [Player]: number } = {}
+-- true = beim Server kommt Humanoid.MoveDirection an (schon einmal gesehen) -> keine Ersatz-Prüfung nötig
+local moveDirectionWorks: { [Player]: boolean } = {}
 
-local EDGE_TOLERANCE = 0.75 -- etwas Spielraum am Rand der Lauffläche
 local MAX_HEIGHT = 8 -- HumanoidRootPart höchstens so hoch über der Lauffläche (Springen zählt mit)
 local LOCKED_NOTIFY_COOLDOWN = 3
 local MIN_MOVE = 0.1 -- Humanoid.MoveDirection muss mindestens so lang sein (= Spieler läuft)
--- Zweite Prüfung über die Physik: Wer stillsteht, fährt mit dem Band mit (gleiches Tempo wie das Band).
--- Wer läuft (oder vorne gegen die Konsole läuft), ist deutlich langsamer/schneller als das Band.
+-- Ersatz-Prüfung über die Physik (nur falls MoveDirection beim Server nie ankommt):
+-- Wer stillsteht, fährt mit dem Band mit (gleiches Tempo wie das Band). Wer läuft (oder vorne gegen
+-- die Konsole läuft), ist entlang der Bandrichtung deutlich langsamer/schneller als das Band.
 local MIN_RELATIVE_SPEED = 4
+-- ...und nur, wenn man wirklich AUF dem Band steht: Hüfte in normaler Stehhöhe über der Lauffläche.
+-- Auf dem Seitenrahmen (0,7 höher) oder der Konsole steht man höher -> zählt nicht.
+local STAND_TOLERANCE = 0.45
 local RESCAN_INTERVAL = 5
 
 -- Laufbänder aus der Map einlesen (MapBuilder baut je Eintrag in Config.Treadmills ein Model)
@@ -8464,8 +8756,10 @@ local function collect()
 					Def = def,
 					Belt = belt,
 					CFrame = belt.CFrame,
-					HalfX = belt.Size.X / 2 + EDGE_TOLERANCE,
-					HalfZ = belt.Size.Z / 2 + EDGE_TOLERANCE,
+					-- Lauffläche OHNE Spielraum: direkt daneben stehen Seitenrahmen, Konsole und Chassis.
+					-- Wer dort stillsteht, darf nicht als "läuft auf dem Band" zählen.
+					HalfX = belt.Size.X / 2,
+					HalfZ = belt.Size.Z / 2,
 					TopY = belt.Size.Y / 2,
 				})
 				sum += belt.Position
@@ -8507,6 +8801,33 @@ function TreadmillService.FindTreadmill(position: Vector3)
 	return nil
 end
 
+-- Normale Höhe des HumanoidRootPart über dem Boden, wenn man steht (R15 bzw. R6)
+local function standHeight(humanoid: Humanoid, root: BasePart): number
+	if humanoid.RigType == Enum.HumanoidRigType.R15 then
+		return humanoid.HipHeight + root.Size.Y / 2
+	end
+	return root.Size.Y / 2 + 2 -- R6: Beine sind 2 Studs lang
+end
+
+-- Ersatz-Prüfung über die Physik: steht der Spieler auf DIESEM Band und ist er entlang der
+-- Bandrichtung deutlich anders schnell als das Band (= er läuft dagegen an)?
+local function walkingByPhysics(treadmill, humanoid: Humanoid, root: BasePart): boolean
+	local belt: BasePart = treadmill.Belt
+	local localPos = treadmill.CFrame:PointToObjectSpace(root.Position)
+	local height = localPos.Y - treadmill.TopY
+	if math.abs(height - standHeight(humanoid, root)) > STAND_TOLERANCE then
+		return false -- springt, oder steht auf Seitenrahmen/Konsole statt auf dem Band
+	end
+	local beltVelocity = belt.AssemblyLinearVelocity
+	local beltSpeed = beltVelocity.Magnitude
+	if beltSpeed < 0.01 then
+		return false
+	end
+	local along = beltVelocity / beltSpeed
+	local relative = beltSpeed - root.AssemblyLinearVelocity:Dot(along)
+	return math.abs(relative) > MIN_RELATIVE_SPEED
+end
+
 local function tickPlayer(player: Player)
 	local data = Services.DataService.Get(player)
 	local character = player.Character
@@ -8515,15 +8836,17 @@ local function tickPlayer(player: Player)
 	if not data or not root or not humanoid or humanoid.Health <= 0 then
 		return
 	end
+	-- nur wer läuft, sammelt Schritte
+	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE
+	if walking then
+		moveDirectionWorks[player] = true
+	end
 	local treadmill = TreadmillService.FindTreadmill(root.Position)
 	if not treadmill then
 		return
 	end
-	-- nur wer läuft, sammelt Schritte
-	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE
-	if not walking then
-		local relative = root.AssemblyLinearVelocity - treadmill.Belt.AssemblyLinearVelocity
-		walking = Vector3.new(relative.X, 0, relative.Z).Magnitude > MIN_RELATIVE_SPEED
+	if not walking and not moveDirectionWorks[player] then
+		walking = walkingByPhysics(treadmill, humanoid, root)
 	end
 	if not walking then
 		return
@@ -8558,6 +8881,7 @@ function TreadmillService.Start()
 
 	Players.PlayerRemoving:Connect(function(player)
 		lastLockedNotify[player] = nil
+		moveDirectionWorks[player] = nil
 	end)
 
 	task.spawn(function()
@@ -8734,9 +9058,21 @@ local function refreshAll()
 	WorldFX.UpdateTreadmills(tonumber(state.Steps) or 0, state.BestTreadmill)
 end
 
+-- Selten geänderte Teile (Index, Pässe, Statistik) schickt der Server nur bei Änderung mit.
+-- Fehlen sie in einem Paket, gelten die zuletzt bekommenen weiter.
+local STICKY_KEYS = { "Index", "Passes", "Stats" }
+
 Remotes.State.OnClientEvent:Connect(function(newState)
 	if type(newState) ~= "table" then
 		return
+	end
+	local old = ctx.State
+	if old then
+		for _, key in ipairs(STICKY_KEYS) do
+			if newState[key] == nil then
+				newState[key] = old[key]
+			end
+		end
 	end
 	ctx.State = newState
 	refreshAll()
@@ -8783,7 +9119,7 @@ end
 player:GetAttributeChangedSignal("IsAdmin"):Connect(checkAdmin)
 checkAdmin()
 
-UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Kauf Meteore am Laufband [E]!", "Event")
+UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Kauf Meteore am Förderband [E]!", "Event")
 task.delay(4, function()
 	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld!", "Info")
 end)
@@ -9070,7 +9406,7 @@ function AdminPanel.Build(ctx: any)
 	})
 	local spawnRow = UI.Row(content, 1200, 44)
 	local spawnActions = {
-		{ "Aufs Laufband", Theme.Orange, { Where = "Belt" } },
+		{ "Aufs Förderband", Theme.Orange, { Where = "Belt" } },
 		{ "Vor mir", Theme.Orange, { Where = "Me" } },
 		{ "Gratis vor mir", Theme.Green, { Where = "Me", Free = true } },
 		{ "🎁 Gratis-Zone", Theme.Green, { Where = "Free", Free = true } },
@@ -10806,31 +11142,27 @@ local function track(inst: Instance)
 	end
 end
 
--- Kaufen-Prompts am Laufband: Der Meteor steht auf dem Server am Bandstart (nur wir bewegen ihn
+-- Kaufen-Prompts am Förderband: Der Meteor steht auf dem Server am Bandstart (nur wir bewegen ihn
 -- lokal), deshalb ist die Server-Reichweite riesig. Die echte Reichweite steht im Attribut
--- "ClientMaxDistance" und wird hier lokal eingestellt.
-local function applyClientReach(prompt: ProximityPrompt)
-	local reach = tonumber(prompt:GetAttribute("ClientMaxDistance"))
-	if reach and reach > 0 and prompt.MaxActivationDistance ~= reach then
-		prompt.MaxActivationDistance = reach
-	end
-end
-
+-- "ClientMaxDistance" und wird hier lokal eingestellt. Der Server setzt das Attribut schon, bevor der
+-- Meteor in die Map kommt -> einmal lesen reicht (keine Verbindung pro Meteor = kein Speicherleck).
 local function watchReach(inst: Instance)
 	if not inst:IsA("ProximityPrompt") or inst.Name == "SellPrompt" or inst.Name == "StealPrompt" then
 		return
 	end
-	applyClientReach(inst)
-	inst:GetAttributeChangedSignal("ClientMaxDistance"):Connect(function()
-		applyClientReach(inst)
-	end)
+	local reach = tonumber(inst:GetAttribute("ClientMaxDistance"))
+	if reach and reach > 0 and inst.MaxActivationDistance ~= reach then
+		inst.MaxActivationDistance = reach
+	end
 end
 
 function Prompts.UpdateAll()
 	table.clear(mineCache)
 	table.clear(lockedCache)
 	for prompt, plot in pairs(tracked) do
-		if prompt.Parent then
+		-- IsDescendantOf statt Parent: wird nur das Alien-Model zerstört, behält der Prompt
+		-- (je nach Destroy-Replikation) seinen Parent – er hängt dann aber nicht mehr in der Welt.
+		if prompt:IsDescendantOf(workspace) then
 			-- Base noch unbekannt (Prompt kam vor der Base an)? Nochmal suchen
 			if not plot then
 				plot = findPlot(prompt) or false
@@ -10944,6 +11276,7 @@ local TOAST_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDir
 local COUNTER_INTERVAL = 1 / 30 -- Zahlen höchstens 30x pro Sekunde neu schreiben
 local TOAST_HEIGHT = 40
 local MAX_TOASTS = 5
+local MAX_TOAST_POOL = 8 -- so viele fertige Toasts werden zum Wiederverwenden aufgehoben
 
 local root: ScreenGui? = nil
 UI.Root = nil :: ScreenGui? -- die ScreenGui der Oberfläche (nach UI.Init gesetzt)
@@ -11427,9 +11760,14 @@ end
 
 -- ---------------------------------------------------------------------
 -- FENSTER (immer nur eins offen; öffnen = Ploppen + Einblenden)
+-- Der Inhalt steckt nur WÄHREND des Auf-/Zugehens in einer CanvasGroup (für das weiche Einblenden).
+-- Danach hängt er in einem normalen Frame: Eine CanvasGroup malt bei jeder kleinen Änderung
+-- (Text, Balken, Scrollen) ihren ganzen Inhalt neu und macht Schrift auf Handys unscharf.
 -- ---------------------------------------------------------------------
 export type Window = {
-	Group: CanvasGroup,
+	Group: Frame, -- Halter (Position, Größe, sichtbar ja/nein)
+	Fader: CanvasGroup, -- nur während der Animation benutzt
+	Panel: Frame, -- der eigentliche Fensterinhalt
 	Scale: UIScale,
 	Content: ScrollingFrame,
 	IsOpen: boolean,
@@ -11439,6 +11777,20 @@ export type Window = {
 
 local windows: { Window } = {}
 
+-- Inhalt für die Animation in die CanvasGroup hängen
+local function beginFade(win: Window)
+	if win.Panel.Parent ~= win.Fader then
+		win.Panel.Parent = win.Fader
+	end
+	win.Fader.Visible = true
+end
+
+-- Animation fertig: Inhalt zurück in den normalen Frame, CanvasGroup aus
+local function endFade(win: Window)
+	win.Panel.Parent = win.Group
+	win.Fader.Visible = false
+end
+
 function UI.CloseWindow(win: Window)
 	if not win.IsOpen then
 		return
@@ -11446,11 +11798,13 @@ function UI.CloseWindow(win: Window)
 	win.IsOpen = false
 	win.Token += 1
 	local token = win.Token
+	beginFade(win)
 	TweenService:Create(win.Scale, CLOSE_INFO, { Scale = 0.9 }):Play()
-	local fade = TweenService:Create(win.Group, CLOSE_INFO, { GroupTransparency = 1 })
+	local fade = TweenService:Create(win.Fader, CLOSE_INFO, { GroupTransparency = 1 })
 	fade.Completed:Connect(function()
 		if win.Token == token then
 			win.Group.Visible = false
+			endFade(win)
 		end
 	end)
 	fade:Play()
@@ -11467,12 +11821,20 @@ function UI.OpenWindow(win: Window)
 	end
 	win.IsOpen = true
 	win.Token += 1
+	local token = win.Token
+	beginFade(win)
 	if not win.Group.Visible then
-		win.Group.GroupTransparency = 1
+		win.Fader.GroupTransparency = 1
 		win.Scale.Scale = 0.86
 		win.Group.Visible = true
 	end
-	TweenService:Create(win.Group, OPEN_FADE_INFO, { GroupTransparency = 0 }):Play()
+	local fade = TweenService:Create(win.Fader, OPEN_FADE_INFO, { GroupTransparency = 0 })
+	fade.Completed:Connect(function()
+		if win.Token == token and win.IsOpen then
+			endFade(win)
+		end
+	end)
+	fade:Play()
 	TweenService:Create(win.Scale, OPEN_POP_INFO, { Scale = 1 }):Play()
 	if win.OnOpen then
 		task.spawn(win.OnOpen)
@@ -11496,18 +11858,25 @@ end
 function UI.Window(title: string, width: number, height: number, color: Color3?): Window
 	assert(root, "UI.Init zuerst aufrufen")
 	local accent = color or UI.Theme.Orange
-	local group: CanvasGroup = UI.Create("CanvasGroup", {
+	local group: Frame = UI.Create("Frame", {
 		Name = "Window",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(width, height),
 		BackgroundTransparency = 1,
-		GroupTransparency = 1,
 		Visible = false,
 		ZIndex = 10,
 		Parent = root,
 	})
 	local scale: UIScale = UI.Create("UIScale", { Scale = 0.86, Parent = group })
+	local fader: CanvasGroup = UI.Create("CanvasGroup", {
+		Name = "Fader",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		GroupTransparency = 1,
+		Visible = false,
+		Parent = group,
+	})
 	local panel = UI.Create("Frame", {
 		Name = "Panel",
 		Position = UDim2.fromOffset(4, 4),
@@ -11561,6 +11930,8 @@ function UI.Window(title: string, width: number, height: number, color: Color3?)
 	})
 	local win: Window = {
 		Group = group,
+		Fader = fader,
+		Panel = panel,
 		Scale = scale,
 		Content = content,
 		IsOpen = false,
@@ -11585,8 +11956,19 @@ end
 
 -- ---------------------------------------------------------------------
 -- TOASTS (gleiten von rechts herein, rutschen nach oben weg)
+-- Normale Frames (keine CanvasGroup) + ein kleiner Vorrat, der wiederverwendet wird.
 -- ---------------------------------------------------------------------
-type ToastEntry = { Container: Frame, Inner: CanvasGroup, Leaving: boolean }
+type ToastEntry = {
+	Container: Frame,
+	Inner: Frame,
+	Panel: Frame,
+	PanelStroke: UIStroke,
+	Gradient: UIGradient,
+	Label: TextLabel,
+	LabelStroke: UIStroke?,
+	Leaving: boolean,
+	Token: number,
+}
 
 local TOAST_COLORS: { [string]: Color3 } = {
 	Info = Color3.fromRGB(60, 66, 120),
@@ -11600,28 +11982,101 @@ local TOAST_COLORS: { [string]: Color3 } = {
 local toastHolder: Frame? = nil
 local toastCount = 0
 local activeToasts: { ToastEntry } = {}
+local toastPool: { ToastEntry } = {}
+
+local function newToastEntry(): ToastEntry
+	local container: Frame = UI.Create("Frame", {
+		Name = "Toast",
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+	})
+	local inner: Frame = UI.Create("Frame", {
+		Name = "Inner",
+		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
+		BackgroundTransparency = 1,
+		Parent = container,
+	})
+	local panelStroke = UI.Stroke(BLACK, 3)
+	local gradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
+	local panel: Frame = UI.Create("Frame", {
+		Name = "Panel",
+		Position = UDim2.fromOffset(3, 3),
+		Size = UDim2.new(1, -6, 1, -6),
+		BackgroundColor3 = WHITE,
+		Parent = inner,
+	}, { UI.Corner(12), panelStroke, gradient })
+	local label = UI.Label({
+		Position = UDim2.fromOffset(14, 6),
+		Size = UDim2.new(1, -28, 1, -12),
+		MaxText = 19,
+		Outline = 2,
+		Parent = inner,
+	})
+	return {
+		Container = container,
+		Inner = inner,
+		Panel = panel,
+		PanelStroke = panelStroke,
+		Gradient = gradient,
+		Label = label,
+		LabelStroke = label:FindFirstChildOfClass("UIStroke"),
+		Leaving = false,
+		Token = 0,
+	}
+end
+
+-- Ein-/Ausblenden über die Transparenz der einzelnen Teile. Gibt den Tween der Fläche zurück.
+local function fadeToast(entry: ToastEntry, info: TweenInfo, transparency: number): Tween
+	local panelTween = TweenService:Create(entry.Panel, info, { BackgroundTransparency = transparency })
+	TweenService:Create(entry.PanelStroke, info, { Transparency = transparency }):Play()
+	TweenService:Create(entry.Label, info, { TextTransparency = transparency }):Play()
+	if entry.LabelStroke then
+		TweenService:Create(entry.LabelStroke, info, { Transparency = transparency }):Play()
+	end
+	panelTween:Play()
+	return panelTween
+end
+
+local function setToastTransparency(entry: ToastEntry, transparency: number)
+	entry.Panel.BackgroundTransparency = transparency
+	entry.PanelStroke.Transparency = transparency
+	entry.Label.TextTransparency = transparency
+	if entry.LabelStroke then
+		entry.LabelStroke.Transparency = transparency
+	end
+end
 
 local function removeToast(entry: ToastEntry)
 	if entry.Leaving then
 		return
 	end
 	entry.Leaving = true
+	local token = entry.Token
 	local index = table.find(activeToasts, entry)
 	if index then
 		table.remove(activeToasts, index)
 	end
-	local fade = TweenService:Create(entry.Inner, TOAST_OUT_INFO, {
-		GroupTransparency = 1,
-		Position = UDim2.fromOffset(-50, 0),
-	})
+	TweenService:Create(entry.Inner, TOAST_OUT_INFO, { Position = UDim2.fromOffset(-50, 0) }):Play()
+	local fade = fadeToast(entry, TOAST_OUT_INFO, 1)
 	fade.Completed:Connect(function()
+		if entry.Token ~= token then
+			return
+		end
 		local shrink = TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, 0) })
 		shrink.Completed:Connect(function()
-			entry.Container:Destroy()
+			if entry.Token ~= token then
+				return
+			end
+			-- fertig -> aufheben und später wiederverwenden
+			entry.Container.Parent = nil
+			if #toastPool < MAX_TOAST_POOL then
+				table.insert(toastPool, entry)
+			else
+				entry.Container:Destroy()
+			end
 		end)
 		shrink:Play()
 	end)
-	fade:Play()
 end
 
 function UI.Toast(text: string, kind: string?)
@@ -11631,48 +12086,28 @@ function UI.Toast(text: string, kind: string?)
 	end
 	toastCount += 1
 	local color = TOAST_COLORS[kind or "Info"] or TOAST_COLORS.Info
-	local container: Frame = UI.Create("Frame", {
-		Name = "Toast",
-		Size = UDim2.new(1, 0, 0, 0),
-		BackgroundTransparency = 1,
-		LayoutOrder = toastCount,
-		Parent = holder,
-	})
-	local inner: CanvasGroup = UI.Create("CanvasGroup", {
-		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
-		Position = UDim2.fromOffset(70, 0),
-		BackgroundTransparency = 1,
-		GroupTransparency = 1,
-		Parent = container,
-	})
-	UI.Create("Frame", {
-		Position = UDim2.fromOffset(3, 3),
-		Size = UDim2.new(1, -6, 1, -6),
-		BackgroundColor3 = WHITE,
-		Parent = inner,
-	}, {
-		UI.Corner(12),
-		UI.Stroke(BLACK, 3),
-		UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(color) }),
-	})
-	UI.Label({
-		Position = UDim2.fromOffset(14, 6),
-		Size = UDim2.new(1, -28, 1, -12),
-		Text = text,
-		MaxText = 19,
-		Outline = 2,
-		Parent = inner,
-	})
-	local entry: ToastEntry = { Container = container, Inner = inner, Leaving = false }
+	local entry = table.remove(toastPool) or newToastEntry()
+	entry.Token += 1
+	entry.Leaving = false
+	local token = entry.Token
+	entry.Gradient.Color = UI.ButtonSequence(color)
+	entry.Label.Text = text
+	entry.Container.Size = UDim2.new(1, 0, 0, 0)
+	entry.Container.LayoutOrder = toastCount
+	entry.Inner.Position = UDim2.fromOffset(70, 0)
+	setToastTransparency(entry, 1)
+	entry.Container.Parent = holder
 	table.insert(activeToasts, entry)
-	TweenService:Create(container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
-	TweenService:Create(inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
-	TweenService:Create(inner, TOAST_FADE_INFO, { GroupTransparency = 0 }):Play()
+	TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
+	TweenService:Create(entry.Inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
+	fadeToast(entry, TOAST_FADE_INFO, 0)
 	while #activeToasts > MAX_TOASTS do
 		removeToast(activeToasts[1])
 	end
 	task.delay((kind == "Announce" or kind == "Event") and 7 or 4, function()
-		removeToast(entry)
+		if entry.Token == token then
+			removeToast(entry)
+		end
 	end)
 end
 
@@ -12464,12 +12899,25 @@ type IndexCard = {
 	Question: TextLabel,
 	Name: TextLabel,
 }
-type IndexGroup = { Rarity: string, Header: TextLabel, Cards: { IndexCard }, Color: Color3 }
+type IndexGroup = { Title: string, Header: TextLabel, Cards: { IndexCard }, Color: Color3 }
 
 local indexHeader: TextLabel
 local indexBar: UI.Bar
 local indexGroups: { IndexGroup } = {}
 local indexSignature = ""
+local SPECIAL_TITLE = "👑 Admin & Spezial (Bonus)"
+
+-- Aliens, die normale Spieler nie selbst ausbrüten können: aus Admin-Meteoren oder aus Meteoren,
+-- die nie aufs Förderband kommen (z.B. Omega). Zählen als Bonus, nicht zum "X/Y"-Ziel.
+local function isSpecialAlien(def: any): boolean
+	local Config = ctx.Config
+	local rarity = Config.RaritiesByName and Config.RaritiesByName[def.Rarity]
+	if rarity and rarity.AdminOnly then
+		return true
+	end
+	local meteor = Config.MeteorsById and Config.MeteorsById[def.Meteor]
+	return meteor ~= nil and meteor.Spawnable == false
+end
 
 local function buildIndex()
 	local win = UI.Window("👽 ALIEN-INDEX", 680, 560, Theme.Green)
@@ -12485,73 +12933,89 @@ local function buildIndex()
 	})
 	indexBar = UI.Bar({ LayoutOrder = 2, Color = Theme.Green, MaxText = 16, Parent = content })
 
-	-- Aliens nach Seltenheit sortieren (Reihenfolge wie Config.Rarities)
+	-- Aliens nach Seltenheit sortieren (Reihenfolge wie Config.Rarities),
+	-- Admin- und Spezial-Aliens zum Schluss in einer eigenen Bonus-Gruppe
 	local byRarity: { [string]: { any } } = {}
+	local special: { any } = {}
 	for _, def in ipairs(ctx.Aliens.List) do
-		local group = byRarity[def.Rarity]
-		if not group then
-			group = {}
-			byRarity[def.Rarity] = group
+		if isSpecialAlien(def) then
+			table.insert(special, def)
+		else
+			local group = byRarity[def.Rarity]
+			if not group then
+				group = {}
+				byRarity[def.Rarity] = group
+			end
+			table.insert(group, def)
 		end
-		table.insert(group, def)
 	end
-	local order = 10
+	local sections: { { Title: string, Color: Color3, Defs: { any } } } = {}
 	for _, rarity in ipairs(ctx.Config.Rarities) do
 		local defs = byRarity[rarity.Name]
 		if defs and #defs > 0 then
-			order += 1
-			local header = UI.Section(content, rarity.Name, order, rarity.Color)
-			order += 1
-			local gridFrame = UI.Grid(content, order, 148, 74)
-			local group: IndexGroup = { Rarity = rarity.Name, Header = header, Cards = {}, Color = rarity.Color }
-			for i, def in ipairs(defs) do
-				local look = def.Look or {}
-				local card = UI.Card({ LayoutOrder = i, Parent = gridFrame })
-				local dotStroke = UI.Stroke(look.Accent or Color3.new(1, 1, 1), 3)
-				local dot = UI.Create("Frame", {
-					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, 8, 0.5, 0),
-					Size = UDim2.fromOffset(38, 38),
-					BackgroundColor3 = look.Color or rarity.Color,
-					Parent = card,
-				}, { UI.Corner(19), dotStroke })
-				local question = UI.Label({
-					Size = UDim2.fromScale(1, 1),
-					Text = "?",
-					MaxText = 24,
-					Outline = 2,
-					Visible = false,
-					Parent = dot,
-				})
-				local nameLabel = UI.Label({
-					Position = UDim2.fromOffset(52, 6),
-					Size = UDim2.new(1, -58, 0, 40),
-					Text = "???",
-					TextWrapped = true,
-					MaxText = 15,
-					Outline = 2,
-					Parent = card,
-				})
-				UI.Label({
-					Position = UDim2.fromOffset(52, 48),
-					Size = UDim2.new(1, -58, 0, 18),
-					Text = tostring(def.Tier),
-					TextColor3 = TIER_COLORS[def.Tier] or Theme.SubText,
-					MaxText = 13,
-					Outline = 1,
-					Parent = card,
-				})
-				table.insert(group.Cards, {
-					Def = def,
-					Card = card,
-					Dot = dot,
-					DotStroke = dotStroke,
-					Question = question,
-					Name = nameLabel,
-				})
-			end
-			table.insert(indexGroups, group)
+			table.insert(sections, { Title = rarity.Name, Color = rarity.Color, Defs = defs })
 		end
+	end
+	if #special > 0 then
+		local adminRarity = ctx.Config.RaritiesByName and ctx.Config.RaritiesByName.Admin
+		local color: Color3 = if adminRarity then adminRarity.Color else Theme.Red
+		table.insert(sections, { Title = SPECIAL_TITLE, Color = color, Defs = special })
+	end
+	local order = 10
+	for _, section in ipairs(sections) do
+		local defs = section.Defs
+		order += 1
+		local header = UI.Section(content, section.Title, order, section.Color)
+		order += 1
+		local gridFrame = UI.Grid(content, order, 148, 74)
+		local group: IndexGroup = { Title = section.Title, Header = header, Cards = {}, Color = section.Color }
+		for i, def in ipairs(defs) do
+			local look = def.Look or {}
+			local card = UI.Card({ LayoutOrder = i, Parent = gridFrame })
+			local dotStroke = UI.Stroke(look.Accent or Color3.new(1, 1, 1), 3)
+			local dot = UI.Create("Frame", {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 8, 0.5, 0),
+				Size = UDim2.fromOffset(38, 38),
+				BackgroundColor3 = look.Color or section.Color,
+				Parent = card,
+			}, { UI.Corner(19), dotStroke })
+			local question = UI.Label({
+				Size = UDim2.fromScale(1, 1),
+				Text = "?",
+				MaxText = 24,
+				Outline = 2,
+				Visible = false,
+				Parent = dot,
+			})
+			local nameLabel = UI.Label({
+				Position = UDim2.fromOffset(52, 6),
+				Size = UDim2.new(1, -58, 0, 40),
+				Text = "???",
+				TextWrapped = true,
+				MaxText = 15,
+				Outline = 2,
+				Parent = card,
+			})
+			UI.Label({
+				Position = UDim2.fromOffset(52, 48),
+				Size = UDim2.new(1, -58, 0, 18),
+				Text = tostring(def.Tier),
+				TextColor3 = TIER_COLORS[def.Tier] or Theme.SubText,
+				MaxText = 13,
+				Outline = 1,
+				Parent = card,
+			})
+			table.insert(group.Cards, {
+				Def = def,
+				Card = card,
+				Dot = dot,
+				DotStroke = dotStroke,
+				Question = question,
+				Name = nameLabel,
+			})
+		end
+		table.insert(indexGroups, group)
 	end
 end
 
@@ -12567,21 +13031,40 @@ function Windows.RefreshIndex(state: any)
 	end
 	indexSignature = signature
 	local found: { [string]: boolean } = {}
-	local count = 0
+	local count = 0 -- alle entdeckten (jedes gibt Einkommens-Bonus)
+	local normalFound, normalTotal, specialFound = 0, 0, 0
 	for _, id in ipairs(index) do
-		if ctx.Aliens.ById[id] and not found[id] then
+		local def = ctx.Aliens.ById[id]
+		if def and not found[id] then
 			found[id] = true
 			count += 1
+			if isSpecialAlien(def) then
+				specialFound += 1
+			else
+				normalFound += 1
+			end
 		end
 	end
-	local total = #ctx.Aliens.List
+	for _, def in ipairs(ctx.Aliens.List) do
+		if not isSpecialAlien(def) then
+			normalTotal += 1
+		end
+	end
 	local bonusPer = tonumber(ctx.Config.IndexBonusPerAlien) or 0.01
-	indexHeader.Text = ("👽 Entdeckt: %d/%d  •  +%s%% Einkommen"):format(
-		count,
-		total,
+	local headerText = ("👽 Entdeckt: %d/%d  •  +%s%% Einkommen"):format(
+		normalFound,
+		normalTotal,
 		percentText(count * bonusPer * 100)
 	)
-	UI.SetBar(indexBar, if total > 0 then count / total else 0, ("%d / %d Aliens"):format(count, total))
+	if specialFound > 0 then
+		headerText ..= ("  •  👑 +%d Spezial"):format(specialFound)
+	end
+	indexHeader.Text = headerText
+	UI.SetBar(
+		indexBar,
+		if normalTotal > 0 then normalFound / normalTotal else 0,
+		("%d / %d Aliens"):format(normalFound, normalTotal)
+	)
 	for _, group in ipairs(indexGroups) do
 		local groupFound = 0
 		for _, card in ipairs(group.Cards) do
@@ -12602,7 +13085,7 @@ function Windows.RefreshIndex(state: any)
 				card.Card.BackgroundTransparency = 0.45
 			end
 		end
-		group.Header.Text = ("%s  (%d/%d)"):format(group.Rarity, groupFound, #group.Cards)
+		group.Header.Text = ("%s  (%d/%d)"):format(group.Title, groupFound, #group.Cards)
 	end
 end
 
@@ -12627,15 +13110,26 @@ function Windows.Open(name: string)
 	end
 end
 
+-- Fenstername -> Aktualisieren
+local refreshers: { [string]: (state: any) -> () } = {
+	Shop = Windows.RefreshShop,
+	Treadmills = Windows.RefreshTreadmills,
+	Rebirth = Windows.RefreshRebirth,
+	Daily = Windows.RefreshDaily,
+	Index = Windows.RefreshIndex,
+}
+
+-- Neue Daten vom Server: nur OFFENE Fenster neu beschreiben (geschlossene beim Öffnen)
 function Windows.Refresh(state: any)
 	if not state then
 		return
 	end
-	Windows.RefreshShop(state)
-	Windows.RefreshTreadmills(state)
-	Windows.RefreshRebirth(state)
-	Windows.RefreshDaily(state)
-	Windows.RefreshIndex(state)
+	for name, win in pairs(list) do
+		local refresh = refreshers[name]
+		if refresh and win.IsOpen then
+			refresh(state)
+		end
+	end
 end
 
 function Windows.Init(context: any)
@@ -12646,6 +13140,17 @@ function Windows.Init(context: any)
 	buildDaily()
 	buildIndex()
 	Windows.RefreshShop(nil)
+	-- Beim Öffnen einmal mit den neuesten Daten füllen
+	for name, win in pairs(list) do
+		local refresh = refreshers[name]
+		if refresh then
+			win.OnOpen = function()
+				if ctx.State then
+					refresh(ctx.State)
+				end
+			end
+		end
+	end
 end
 
 return Windows
@@ -12660,6 +13165,7 @@ return Windows
 --   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start)
 --   • Streifen auf dem Laufband und auf den Treadmills laufen mit
 --   • Aliens wippen sanft, Regenbogen-Teile färben sich durch
+--   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
 --  Arbeit pro Frame ist begrenzt: weit entfernte Dinge werden seltener oder gar nicht bewegt.
@@ -12678,7 +13184,12 @@ local NEAR_DISTANCE = 260 -- näher dran: jedes Frame bewegen
 local FAR_FRAME_SKIP = 4 -- weiter weg: nur jedes 4. Frame
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
 local BOB_RANGE = 100 -- Aliens nur in der Nähe wippen lassen
+local MAX_BOB = 24 -- höchstens so viele (die nächsten) wippen gleichzeitig
 local SLOW_INTERVAL = 1 / 30 -- Wippen + Regenbogen höchstens 30x pro Sekunde
+local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens wippen / welche Umrisse an sind
+local CLEANUP_INTERVAL = 1 -- so oft fliegen zerstörte Objekte aus den Listen
+local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die nächsten)
+local HIGHLIGHT_RANGE = 150
 local HATCH_INTERVAL = 0.2 -- Schlüpf-Countdown 5x pro Sekunde
 local HATCH_RANGE = 170
 local RAINBOW_RANGE = 400
@@ -13033,18 +13544,32 @@ end
 
 -- ---------------------------------------------------------------------
 -- WIPPENDE ALIENS
+-- Pro Alien werden die Teile + ihr Abstand zum Ruhe-Pivot EINMAL gemerkt, dann alle wippenden
+-- Teile mit EINEM workspace:BulkMoveTo bewegt. Jedes Frame kommt nur ein Teil der Aliens dran
+-- (gleichmäßig verteilt, jedes ca. 30x pro Sekunde) – keine Lastspitzen jedes zweite Frame.
 -- ---------------------------------------------------------------------
 type BobRecord = {
 	Model: Model,
-	Base: CFrame?,
-	Last: CFrame?,
+	Primary: BasePart?,
+	PrimaryIndex: number,
+	Base: CFrame?, -- Ruhe-Pivot (wie vom Server gesetzt)
+	Parts: { BasePart },
+	Offsets: { CFrame }, -- Teil relativ zum Ruhe-Pivot
+	LastPrimary: CFrame?, -- zuletzt von uns gesetzte Lage des PrimaryPart
+	Rev: any, -- Attribut "Rev" (ändert der Server nach dem Wachsen)
 	Phase: number,
 	Amp: number,
+	Slot: number,
+	Dist: number,
 	Moved: boolean,
 }
 
 local bobRecords: { BobRecord } = {}
 local bobSeen: { [Instance]: boolean } = {}
+local bobCandidates: { BobRecord } = {} -- wiederverwendet (keine neuen Tabellen pro Durchlauf)
+local activeBobs: { BobRecord } = {}
+local bobParts: { BasePart } = {}
+local bobCFrames: { CFrame } = {}
 
 local function addBob(inst: Instance)
 	if not inst:IsA("Model") or bobSeen[inst] or inst:GetAttribute("Bob") ~= true then
@@ -13054,49 +13579,144 @@ local function addBob(inst: Instance)
 	local top = tonumber(inst:GetAttribute("TopHeight"))
 	table.insert(bobRecords, {
 		Model = inst,
+		Primary = nil,
+		PrimaryIndex = 0,
 		Base = nil,
-		Last = nil,
+		Parts = {},
+		Offsets = {},
+		LastPrimary = nil,
+		Rev = nil,
 		Phase = math.random() * math.pi * 2,
 		Amp = if top then math.clamp(top * 0.06, 0.15, 0.6) else 0.3,
+		Slot = math.random(0, 7),
+		Dist = math.huge,
 		Moved = false,
 	})
 end
 
-local function stepBob(now: number, camPos: Vector3)
+-- Ruhe-Lage neu merken (erstes Mal, oder der Server hat das Alien verschoben/vergrößert)
+local function rebaseBob(record: BobRecord): boolean
+	local model = record.Model
+	local primary = model.PrimaryPart
+	if not primary then
+		return false
+	end
+	local base = model:GetPivot()
+	local inverse = base:Inverse()
+	table.clear(record.Parts)
+	table.clear(record.Offsets)
+	record.PrimaryIndex = 0
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			table.insert(record.Parts, d)
+			table.insert(record.Offsets, inverse * d.CFrame)
+			if d == primary then
+				record.PrimaryIndex = #record.Parts
+			end
+		end
+	end
+	record.Primary = primary
+	record.Base = base
+	record.LastPrimary = primary.CFrame
+	record.Rev = model:GetAttribute("Rev")
+	record.Moved = false
+	return record.PrimaryIndex > 0
+end
+
+-- Einmal zurück auf die Ruhe-Position (z.B. zu weit weg)
+local function resetBob(record: BobRecord)
+	local base = record.Base
+	local primary = record.Primary
+	if base and primary and record.Moved then
+		record.Model:PivotTo(base)
+		record.LastPrimary = primary.CFrame
+	end
+	record.Moved = false
+end
+
+local function byDistance(a: BobRecord, b: BobRecord): boolean
+	return a.Dist < b.Dist
+end
+
+-- Alle SCAN_INTERVAL Sekunden: die nächsten MAX_BOB Aliens in Reichweite wippen lassen
+local function scanBob(camPos: Vector3)
+	local count = 0
 	for i = #bobRecords, 1, -1 do
 		local record = bobRecords[i]
 		local model = record.Model
-		if model.Parent == nil then
+		if model.Parent == nil or not model:IsDescendantOf(workspace) then
+			-- zerstört (auch wenn nur der Ordner darüber weg ist, z.B. Foto-Deko)
 			bobSeen[model] = nil
 			bobRecords[i] = bobRecords[#bobRecords]
 			bobRecords[#bobRecords] = nil
 		else
+			local pivot = record.Base or model:GetPivot()
+			record.Dist = (pivot.Position - camPos).Magnitude
+			if record.Dist <= BOB_RANGE then
+				count += 1
+				bobCandidates[count] = record
+			else
+				resetBob(record)
+			end
+		end
+	end
+	for i = #bobCandidates, count + 1, -1 do
+		bobCandidates[i] = nil
+	end
+	if count > MAX_BOB then
+		table.sort(bobCandidates, byDistance)
+		for i = MAX_BOB + 1, count do
+			resetBob(bobCandidates[i])
+		end
+	end
+	table.clear(activeBobs)
+	for i = 1, math.min(count, MAX_BOB) do
+		activeBobs[i] = bobCandidates[i]
+	end
+end
+
+-- stride = jedes wievielte Frame ein Alien drankommt (60 FPS -> 2 = 30x pro Sekunde)
+local function stepBob(now: number, stride: number): number
+	local count = 0
+	for _, record in ipairs(activeBobs) do
+		if (frameNumber + record.Slot) % stride == 0 then
+			local model = record.Model
 			local primary = model.PrimaryPart
-			-- Getragene Aliens (nicht verankert, am Spieler) nie bewegen
-			if primary and primary.Anchored and model:GetAttribute("Bob") == true then
-				local current = model:GetPivot()
-				local last = record.Last
-				if record.Base == nil or (last and (current.Position - last.Position).Magnitude > 0.02) then
-					-- Erstes Mal oder der Server hat das Alien verschoben -> neue Ruhe-Position
-					record.Base = current
+			-- Getragene Aliens (nicht verankert, am Spieler) nie bewegen; gelöschte (auch wenn nur der
+			-- Ordner darüber weg ist) ebenfalls nicht – die fliegen beim nächsten scanBob raus
+			if
+				primary
+				and primary.Anchored
+				and model:GetAttribute("Bob") == true
+				and primary:IsDescendantOf(workspace)
+			then
+				local last = record.LastPrimary
+				local ready = record.Base ~= nil and record.Primary == primary
+				if
+					not ready
+					or not last
+					or (primary.Position - last.Position).Magnitude > 0.02
+					or model:GetAttribute("Rev") ~= record.Rev
+				then
+					ready = rebaseBob(record)
 				end
-				local base = record.Base :: CFrame
-				if (base.Position - camPos).Magnitude <= BOB_RANGE then
+				local base = record.Base
+				if ready and base then
 					local wave = math.sin(now * 2.4 + record.Phase) * 0.5 + 0.5
 					local target = base + Vector3.new(0, wave * record.Amp, 0)
-					model:PivotTo(target)
-					record.Last = target
+					local offsets = record.Offsets
+					for i, part in ipairs(record.Parts) do
+						count += 1
+						bobParts[count] = part
+						bobCFrames[count] = target * offsets[i]
+					end
+					record.LastPrimary = target * offsets[record.PrimaryIndex]
 					record.Moved = true
-				elseif record.Moved then
-					model:PivotTo(base)
-					record.Last = base
-					record.Moved = false
-				else
-					record.Last = current
 				end
 			end
 		end
 	end
+	return count
 end
 
 -- ---------------------------------------------------------------------
@@ -13152,9 +13772,78 @@ local function stepRainbow(now: number, camPos: Vector3)
 				end
 			else
 				local highlight = inst :: Highlight
-				highlight.FillColor = color
-				highlight.OutlineColor = color
+				if highlight.Enabled then -- ausgeschaltete Umrisse nicht umfärben
+					highlight.FillColor = color
+					highlight.OutlineColor = color
+				end
 			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- UMRISSE (Highlights): nur die nächsten MAX_HIGHLIGHTS in Reichweite einschalten.
+-- Der Server legt sie ausgeschaltet an.
+-- ---------------------------------------------------------------------
+local highlightRecords: { Highlight } = {}
+local highlightSeen: { [Instance]: boolean } = {}
+local highlightCandidates: { Highlight } = {}
+local highlightDist: { [Highlight]: number } = {}
+
+local function addHighlight(inst: Instance)
+	if inst:IsA("Highlight") and not highlightSeen[inst] then
+		highlightSeen[inst] = true
+		inst.Enabled = false -- bis zum nächsten Durchlauf aus
+		table.insert(highlightRecords, inst)
+	end
+end
+
+local function highlightPosition(highlight: Highlight): Vector3?
+	local target = highlight.Adornee or highlight.Parent
+	if target and target:IsA("BasePart") then
+		return target.Position
+	elseif target and target:IsA("Model") then
+		return target:GetPivot().Position
+	end
+	return nil
+end
+
+local function byHighlightDistance(a: Highlight, b: Highlight): boolean
+	return (highlightDist[a] or math.huge) < (highlightDist[b] or math.huge)
+end
+
+local function scanHighlights(camPos: Vector3)
+	table.clear(highlightDist)
+	local count = 0
+	for i = #highlightRecords, 1, -1 do
+		local highlight = highlightRecords[i]
+		if highlight.Parent == nil or not highlight:IsDescendantOf(workspace) then
+			highlightSeen[highlight] = nil
+			highlightRecords[i] = highlightRecords[#highlightRecords]
+			highlightRecords[#highlightRecords] = nil
+		else
+			local pos = highlightPosition(highlight)
+			local dist = if pos then (pos - camPos).Magnitude else math.huge
+			if dist <= HIGHLIGHT_RANGE then
+				count += 1
+				highlightCandidates[count] = highlight
+				highlightDist[highlight] = dist
+			elseif highlight.Enabled then
+				highlight.Enabled = false
+			end
+		end
+	end
+	for i = #highlightCandidates, count + 1, -1 do
+		highlightCandidates[i] = nil
+	end
+	if count > MAX_HIGHLIGHTS then
+		table.sort(highlightCandidates, byHighlightDistance)
+	end
+	for i = 1, count do
+		local highlight = highlightCandidates[i]
+		local on = i <= MAX_HIGHLIGHTS
+		if highlight.Enabled ~= on then
+			highlight.Enabled = on
 		end
 	end
 end
@@ -13220,6 +13909,27 @@ local function stepHatch(now: number, camPos: Vector3)
 	end
 end
 
+-- Zerstörte Objekte aus den Listen werfen. Je nach Destroy-Replikation behalten Teile in einem
+-- zerstörten Model ihren Parent – deshalb (selten) prüfen, ob sie noch in der Welt hängen.
+local function cleanupDead()
+	for i = #rainbowRecords, 1, -1 do
+		local inst = rainbowRecords[i].Inst
+		if not inst:IsDescendantOf(workspace) then
+			rainbowSeen[inst] = nil
+			rainbowRecords[i] = rainbowRecords[#rainbowRecords]
+			rainbowRecords[#rainbowRecords] = nil
+		end
+	end
+	for i = #hatchRecords, 1, -1 do
+		local part = hatchRecords[i].Part
+		if not part:IsDescendantOf(workspace) then
+			hatchSeen[part] = nil
+			hatchRecords[i] = hatchRecords[#hatchRecords]
+			hatchRecords[#hatchRecords] = nil
+		end
+	end
+end
+
 -- ---------------------------------------------------------------------
 -- START
 -- ---------------------------------------------------------------------
@@ -13267,14 +13977,20 @@ function WorldFX.Init(context: any, map: Instance)
 			addHatchCandidate(inst)
 		end
 	end)
-	-- Regenbogen auch an getragenen Aliens (die hängen am Charakter, nicht in der Map)
-	for _, inst in ipairs(workspace:GetDescendants()) do
+	-- Regenbogen + Umrisse auch an getragenen Aliens (die hängen am Charakter, nicht in der Map)
+	local function onWorldDescendant(inst: Instance)
 		considerRainbow(inst)
+		addHighlight(inst)
 	end
-	workspace.DescendantAdded:Connect(considerRainbow)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		onWorldDescendant(inst)
+	end
+	workspace.DescendantAdded:Connect(onWorldDescendant)
 
 	local slowClock = 0
 	local hatchClock = 0
+	local scanClock = SCAN_INTERVAL -- gleich im ersten Frame auswählen
+	local cleanupClock = 0
 	local animClock = 0 -- eigene Animations-Uhr (läuft mit dt, auch bei Rucklern gleichmäßig)
 	RunService.RenderStepped:Connect(function(dt: number)
 		local camera = workspace.CurrentCamera
@@ -13294,15 +14010,36 @@ function WorldFX.Init(context: any, map: Instance)
 		end
 
 		animClock += dt
+		scanClock += dt
+		if scanClock >= SCAN_INTERVAL then
+			scanClock = 0
+			scanBob(camPos)
+			scanHighlights(camPos)
+		end
+		cleanupClock += dt
+		if cleanupClock >= CLEANUP_INTERVAL then
+			cleanupClock = 0
+			cleanupDead()
+		end
+
+		-- Wippen: jedes Frame ein Teil der Aliens, jedes einzelne ca. 30x pro Sekunde
+		local stride = math.max(1, math.floor(SLOW_INTERVAL / math.max(dt, 1 / 240) + 0.5))
+		table.clear(bobParts)
+		table.clear(bobCFrames)
+		local bobCount = stepBob(animClock, stride)
+		if bobCount > 0 then
+			workspace:BulkMoveTo(bobParts, bobCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+		end
+
 		slowClock += dt
 		if slowClock >= SLOW_INTERVAL then
-			slowClock = 0
-			stepBob(animClock, camPos)
+			-- abziehen statt auf 0 setzen -> gleichmäßiger Takt (nach Rucklern nicht nachholen)
+			slowClock = math.min(slowClock - SLOW_INTERVAL, SLOW_INTERVAL)
 			stepRainbow(animClock, camPos)
 		end
 		hatchClock += dt
 		if hatchClock >= HATCH_INTERVAL then
-			hatchClock = 0
+			hatchClock = math.min(hatchClock - HATCH_INTERVAL, HATCH_INTERVAL)
 			stepHatch(now, camPos)
 		end
 	end)
@@ -13320,6 +14057,7 @@ return WorldFX
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>
+      <token name="ReplicateInstanceDestroySetting">2</token>
       <bool name="StreamingEnabled">false</bool>
     </Properties>
   </Item>

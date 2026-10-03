@@ -109,8 +109,10 @@ local function addSpecialEffects(part: BasePart, def, color: Color3, size: numbe
 		part:SetAttribute("Rainbow", true) -- Client färbt lokal durch alle Farben
 	end
 	if fx.Highlight and mode ~= "Carry" then
+		-- startet AUS: der Client schaltet nur die nächsten paar Highlights ein (Roblox-Limit 31)
 		local highlight = Instance.new("Highlight")
 		highlight.Name = "AdminHighlight"
+		highlight.Enabled = false
 		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 		highlight.FillColor = color
 		highlight.FillTransparency = 0.75

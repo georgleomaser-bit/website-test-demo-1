@@ -19,6 +19,7 @@ local Services
 local limiter = Util.RateLimiter(12, 1)
 
 local adminCache: { [Player]: boolean } = {}
+local warnedDenied: { [Player]: boolean } = {} -- "Unerlaubter Zugriff" nur einmal pro Spieler ins Log
 
 -- Gehört das Spiel diesem Spieler? (Spiel unter dem eigenen Account veröffentlicht)
 -- Bei Gruppen-Spielen: Admins per UserId in Config.AdminUserIds eintragen.
@@ -333,6 +334,8 @@ local SHOWCASE_LIFETIME = 300 -- Sekunden
 local PHOTO_RARITIES = { "Legendary", "Mythic", "Celestial", "Divine", "Secret" }
 local PHOTO_LUCK = 8
 local ADMIN_METEOR_LIFETIME = 300 -- Sekunden in der Gratis-Zone
+-- Admin-Meteore haben Umriss, starkes Licht und Aura -> per "Spawnen" höchstens so viele auf einmal
+local MAX_ADMIN_METEOR_SPAWN = 5
 -- Öfter Gold/Diamond/Cosmic als Normal – glänzt schöner auf dem Foto
 local PHOTO_MUTATIONS = {
 	{ Name = "Normal", Weight = 16 },
@@ -421,6 +424,9 @@ function Actions.SpawnMeteor(admin, args)
 		return false, "Unbekannter Meteor"
 	end
 	local count = math.floor(num(args.Count, 1, 1, 25))
+	if Config.RaritiesByName[Config.MeteorsById[id].Rarity].AdminOnly then
+		count = math.min(count, MAX_ADMIN_METEOR_SPAWN)
+	end
 	local mutation = Config.MutationsByName[args.Mutation] and args.Mutation or "Normal"
 	local where = args.Where
 	local origin, right, forward = nil, nil, nil
@@ -455,7 +461,7 @@ function Actions.SpawnMeteor(admin, args)
 			Services.MeteorService.QueueBelt(opts)
 		end
 	end
-	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "aufs Laufband")
+	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "aufs Förderband")
 	return true, count .. "x " .. Config.MeteorsById[id].Name .. " " .. target
 end
 
@@ -466,10 +472,10 @@ function Actions.MeteorRain(_admin, args)
 		Services.MeteorService.QueueBelt({ Rarity = rarity, Announce = false })
 	end
 	Services.EconomyService.NotifyAll(
-		"☄️ ADMIN-METEORREGEN aufs Laufband" .. (rarity and (" (" .. rarity .. ")") or "") .. "! 🏃",
+		"☄️ ADMIN-METEORREGEN aufs Förderband" .. (rarity and (" (" .. rarity .. ")") or "") .. "! 🏃",
 		"Event"
 	)
-	return true, count .. " Meteore kommen aufs Laufband"
+	return true, count .. " Meteore kommen aufs Förderband"
 end
 
 function Actions.GiveMeteor(admin, args)
@@ -771,7 +777,9 @@ function Actions.Bring(admin, args)
 	end
 	for i, p in ipairs(targets) do
 		if p ~= admin and p.Character then
-			p.Character:PivotTo((root :: BasePart).CFrame * CFrame.new(i * 3, 0, -4))
+			local target = (root :: BasePart).CFrame * CFrame.new(i * 3, 0, -4)
+			p.Character:PivotTo(target)
+			Services.CarryService.NoteTeleport(p, target.Position)
 		end
 	end
 	return #targets > 0, "Geholt: " .. names(targets)
@@ -779,7 +787,7 @@ end
 
 function Actions.ClearGround(_admin)
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Laufband & Gratis-Zone geleert"
+	return true, "🧹 Förderband & Gratis-Zone geleert"
 end
 
 function Actions.AdminAbuse(_admin, args)
@@ -893,7 +901,7 @@ function Actions.PhotoClear(admin)
 		Services.PlotService.UpdateSlotColors(plot)
 	end
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Foto-Deko entfernt, Laufband & Gratis-Zone geleert"
+	return true, "🧹 Foto-Deko entfernt, Förderband & Gratis-Zone geleert"
 end
 
 -- -------------------------------------------------------------------
@@ -925,15 +933,20 @@ function AdminService.Start()
 	Players.PlayerRemoving:Connect(function(player)
 		limiter.Clear(player)
 		adminCache[player] = nil
+		warnedDenied[player] = nil
 	end)
 
 	Remotes.Admin.OnServerInvoke = function(player: Player, action: any, args: any)
-		if not AdminService.IsAdmin(player) then
-			warn("[Admin] Unerlaubter Zugriff von " .. player.Name .. " (" .. player.UserId .. ")")
-			return { Ok = false, Message = "Kein Zugriff" }
-		end
+		-- Spam-Bremse ZUERST (auch für Nicht-Admins, sonst fluten Exploiter das Server-Log)
 		if not limiter.Check(player) then
 			return { Ok = false, Message = "Zu schnell" }
+		end
+		if not AdminService.IsAdmin(player) then
+			if not warnedDenied[player] then
+				warnedDenied[player] = true
+				warn("[Admin] Unerlaubter Zugriff von " .. player.Name .. " (" .. player.UserId .. ")")
+			end
+			return { Ok = false, Message = "Kein Zugriff" }
 		end
 		if type(action) ~= "string" or not Actions[action] then
 			return { Ok = false, Message = "Unbekannte Aktion" }

@@ -14,7 +14,18 @@ local EconomyService = {}
 local Services
 
 local dirty: { [Player]: boolean } = {}
+-- true = Spielstand fertig eingerichtet (Pässe geprüft, Offline-Zeit verrechnet, Base angezeigt).
+-- Vorher laufen weder Einkommen/Schlüpfen noch Käufe/Diebstähle.
+local readyPlayers: { [Player]: boolean } = {}
 local requestLimiter = Util.RateLimiter(8, 1)
+
+-- Selten geänderte Teile des States (Index, Pässe, Statistik) nur bei Änderung mitschicken.
+-- Der Client behält die alten Werte, wenn ein Feld fehlt. Ab und zu trotzdem alles (Sicherheitsnetz).
+local FULL_STATE_INTERVAL = 20
+local sentIndexCount: { [Player]: number } = {}
+local sentPasses: { [Player]: string } = {}
+local sentStats: { [Player]: string } = {}
+local fullStateAt: { [Player]: number } = {}
 
 local DELIVER_TIME = 0.9 -- so lange fliegt ein gekaufter Meteor in die Base (Client-Effekt)
 local ULTRA_ANNOUNCE_RARITY = 5 -- ab Legendary wird ein Ultra-Alien allen angesagt
@@ -48,6 +59,11 @@ function EconomyService.MarkDirty(player: Player?)
 	if player then
 		dirty[player] = true
 	end
+end
+
+-- Ist der Spielstand fertig geladen und eingerichtet? (für Käufe, Diebstähle, Einkommen)
+function EconomyService.IsReady(player: Player): boolean
+	return readyPlayers[player] == true
 end
 
 -- -------------------------------------------------------------------
@@ -392,18 +408,9 @@ local function buildState(player: Player)
 	end
 	local plot = Services.PlotService.GetPlot(player)
 	local dailyReady, dailyIn = EconomyService.DailyStatus(data)
-	local passes = {}
-	for _, pass in ipairs(Config.GamePasses) do
-		passes[pass.Key] = Services.MonetizationService.HasPass(player, pass.Key)
-	end
-	local index = {}
-	for id in pairs(data.Index) do
-		if Aliens.ById[id] then
-			table.insert(index, id)
-		end
-	end
+	local indexCount = EconomyService.IndexCount(data)
 	local best = Config.BestTreadmill(data.Steps)
-	return {
+	local state = {
 		Cash = data.Cash,
 		Pending = data.Pending,
 		Income = EconomyService.GetIncome(player),
@@ -419,14 +426,53 @@ local function buildState(player: Player)
 		DailyReady = dailyReady,
 		DailyIn = dailyIn,
 		Streak = data.Daily.Streak,
-		Index = index,
-		IndexBonus = #index * Config.IndexBonusPerAlien,
-		Passes = passes,
+		IndexBonus = indexCount * Config.IndexBonusPerAlien,
 		Carrying = Services.CarryService.IsCarrying(player),
 		HasPlot = plot ~= nil,
-		Stats = data.Stats,
 		TotalEarned = data.TotalEarned,
 	}
+
+	-- Index, Pässe und Statistik nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden)
+	local clock = os.clock()
+	local full = clock - (fullStateAt[player] or -math.huge) >= FULL_STATE_INTERVAL
+	if full then
+		fullStateAt[player] = clock
+	end
+	if full or sentIndexCount[player] ~= indexCount then
+		-- Der Index wächst nur (Reset leert ihn) -> die Anzahl reicht als Änderungs-Merkmal
+		sentIndexCount[player] = indexCount
+		local index = {}
+		for id in pairs(data.Index) do
+			if Aliens.ById[id] then
+				table.insert(index, id)
+			end
+		end
+		state.Index = index
+	end
+	local passKey = ""
+	for _, pass in ipairs(Config.GamePasses) do
+		passKey ..= Services.MonetizationService.HasPass(player, pass.Key) and "1" or "0"
+	end
+	if full or sentPasses[player] ~= passKey then
+		sentPasses[player] = passKey
+		local passes = {}
+		for _, pass in ipairs(Config.GamePasses) do
+			passes[pass.Key] = Services.MonetizationService.HasPass(player, pass.Key)
+		end
+		state.Passes = passes
+	end
+	local stats = data.Stats
+	local statsKey = ("%s|%s|%s|%s"):format(
+		tostring(stats.Stolen),
+		tostring(stats.Robbed),
+		tostring(stats.Bought),
+		tostring(stats.RobuxSpent)
+	)
+	if full or sentStats[player] ~= statsKey then
+		sentStats[player] = statsKey
+		state.Stats = stats
+	end
+	return state
 end
 
 local function updateLeaderstats(player: Player)
@@ -485,14 +531,18 @@ local function onProfileLoaded(player: Player, data)
 		end
 	end
 
-	-- Warten bis die Gamepasses geprüft sind (für Slots / Multiplikator / Schlüpf-Tempo)
+	-- Zeitpunkt des letzten Besuchs VOR dem Warten merken (ein Auto-Save setzt LastOnline neu)
+	local lastOnline = data.LastOnline
+
+	-- Warten bis die Gamepasses geprüft sind (für Slots / Multiplikator / Schlüpf-Tempo).
+	-- Bis "ready" gesetzt ist, laufen weder Einkommen noch Schlüpfen, Käufe oder Diebstähle.
 	Services.MonetizationService.LoadPasses(player)
 	if not player.Parent then
 		return
 	end
 
 	-- Offline: Schlüpfzeit vergeht auch ohne dich
-	local offline = data.LastOnline > 0 and math.max(0, os.time() - data.LastOnline) or 0
+	local offline = lastOnline > 0 and math.max(0, os.time() - lastOnline) or 0
 	local hatchedOffline = 0
 	if offline > 0 then
 		local speed = Services.PlotService.HatchSpeed(player)
@@ -511,7 +561,7 @@ local function onProfileLoaded(player: Player, data)
 	end
 
 	-- Offline-Einkommen
-	if data.LastOnline > 0 then
+	if lastOnline > 0 then
 		local seconds = math.clamp(offline, 0, Config.OfflineMaxSeconds)
 		local earned = math.floor(EconomyService.GetIncome(player) * seconds * Config.OfflineIncomeRate)
 		if earned > 0 then
@@ -543,6 +593,7 @@ local function onProfileLoaded(player: Player, data)
 		Services.PlotService.RenderAll(plot)
 		Services.PlotService.SetCollectText(plot, data.Pending)
 	end
+	readyPlayers[player] = true
 	EconomyService.ApplySpeed(player)
 	flush(player)
 
@@ -603,14 +654,25 @@ function EconomyService.Start()
 		if type(action) ~= "string" then
 			return { Ok = false, Message = "Unbekannt" }
 		end
+		if not readyPlayers[player] then
+			return { Ok = false, Message = "Lädt noch... ⏳" }
+		end
 		local ok, message = false, "Unbekannt"
 		if action == "Rebirth" then
 			ok, message = EconomyService.Rebirth(player)
 		elseif action == "Daily" then
 			ok, message = EconomyService.ClaimDaily(player)
 		elseif action == "Collect" then
-			EconomyService.Collect(player)
-			ok, message = true, ""
+			-- nur in der eigenen Base (sonst wäre es ein Gratis-"Auto Collect" von überall)
+			local plot = Services.PlotService.GetPlot(player)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+			if plot and root and Services.PlotService.IsInside(plot, root.Position) then
+				EconomyService.Collect(player)
+				ok, message = true, ""
+			else
+				ok, message = false, "🏠 Einsammeln geht nur in deiner Base!"
+			end
 		elseif action == "Home" then
 			if Services.CarryService.IsCarrying(player) then
 				ok, message = false, "Mit Beute musst du laufen! 🏃"
@@ -633,6 +695,11 @@ function EconomyService.Start()
 
 	Players.PlayerRemoving:Connect(function(player)
 		dirty[player] = nil
+		readyPlayers[player] = nil
+		sentIndexCount[player] = nil
+		sentPasses[player] = nil
+		sentStats[player] = nil
+		fullStateAt[player] = nil
 		requestLimiter.Clear(player)
 	end)
 
@@ -647,7 +714,7 @@ function EconomyService.Start()
 			for _, player in ipairs(Players:GetPlayers()) do
 				local data = Services.DataService.Get(player)
 				local plot = Services.PlotService.GetPlot(player)
-				if data and plot then
+				if data and plot and readyPlayers[player] then
 					local ok, err = pcall(tickPlayer, player, data, plot, dt)
 					if not ok then
 						warn("[EconomyService] Tick-Fehler bei " .. player.Name .. ": " .. tostring(err))

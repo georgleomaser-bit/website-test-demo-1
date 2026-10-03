@@ -78,7 +78,8 @@ Meteore fahren auf dem Laufband vorbei! Kauf sie, und sie fliegen sofort in dein
 🔒 Sperr deine Base mit dem Lock-Pad
 👟 Speed Farm: 7 Laufbänder, sammle Schritte und werde superschnell
 🌠 Alle 8 Minuten Meteoritenschauer: keine Locks, 3x Glück!
-👽 96 Aliens im Index, 28 Meteore in 9 Seltenheiten
+👽 Über 90 Aliens zum Sammeln, 28 Meteore in 9 Seltenheiten
+👑 Krasse Admin-Meteore bei Admin-Events
 🔁 Rebirth, Index und Tagesbonus
 👥 8 Spieler pro Server
 
@@ -103,7 +104,8 @@ Meteors roll by on the conveyor belt! Buy them and they fly straight into your b
 🔒 Lock your base with the lock pad
 👟 Speed Farm: 7 treadmills, collect steps and get super fast
 🌠 Meteor shower every 8 minutes: no locks, 3x luck!
-👽 96 aliens in the index, 28 meteors in 9 rarities
+👽 Over 90 aliens to collect, 28 meteors in 9 rarities
+👑 Insane admin meteors during admin events
 🔁 Rebirth, Index and daily rewards
 👥 8 players per server
 
@@ -137,14 +139,25 @@ Can you steal an ULTRA alien? 👀
 
 ## 4. 🖼️ Bilder für dein Spiel
 
-| Was | Datei | Größe |
-|---|---|---|
-| Icon | `spiel-icon.png` | 512 × 512 |
-| Thumbnail 1 | `thumbnail-1.png` | 1920 × 1080 |
-| Thumbnail 2 | `thumbnail-2.png` | 1920 × 1080 |
-| Thumbnail 3 | `thumbnail-3.png` | 1920 × 1080 |
+| Was | Datei | Größe | Aus welchem Foto |
+|---|---|---|---|
+| Icon | `spiel-icon.png` | 512 × 512 | `secret` |
+| Thumbnail 1 | `thumbnail-1.png` | 1920 × 1080 | `tragen` |
+| Thumbnail 2 | `thumbnail-2.png` | 1920 × 1080 | `secret` |
+| Thumbnail 3 | `thumbnail-3.png` | 1920 × 1080 | `krater` |
+| Thumbnail 4 | `thumbnail-4.png` | 1920 × 1080 | `base` |
+| Thumbnail 5 | `thumbnail-5.png` | 1920 × 1080 | `showcase` |
+
+Das Icon und die Thumbnails 1 bis 3 sind schon fertig gezeichnet. Du kannst sie sofort hochladen.
+
+**Thumbnail 4 und 5 gibt es erst mit deinen eigenen Fotos.**
+Mach 5 Screenshots in deinem Spiel und schick sie mir.
+Dann baue ich daraus neue Bilder: Icon und alle 5 Thumbnails, mit echten Szenen aus deinem Spiel.
+Wie das geht, steht Schritt für Schritt in **`FOTOS-MACHEN.md`** (im selben Ordner wie diese Datei).
 
 **Wo hochladen?** In Studio: **Home → Game Settings → Basic Info**. Dort gibt es einen Platz für das **Icon** und für die **Thumbnails**.
+
+> 💡 Leg das spannendste Thumbnail an die erste Stelle. Das sehen die Spieler zuerst.
 
 ---
 
@@ -163,6 +176,8 @@ Can you steal an ULTRA alien? 👀
 > 💡 Steht die ID nicht im Menü? Dann schau in die Adresszeile vom Browser. Dort stehen zwei lange Zahlen. Die **zweite** ist die ID vom Pass.
 
 > 💡 Roblox zeigt Pass-Bilder **rund** an. Das ist normal.
+
+> 💡 Im Spiel stehen manche Namen mit Emoji, zum Beispiel **„👟 2x Schritte“** oder **„⚡ 2x Schlüpfen & Wachsen“**. Das macht das Spiel selbst. Bei Roblox reicht der Name aus dem grauen Kasten.
 
 ### 💰 2x Cash
 

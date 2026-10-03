@@ -3,6 +3,7 @@
 --   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start)
 --   • Streifen auf dem Laufband und auf den Treadmills laufen mit
 --   • Aliens wippen sanft, Regenbogen-Teile färben sich durch
+--   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
 --  Arbeit pro Frame ist begrenzt: weit entfernte Dinge werden seltener oder gar nicht bewegt.
@@ -21,7 +22,12 @@ local NEAR_DISTANCE = 260 -- näher dran: jedes Frame bewegen
 local FAR_FRAME_SKIP = 4 -- weiter weg: nur jedes 4. Frame
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
 local BOB_RANGE = 100 -- Aliens nur in der Nähe wippen lassen
+local MAX_BOB = 24 -- höchstens so viele (die nächsten) wippen gleichzeitig
 local SLOW_INTERVAL = 1 / 30 -- Wippen + Regenbogen höchstens 30x pro Sekunde
+local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens wippen / welche Umrisse an sind
+local CLEANUP_INTERVAL = 1 -- so oft fliegen zerstörte Objekte aus den Listen
+local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die nächsten)
+local HIGHLIGHT_RANGE = 150
 local HATCH_INTERVAL = 0.2 -- Schlüpf-Countdown 5x pro Sekunde
 local HATCH_RANGE = 170
 local RAINBOW_RANGE = 400
@@ -376,18 +382,32 @@ end
 
 -- ---------------------------------------------------------------------
 -- WIPPENDE ALIENS
+-- Pro Alien werden die Teile + ihr Abstand zum Ruhe-Pivot EINMAL gemerkt, dann alle wippenden
+-- Teile mit EINEM workspace:BulkMoveTo bewegt. Jedes Frame kommt nur ein Teil der Aliens dran
+-- (gleichmäßig verteilt, jedes ca. 30x pro Sekunde) – keine Lastspitzen jedes zweite Frame.
 -- ---------------------------------------------------------------------
 type BobRecord = {
 	Model: Model,
-	Base: CFrame?,
-	Last: CFrame?,
+	Primary: BasePart?,
+	PrimaryIndex: number,
+	Base: CFrame?, -- Ruhe-Pivot (wie vom Server gesetzt)
+	Parts: { BasePart },
+	Offsets: { CFrame }, -- Teil relativ zum Ruhe-Pivot
+	LastPrimary: CFrame?, -- zuletzt von uns gesetzte Lage des PrimaryPart
+	Rev: any, -- Attribut "Rev" (ändert der Server nach dem Wachsen)
 	Phase: number,
 	Amp: number,
+	Slot: number,
+	Dist: number,
 	Moved: boolean,
 }
 
 local bobRecords: { BobRecord } = {}
 local bobSeen: { [Instance]: boolean } = {}
+local bobCandidates: { BobRecord } = {} -- wiederverwendet (keine neuen Tabellen pro Durchlauf)
+local activeBobs: { BobRecord } = {}
+local bobParts: { BasePart } = {}
+local bobCFrames: { CFrame } = {}
 
 local function addBob(inst: Instance)
 	if not inst:IsA("Model") or bobSeen[inst] or inst:GetAttribute("Bob") ~= true then
@@ -397,49 +417,144 @@ local function addBob(inst: Instance)
 	local top = tonumber(inst:GetAttribute("TopHeight"))
 	table.insert(bobRecords, {
 		Model = inst,
+		Primary = nil,
+		PrimaryIndex = 0,
 		Base = nil,
-		Last = nil,
+		Parts = {},
+		Offsets = {},
+		LastPrimary = nil,
+		Rev = nil,
 		Phase = math.random() * math.pi * 2,
 		Amp = if top then math.clamp(top * 0.06, 0.15, 0.6) else 0.3,
+		Slot = math.random(0, 7),
+		Dist = math.huge,
 		Moved = false,
 	})
 end
 
-local function stepBob(now: number, camPos: Vector3)
+-- Ruhe-Lage neu merken (erstes Mal, oder der Server hat das Alien verschoben/vergrößert)
+local function rebaseBob(record: BobRecord): boolean
+	local model = record.Model
+	local primary = model.PrimaryPart
+	if not primary then
+		return false
+	end
+	local base = model:GetPivot()
+	local inverse = base:Inverse()
+	table.clear(record.Parts)
+	table.clear(record.Offsets)
+	record.PrimaryIndex = 0
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			table.insert(record.Parts, d)
+			table.insert(record.Offsets, inverse * d.CFrame)
+			if d == primary then
+				record.PrimaryIndex = #record.Parts
+			end
+		end
+	end
+	record.Primary = primary
+	record.Base = base
+	record.LastPrimary = primary.CFrame
+	record.Rev = model:GetAttribute("Rev")
+	record.Moved = false
+	return record.PrimaryIndex > 0
+end
+
+-- Einmal zurück auf die Ruhe-Position (z.B. zu weit weg)
+local function resetBob(record: BobRecord)
+	local base = record.Base
+	local primary = record.Primary
+	if base and primary and record.Moved then
+		record.Model:PivotTo(base)
+		record.LastPrimary = primary.CFrame
+	end
+	record.Moved = false
+end
+
+local function byDistance(a: BobRecord, b: BobRecord): boolean
+	return a.Dist < b.Dist
+end
+
+-- Alle SCAN_INTERVAL Sekunden: die nächsten MAX_BOB Aliens in Reichweite wippen lassen
+local function scanBob(camPos: Vector3)
+	local count = 0
 	for i = #bobRecords, 1, -1 do
 		local record = bobRecords[i]
 		local model = record.Model
-		if model.Parent == nil then
+		if model.Parent == nil or not model:IsDescendantOf(workspace) then
+			-- zerstört (auch wenn nur der Ordner darüber weg ist, z.B. Foto-Deko)
 			bobSeen[model] = nil
 			bobRecords[i] = bobRecords[#bobRecords]
 			bobRecords[#bobRecords] = nil
 		else
+			local pivot = record.Base or model:GetPivot()
+			record.Dist = (pivot.Position - camPos).Magnitude
+			if record.Dist <= BOB_RANGE then
+				count += 1
+				bobCandidates[count] = record
+			else
+				resetBob(record)
+			end
+		end
+	end
+	for i = #bobCandidates, count + 1, -1 do
+		bobCandidates[i] = nil
+	end
+	if count > MAX_BOB then
+		table.sort(bobCandidates, byDistance)
+		for i = MAX_BOB + 1, count do
+			resetBob(bobCandidates[i])
+		end
+	end
+	table.clear(activeBobs)
+	for i = 1, math.min(count, MAX_BOB) do
+		activeBobs[i] = bobCandidates[i]
+	end
+end
+
+-- stride = jedes wievielte Frame ein Alien drankommt (60 FPS -> 2 = 30x pro Sekunde)
+local function stepBob(now: number, stride: number): number
+	local count = 0
+	for _, record in ipairs(activeBobs) do
+		if (frameNumber + record.Slot) % stride == 0 then
+			local model = record.Model
 			local primary = model.PrimaryPart
-			-- Getragene Aliens (nicht verankert, am Spieler) nie bewegen
-			if primary and primary.Anchored and model:GetAttribute("Bob") == true then
-				local current = model:GetPivot()
-				local last = record.Last
-				if record.Base == nil or (last and (current.Position - last.Position).Magnitude > 0.02) then
-					-- Erstes Mal oder der Server hat das Alien verschoben -> neue Ruhe-Position
-					record.Base = current
+			-- Getragene Aliens (nicht verankert, am Spieler) nie bewegen; gelöschte (auch wenn nur der
+			-- Ordner darüber weg ist) ebenfalls nicht – die fliegen beim nächsten scanBob raus
+			if
+				primary
+				and primary.Anchored
+				and model:GetAttribute("Bob") == true
+				and primary:IsDescendantOf(workspace)
+			then
+				local last = record.LastPrimary
+				local ready = record.Base ~= nil and record.Primary == primary
+				if
+					not ready
+					or not last
+					or (primary.Position - last.Position).Magnitude > 0.02
+					or model:GetAttribute("Rev") ~= record.Rev
+				then
+					ready = rebaseBob(record)
 				end
-				local base = record.Base :: CFrame
-				if (base.Position - camPos).Magnitude <= BOB_RANGE then
+				local base = record.Base
+				if ready and base then
 					local wave = math.sin(now * 2.4 + record.Phase) * 0.5 + 0.5
 					local target = base + Vector3.new(0, wave * record.Amp, 0)
-					model:PivotTo(target)
-					record.Last = target
+					local offsets = record.Offsets
+					for i, part in ipairs(record.Parts) do
+						count += 1
+						bobParts[count] = part
+						bobCFrames[count] = target * offsets[i]
+					end
+					record.LastPrimary = target * offsets[record.PrimaryIndex]
 					record.Moved = true
-				elseif record.Moved then
-					model:PivotTo(base)
-					record.Last = base
-					record.Moved = false
-				else
-					record.Last = current
 				end
 			end
 		end
 	end
+	return count
 end
 
 -- ---------------------------------------------------------------------
@@ -495,9 +610,78 @@ local function stepRainbow(now: number, camPos: Vector3)
 				end
 			else
 				local highlight = inst :: Highlight
-				highlight.FillColor = color
-				highlight.OutlineColor = color
+				if highlight.Enabled then -- ausgeschaltete Umrisse nicht umfärben
+					highlight.FillColor = color
+					highlight.OutlineColor = color
+				end
 			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- UMRISSE (Highlights): nur die nächsten MAX_HIGHLIGHTS in Reichweite einschalten.
+-- Der Server legt sie ausgeschaltet an.
+-- ---------------------------------------------------------------------
+local highlightRecords: { Highlight } = {}
+local highlightSeen: { [Instance]: boolean } = {}
+local highlightCandidates: { Highlight } = {}
+local highlightDist: { [Highlight]: number } = {}
+
+local function addHighlight(inst: Instance)
+	if inst:IsA("Highlight") and not highlightSeen[inst] then
+		highlightSeen[inst] = true
+		inst.Enabled = false -- bis zum nächsten Durchlauf aus
+		table.insert(highlightRecords, inst)
+	end
+end
+
+local function highlightPosition(highlight: Highlight): Vector3?
+	local target = highlight.Adornee or highlight.Parent
+	if target and target:IsA("BasePart") then
+		return target.Position
+	elseif target and target:IsA("Model") then
+		return target:GetPivot().Position
+	end
+	return nil
+end
+
+local function byHighlightDistance(a: Highlight, b: Highlight): boolean
+	return (highlightDist[a] or math.huge) < (highlightDist[b] or math.huge)
+end
+
+local function scanHighlights(camPos: Vector3)
+	table.clear(highlightDist)
+	local count = 0
+	for i = #highlightRecords, 1, -1 do
+		local highlight = highlightRecords[i]
+		if highlight.Parent == nil or not highlight:IsDescendantOf(workspace) then
+			highlightSeen[highlight] = nil
+			highlightRecords[i] = highlightRecords[#highlightRecords]
+			highlightRecords[#highlightRecords] = nil
+		else
+			local pos = highlightPosition(highlight)
+			local dist = if pos then (pos - camPos).Magnitude else math.huge
+			if dist <= HIGHLIGHT_RANGE then
+				count += 1
+				highlightCandidates[count] = highlight
+				highlightDist[highlight] = dist
+			elseif highlight.Enabled then
+				highlight.Enabled = false
+			end
+		end
+	end
+	for i = #highlightCandidates, count + 1, -1 do
+		highlightCandidates[i] = nil
+	end
+	if count > MAX_HIGHLIGHTS then
+		table.sort(highlightCandidates, byHighlightDistance)
+	end
+	for i = 1, count do
+		local highlight = highlightCandidates[i]
+		local on = i <= MAX_HIGHLIGHTS
+		if highlight.Enabled ~= on then
+			highlight.Enabled = on
 		end
 	end
 end
@@ -563,6 +747,27 @@ local function stepHatch(now: number, camPos: Vector3)
 	end
 end
 
+-- Zerstörte Objekte aus den Listen werfen. Je nach Destroy-Replikation behalten Teile in einem
+-- zerstörten Model ihren Parent – deshalb (selten) prüfen, ob sie noch in der Welt hängen.
+local function cleanupDead()
+	for i = #rainbowRecords, 1, -1 do
+		local inst = rainbowRecords[i].Inst
+		if not inst:IsDescendantOf(workspace) then
+			rainbowSeen[inst] = nil
+			rainbowRecords[i] = rainbowRecords[#rainbowRecords]
+			rainbowRecords[#rainbowRecords] = nil
+		end
+	end
+	for i = #hatchRecords, 1, -1 do
+		local part = hatchRecords[i].Part
+		if not part:IsDescendantOf(workspace) then
+			hatchSeen[part] = nil
+			hatchRecords[i] = hatchRecords[#hatchRecords]
+			hatchRecords[#hatchRecords] = nil
+		end
+	end
+end
+
 -- ---------------------------------------------------------------------
 -- START
 -- ---------------------------------------------------------------------
@@ -610,14 +815,20 @@ function WorldFX.Init(context: any, map: Instance)
 			addHatchCandidate(inst)
 		end
 	end)
-	-- Regenbogen auch an getragenen Aliens (die hängen am Charakter, nicht in der Map)
-	for _, inst in ipairs(workspace:GetDescendants()) do
+	-- Regenbogen + Umrisse auch an getragenen Aliens (die hängen am Charakter, nicht in der Map)
+	local function onWorldDescendant(inst: Instance)
 		considerRainbow(inst)
+		addHighlight(inst)
 	end
-	workspace.DescendantAdded:Connect(considerRainbow)
+	for _, inst in ipairs(workspace:GetDescendants()) do
+		onWorldDescendant(inst)
+	end
+	workspace.DescendantAdded:Connect(onWorldDescendant)
 
 	local slowClock = 0
 	local hatchClock = 0
+	local scanClock = SCAN_INTERVAL -- gleich im ersten Frame auswählen
+	local cleanupClock = 0
 	local animClock = 0 -- eigene Animations-Uhr (läuft mit dt, auch bei Rucklern gleichmäßig)
 	RunService.RenderStepped:Connect(function(dt: number)
 		local camera = workspace.CurrentCamera
@@ -637,15 +848,36 @@ function WorldFX.Init(context: any, map: Instance)
 		end
 
 		animClock += dt
+		scanClock += dt
+		if scanClock >= SCAN_INTERVAL then
+			scanClock = 0
+			scanBob(camPos)
+			scanHighlights(camPos)
+		end
+		cleanupClock += dt
+		if cleanupClock >= CLEANUP_INTERVAL then
+			cleanupClock = 0
+			cleanupDead()
+		end
+
+		-- Wippen: jedes Frame ein Teil der Aliens, jedes einzelne ca. 30x pro Sekunde
+		local stride = math.max(1, math.floor(SLOW_INTERVAL / math.max(dt, 1 / 240) + 0.5))
+		table.clear(bobParts)
+		table.clear(bobCFrames)
+		local bobCount = stepBob(animClock, stride)
+		if bobCount > 0 then
+			workspace:BulkMoveTo(bobParts, bobCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+		end
+
 		slowClock += dt
 		if slowClock >= SLOW_INTERVAL then
-			slowClock = 0
-			stepBob(animClock, camPos)
+			-- abziehen statt auf 0 setzen -> gleichmäßiger Takt (nach Rucklern nicht nachholen)
+			slowClock = math.min(slowClock - SLOW_INTERVAL, SLOW_INTERVAL)
 			stepRainbow(animClock, camPos)
 		end
 		hatchClock += dt
 		if hatchClock >= HATCH_INTERVAL then
-			hatchClock = 0
+			hatchClock = math.min(hatchClock - HATCH_INTERVAL, HATCH_INTERVAL)
 			stepHatch(now, camPos)
 		end
 	end)

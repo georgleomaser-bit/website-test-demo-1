@@ -237,7 +237,7 @@ local function tryClaim(player: Player, record)
 		return
 	end
 	local data = Services.DataService.Get(player)
-	if not data then
+	if not data or not Services.EconomyService.IsReady(player) then
 		return
 	end
 	local character = player.Character
@@ -257,6 +257,12 @@ local function tryClaim(player: Player, record)
 	end
 	if (root.Position - position).Magnitude > reach then
 		Services.EconomyService.Notify(player, "🏃 Zu weit weg – lauf näher ran!", "Error")
+		return
+	end
+	-- Die Position kommt vom Client: wer gerade unmöglich weit "gesprungen" ist (Teleport-Exploit),
+	-- darf nicht schnappen. (Server-Teleports wie Home sind erlaubt, danach kurz warten.)
+	if Services.CarryService.MoveStatus(player) ~= "ok" then
+		Services.EconomyService.Notify(player, "⏳ Kurz warten und nochmal versuchen!", "Error")
 		return
 	end
 	local plot = Services.PlotService.GetPlot(player)
@@ -377,7 +383,7 @@ local function spawnOnBelt(entry, price: number, shouldAnnounce: boolean?)
 
 	local def = Config.MeteorsById[entry.Id]
 	if shouldAnnounce ~= false and Config.RarityIndex[def.Rarity] >= 6 then
-		announce(entry, "☄️ Ein %s fährt aufs Laufband! 🏃")
+		announce(entry, "☄️ Ein %s fährt aufs Förderband!")
 	end
 	return record
 end

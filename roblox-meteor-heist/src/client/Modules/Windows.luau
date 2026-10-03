@@ -694,12 +694,25 @@ type IndexCard = {
 	Question: TextLabel,
 	Name: TextLabel,
 }
-type IndexGroup = { Rarity: string, Header: TextLabel, Cards: { IndexCard }, Color: Color3 }
+type IndexGroup = { Title: string, Header: TextLabel, Cards: { IndexCard }, Color: Color3 }
 
 local indexHeader: TextLabel
 local indexBar: UI.Bar
 local indexGroups: { IndexGroup } = {}
 local indexSignature = ""
+local SPECIAL_TITLE = "👑 Admin & Spezial (Bonus)"
+
+-- Aliens, die normale Spieler nie selbst ausbrüten können: aus Admin-Meteoren oder aus Meteoren,
+-- die nie aufs Förderband kommen (z.B. Omega). Zählen als Bonus, nicht zum "X/Y"-Ziel.
+local function isSpecialAlien(def: any): boolean
+	local Config = ctx.Config
+	local rarity = Config.RaritiesByName and Config.RaritiesByName[def.Rarity]
+	if rarity and rarity.AdminOnly then
+		return true
+	end
+	local meteor = Config.MeteorsById and Config.MeteorsById[def.Meteor]
+	return meteor ~= nil and meteor.Spawnable == false
+end
 
 local function buildIndex()
 	local win = UI.Window("👽 ALIEN-INDEX", 680, 560, Theme.Green)
@@ -715,73 +728,89 @@ local function buildIndex()
 	})
 	indexBar = UI.Bar({ LayoutOrder = 2, Color = Theme.Green, MaxText = 16, Parent = content })
 
-	-- Aliens nach Seltenheit sortieren (Reihenfolge wie Config.Rarities)
+	-- Aliens nach Seltenheit sortieren (Reihenfolge wie Config.Rarities),
+	-- Admin- und Spezial-Aliens zum Schluss in einer eigenen Bonus-Gruppe
 	local byRarity: { [string]: { any } } = {}
+	local special: { any } = {}
 	for _, def in ipairs(ctx.Aliens.List) do
-		local group = byRarity[def.Rarity]
-		if not group then
-			group = {}
-			byRarity[def.Rarity] = group
+		if isSpecialAlien(def) then
+			table.insert(special, def)
+		else
+			local group = byRarity[def.Rarity]
+			if not group then
+				group = {}
+				byRarity[def.Rarity] = group
+			end
+			table.insert(group, def)
 		end
-		table.insert(group, def)
 	end
-	local order = 10
+	local sections: { { Title: string, Color: Color3, Defs: { any } } } = {}
 	for _, rarity in ipairs(ctx.Config.Rarities) do
 		local defs = byRarity[rarity.Name]
 		if defs and #defs > 0 then
-			order += 1
-			local header = UI.Section(content, rarity.Name, order, rarity.Color)
-			order += 1
-			local gridFrame = UI.Grid(content, order, 148, 74)
-			local group: IndexGroup = { Rarity = rarity.Name, Header = header, Cards = {}, Color = rarity.Color }
-			for i, def in ipairs(defs) do
-				local look = def.Look or {}
-				local card = UI.Card({ LayoutOrder = i, Parent = gridFrame })
-				local dotStroke = UI.Stroke(look.Accent or Color3.new(1, 1, 1), 3)
-				local dot = UI.Create("Frame", {
-					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, 8, 0.5, 0),
-					Size = UDim2.fromOffset(38, 38),
-					BackgroundColor3 = look.Color or rarity.Color,
-					Parent = card,
-				}, { UI.Corner(19), dotStroke })
-				local question = UI.Label({
-					Size = UDim2.fromScale(1, 1),
-					Text = "?",
-					MaxText = 24,
-					Outline = 2,
-					Visible = false,
-					Parent = dot,
-				})
-				local nameLabel = UI.Label({
-					Position = UDim2.fromOffset(52, 6),
-					Size = UDim2.new(1, -58, 0, 40),
-					Text = "???",
-					TextWrapped = true,
-					MaxText = 15,
-					Outline = 2,
-					Parent = card,
-				})
-				UI.Label({
-					Position = UDim2.fromOffset(52, 48),
-					Size = UDim2.new(1, -58, 0, 18),
-					Text = tostring(def.Tier),
-					TextColor3 = TIER_COLORS[def.Tier] or Theme.SubText,
-					MaxText = 13,
-					Outline = 1,
-					Parent = card,
-				})
-				table.insert(group.Cards, {
-					Def = def,
-					Card = card,
-					Dot = dot,
-					DotStroke = dotStroke,
-					Question = question,
-					Name = nameLabel,
-				})
-			end
-			table.insert(indexGroups, group)
+			table.insert(sections, { Title = rarity.Name, Color = rarity.Color, Defs = defs })
 		end
+	end
+	if #special > 0 then
+		local adminRarity = ctx.Config.RaritiesByName and ctx.Config.RaritiesByName.Admin
+		local color: Color3 = if adminRarity then adminRarity.Color else Theme.Red
+		table.insert(sections, { Title = SPECIAL_TITLE, Color = color, Defs = special })
+	end
+	local order = 10
+	for _, section in ipairs(sections) do
+		local defs = section.Defs
+		order += 1
+		local header = UI.Section(content, section.Title, order, section.Color)
+		order += 1
+		local gridFrame = UI.Grid(content, order, 148, 74)
+		local group: IndexGroup = { Title = section.Title, Header = header, Cards = {}, Color = section.Color }
+		for i, def in ipairs(defs) do
+			local look = def.Look or {}
+			local card = UI.Card({ LayoutOrder = i, Parent = gridFrame })
+			local dotStroke = UI.Stroke(look.Accent or Color3.new(1, 1, 1), 3)
+			local dot = UI.Create("Frame", {
+				AnchorPoint = Vector2.new(0, 0.5),
+				Position = UDim2.new(0, 8, 0.5, 0),
+				Size = UDim2.fromOffset(38, 38),
+				BackgroundColor3 = look.Color or section.Color,
+				Parent = card,
+			}, { UI.Corner(19), dotStroke })
+			local question = UI.Label({
+				Size = UDim2.fromScale(1, 1),
+				Text = "?",
+				MaxText = 24,
+				Outline = 2,
+				Visible = false,
+				Parent = dot,
+			})
+			local nameLabel = UI.Label({
+				Position = UDim2.fromOffset(52, 6),
+				Size = UDim2.new(1, -58, 0, 40),
+				Text = "???",
+				TextWrapped = true,
+				MaxText = 15,
+				Outline = 2,
+				Parent = card,
+			})
+			UI.Label({
+				Position = UDim2.fromOffset(52, 48),
+				Size = UDim2.new(1, -58, 0, 18),
+				Text = tostring(def.Tier),
+				TextColor3 = TIER_COLORS[def.Tier] or Theme.SubText,
+				MaxText = 13,
+				Outline = 1,
+				Parent = card,
+			})
+			table.insert(group.Cards, {
+				Def = def,
+				Card = card,
+				Dot = dot,
+				DotStroke = dotStroke,
+				Question = question,
+				Name = nameLabel,
+			})
+		end
+		table.insert(indexGroups, group)
 	end
 end
 
@@ -797,21 +826,40 @@ function Windows.RefreshIndex(state: any)
 	end
 	indexSignature = signature
 	local found: { [string]: boolean } = {}
-	local count = 0
+	local count = 0 -- alle entdeckten (jedes gibt Einkommens-Bonus)
+	local normalFound, normalTotal, specialFound = 0, 0, 0
 	for _, id in ipairs(index) do
-		if ctx.Aliens.ById[id] and not found[id] then
+		local def = ctx.Aliens.ById[id]
+		if def and not found[id] then
 			found[id] = true
 			count += 1
+			if isSpecialAlien(def) then
+				specialFound += 1
+			else
+				normalFound += 1
+			end
 		end
 	end
-	local total = #ctx.Aliens.List
+	for _, def in ipairs(ctx.Aliens.List) do
+		if not isSpecialAlien(def) then
+			normalTotal += 1
+		end
+	end
 	local bonusPer = tonumber(ctx.Config.IndexBonusPerAlien) or 0.01
-	indexHeader.Text = ("👽 Entdeckt: %d/%d  •  +%s%% Einkommen"):format(
-		count,
-		total,
+	local headerText = ("👽 Entdeckt: %d/%d  •  +%s%% Einkommen"):format(
+		normalFound,
+		normalTotal,
 		percentText(count * bonusPer * 100)
 	)
-	UI.SetBar(indexBar, if total > 0 then count / total else 0, ("%d / %d Aliens"):format(count, total))
+	if specialFound > 0 then
+		headerText ..= ("  •  👑 +%d Spezial"):format(specialFound)
+	end
+	indexHeader.Text = headerText
+	UI.SetBar(
+		indexBar,
+		if normalTotal > 0 then normalFound / normalTotal else 0,
+		("%d / %d Aliens"):format(normalFound, normalTotal)
+	)
 	for _, group in ipairs(indexGroups) do
 		local groupFound = 0
 		for _, card in ipairs(group.Cards) do
@@ -832,7 +880,7 @@ function Windows.RefreshIndex(state: any)
 				card.Card.BackgroundTransparency = 0.45
 			end
 		end
-		group.Header.Text = ("%s  (%d/%d)"):format(group.Rarity, groupFound, #group.Cards)
+		group.Header.Text = ("%s  (%d/%d)"):format(group.Title, groupFound, #group.Cards)
 	end
 end
 
@@ -857,15 +905,26 @@ function Windows.Open(name: string)
 	end
 end
 
+-- Fenstername -> Aktualisieren
+local refreshers: { [string]: (state: any) -> () } = {
+	Shop = Windows.RefreshShop,
+	Treadmills = Windows.RefreshTreadmills,
+	Rebirth = Windows.RefreshRebirth,
+	Daily = Windows.RefreshDaily,
+	Index = Windows.RefreshIndex,
+}
+
+-- Neue Daten vom Server: nur OFFENE Fenster neu beschreiben (geschlossene beim Öffnen)
 function Windows.Refresh(state: any)
 	if not state then
 		return
 	end
-	Windows.RefreshShop(state)
-	Windows.RefreshTreadmills(state)
-	Windows.RefreshRebirth(state)
-	Windows.RefreshDaily(state)
-	Windows.RefreshIndex(state)
+	for name, win in pairs(list) do
+		local refresh = refreshers[name]
+		if refresh and win.IsOpen then
+			refresh(state)
+		end
+	end
 end
 
 function Windows.Init(context: any)
@@ -876,6 +935,17 @@ function Windows.Init(context: any)
 	buildDaily()
 	buildIndex()
 	Windows.RefreshShop(nil)
+	-- Beim Öffnen einmal mit den neuesten Daten füllen
+	for name, win in pairs(list) do
+		local refresh = refreshers[name]
+		if refresh then
+			win.OnOpen = function()
+				if ctx.State then
+					refresh(ctx.State)
+				end
+			end
+		end
+	end
 end
 
 return Windows

@@ -88,31 +88,27 @@ local function track(inst: Instance)
 	end
 end
 
--- Kaufen-Prompts am Laufband: Der Meteor steht auf dem Server am Bandstart (nur wir bewegen ihn
+-- Kaufen-Prompts am Förderband: Der Meteor steht auf dem Server am Bandstart (nur wir bewegen ihn
 -- lokal), deshalb ist die Server-Reichweite riesig. Die echte Reichweite steht im Attribut
--- "ClientMaxDistance" und wird hier lokal eingestellt.
-local function applyClientReach(prompt: ProximityPrompt)
-	local reach = tonumber(prompt:GetAttribute("ClientMaxDistance"))
-	if reach and reach > 0 and prompt.MaxActivationDistance ~= reach then
-		prompt.MaxActivationDistance = reach
-	end
-end
-
+-- "ClientMaxDistance" und wird hier lokal eingestellt. Der Server setzt das Attribut schon, bevor der
+-- Meteor in die Map kommt -> einmal lesen reicht (keine Verbindung pro Meteor = kein Speicherleck).
 local function watchReach(inst: Instance)
 	if not inst:IsA("ProximityPrompt") or inst.Name == "SellPrompt" or inst.Name == "StealPrompt" then
 		return
 	end
-	applyClientReach(inst)
-	inst:GetAttributeChangedSignal("ClientMaxDistance"):Connect(function()
-		applyClientReach(inst)
-	end)
+	local reach = tonumber(inst:GetAttribute("ClientMaxDistance"))
+	if reach and reach > 0 and inst.MaxActivationDistance ~= reach then
+		inst.MaxActivationDistance = reach
+	end
 end
 
 function Prompts.UpdateAll()
 	table.clear(mineCache)
 	table.clear(lockedCache)
 	for prompt, plot in pairs(tracked) do
-		if prompt.Parent then
+		-- IsDescendantOf statt Parent: wird nur das Alien-Model zerstört, behält der Prompt
+		-- (je nach Destroy-Replikation) seinen Parent – er hängt dann aber nicht mehr in der Welt.
+		if prompt:IsDescendantOf(workspace) then
 			-- Base noch unbekannt (Prompt kam vor der Base an)? Nochmal suchen
 			if not plot then
 				plot = findPlot(prompt) or false
