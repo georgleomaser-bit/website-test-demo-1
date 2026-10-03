@@ -1,11 +1,23 @@
 -- Baut das Aussehen eines Meteors: Größe nach Seltenheit, Licht/Feuer/Funken für seltene,
--- Material/Farbe nach Mutation, Namensschild darüber.
+-- Material/Farbe nach Mutation, Spezial-Effekte der Admin-Meteore, Namensschild darüber.
+-- Lichter und Feuer gibt es bewusst sparsam (viele Meteore gleichzeitig = sonst Lag).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 
 local MeteorFactory = {}
+
+-- Ab welcher Seltenheit (Index in Config.Rarities) gibt es welchen Effekt?
+-- Laufband: es liegen sehr viele Meteore gleichzeitig darauf -> noch sparsamer.
+local LIGHT_FROM = { Base = 5, Ground = 5, Belt = 6, Carry = 7 }
+local FIRE_FROM = { Base = 7, Ground = 7, Belt = 99, Carry = 99 }
+local SPARKLES_FROM = { Base = 6, Ground = 6, Belt = 7, Carry = 99 }
+local SHADOW_MIN_SIZE = 3.5 -- nur große Meteore werfen Schatten
+
+local GREEN = Color3.fromRGB(120, 255, 120)
+local YELLOW = Color3.fromRGB(255, 230, 90)
+local HATCH_COLOR = Color3.fromRGB(255, 220, 120)
 
 function MeteorFactory.GetSize(entry): number
 	local def = Config.MeteorsById[entry.Id]
@@ -31,7 +43,8 @@ local function makeLabel(parent: Instance, name: string, order: number, textSize
 	return label
 end
 
--- mode: "Ground" (zeigt Preis) oder "Base" (zeigt Einkommen + Level)
+-- mode: "Ground"/"Belt" (zeigt Preis), "Base" (Schlüpf-Countdown bzw. Einkommen + Level),
+--       "Carry" (getragen: Schlüpfen pausiert)
 function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: number?)
 	local gui = part:FindFirstChild("Info")
 	if not gui then
@@ -42,33 +55,110 @@ function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: n
 	if not frame or not def then
 		return
 	end
+	local nameLabel = frame:FindFirstChild("NameLabel") :: TextLabel?
+	local rarityLabel = frame:FindFirstChild("RarityLabel") :: TextLabel?
+	local valueLabel = frame:FindFirstChild("ValueLabel") :: TextLabel?
+	if not nameLabel or not rarityLabel or not valueLabel then
+		return
+	end
 	local rarity = Config.RaritiesByName[def.Rarity]
 	local mut = Config.MutationsByName[entry.Mut] or Config.Mutations[1]
 
-	frame.NameLabel.Text = def.Name
-	frame.NameLabel.TextColor3 = rarity.Color
-	local tag = def.Rarity
+	nameLabel.Text = def.Name
+	nameLabel.TextColor3 = rarity.Color
+	local tag = def.Rarity == "Admin" and "👑 ADMIN" or def.Rarity
 	if mut.Name ~= "Normal" then
 		tag = mut.Name .. " • " .. tag
 	end
-	frame.RarityLabel.Text = tag
-	frame.RarityLabel.TextColor3 = mut.Color or rarity.Color
-	if mode == "Ground" then
+	rarityLabel.Text = tag
+	rarityLabel.TextColor3 = mut.Color or rarity.Color
+	if mode == "Ground" or mode == "Belt" then
 		if price and price <= 0 then
-			frame.ValueLabel.Text = "GRATIS!"
-			frame.ValueLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+			valueLabel.Text = "🎁 GRATIS!"
+			valueLabel.TextColor3 = GREEN
 		else
-			frame.ValueLabel.Text = Util.FormatCash(price or Config.MeteorValue(entry))
-			frame.ValueLabel.TextColor3 = Color3.fromRGB(255, 230, 90)
+			valueLabel.Text = Util.FormatCash(price or Config.MeteorValue(entry))
+			valueLabel.TextColor3 = YELLOW
 		end
+	elseif entry.Alien == nil then
+		-- Noch nicht geschlüpft: der Client zählt über das Attribut "HatchAt" live herunter
+		local hatch = math.max(0, tonumber(entry.Hatch) or 0)
+		if mode == "Carry" then
+			valueLabel.Text = "🐣 ⏸ " .. Util.FormatTime(hatch)
+		elseif hatch <= 0 then
+			valueLabel.Text = "🐣 Schlüpft..."
+		else
+			valueLabel.Text = "🐣 Schlüpft in " .. Util.FormatTime(hatch)
+		end
+		valueLabel.TextColor3 = HATCH_COLOR
 	else
 		local lv = entry.Lv or 1
 		local lvText = lv >= Config.MaxLevel and "MAX" or tostring(lv)
-		frame.ValueLabel.Text = Util.FormatCash(Config.MeteorIncome(entry)) .. "/s  ⚡Lv " .. lvText
-		frame.ValueLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+		valueLabel.Text = Util.FormatCash(Config.MeteorIncome(entry)) .. "/s  ⚡Lv " .. lvText
+		valueLabel.TextColor3 = GREEN
 	end
 end
 
+-- Spezial-Effekte (Admin-Meteore): Regenbogen, Umriss, Aura, starkes Licht
+local function addSpecialEffects(part: BasePart, def, color: Color3, size: number, mode: string)
+	local fx = def.Effects
+	if type(fx) ~= "table" then
+		return
+	end
+	if fx.Rainbow then
+		part:SetAttribute("Rainbow", true) -- Client färbt lokal durch alle Farben
+	end
+	if fx.Highlight and mode ~= "Carry" then
+		local highlight = Instance.new("Highlight")
+		highlight.Name = "AdminHighlight"
+		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+		highlight.FillColor = color
+		highlight.FillTransparency = 0.75
+		highlight.OutlineColor = color:Lerp(Color3.new(1, 1, 1), 0.4)
+		highlight.OutlineTransparency = 0
+		if fx.Rainbow then
+			highlight:SetAttribute("Rainbow", true)
+		end
+		highlight.Adornee = part
+		highlight.Parent = part
+	end
+	if fx.Aura then
+		local emitter = Instance.new("ParticleEmitter")
+		emitter.Name = "Aura"
+		emitter.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.6))
+		emitter.LightEmission = 1
+		emitter.LightInfluence = 0
+		emitter.Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, size * 0.12),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		emitter.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.2),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		emitter.Lifetime = NumberRange.new(0.8, 1.6)
+		emitter.Speed = NumberRange.new(size * 0.4, size * 0.9)
+		emitter.SpreadAngle = Vector2.new(180, 180)
+		emitter.Rate = mode == "Belt" and 12 or 25
+		emitter.Parent = part
+		if fx.Rainbow then
+			emitter:SetAttribute("Rainbow", true)
+		end
+	end
+	if fx.BigLight then
+		local light = part:FindFirstChildOfClass("PointLight") or Instance.new("PointLight")
+		light.Color = color
+		light.Range = 30
+		light.Brightness = 3
+		light.Shadows = false
+		light.Parent = part
+		if fx.Rainbow then
+			light:SetAttribute("Rainbow", true)
+		end
+	end
+end
+
+-- mode: "Belt" (Laufband), "Ground" (Gratis-Zone/Showcase), "Base" (in der Base), "Carry" (getragen)
 function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	local def = Config.MeteorsById[entry.Id]
 	assert(def, "Unbekannter Meteor: " .. tostring(entry.Id))
@@ -76,6 +166,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	local rarityIndex = Config.RarityIndex[def.Rarity]
 	local mut = Config.MutationsByName[entry.Mut] or Config.Mutations[1]
 	local size = MeteorFactory.GetSize(entry)
+	local isAdmin = rarity.AdminOnly == true
 
 	local part = Instance.new("Part")
 	part.Name = "Meteor"
@@ -84,8 +175,8 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanTouch = false
-	part.CastShadow = true
-	part.Material = Enum.Material.Slate
+	part.CastShadow = size >= SHADOW_MIN_SIZE and mode ~= "Belt"
+	part.Material = isAdmin and Enum.Material.Neon or Enum.Material.Slate
 	part.Color = def.Color
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
@@ -104,16 +195,19 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 
 	part:SetAttribute("MeteorId", entry.Id)
 	part:SetAttribute("Mutation", mut.Name)
+	part:SetAttribute("Rarity", def.Rarity)
 
-	-- Leuchten ab Rare, Feuer ab Legendary, Funken ab Mythic
-	if rarityIndex >= 3 then
+	-- Leuchten / Feuer / Funken nur für seltene Meteore (siehe Tabellen oben)
+	local lightFrom = LIGHT_FROM[mode] or 5
+	if rarityIndex >= lightFrom and not isAdmin then
 		local light = Instance.new("PointLight")
 		light.Color = rarity.Color
-		light.Range = 6 + rarityIndex * 2
-		light.Brightness = 1 + rarityIndex * 0.3
+		light.Range = 6 + rarityIndex * 1.5
+		light.Brightness = 1 + rarityIndex * 0.2
+		light.Shadows = false
 		light.Parent = part
 	end
-	if rarityIndex >= 5 then
+	if rarityIndex >= (FIRE_FROM[mode] or 99) and not isAdmin then
 		local fire = Instance.new("Fire")
 		fire.Color = rarity.Color
 		fire.SecondaryColor = def.Color
@@ -121,17 +215,24 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		fire.Heat = 4
 		fire.Parent = part
 	end
-	if rarityIndex >= 6 or mut.Name == "Cosmic" then
+	if (rarityIndex >= (SPARKLES_FROM[mode] or 99) or (mut.Name == "Cosmic" and mode ~= "Carry")) and not isAdmin then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or rarity.Color
 		sparkles.Parent = part
 	end
+	addSpecialEffects(part, def, part.Color, size, mode)
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Info"
 	gui.Size = UDim2.new(0, 220, 0, 70)
 	gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
-	gui.MaxDistance = 70 + rarityIndex * 15
+	if mode == "Belt" then
+		gui.MaxDistance = 45 + rarityIndex * 8 -- viele Schilder am Band: nur in der Nähe zeigen
+	elseif mode == "Carry" then
+		gui.MaxDistance = 60
+	else
+		gui.MaxDistance = 70 + rarityIndex * 15
+	end
 	gui.LightInfluence = 0
 	gui.Parent = part
 
@@ -154,14 +255,14 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	return part
 end
 
--- Passt Größe + Schild nach einem Level-Up an
+-- Passt Größe + Schild an (z.B. nach Level-Änderung durch den Admin)
 function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 	local size = MeteorFactory.GetSize(entry)
 	local bottom = part.Position.Y - part.Size.Y / 2
 	part.Size = Vector3.new(size, size, size)
 	part.Position = Vector3.new(part.Position.X, bottom + size / 2, part.Position.Z)
 	local gui = part:FindFirstChild("Info")
-	if gui then
+	if gui and gui:IsA("BillboardGui") then
 		gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
 	end
 	local fire = part:FindFirstChildOfClass("Fire")
@@ -171,20 +272,22 @@ function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 	MeteorFactory.UpdateLabel(part, entry, mode)
 end
 
+-- distance = optionale Aktivierungs-Reichweite (sonst aus der Größe des Teils)
 function MeteorFactory.AddPrompt(
 	part: BasePart,
 	name: string,
 	action: string,
 	objectText: string,
 	hold: number,
-	key: Enum.KeyCode?
-)
+	key: Enum.KeyCode?,
+	distance: number?
+): ProximityPrompt
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = name
 	prompt.ActionText = action
 	prompt.ObjectText = objectText
 	prompt.HoldDuration = hold
-	prompt.MaxActivationDistance = math.max(10, part.Size.X / 2 + 7)
+	prompt.MaxActivationDistance = distance or math.max(10, part.Size.X / 2 + 7)
 	prompt.RequiresLineOfSight = false
 	prompt.KeyboardKeyCode = key or Enum.KeyCode.E
 	prompt.Parent = part

@@ -10,6 +10,7 @@ local TextService = game:GetService("TextService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local Aliens = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Aliens"))
 local Remotes = require(script.Parent:WaitForChild("Remotes"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 
@@ -129,7 +130,7 @@ end
 
 local function runAdminAbuse()
 	Services.EconomyService.NotifyAll(
-		"😈 ADMIN ABUSE! 10x Glück, Meteoritenschauer, Geld für alle, Gratis-Secrets & Mond-Schwerkraft!",
+		"😈 ADMIN ABUSE! 10x Glück, Meteoritenschauer, Geld für alle, Gratis-Secrets, ein Admin-Meteor & Mond-Schwerkraft!",
 		"Event"
 	)
 	Services.MeteorService.SetServerLuck(10, workspace:GetServerTimeNow() + 600)
@@ -142,13 +143,22 @@ local function runAdminAbuse()
 		Services.EconomyService.Effect(p, "Confetti", 3)
 	end
 	task.spawn(function()
+		-- Gratis-Meteore regnen in die Gratis-Zone, zum Schluss ein Admin-Meteor
 		for i = 1, 6 do
-			Services.MeteorService.SpawnMeteor({
+			Services.MeteorService.SpawnStatic({
 				Rarity = i <= 2 and "Secret" or "Mythic",
 				Free = true,
 				Announce = false,
 			})
 			task.wait(1.5)
+		end
+		local def = Services.MeteorService.RandomAdminMeteor()
+		if def then
+			Services.MeteorService.SpawnStatic({ Id = def.Id, Mut = "Normal", Free = true, Announce = false })
+			Services.EconomyService.NotifyAll(
+				"👑 Ein ADMIN-METEOR (" .. def.Name .. ") ist in der Gratis-Zone gelandet! SCHNELL! 🏃",
+				"Event"
+			)
 		end
 	end)
 end
@@ -156,6 +166,33 @@ end
 local function getRoot(p: Player): BasePart?
 	local character = p.Character
 	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+-- Bodenhöhe unter einer Position (ignoriert Spieler und Meteore)
+local function groundBelow(position: Vector3): Vector3
+	local ignore: { Instance } = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(ignore, p.Character)
+		end
+	end
+	local map = Services.PlotService.MapFolder
+	if map then
+		for _, name in ipairs({ "BeltMeteors", "GroundMeteors" }) do
+			local folder = map:FindFirstChild(name)
+			if folder then
+				table.insert(ignore, folder)
+			end
+		end
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignore
+	local result = workspace:Raycast(position + Vector3.new(0, 4, 0), Vector3.new(0, -60, 0), params)
+	if result then
+		return result.Position
+	end
+	return Vector3.new(position.X, 0.2, position.Z)
 end
 
 local function setInvisible(p: Player, invisible: boolean)
@@ -294,6 +331,8 @@ local SHOWCASE_DISTANCE = 14 -- Studs vor dem Admin
 local SHOWCASE_GAP = 2.5 -- Lücke zwischen zwei Meteoren
 local SHOWCASE_LIFETIME = 300 -- Sekunden
 local PHOTO_RARITIES = { "Legendary", "Mythic", "Celestial", "Divine", "Secret" }
+local PHOTO_LUCK = 8
+local ADMIN_METEOR_LIFETIME = 300 -- Sekunden in der Gratis-Zone
 -- Öfter Gold/Diamond/Cosmic als Normal – glänzt schöner auf dem Foto
 local PHOTO_MUTATIONS = {
 	{ Name = "Normal", Weight = 16 },
@@ -302,7 +341,7 @@ local PHOTO_MUTATIONS = {
 	{ Name = "Cosmic", Weight = 24 },
 }
 
--- Zufälliger Deko-Meteor für die Foto-Base (wird NICHT gespeichert)
+-- Zufälliges Deko-Alien für die Foto-Base (wird NICHT gespeichert)
 local function photoEntry()
 	local rarity = PHOTO_RARITIES[photoRng:NextInteger(1, #PHOTO_RARITIES)]
 	local def = Services.MeteorService.RandomOfRarity(rarity)
@@ -311,15 +350,17 @@ local function photoEntry()
 	end
 	local mut = Util.WeightedPick(PHOTO_MUTATIONS, nil, photoRng)
 	local level = math.min(photoRng:NextInteger(10, 20), Config.MaxLevel)
-	return { Id = def.Id, Mut = mut.Name, Lv = level, Xp = 0 }
+	-- viel Glück -> öfter Selten/Ultra-Aliens (sieht auf dem Foto besser aus)
+	local alien = Aliens.Roll(def.Id, PHOTO_LUCK, photoRng)
+	return { Id = def.Id, Alien = alien, Mut = mut.Name, Lv = level, Xp = 0, Hatch = 0 }
 end
 
--- Je der teuerste spawnbare Meteor jeder Seltenheit (Common zuerst, Secret zuletzt)
+-- Je der teuerste Meteor jeder Seltenheit (Common zuerst, Admin zuletzt)
 local function showcaseDefs()
 	local list = {}
 	for _, rarity in ipairs(Config.Rarities) do
 		local best = nil
-		for _, def in ipairs(Config.MeteorsByRarity[rarity.Name]) do
+		for _, def in ipairs(Config.MeteorsByRarityAll[rarity.Name]) do
 			if not best or def.Price > best.Price then
 				best = def
 			end
@@ -329,6 +370,27 @@ local function showcaseDefs()
 		end
 	end
 	return list
+end
+
+-- Admin-Meteor aus der Anfrage (nur Rarity "Admin")
+local function adminMeteorDef(id: any)
+	local def = type(id) == "string" and Config.MeteorsById[id]
+	if def and Config.RaritiesByName[def.Rarity].AdminOnly then
+		return def
+	end
+	return nil
+end
+
+-- Admin-Meteor in die Gratis-Zone: großer Einschlag + Ansage an alle
+local function dropAdminMeteor(def, mutation: string?)
+	local record = Services.MeteorService.SpawnStatic({
+		Id = def.Id,
+		Mut = Config.MutationsByName[mutation] and mutation or "Normal",
+		Free = true,
+		Announce = false,
+		Lifetime = ADMIN_METEOR_LIFETIME,
+	})
+	return record ~= nil
 end
 
 -- -------------------------------------------------------------------
@@ -346,51 +408,68 @@ function Actions.GetPlayers(_admin)
 			UserId = p.UserId,
 			Cash = data and data.Cash or 0,
 			Rebirths = data and data.Rebirths or 0,
+			Steps = data and data.Steps or 0,
 		})
 	end
 	return true, "OK", list
 end
 
+-- Where: "Belt" (Standard, aufs Laufband), "Free" (Gratis-Zone) oder "Me" (vor dem Admin)
 function Actions.SpawnMeteor(admin, args)
 	local id = args.MeteorId
-	if not Config.MeteorsById[id] then
+	if type(id) ~= "string" or not Config.MeteorsById[id] then
 		return false, "Unbekannter Meteor"
 	end
-	local count = num(args.Count, 1, 1, 25)
-	local position = nil
-	if args.Where == "Me" then
-		local root = admin.Character and admin.Character:FindFirstChild("HumanoidRootPart")
-		if root then
-			position = (root :: BasePart).Position + (root :: BasePart).CFrame.LookVector * 8
+	local count = math.floor(num(args.Count, 1, 1, 25))
+	local mutation = Config.MutationsByName[args.Mutation] and args.Mutation or "Normal"
+	local where = args.Where
+	local origin, right, forward = nil, nil, nil
+	if where == "Me" then
+		local root = getRoot(admin)
+		if not root then
+			return false, "Kein Charakter"
+		end
+		local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+		forward = look.Magnitude > 0.01 and look.Unit or Vector3.new(0, 0, -1)
+		right = forward:Cross(Vector3.yAxis)
+		origin = groundBelow(root.Position + forward * 10)
+	end
+	local spacing = MeteorFactory.GetSize({ Id = id, Lv = 1 }) + 2
+	for i = 1, count do
+		local opts: { [string]: any } = {
+			Id = id,
+			Mut = mutation,
+			Free = args.Free == true or where == "Free",
+			Announce = i == 1,
+			Instant = where == "Me",
+		}
+		if origin and right and forward then
+			-- Raster aus 5er-Reihen vor dem Admin
+			local column = (i - 1) % 5 - 2
+			local row = math.floor((i - 1) / 5)
+			opts.Position = origin + right * column * spacing + forward * row * spacing
+			Services.MeteorService.SpawnStatic(opts)
+		elseif where == "Free" then
+			Services.MeteorService.SpawnStatic(opts)
+		else
+			Services.MeteorService.QueueBelt(opts)
 		end
 	end
-	for i = 1, count do
-		local pos = position and (position + Vector3.new((i - 1) % 5 * 6, 0, math.floor((i - 1) / 5) * 6)) or nil
-		Services.MeteorService.SpawnMeteor({
-			Id = id,
-			Mut = Config.MutationsByName[args.Mutation] and args.Mutation or "Normal",
-			Position = pos,
-			Free = args.Free == true,
-			Announce = i == 1,
-		})
-	end
-	return true, count .. "x " .. Config.MeteorsById[id].Name .. " gespawnt"
+	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "aufs Laufband")
+	return true, count .. "x " .. Config.MeteorsById[id].Name .. " " .. target
 end
 
 function Actions.MeteorRain(_admin, args)
 	local rarity = Config.RaritiesByName[args.Rarity] and args.Rarity or nil
-	local count = num(args.Count, 10, 1, 40)
-	task.spawn(function()
-		for _ = 1, count do
-			Services.MeteorService.SpawnMeteor({ Rarity = rarity, Announce = false })
-			task.wait(0.25)
-		end
-	end)
+	local count = math.floor(num(args.Count, 10, 1, 40))
+	for _ = 1, count do
+		Services.MeteorService.QueueBelt({ Rarity = rarity, Announce = false })
+	end
 	Services.EconomyService.NotifyAll(
-		"☄️ ADMIN-METEORREGEN" .. (rarity and (" (" .. rarity .. ")") or "") .. "!",
+		"☄️ ADMIN-METEORREGEN aufs Laufband" .. (rarity and (" (" .. rarity .. ")") or "") .. "! 🏃",
 		"Event"
 	)
-	return true, count .. " Meteore regnen herab"
+	return true, count .. " Meteore kommen aufs Laufband"
 end
 
 function Actions.GiveMeteor(admin, args)
@@ -400,10 +479,17 @@ function Actions.GiveMeteor(admin, args)
 	local targets = resolveTargets(admin, args.Target)
 	local given = 0
 	for _, p in ipairs(targets) do
+		-- Hatched = true -> sofort ein Alien (AlienId wählbar, sonst gewürfelt)
+		local alien = nil
+		if args.Hatched == true or args.AlienId ~= nil then
+			local wanted = Aliens.ById[args.AlienId]
+			alien = (wanted and wanted.Meteor == args.MeteorId) and wanted.Id or Aliens.Roll(args.MeteorId)
+		end
 		local ok = Services.EconomyService.GiveMeteor(p, {
 			Id = args.MeteorId,
 			Mut = args.Mutation,
 			Lv = num(args.Level, 1, 1, Config.MaxLevel),
+			Alien = alien,
 		})
 		if ok then
 			given += 1
@@ -452,18 +538,67 @@ function Actions.SetRebirths(admin, args)
 	return #targets > 0, "Rebirths = " .. amount .. " für " .. names(targets)
 end
 
-function Actions.SetSpeed(admin, args)
-	local amount = math.floor(num(args.Amount, 0, 0, Config.MaxSpeedLevel))
+function Actions.SetSteps(admin, args)
+	local amount = math.floor(num(args.Amount, 0, 0, 1e18))
 	local targets = resolveTargets(admin, args.Target)
 	for _, p in ipairs(targets) do
 		local data = Services.DataService.Get(p)
 		if data then
-			data.SpeedLevel = amount
+			data.Steps = amount
 			Services.EconomyService.ApplySpeed(p)
 			Services.EconomyService.MarkDirty(p)
 		end
 	end
-	return #targets > 0, "Speed-Level = " .. amount .. " für " .. names(targets)
+	return #targets > 0, "👟 Schritte = " .. Util.FormatNumber(amount) .. " für " .. names(targets)
+end
+
+-- 👑 Admin-Meteor: Where = "Free" (gratis in die Mitte/Gratis-Zone) oder "Base" (eigene Base)
+function Actions.SpawnAdminMeteor(admin, args)
+	local def = adminMeteorDef(args.MeteorId)
+	if not def then
+		return false, "Kein Admin-Meteor"
+	end
+	if args.Where == "Base" then
+		local ok = Services.EconomyService.GiveMeteor(admin, {
+			Id = def.Id,
+			Mut = Config.MutationsByName[args.Mutation] and args.Mutation or "Normal",
+			Lv = 1,
+		}, true)
+		if not ok then
+			return false, "Deine Base ist voll (oder du hast keine)"
+		end
+		return true, "👑 " .. def.Name .. " fliegt in deine Base!"
+	end
+	if not dropAdminMeteor(def, args.Mutation) then
+		return false, "Spawnen fehlgeschlagen"
+	end
+	Services.EconomyService.NotifyAll(
+		"👑 ADMIN-METEOR: " .. def.Name .. " landet in der Gratis-Zone! GRATIS – SCHNELL HIN! 🏃",
+		"Event"
+	)
+	return true, "👑 " .. def.Name .. " in der Gratis-Zone"
+end
+
+-- 👑 Admin-Meteor-Regen: 1-8 zufällige Admin-Meteore gratis in die Gratis-Zone
+function Actions.AdminRain(_admin, args)
+	local count = math.floor(num(args.Count, 3, 1, 8))
+	if #Config.AdminMeteors == 0 then
+		return false, "Keine Admin-Meteore in Config"
+	end
+	Services.EconomyService.NotifyAll(
+		"👑 ADMIN-METEOR-REGEN! " .. count .. "x GRATIS in der Gratis-Zone! 🏃",
+		"Event"
+	)
+	task.spawn(function()
+		for _ = 1, count do
+			local def = Services.MeteorService.RandomAdminMeteor()
+			if def then
+				dropAdminMeteor(def, "Normal")
+			end
+			task.wait(0.8)
+		end
+	end)
+	return true, "👑 " .. count .. " Admin-Meteore regnen herab"
 end
 
 function Actions.GivePass(admin, args)
@@ -644,7 +779,7 @@ end
 
 function Actions.ClearGround(_admin)
 	Services.MeteorService.ClearGround()
-	return true, "Krater geleert"
+	return true, "🧹 Laufband & Gratis-Zone geleert"
 end
 
 function Actions.AdminAbuse(_admin, args)
@@ -705,7 +840,7 @@ function Actions.Invisible(admin, args)
 	return #targets > 0, (args.Enabled and "👻 Unsichtbar: " or "Sichtbar: ") .. names(targets)
 end
 
--- Foto-Modus: Reihe aller Seltenheiten vor dem Admin (links Common, rechts Secret)
+-- Foto-Modus: Reihe aller Seltenheiten vor dem Admin (links Common, rechts Admin)
 function Actions.Showcase(admin)
 	local root = getRoot(admin)
 	if not root then
@@ -724,10 +859,10 @@ function Actions.Showcase(admin)
 		sizes[i] = MeteorFactory.GetSize({ Id = def.Id, Lv = 1 })
 		width += sizes[i]
 	end
-	local center = root.Position + look * SHOWCASE_DISTANCE
+	local center = groundBelow(root.Position + look * SHOWCASE_DISTANCE)
 	local offset = -width / 2
 	for i, def in ipairs(defs) do
-		Services.MeteorService.SpawnMeteor({
+		Services.MeteorService.SpawnStatic({
 			Id = def.Id,
 			Mut = "Normal",
 			Position = center + right * (offset + sizes[i] / 2),
@@ -740,17 +875,17 @@ function Actions.Showcase(admin)
 	return true, "✨ Showcase: " .. #defs .. " Meteore (5 Min)"
 end
 
--- Foto-Modus: leere Slots der eigenen Base mit Deko füllen (nur Optik, nichts gespeichert)
+-- Foto-Modus: leere Slots der eigenen Base mit Deko-Aliens füllen (nur Optik, nichts gespeichert)
 function Actions.PhotoBase(admin)
 	local plot = Services.PlotService.GetPlot(admin)
 	if not plot then
 		return false, "Du hast keine Base"
 	end
 	local count = Services.PlotService.FillPhotoShowcase(plot, photoEntry)
-	return true, count > 0 and ("🏠 Foto-Base: " .. count .. " Deko-Meteore") or "🏠 Base ist schon voll"
+	return true, count > 0 and ("🏠 Foto-Base: " .. count .. " Deko-Aliens") or "🏠 Base ist schon voll"
 end
 
--- Foto-Modus: Deko weg, Slot-Farben zurück, Krater leer
+-- Foto-Modus: Deko weg, Slot-Farben zurück, Laufband + Gratis-Zone leer
 function Actions.PhotoClear(admin)
 	local plot = Services.PlotService.GetPlot(admin)
 	if plot then
@@ -758,7 +893,7 @@ function Actions.PhotoClear(admin)
 		Services.PlotService.UpdateSlotColors(plot)
 	end
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Foto-Deko entfernt, Krater geleert"
+	return true, "🧹 Foto-Deko entfernt, Laufband & Gratis-Zone geleert"
 end
 
 -- -------------------------------------------------------------------

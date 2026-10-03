@@ -1,9 +1,9 @@
--- Tragen & Klauen:
---  * Gekaufte Meteore muss man in die eigene Base tragen.
---  * Fremde Meteore kann man klauen (wenn die Base nicht gesperrt ist).
---  * Wer gebonkt wird oder stirbt, verliert den Meteor:
---      geklaut   -> fliegt zurück zum Besitzer
---      gekauft   -> fällt auf den Boden und ist GRATIS für alle
+-- Klauen & Tragen:
+--  * Fremde Meteore UND Aliens kann man klauen (E halten), wenn die Base nicht gesperrt ist,
+--    und muss sie dann in die eigene Base tragen.
+--  * Wer gebonkt wird, stirbt, zu langsam ist oder das Spiel verlässt, verliert die Beute:
+--    sie fliegt zurück zum Besitzer.
+--  * Gekaufte Meteore muss man NICHT tragen – sie fliegen automatisch in die Base.
 --  * Bonk-Schläger zum Verteidigen.
 
 local Players = game:GetService("Players")
@@ -12,6 +12,7 @@ local Debris = game:GetService("Debris")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
+local AlienFactory = require(script.Parent:WaitForChild("AlienFactory"))
 
 local CarryService = {}
 local Services
@@ -19,6 +20,8 @@ local Services
 local carrying: { [Player]: any } = {}
 local stealing: { [any]: { [number]: Player } } = {} -- [plot][slot] = Dieb
 local lastBonk: { [Player]: number } = {}
+
+local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der Beute)
 
 function CarryService.IsCarrying(player: Player): boolean
 	return carrying[player] ~= nil
@@ -45,28 +48,76 @@ local function cleanup(player: Player, info)
 	Services.EconomyService.MarkDirty(player)
 end
 
-local function createVisual(player: Player, entry): BasePart?
+-- Getragene Beute: alle Teile lose, gewichtslos, ohne Kollision, an den Spieler geschweißt
+local function prepareCarryPart(p: BasePart)
+	p.Anchored = false
+	p.Massless = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+end
+
+local function weldTo(part0: BasePart, part1: BasePart)
+	local w = Instance.new("WeldConstraint")
+	w.Part0 = part0
+	w.Part1 = part1
+	w.Parent = part1
+end
+
+-- Alien-Kopie über dem Kopf (Model: alle Teile an den Body, Body an den HumanoidRootPart)
+local function createAlienVisual(entry, root: BasePart): Instance?
+	local ok, result = pcall(AlienFactory.Create, entry, "Carry")
+	if not ok or typeof(result) ~= "Instance" or not result:IsA("Model") then
+		warn("[CarryService] Alien-Optik fehlgeschlagen: " .. tostring(result))
+		return nil
+	end
+	local model = result :: Model
+	local body = model.PrimaryPart or model:FindFirstChild("Body")
+	if not body or not body:IsA("BasePart") then
+		model:Destroy()
+		return nil
+	end
+	model.Name = "CarriedAlien"
+	model:SetAttribute("Bob", false) -- nicht wippen (würde den Spieler mitbewegen)
+	model:PivotTo(root.CFrame * CFrame.new(0, CARRY_HEIGHT, 0))
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			prepareCarryPart(d)
+			if d ~= body then
+				weldTo(body, d)
+			end
+		end
+	end
+	weldTo(root, body)
+	return model
+end
+
+local function createVisual(player: Player, entry): Instance?
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not character or not root then
 		return nil
 	end
-	local visual = MeteorFactory.Create(entry, "Base")
-	visual.Name = "CarriedMeteor"
-	visual.Anchored = false
-	visual.Massless = true
-	visual.CanCollide = false
-	visual.CanQuery = false
-	visual.CFrame = root.CFrame * CFrame.new(0, 2.5 + visual.Size.Y / 2, 0)
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = root
-	weld.Part1 = visual
-	weld.Parent = visual
-	visual.Parent = character
+	local visual: Instance? = nil
+	if entry.Alien ~= nil then
+		visual = createAlienVisual(entry, root)
+	end
+	if not visual then
+		local meteor = MeteorFactory.Create(entry, "Carry")
+		meteor.Name = "CarriedMeteor"
+		prepareCarryPart(meteor)
+		meteor.CFrame = root.CFrame * CFrame.new(0, CARRY_HEIGHT + meteor.Size.Y / 2, 0)
+		weldTo(root, meteor)
+		visual = meteor
+	end
+	if visual then
+		visual.Parent = character
+	end
 	return visual
 end
 
--- info: { Source = "Ground" } oder { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef }
+-- info: { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef }
 function CarryService.StartCarry(player: Player, entry, info)
 	info.Entry = entry
 	info.Started = os.clock()
@@ -74,7 +125,7 @@ function CarryService.StartCarry(player: Player, entry, info)
 	carrying[player] = info
 	Services.EconomyService.ApplySpeed(player)
 	Services.EconomyService.MarkDirty(player)
-	Services.EconomyService.Notify(player, "🏃 Bring den Meteor in deine Base!", "Info")
+	Services.EconomyService.Notify(player, "🏃 Bring " .. Config.EntryName(entry) .. " in deine Base!", "Info")
 end
 
 local function succeed(player: Player)
@@ -85,47 +136,34 @@ local function succeed(player: Player)
 	local data = Services.DataService.Get(player)
 	local plot = Services.PlotService.GetPlot(player)
 	local slot = Services.PlotService.FreeSlot(player)
-	local def = Config.MeteorsById[info.Entry.Id]
+	local name = Config.EntryName(info.Entry)
 
-	if info.Source == "Plot" then
-		local victim = info.VictimPlayer
-		local victimData = victim and victim.Parent and Services.DataService.Get(victim)
-		local key = tostring(info.Slot)
-		if not data or not plot or not slot or not victimData or victimData.Meteors[key] ~= info.EntryRef then
-			CarryService.Fail(player, "invalid")
-			return
-		end
-		victimData.Meteors[key] = nil
-		data.Meteors[tostring(slot)] = info.EntryRef
-		data.Stats.Stolen += 1
-		victimData.Stats.Robbed += 1
-		clearStealMark(info)
-		cleanup(player, info)
-		Services.EconomyService.Discover(player, info.Entry.Id)
-		Services.PlotService.RenderSlot(plot, slot)
-		Services.PlotService.RenderSlot(info.VictimPlot, info.Slot)
-		Services.EconomyService.MarkDirty(victim)
-		Services.EconomyService.Notify(player, "😈 Geklaut: " .. def.Name .. "!", "Success")
-		Services.EconomyService.Notify(
-			victim,
-			"💔 " .. player.DisplayName .. " hat deinen " .. def.Name .. " geklaut!",
-			"Error"
-		)
-		Services.EconomyService.Effect(player, "Confetti", 1)
+	local victim = info.VictimPlayer
+	local victimData = victim and victim.Parent and Services.DataService.Get(victim)
+	local key = tostring(info.Slot)
+	if not data or not plot or not slot or not victimData or victimData.Meteors[key] ~= info.EntryRef then
+		CarryService.Fail(player, slot and "invalid" or "full")
 		return
 	end
-
-	-- Gekaufter / geschnappter Meteor
-	if not data or not plot or not slot then
-		CarryService.Fail(player, "full")
-		return
-	end
-	data.Meteors[tostring(slot)] = info.Entry
+	victimData.Meteors[key] = nil
+	data.Meteors[tostring(slot)] = info.EntryRef
+	data.Stats.Stolen += 1
+	victimData.Stats.Robbed += 1
+	clearStealMark(info)
 	cleanup(player, info)
-	Services.EconomyService.Discover(player, info.Entry.Id)
+	if info.EntryRef.Alien ~= nil then
+		Services.EconomyService.Discover(player, info.EntryRef.Alien)
+	end
 	Services.PlotService.RenderSlot(plot, slot)
-	Services.EconomyService.Notify(player, "✅ " .. def.Name .. " ist in deiner Base!", "Success")
-	Services.EconomyService.Effect(player, "Confetti", 0.5)
+	Services.PlotService.RenderSlot(info.VictimPlot, info.Slot)
+	Services.EconomyService.MarkDirty(victim)
+	Services.EconomyService.Notify(player, "😈 Geklaut: " .. name .. "!", "Success")
+	Services.EconomyService.Notify(
+		victim,
+		"💔 " .. player.DisplayName .. " hat dein " .. name .. " geklaut!",
+		"Error"
+	)
+	Services.EconomyService.Effect(player, "Confetti", 1)
 end
 
 function CarryService.Fail(player: Player, reason: string)
@@ -133,39 +171,26 @@ function CarryService.Fail(player: Player, reason: string)
 	if not info then
 		return
 	end
-	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local position = (info.Visual and info.Visual.Position) or (root and root.Position) or Vector3.zero
 	clearStealMark(info)
 	cleanup(player, info)
-	local def = Config.MeteorsById[info.Entry.Id]
+	local name = Config.EntryName(info.Entry)
 
-	if info.Source == "Plot" then
-		-- zurück zum Besitzer
-		if info.VictimPlot.Owner == info.VictimPlayer then
-			Services.PlotService.RenderSlot(info.VictimPlot, info.Slot)
-			if reason ~= "victimLeft" then
-				Services.EconomyService.Notify(
-					info.VictimPlayer,
-					"🛡️ Dein " .. def.Name .. " ist zurück!",
-					"Success"
-				)
-			end
+	-- zurück zum Besitzer
+	if info.VictimPlot and info.VictimPlot.Owner == info.VictimPlayer then
+		Services.PlotService.RenderSlot(info.VictimPlot, info.Slot)
+		Services.EconomyService.MarkDirty(info.VictimPlayer)
+		if reason ~= "victimLeft" then
+			Services.EconomyService.Notify(info.VictimPlayer, "🛡️ Dein " .. name .. " ist zurück!", "Success")
 		end
-		if reason == "bonked" then
-			Services.EconomyService.Notify(player, "💥 Gebonkt! Der Meteor fliegt zurück.", "Error")
-		elseif reason == "timeout" then
-			Services.EconomyService.Notify(player, "⏰ Zu langsam! Der Meteor fliegt zurück.", "Error")
-		end
-	else
-		-- gekaufter Meteor fällt auf den Boden -> gratis für alle
-		Services.MeteorService.DropMeteor(info.Entry, position)
-		if reason == "bonked" then
-			Services.EconomyService.Notify(player, "💥 Gebonkt! Du hast den Meteor fallen lassen!", "Error")
-		elseif reason == "timeout" then
-			Services.EconomyService.Notify(player, "⏰ Zu langsam! Der Meteor ist runtergefallen.", "Error")
-		elseif reason == "full" then
-			Services.EconomyService.Notify(player, "Deine Base ist voll – Meteor fallen gelassen!", "Error")
-		end
+	end
+	if reason == "bonked" then
+		Services.EconomyService.Notify(player, "💥 Gebonkt! Die Beute fliegt zurück.", "Error")
+	elseif reason == "timeout" then
+		Services.EconomyService.Notify(player, "⏰ Zu langsam! Die Beute fliegt zurück.", "Error")
+	elseif reason == "full" then
+		Services.EconomyService.Notify(player, "📦 Deine Base ist voll – die Beute fliegt zurück!", "Error")
+	elseif reason == "teleport" then
+		Services.EconomyService.Notify(player, "🚫 Mit Beute kann man nicht teleportieren!", "Error")
 	end
 end
 
@@ -195,23 +220,24 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 		return
 	end
 	if not Services.PlotService.FreeSlot(thief) then
-		Services.EconomyService.Notify(thief, "Deine Base ist voll! Verkaufe erst einen Meteor.", "Error")
+		Services.EconomyService.Notify(thief, "📦 Deine Base ist voll! Verkaufe erst etwas.", "Error")
 		return
 	end
 	local character = thief.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	local meteor = plot.MeteorParts[slot]
-	if not root or not humanoid or humanoid.Health <= 0 or not meteor then
+	local object = plot.MeteorParts[slot]
+	local objectPos = Services.PlotService.ObjectPosition(object)
+	if not root or not humanoid or humanoid.Health <= 0 or not objectPos then
 		return
 	end
-	if (root.Position - meteor.Position).Magnitude > meteor.Size.X / 2 + 14 then
+	if (root.Position - objectPos).Magnitude > Services.PlotService.ObjectRadius(object) + 16 then
 		return -- zu weit weg
 	end
 
 	stealing[plot] = stealing[plot] or {}
 	stealing[plot][slot] = thief
-	Services.PlotService.RenderSlot(plot, slot) -- macht den Meteor in der Base unsichtbar
+	Services.PlotService.RenderSlot(plot, slot) -- macht das Objekt in der Base unsichtbar
 	CarryService.StartCarry(thief, entry, {
 		Source = "Plot",
 		VictimPlot = plot,
@@ -219,10 +245,10 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 		Slot = slot,
 		EntryRef = entry,
 	})
-	local def = Config.MeteorsById[entry.Id]
+	Services.EconomyService.MarkDirty(owner)
 	Services.EconomyService.Notify(
 		owner,
-		"🚨 " .. thief.DisplayName .. " klaut deinen " .. def.Name .. "! BONK IHN!",
+		"🚨 " .. thief.DisplayName .. " klaut dein " .. Config.EntryName(entry) .. "! BONK IHN!",
 		"Alarm"
 	)
 	Services.EconomyService.Effect(owner, "Alarm", 1)
@@ -302,7 +328,7 @@ local function bonk(player: Player, tool: Tool)
 		CarryService.Fail(best, "bonked")
 		Services.EconomyService.Notify(
 			player,
-			"💥 Treffer! " .. best.DisplayName .. " hat den Meteor verloren!",
+			"💥 Treffer! " .. best.DisplayName .. " hat die Beute verloren!",
 			"Success"
 		)
 	end
@@ -311,7 +337,7 @@ end
 local function createBonkTool(): Tool
 	local tool = Instance.new("Tool")
 	tool.Name = "Bonk"
-	tool.ToolTip = "Klick = Bonk! Diebe verlieren ihren Meteor."
+	tool.ToolTip = "Klick = Bonk! Diebe verlieren ihre Beute."
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
 	tool.Grip = CFrame.new(0, 0, -1.6) * CFrame.Angles(math.rad(-90), 0, 0)
@@ -364,7 +390,7 @@ end
 function CarryService.Start()
 	local function onPlayer(player: Player)
 		player.CharacterAdded:Connect(function(character)
-			-- neuer Charakter -> alter Meteor ist weg
+			-- neuer Charakter -> alte Beute ist weg (fliegt zurück)
 			if carrying[player] then
 				CarryService.Fail(player, "died")
 			end
@@ -386,20 +412,10 @@ function CarryService.Start()
 		task.spawn(onPlayer, player)
 	end
 
-	-- Beim Verlassen (vor dem Speichern): Diebstähle sauber beenden.
+	-- Beim Verlassen (vor dem Speichern): Diebstähle sauber beenden (Beute geht zurück).
 	-- Kann zweimal aufgerufen werden (PlayerRemoving + Speichern) – ist harmlos.
 	local function onLeaving(player: Player)
 		lastBonk[player] = nil
-		local info = carrying[player]
-		local data = Services.DataService.Get(player)
-		if info and info.Source == "Ground" and data then
-			-- gekaufter Meteor geht beim Verlassen nicht verloren
-			local slot = Services.PlotService.FreeSlot(player)
-			if slot then
-				data.Meteors[tostring(slot)] = info.Entry
-				cleanup(player, info)
-			end
-		end
 		if carrying[player] then
 			CarryService.Fail(player, "left")
 		end
@@ -430,6 +446,7 @@ function CarryService.Start()
 					info.LastTime = now
 				end
 				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
+					-- (Visual weg = Charakter neu gespawnt oder Beute zerstört)
 					CarryService.Fail(player, "died")
 				elseif teleported then
 					CarryService.Fail(player, "teleport")

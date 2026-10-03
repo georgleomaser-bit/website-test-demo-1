@@ -68,20 +68,21 @@ Später ändern: **Home → Game Settings → Basic Info**.
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteore krachen in den Krater! Schnapp sie dir, bring sie in deine Base und werde reich. Aber pass auf: Die anderen wollen sie klauen! 😱
+Meteore fahren auf dem Laufband vorbei! Kauf sie, und sie fliegen sofort in deine Base. Dort schlüpfen ALIENS, die dir Geld bringen. Aber pass auf: Die anderen wollen sie klauen! 😱
 
-💰 Kauf Meteore und verdiene Geld pro Sekunde
-🦹 Klau Meteore aus fremden Basen (E halten)
+🛒 Kauf Meteore am Laufband (E drücken)
+🐣 Aus jedem Meteor schlüpft ein Alien: Normal, Selten oder Ultra
+💰 Aliens verdienen Geld pro Sekunde und werden immer stärker (Level 1 bis 20)
+🦹 Klau Meteore und Aliens aus fremden Basen (E halten)
 🔨 Bonk Diebe mit deinem Schläger weg
 🔒 Sperr deine Base mit dem Lock-Pad
-⚡ Meteore laden sich auf: Level 1 bis 20
+👟 Speed Farm: 7 Laufbänder, sammle Schritte und werde superschnell
 🌠 Alle 8 Minuten Meteoritenschauer: keine Locks, 3x Glück!
-👟 Speed Farm: Werde schneller als alle anderen
-💎 27 Meteore in 9 Seltenheiten, von Common bis Secret
+👽 96 Aliens im Index, 28 Meteore in 9 Seltenheiten
 🔁 Rebirth, Index und Tagesbonus
 👥 8 Spieler pro Server
 
-Schaffst du es, einen SECRET-Meteor zu klauen? 👀
+Schaffst du es, ein ULTRA-Alien zu klauen? 👀
 
 👍 Like das Spiel und ⭐ favorisiere es, damit du kein Update verpasst!
 ```
@@ -92,20 +93,21 @@ Viele Roblox-Spieler sprechen Englisch. Darum gibt es auch eine englische Versio
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteors are crashing into the crater! Grab them, carry them to your base and get rich. But watch out: Other players want to steal them! 😱
+Meteors roll by on the conveyor belt! Buy them and they fly straight into your base. There, ALIENS hatch and earn you cash. But watch out: Other players want to steal them! 😱
 
-💰 Buy meteors and earn cash every second
-🦹 Steal meteors from other bases (hold E)
+🛒 Buy meteors on the conveyor belt (press E)
+🐣 Every meteor hatches an alien: Normal, Rare or Ultra
+💰 Aliens earn cash every second and level up from 1 to 20
+🦹 Steal meteors and aliens from other bases (hold E)
 🔨 Bonk thieves away with your bat
 🔒 Lock your base with the lock pad
-⚡ Meteors charge up from level 1 to 20
+👟 Speed Farm: 7 treadmills, collect steps and get super fast
 🌠 Meteor shower every 8 minutes: no locks, 3x luck!
-👟 Speed Farm: Get faster than everyone else
-💎 27 meteors in 9 rarities, from Common to Secret
+👽 96 aliens in the index, 28 meteors in 9 rarities
 🔁 Rebirth, Index and daily rewards
 👥 8 players per server
 
-Can you steal a SECRET meteor? 👀
+Can you steal an ULTRA alien? 👀
 
 👍 Like the game and ⭐ favorite it so you never miss an update!
 ```
@@ -125,7 +127,7 @@ Can you steal a SECRET meteor? 👀
 | **Genre** | `Simulation` |
 | **Untergenre** (Subgenre) | `Tycoon` |
 
-**Warum?** Bei Meteor Heist hast du eine eigene Base. Deine Meteore bringen dort Geld pro Sekunde. Du sammelst das Geld ein und wirst immer stärker. Genau das ist ein **Tycoon**.
+**Warum?** Bei Meteor Heist hast du eine eigene Base. Deine Aliens bringen dort Geld pro Sekunde. Du sammelst das Geld ein und wirst immer stärker. Genau das ist ein **Tycoon**.
 
 **Wo eintragen?** Creator Dashboard → dein Spiel → **Settings** (Einstellungen) → **Genre**.
 
@@ -173,7 +175,7 @@ Name:
 Beschreibung:
 
 ```
-Verdopple dein Einkommen für immer! Alle deine Meteore bringen doppelt so viel Geld.
+Verdopple dein Einkommen für immer! Alle deine Aliens bringen doppelt so viel Geld.
 ```
 
 - Preis: **399 Robux**
@@ -198,18 +200,18 @@ Für immer +25 % Geld-Bonus und ein goldenes VIP-Schild über deinem Kopf! Dein 
 - Bild: `pass-vip.png`
 - Config-Key: `VIP`
 
-### ☄️ +5 Meteor-Plätze
+### ☄️ +6 Plätze
 
 Name:
 
 ```
-+5 Meteor-Plätze
++6 Plätze
 ```
 
 Beschreibung:
 
 ```
-Du hast 15 statt 10 Plätze in deiner Base. Mehr Meteore bringen mehr Geld pro Sekunde!
+Du hast 18 statt 12 Plätze in deiner Base. Mehr Aliens bringen mehr Geld pro Sekunde!
 ```
 
 - Preis: **199 Robux**
@@ -234,36 +236,36 @@ Dein Geld wird automatisch eingesammelt. Du musst nie mehr zum grünen Pad laufe
 - Bild: `pass-auto-collect.png`
 - Config-Key: `AutoCollect`
 
-### ⚡ 2x Aufladen
+### ⚡ 2x Schlüpfen & Wachsen
 
 Name:
 
 ```
-2x Aufladen
+2x Schlüpfen & Wachsen
 ```
 
 Beschreibung:
 
 ```
-Deine Meteore laden doppelt so schnell auf. So erreichen sie viel früher Level 20 und bringen mehr Geld!
+Deine Meteore schlüpfen doppelt so schnell, und deine Aliens wachsen doppelt so schnell bis Level 20. Mehr Geld, viel früher!
 ```
 
 - Preis: **299 Robux**
 - Bild: `pass-2x-aufladen.png`
 - Config-Key: `FastCharge`
 
-### 👟 Speed Boots
+### 👟 2x Schritte
 
 Name:
 
 ```
-Speed Boots
+2x Schritte
 ```
 
 Beschreibung:
 
 ```
-+10 Speed für immer! Du schnappst dir Meteore zuerst und entkommst schneller beim Klauen.
+Doppelt so viele Schritte auf jedem Laufband, für immer! Du wirst viel schneller und entkommst beim Klauen.
 ```
 
 - Preis: **99 Robux**
@@ -356,18 +358,18 @@ Beschreibung:
 - Bild: `produkt-server-glueck.png`
 - Config-Key: `ServerLuck`
 
-### 🏃 +10 Speed-Level
+### 👟 Schritte-Paket
 
 Name:
 
 ```
-+10 Speed-Level
+Schritte-Paket
 ```
 
 Beschreibung:
 
 ```
-Du bekommst sofort 10 Speed-Level und läufst schneller. Es geht höchstens bis Level 60.
+Du bekommst sofort so viele Schritte, wie du in 10 Minuten auf deinem besten Laufband sammelst. Mindestens 1.000 Schritte!
 ```
 
 - Preis: **39 Robux**
@@ -403,7 +405,7 @@ Zufälliger Legendary Meteor
 Beschreibung:
 
 ```
-Ein zufälliger Legendary-Meteor landet sofort in deiner Base: Solar Flare, Aurora Crystal oder Titan Boulder (jeder mit Chance 1 von 3). Ist deine Base voll, bekommst du seinen Wert als Geld.
+Ein zufälliger Legendary-Meteor fliegt sofort in deine Base: Solar Flare, Aurora Crystal oder Titan Boulder (jeder mit Chance 1 von 3). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
 ```
 
 - Preis: **149 Robux**
@@ -421,7 +423,7 @@ Zufälliger Mythic Meteor
 Beschreibung:
 
 ```
-Ein zufälliger Mythic-Meteor landet sofort in deiner Base: Nebula Heart, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 3). Ist deine Base voll, bekommst du seinen Wert als Geld.
+Ein zufälliger Mythic-Meteor fliegt sofort in deine Base: Nebula Heart, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 3). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
 ```
 
 - Preis: **449 Robux**
@@ -439,7 +441,7 @@ Roblox bestimmt damit, ab welchem Alter das Spiel passt.
 **Antworte immer ehrlich.** Das hilft dir bei Meteor Heist:
 
 - **Gewalt:** Es gibt nur einen **Bonk-Schläger**. Er schubst andere Spieler weg. Es gibt **kein Blut** und **keine echten Waffen**.
-- **Paid Random Items** (heißt: Man bezahlt Robux und bekommt etwas Zufälliges): Hier musst du **JA** antworten. Grund: „Zufälliger Legendary Meteor“ und „Zufälliger Mythic Meteor“.
+- **Paid Random Items** (heißt: Man bezahlt Robux und bekommt etwas Zufälliges): Hier musst du **JA** antworten. Grund: „Zufälliger Legendary Meteor“ und „Zufälliger Mythic Meteor“ (und welches Alien daraus schlüpft). Das Spiel zeigt die Chancen vor dem Kauf im Shop an.
 
 Bei einer Frage bist du unsicher? Schick mir die Frage. Ich helfe dir.
 
@@ -451,15 +453,15 @@ Bei einer Frage bist du unsicher? Schick mir die Frage. Ich helfe dir.
 |---|---|---|---|---|
 | Pass | 2x Cash | 399 | `pass-2x-cash.png` | `DoubleCash` |
 | Pass | VIP | 249 | `pass-vip.png` | `VIP` |
-| Pass | +5 Meteor-Plätze | 199 | `pass-extra-plaetze.png` | `ExtraSlots` |
+| Pass | +6 Plätze | 199 | `pass-extra-plaetze.png` | `ExtraSlots` |
 | Pass | Auto Collect | 149 | `pass-auto-collect.png` | `AutoCollect` |
-| Pass | 2x Aufladen | 299 | `pass-2x-aufladen.png` | `FastCharge` |
-| Pass | Speed Boots | 99 | `pass-speed-boots.png` | `SpeedBoots` |
+| Pass | 2x Schlüpfen & Wachsen | 299 | `pass-2x-aufladen.png` | `FastCharge` |
+| Pass | 2x Schritte | 99 | `pass-speed-boots.png` | `SpeedBoots` |
 | Produkt | Cash Paket S | 25 | `produkt-cash-s.png` | `CashSmall` |
 | Produkt | Cash Paket M | 99 | `produkt-cash-m.png` | `CashMedium` |
 | Produkt | Cash Paket XL | 399 | `produkt-cash-xl.png` | `CashLarge` |
 | Produkt | 2x Glück für den Server (15 Min) | 79 | `produkt-server-glueck.png` | `ServerLuck` |
-| Produkt | +10 Speed-Level | 39 | `produkt-speed-10.png` | `Speed10` |
+| Produkt | Schritte-Paket | 39 | `produkt-speed-10.png` | `Speed10` |
 | Produkt | Meteoritenschauer JETZT | 49 | `produkt-meteoritenschauer.png` | `MeteorShower` |
 | Produkt | Zufälliger Legendary Meteor | 149 | `produkt-legendary-meteor.png` | `LegendaryMeteor` |
 | Produkt | Zufälliger Mythic Meteor | 449 | `produkt-mythic-meteor.png` | `MythicMeteor` |

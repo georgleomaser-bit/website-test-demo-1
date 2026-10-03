@@ -19,3 +19,9 @@ globals:
   typeof: {any: true}
   warn: {any: true}
   tick: {any: true}
+  ColorSequence: {any: true}
+  ColorSequenceKeypoint: {any: true}
+  NumberSequence: {any: true}
+  NumberSequenceKeypoint: {any: true}
+  NumberRange: {any: true}
+  RaycastParams: {any: true}

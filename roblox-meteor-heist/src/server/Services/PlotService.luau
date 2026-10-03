@@ -1,322 +1,31 @@
--- Baut die komplette Map per Code (Krater, 8 Basen, Lobby) und verwaltet die Basen:
--- Zuweisung, Meteore anzeigen, Collect-Pad, Lock-Pad, Schutz gegen Eindringlinge.
+-- Lässt die Map bauen (MapBuilder) und verwaltet die Basen:
+-- Zuweisung, Meteore/Aliens anzeigen, Collect-Pad + Slot-Pads, Lock-Pad, Schutz gegen Eindringlinge.
 
 local Players = game:GetService("Players")
-local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
+local AlienFactory = require(script.Parent:WaitForChild("AlienFactory"))
+local MapBuilder = require(script.Parent:WaitForChild("MapBuilder"))
 
 local PlotService = {}
-PlotService.Plots = {} -- Liste aller Basen
+PlotService.Plots = {} :: { any } -- Liste aller Basen (Felder siehe MapBuilder)
 PlotService.ByPlayer = {} :: { [Player]: any }
 PlotService.MapFolder = nil :: Folder?
-PlotService.CraterCenter = Vector3.new(0, 0, 0)
-PlotService.CraterRadius = 45
-PlotService.LobbySpawn = CFrame.new(0, 4, -150)
+-- Laufband: { Part, Start, Dir, Length, Width, TopY }
+PlotService.Belt = nil :: any
+PlotService.FreeZone = { Center = Vector3.new(0, 0.2, -264), Radius = 20 }
+PlotService.LobbySpawn = CFrame.new(0, 4, -300)
+PlotService.LeaderboardCFrame = CFrame.new(0, 13, -190)
+PlotService.TreadmillsFolder = nil :: Folder?
+PlotService.TreadmillSpawn = CFrame.new(0, 4, -330)
+PlotService.MaxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
 
 local Services
-local PLOT_SIZE = 56
-local HALF = PLOT_SIZE / 2
-local PLOT_X = 90
-local PLOT_Z = { -96, -32, 32, 96 }
-local PLOT_COLORS = {
-	Color3.fromRGB(255, 99, 99),
-	Color3.fromRGB(255, 170, 60),
-	Color3.fromRGB(255, 230, 80),
-	Color3.fromRGB(110, 220, 110),
-	Color3.fromRGB(80, 200, 255),
-	Color3.fromRGB(110, 120, 255),
-	Color3.fromRGB(200, 110, 255),
-	Color3.fromRGB(255, 120, 200),
-}
-local SLOT_COLS = { -20, -10, 0, 10, 20 }
-local SLOT_ROWS = { -4, 8, 20 }
 
-local function part(props): Part
-	local p = Instance.new("Part")
-	p.Anchored = true
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	for k, v in pairs(props) do
-		if k ~= "Parent" then
-			(p :: any)[k] = v
-		end
-	end
-	p.Parent = props.Parent
-	return p
-end
-
-local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDistance: number): (BillboardGui, TextLabel)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = size
-	gui.StudsOffset = offset
-	gui.MaxDistance = maxDistance
-	gui.LightInfluence = 0
-	gui.Parent = parent
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.Font = Enum.Font.FredokaOne
-	label.TextScaled = true
-	label.TextColor3 = Color3.new(1, 1, 1)
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
-	stroke.Parent = label
-	label.Parent = gui
-	return gui, label
-end
-
--- -------------------------------------------------------------------
--- MAP BAUEN
--- -------------------------------------------------------------------
-local function buildMap()
-	-- Alte Standard-Objekte aus dem Baseplate-Template entfernen
-	for _, child in ipairs(workspace:GetChildren()) do
-		if child.Name == "Baseplate" or child:IsA("SpawnLocation") then
-			child:Destroy()
-		end
-	end
-	local old = workspace:FindFirstChild("MeteorHeistMap")
-	if old then
-		old:Destroy()
-	end
-
-	local map = Instance.new("Folder")
-	map.Name = "MeteorHeistMap"
-	map.Parent = workspace
-	PlotService.MapFolder = map
-
-	-- Licht: Abendhimmel mit Sternen, aber hell genug zum Spielen
-	Lighting.ClockTime = 18.6
-	Lighting.Brightness = 2
-	Lighting.Ambient = Color3.fromRGB(110, 100, 130)
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 140, 170)
-	Lighting.GlobalShadows = true
-
-	part({
-		Name = "Ground",
-		Size = Vector3.new(440, 1, 440),
-		Position = Vector3.new(0, -0.5, 0),
-		Material = Enum.Material.Ground,
-		Color = Color3.fromRGB(70, 62, 85),
-		Parent = map,
-	})
-
-	-- Krater in der Mitte
-	part({
-		Name = "CraterRim",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.4, PlotService.CraterRadius * 2 + 10, PlotService.CraterRadius * 2 + 10),
-		CFrame = CFrame.new(0, 0.05, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Rock,
-		Color = Color3.fromRGB(95, 75, 65),
-		CanCollide = false,
-		Parent = map,
-	})
-	part({
-		Name = "Crater",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(0.5, PlotService.CraterRadius * 2, PlotService.CraterRadius * 2),
-		CFrame = CFrame.new(0, 0.1, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.CrackedLava,
-		Color = Color3.fromRGB(45, 35, 40),
-		CanCollide = false,
-		Parent = map,
-	})
-	local craterSign = part({
-		Name = "CraterSign",
-		Size = Vector3.new(1, 1, 1),
-		Position = Vector3.new(0, 30, 0),
-		Transparency = 1,
-		CanCollide = false,
-		CanQuery = false,
-		CanTouch = false,
-		Parent = map,
-	})
-	local _, craterLabel = billboard(craterSign, UDim2.new(0, 400, 0, 60), Vector3.zero, 400)
-	craterLabel.Text = "☄️ METEOR-KRATER ☄️"
-	craterLabel.TextColor3 = Color3.fromRGB(255, 170, 60)
-	PlotService.CraterLabel = craterLabel
-
-	-- Unsichtbare Wände am Map-Rand
-	local edge = 215
-	for _, data in ipairs({
-		{ Vector3.new(edge, 40, 0), Vector3.new(2, 80, edge * 2) },
-		{ Vector3.new(-edge, 40, 0), Vector3.new(2, 80, edge * 2) },
-		{ Vector3.new(0, 40, edge), Vector3.new(edge * 2, 80, 2) },
-		{ Vector3.new(0, 40, -edge), Vector3.new(edge * 2, 80, 2) },
-	}) do
-		part({ Name = "Boundary", Position = data[1], Size = data[2], Transparency = 1, Parent = map })
-	end
-
-	-- Lobby-Spawn (für Spieler ohne Base, z.B. wenn der Server voll ist)
-	local spawn = Instance.new("SpawnLocation")
-	spawn.Name = "LobbySpawn"
-	spawn.Anchored = true
-	spawn.Size = Vector3.new(12, 1, 12)
-	spawn.Position = Vector3.new(0, 0.5, -150)
-	spawn.Material = Enum.Material.Neon
-	spawn.Color = Color3.fromRGB(255, 170, 60)
-	spawn.Duration = 0
-	spawn.Neutral = true
-	spawn.Parent = map
-
-	-- Basen
-	local plotsFolder = Instance.new("Folder")
-	plotsFolder.Name = "Plots"
-	plotsFolder.Parent = map
-
-	local index = 0
-	for _, side in ipairs({ -1, 1 }) do
-		for _, z in ipairs(PLOT_Z) do
-			index += 1
-			if index > Config.MaxPlots then
-				break
-			end
-			local center = Vector3.new(side * PLOT_X, 0, z)
-			-- Eingang zeigt zur Map-Mitte (lokales -Z = vorne)
-			local cf = CFrame.lookAt(center, center + Vector3.new(-side, 0, 0))
-			local color = PLOT_COLORS[index]
-
-			local model = Instance.new("Model")
-			model.Name = "Plot" .. index
-			model:SetAttribute("PlotIndex", index)
-			model:SetAttribute("OwnerUserId", 0)
-			model:SetAttribute("LockedUntil", 0)
-			model.Parent = plotsFolder
-
-			part({
-				Name = "Floor",
-				Size = Vector3.new(PLOT_SIZE, 1, PLOT_SIZE),
-				CFrame = cf * CFrame.new(0, 0.5, 0),
-				Material = Enum.Material.Concrete,
-				Color = color:Lerp(Color3.fromRGB(40, 40, 50), 0.7),
-				Parent = model,
-			})
-			part({
-				Name = "BackWall",
-				Size = Vector3.new(PLOT_SIZE, 8, 1),
-				CFrame = cf * CFrame.new(0, 5, HALF - 0.5),
-				Material = Enum.Material.SmoothPlastic,
-				Color = color,
-				Parent = model,
-			})
-			for _, sx in ipairs({ -1, 1 }) do
-				part({
-					Name = "SideWall",
-					Size = Vector3.new(1, 8, PLOT_SIZE),
-					CFrame = cf * CFrame.new(sx * (HALF - 0.5), 5, 0),
-					Material = Enum.Material.SmoothPlastic,
-					Color = color,
-					Parent = model,
-				})
-				part({
-					Name = "Post",
-					Size = Vector3.new(2, 10, 2),
-					CFrame = cf * CFrame.new(sx * (HALF - 1), 5, -HALF + 1),
-					Material = Enum.Material.Metal,
-					Color = Color3.fromRGB(60, 60, 70),
-					Parent = model,
-				})
-			end
-			local barrier = part({
-				Name = "Barrier",
-				Size = Vector3.new(PLOT_SIZE - 4, 8, 0.4),
-				CFrame = cf * CFrame.new(0, 5, -HALF + 1),
-				Material = Enum.Material.ForceField,
-				Color = Color3.fromRGB(255, 40, 40),
-				Transparency = 1,
-				CanCollide = false,
-				CanQuery = false,
-				CanTouch = false,
-				Parent = model,
-			})
-
-			local slots = {}
-			local slotNumber = 0
-			for _, row in ipairs(SLOT_ROWS) do
-				for _, col in ipairs(SLOT_COLS) do
-					slotNumber += 1
-					local slotPart = part({
-						Name = "Slot" .. slotNumber,
-						Size = Vector3.new(7, 0.3, 7),
-						CFrame = cf * CFrame.new(col, 1.15, row),
-						Material = Enum.Material.SmoothPlastic,
-						Color = Color3.fromRGB(35, 35, 45),
-						CanCollide = false,
-						Parent = model,
-					})
-					slots[slotNumber] = slotPart
-				end
-			end
-
-			local collectPad = part({
-				Name = "CollectPad",
-				Size = Vector3.new(10, 0.3, 6),
-				CFrame = cf * CFrame.new(-16, 1.15, -18),
-				Material = Enum.Material.Neon,
-				Color = Color3.fromRGB(60, 220, 90),
-				CanCollide = false,
-				Parent = model,
-			})
-			local _, collectLabel = billboard(collectPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
-			collectLabel.Text = "💰 $0"
-
-			local lockPad = part({
-				Name = "LockPad",
-				Size = Vector3.new(8, 0.3, 6),
-				CFrame = cf * CFrame.new(16, 1.15, -18),
-				Material = Enum.Material.Neon,
-				Color = Color3.fromRGB(230, 60, 60),
-				CanCollide = false,
-				Parent = model,
-			})
-			local _, lockLabel = billboard(lockPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
-			lockLabel.Text = "🔒 LOCK"
-
-			local signPart = part({
-				Name = "Sign",
-				Size = Vector3.new(1, 1, 1),
-				CFrame = cf * CFrame.new(0, 14, HALF - 0.5),
-				Transparency = 1,
-				CanCollide = false,
-				CanQuery = false,
-				CanTouch = false,
-				Parent = model,
-			})
-			local _, signLabel = billboard(signPart, UDim2.new(0, 320, 0, 60), Vector3.zero, 300)
-			signLabel.Text = "Freie Base"
-			signLabel.TextColor3 = color
-
-			local meteorFolder = Instance.new("Folder")
-			meteorFolder.Name = "Meteors"
-			meteorFolder.Parent = model
-
-			table.insert(PlotService.Plots, {
-				Index = index,
-				Model = model,
-				CFrame = cf,
-				Color = color,
-				Owner = nil :: Player?,
-				Slots = slots,
-				MeteorParts = {} :: { [number]: BasePart },
-				MeteorFolder = meteorFolder,
-				CollectPad = collectPad,
-				CollectLabel = collectLabel,
-				LockPad = lockPad,
-				LockLabel = lockLabel,
-				Barrier = barrier,
-				SignLabel = signLabel,
-				LockedUntil = 0,
-				SpawnCFrame = cf * CFrame.new(0, 4, -10),
-				EntranceCFrame = cf * CFrame.new(0, 4, -HALF - 8),
-			})
-		end
-	end
-end
+local EMPTY_SLOT_COLOR = Color3.fromRGB(35, 35, 45)
 
 -- -------------------------------------------------------------------
 -- ABFRAGEN
@@ -326,8 +35,9 @@ function PlotService.GetPlot(player: Player)
 end
 
 function PlotService.IsInside(plot, position: Vector3): boolean
+	local half = plot.HalfSize or 36
 	local localPos = plot.CFrame:PointToObjectSpace(position)
-	return math.abs(localPos.X) <= HALF and math.abs(localPos.Z) <= HALF and localPos.Y > -6 and localPos.Y < 40
+	return math.abs(localPos.X) <= half and math.abs(localPos.Z) <= half and localPos.Y > -6 and localPos.Y < 40
 end
 
 function PlotService.IsLocked(plot): boolean
@@ -336,7 +46,7 @@ end
 
 function PlotService.SlotCount(player: Player): number
 	local extra = Services.MonetizationService.HasPass(player, "ExtraSlots") and Config.ExtraSlotsAmount or 0
-	return math.min(Config.BaseSlots + extra, #SLOT_COLS * #SLOT_ROWS)
+	return math.min(Config.BaseSlots + extra, PlotService.MaxSlots)
 end
 
 function PlotService.FreeSlot(player: Player): number?
@@ -363,17 +73,55 @@ function PlotService.UsedSlots(player: Player): number
 	return count
 end
 
+-- Schlüpf-Tempo (Sekunden pro Sekunde): 2 mit dem Gamepass "2x Schlüpfen & Wachsen"
+function PlotService.HatchSpeed(player: Player?): number
+	if player and Services.MonetizationService.HasPass(player, "FastCharge") then
+		return 2
+	end
+	return 1
+end
+
+-- Oberseite (Mitte) eines Slot-Pads – hier steht der Meteor bzw. das Alien
+function PlotService.SlotTopCFrame(plot, slot: number): CFrame
+	local slotPart = plot.Slots[slot]
+	if not slotPart then
+		return plot.CFrame
+	end
+	return slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2, 0)
+end
+
+-- Weltposition eines angezeigten Meteors (Part) oder Aliens (Model)
+function PlotService.ObjectPosition(object: Instance?): Vector3?
+	if not object then
+		return nil
+	end
+	if object:IsA("BasePart") then
+		return object.Position
+	elseif object:IsA("Model") then
+		return object:GetPivot().Position
+	end
+	return nil
+end
+
+-- Halbe Breite eines angezeigten Objekts (für Reichweiten)
+function PlotService.ObjectRadius(object: Instance?): number
+	if not object then
+		return 2
+	end
+	if object:IsA("BasePart") then
+		return object.Size.X / 2
+	elseif object:IsA("Model") then
+		local size = object:GetExtentsSize()
+		return math.max(size.X, size.Z) / 2
+	end
+	return 2
+end
+
 -- -------------------------------------------------------------------
--- METEORE IN DER BASE ANZEIGEN
+-- METEORE / ALIENS IN DER BASE ANZEIGEN
 -- -------------------------------------------------------------------
 -- Foto-Deko (Admin-Panel → 📸 Foto-Modus): Ordner im Plot-Model, Teile heißen "Slot<n>"
 local PHOTO_FOLDER = "PhotoShowcase"
-
--- Stellt einen Meteor mittig auf das Slot-Pad
-local function placeOnSlot(plot, slot: number, meteor: BasePart)
-	local slotPart = plot.Slots[slot]
-	meteor.CFrame = slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2 + meteor.Size.Y / 2, 0)
-end
 
 local function removePhotoDeco(plot, slot: number)
 	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
@@ -383,13 +131,50 @@ local function removePhotoDeco(plot, slot: number)
 	end
 end
 
+-- Baut die Optik für einen Eintrag: Alien (geschlüpft) oder Meteor (schlüpft noch).
+-- Gibt (Objekt, Teil für Prompts) zurück. Klappt das Alien nicht, wird ein Meteor gezeigt.
+local function buildVisual(plot, slot: number, entry, mode: string): (Instance, BasePart)
+	local top = PlotService.SlotTopCFrame(plot, slot)
+	if entry.Alien ~= nil then
+		local ok, result = pcall(AlienFactory.Create, entry, mode)
+		if ok and typeof(result) == "Instance" and result:IsA("Model") then
+			local model = result :: Model
+			model:PivotTo(top)
+			local body = model.PrimaryPart or model:FindFirstChild("Body")
+			if body and body:IsA("BasePart") then
+				return model, body
+			end
+			model:Destroy()
+		else
+			warn("[PlotService] Alien konnte nicht gebaut werden: " .. tostring(result))
+		end
+	end
+	local meteor = MeteorFactory.Create(entry, "Base")
+	meteor.CFrame = top * CFrame.new(0, meteor.Size.Y / 2, 0)
+	return meteor, meteor
+end
+
+-- Setzt das Attribut HatchAt (Serverzeit, wann der Meteor schlüpft) – der Client zählt damit herunter
+local function setHatchAt(plot, object: Instance, entry)
+	if entry.Alien == nil and object:IsA("BasePart") then
+		local remaining = math.max(0, tonumber(entry.Hatch) or 0)
+		object:SetAttribute("HatchAt", workspace:GetServerTimeNow() + remaining / PlotService.HatchSpeed(plot.Owner))
+	else
+		object:SetAttribute("HatchAt", nil)
+	end
+end
+
+local function sellText(entry): string
+	return "Verkaufen " .. Util.FormatCash(Config.MeteorValue(entry) * Config.SellRatio)
+end
+
 function PlotService.RenderSlot(plot, slot: number)
 	local existing = plot.MeteorParts[slot]
 	if existing then
 		existing:Destroy()
 		plot.MeteorParts[slot] = nil
 	end
-	if not plot.Owner then
+	if not plot.Owner or not plot.Slots[slot] then
 		return
 	end
 	local data = Services.DataService.Get(plot.Owner)
@@ -400,45 +185,82 @@ function PlotService.RenderSlot(plot, slot: number)
 	if Services.CarryService.IsSlotBeingStolen(plot, slot) then
 		return -- wird gerade geklaut -> unsichtbar in der Base
 	end
-	removePhotoDeco(plot, slot) -- echter Meteor ersetzt die Foto-Deko
-	local meteor = MeteorFactory.Create(entry, "Base")
-	placeOnSlot(plot, slot, meteor)
-	meteor:SetAttribute("PlotIndex", plot.Index)
-	meteor:SetAttribute("Slot", slot)
-	local def = Config.MeteorsById[entry.Id]
-	local stealPrompt =
-		MeteorFactory.AddPrompt(meteor, "StealPrompt", "Klauen", def.Name, Config.StealHoldDuration, Enum.KeyCode.E)
-	local sellPrompt = MeteorFactory.AddPrompt(
-		meteor,
-		"SellPrompt",
-		"Verkaufen " .. Util.FormatCash(Config.MeteorValue(entry) * Config.SellRatio),
-		def.Name,
-		1,
-		Enum.KeyCode.F
+	removePhotoDeco(plot, slot) -- echter Meteor/Alien ersetzt die Foto-Deko
+
+	local object, promptPart = buildVisual(plot, slot, entry, "Base")
+	object:SetAttribute("PlotIndex", plot.Index)
+	object:SetAttribute("Slot", slot)
+	object:SetAttribute("OwnerUserId", plot.Owner.UserId)
+	setHatchAt(plot, object, entry)
+
+	local reach = math.max(10, PlotService.ObjectRadius(object) + 7)
+	local name = Config.EntryName(entry)
+	local stealPrompt = MeteorFactory.AddPrompt(
+		promptPart,
+		"StealPrompt",
+		"Klauen",
+		name,
+		Config.StealHoldDuration,
+		Enum.KeyCode.E,
+		reach
 	)
+	local sellPrompt =
+		MeteorFactory.AddPrompt(promptPart, "SellPrompt", sellText(entry), name, 1, Enum.KeyCode.F, reach)
 	stealPrompt.Triggered:Connect(function(player)
 		Services.CarryService.TrySteal(player, plot, slot)
 	end)
 	sellPrompt.Triggered:Connect(function(player)
 		Services.EconomyService.Sell(player, plot, slot)
 	end)
-	meteor.Parent = plot.MeteorFolder
-	plot.MeteorParts[slot] = meteor
+	object.Parent = plot.MeteorFolder
+	plot.MeteorParts[slot] = object
 end
 
 -- Nach Level-Up nur Größe/Schild anpassen statt neu bauen
 function PlotService.RefreshSlot(plot, slot: number)
-	local meteor = plot.MeteorParts[slot]
+	local object = plot.MeteorParts[slot]
 	local data = plot.Owner and Services.DataService.Get(plot.Owner)
 	local entry = data and data.Meteors[tostring(slot)]
-	if not meteor or not entry then
+	if not object or not entry then
 		return
 	end
-	MeteorFactory.Refresh(meteor, entry, "Base")
-	local sellPrompt = meteor:FindFirstChild("SellPrompt")
-	if sellPrompt then
-		(sellPrompt :: ProximityPrompt).ActionText = "Verkaufen "
-			.. Util.FormatCash(Config.MeteorValue(entry) * Config.SellRatio)
+	local isAlienModel = object:IsA("Model")
+	if (entry.Alien ~= nil) ~= isAlienModel then
+		-- z.B. gerade geschlüpft -> komplett neu bauen
+		PlotService.RenderSlot(plot, slot)
+		return
+	end
+	local promptPart: BasePart? = nil
+	if isAlienModel then
+		local model = object :: Model
+		local ok, err = pcall(AlienFactory.Refresh, model, entry)
+		if not ok then
+			warn("[PlotService] Alien-Refresh fehlgeschlagen: " .. tostring(err))
+		end
+		local body = model.PrimaryPart or model:FindFirstChild("Body")
+		promptPart = body and body:IsA("BasePart") and body or nil
+	elseif object:IsA("BasePart") then
+		MeteorFactory.Refresh(object, entry, "Base")
+		setHatchAt(plot, object, entry)
+		promptPart = object
+	end
+	local sellPrompt = promptPart and promptPart:FindFirstChild("SellPrompt")
+	if sellPrompt and sellPrompt:IsA("ProximityPrompt") then
+		sellPrompt.ActionText = sellText(entry)
+	end
+end
+
+-- Schlüpf-Zeitpunkte neu berechnen (z.B. nach Kauf von "2x Schlüpfen")
+function PlotService.UpdateHatchTimes(plot)
+	local data = plot.Owner and Services.DataService.Get(plot.Owner)
+	if not data then
+		return
+	end
+	for slot, object in pairs(plot.MeteorParts) do
+		local entry = data.Meteors[tostring(slot)]
+		if entry and object.Parent then
+			setHatchAt(plot, object, entry)
+		end
 	end
 end
 
@@ -458,7 +280,7 @@ function PlotService.UpdateSlotColors(plot)
 			slotPart.Color = plot.Color:Lerp(Color3.new(1, 1, 1), 0.3)
 			slotPart.Transparency = 0
 		else
-			slotPart.Color = Color3.fromRGB(35, 35, 45)
+			slotPart.Color = EMPTY_SLOT_COLOR
 			slotPart.Transparency = 0.5
 		end
 	end
@@ -467,8 +289,8 @@ end
 -- -------------------------------------------------------------------
 -- FOTO-DEKO (nur Optik für Thumbnails: keine Spieldaten, keine Prompts)
 -- -------------------------------------------------------------------
--- Füllt ALLE Slots ohne echten Meteor (auch die gesperrten 11-15) mit Deko-Meteoren.
--- makeEntry() liefert { Id, Mut, Lv }. Gibt die Anzahl der Deko-Meteore zurück.
+-- Füllt ALLE Slots ohne echten Meteor (auch die gesperrten) mit Deko-Aliens.
+-- makeEntry() liefert { Id, Alien, Mut, Lv }. Gibt die Anzahl der Deko-Objekte zurück.
 function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
 	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
 	if not folder then
@@ -481,10 +303,9 @@ function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
 		removePhotoDeco(plot, slot) -- nochmal drücken = neu würfeln
 		local entry = plot.MeteorParts[slot] == nil and makeEntry() or nil
 		if entry and Config.MeteorsById[entry.Id] then
-			local meteor = MeteorFactory.Create(entry, "Base")
-			meteor.Name = "Slot" .. slot
-			placeOnSlot(plot, slot, meteor)
-			meteor.Parent = folder
+			local object = buildVisual(plot, slot, entry, "Photo")
+			object.Name = "Slot" .. slot
+			object.Parent = folder
 			count += 1
 		end
 	end
@@ -503,16 +324,22 @@ end
 -- -------------------------------------------------------------------
 -- LOCK
 -- -------------------------------------------------------------------
+local function setText(label: TextLabel, text: string)
+	if label.Text ~= text then
+		label.Text = text
+	end
+end
+
 function PlotService.UpdateLockVisual(plot)
 	local now = workspace:GetServerTimeNow()
 	local showerActive = Services.MeteorService and Services.MeteorService.IsShowerActive()
 	if plot.LockedUntil > now then
 		plot.Barrier.Transparency = 0.35
-		plot.LockLabel.Text = "🔒 " .. math.ceil(plot.LockedUntil - now) .. "s"
+		setText(plot.LockLabel, "🔒 " .. math.ceil(plot.LockedUntil - now) .. "s")
 		plot.LockPad.Color = Color3.fromRGB(90, 90, 90)
 	else
 		plot.Barrier.Transparency = 1
-		plot.LockLabel.Text = showerActive and "🌠 KEIN LOCK IM SCHAUER" or "🔒 LOCK"
+		setText(plot.LockLabel, showerActive and "🌠 KEIN LOCK IM SCHAUER" or "🔒 LOCK")
 		plot.LockPad.Color = Color3.fromRGB(230, 60, 60)
 	end
 end
@@ -537,8 +364,13 @@ local function tryLock(player: Player, plot)
 	Services.EconomyService.Notify(player, "🔒 Base für " .. duration .. " Sekunden gesperrt!", "Success")
 end
 
+-- Geld-Anzeige über dem Collect-Pad (nur schreiben, wenn sich etwas ändert)
+function PlotService.SetCollectText(plot, pending: number)
+	setText(plot.CollectLabel, "💰 " .. Util.FormatCash(pending))
+end
+
 -- -------------------------------------------------------------------
--- ZUWEISUNG
+-- ZUWEISUNG & TELEPORT
 -- -------------------------------------------------------------------
 local function teleportToPlot(player: Player)
 	local character = player.Character
@@ -577,10 +409,10 @@ function PlotService.ReleasePlot(player: Player)
 	plot.Owner = nil
 	plot.Model:SetAttribute("OwnerUserId", 0)
 	plot.SignLabel.Text = "Freie Base"
-	plot.CollectLabel.Text = "💰 $0"
+	PlotService.SetCollectText(plot, 0)
 	PlotService.SetLocked(plot, 0)
-	for slot, meteor in pairs(plot.MeteorParts) do
-		meteor:Destroy()
+	for slot, object in pairs(plot.MeteorParts) do
+		object:Destroy()
 		plot.MeteorParts[slot] = nil
 	end
 	PlotService.ClearPhotoShowcase(plot)
@@ -591,9 +423,73 @@ function PlotService.TeleportHome(player: Player)
 	teleportToPlot(player)
 end
 
+function PlotService.TeleportToTreadmills(player: Player): boolean
+	local character = player.Character
+	if not character then
+		return false
+	end
+	character:PivotTo(PlotService.TreadmillSpawn)
+	return true
+end
+
+-- Teleport-Ziel der Laufband-Zone: von MapBuilder, sonst aus den Laufbändern berechnet
+local function findTreadmillSpawn(map: any): CFrame
+	if typeof(map.TreadmillSpawn) == "CFrame" then
+		return map.TreadmillSpawn
+	end
+	local folder = map.TreadmillsFolder
+	if not folder then
+		return PlotService.LobbySpawn
+	end
+	local fromAttribute = folder:GetAttribute("SpawnCFrame")
+	if typeof(fromAttribute) == "CFrame" then
+		return fromAttribute
+	end
+	local sum, count = Vector3.zero, 0
+	local look, halfLength = Vector3.new(0, 0, -1), 10
+	for _, model in ipairs(folder:GetChildren()) do
+		local belt = model:IsA("Model") and model.PrimaryPart
+		if belt then
+			sum += belt.Position
+			count += 1
+			look = belt.CFrame.LookVector
+			halfLength = belt.Size.Z / 2
+		end
+	end
+	if count == 0 then
+		return PlotService.LobbySpawn
+	end
+	local center = sum / count + Vector3.new(0, 3.5, 0)
+	-- Einstieg von hinten (gegen die Laufrichtung), Blick auf die Laufbänder
+	local spot = center - look * (halfLength + 7)
+	return CFrame.lookAt(spot, center)
+end
+
 function PlotService.Init(services)
 	Services = services
-	buildMap()
+	local map = MapBuilder.Build() :: any
+	PlotService.MapFolder = map.MapFolder
+	PlotService.Plots = map.Plots or {}
+	PlotService.Belt = map.Belt
+	if map.FreeZone then
+		PlotService.FreeZone = map.FreeZone
+	end
+	if typeof(map.LobbySpawn) == "CFrame" then
+		PlotService.LobbySpawn = map.LobbySpawn
+	end
+	if typeof(map.LeaderboardCFrame) == "CFrame" then
+		PlotService.LeaderboardCFrame = map.LeaderboardCFrame
+	end
+	PlotService.TreadmillsFolder = map.TreadmillsFolder
+	PlotService.TreadmillSpawn = findTreadmillSpawn(map)
+
+	local maxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
+	for _, plot in ipairs(PlotService.Plots) do
+		plot.MeteorParts = plot.MeteorParts or {}
+		plot.LockedUntil = plot.LockedUntil or 0
+		maxSlots = math.min(maxSlots, #plot.Slots)
+	end
+	PlotService.MaxSlots = maxSlots
 end
 
 function PlotService.Start()
@@ -612,7 +508,7 @@ function PlotService.Start()
 				if player.Parent then
 					Services.EconomyService.Notify(
 						player,
-						"Server voll – keine Base frei. Wechsle den Server!",
+						"😢 Server voll – keine Base frei. Wechsle den Server!",
 						"Error"
 					)
 				end
@@ -631,18 +527,27 @@ function PlotService.Start()
 		task.spawn(onPlayer, player)
 	end
 
-	-- Pads: Collect + Lock (Touched mit Entprellung)
+	-- Pads: Collect-Pad + ALLE eigenen Slot-Pads sammeln Geld ein, Lock-Pad sperrt (Touched mit Entprellung)
 	local debounce: { [Player]: number } = {}
+	local function onCollectTouch(plot, hit: BasePart)
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if player and player == plot.Owner and os.clock() - (debounce[player] or 0) > 0.5 then
+			debounce[player] = os.clock()
+			Services.EconomyService.Collect(player)
+		end
+	end
 	for _, plot in ipairs(PlotService.Plots) do
 		plot.CollectPad.CanTouch = true
 		plot.LockPad.CanTouch = true
 		plot.CollectPad.Touched:Connect(function(hit)
-			local player = Players:GetPlayerFromCharacter(hit.Parent)
-			if player and player == plot.Owner and os.clock() - (debounce[player] or 0) > 0.5 then
-				debounce[player] = os.clock()
-				Services.EconomyService.Collect(player)
-			end
+			onCollectTouch(plot, hit)
 		end)
+		for _, slotPart in ipairs(plot.Slots) do
+			slotPart.CanTouch = true
+			slotPart.Touched:Connect(function(hit)
+				onCollectTouch(plot, hit)
+			end)
+		end
 		plot.LockPad.Touched:Connect(function(hit)
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player and player == plot.Owner then
@@ -670,8 +575,8 @@ function PlotService.Start()
 				if plot.Owner and PlotService.IsLocked(plot) then
 					for _, other in ipairs(Players:GetPlayers()) do
 						local character = other.Character
-						local root = character and character:FindFirstChild("HumanoidRootPart")
-						if other ~= plot.Owner and root and PlotService.IsInside(plot, root.Position) then
+						local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+						if other ~= plot.Owner and character and root and PlotService.IsInside(plot, root.Position) then
 							character:PivotTo(plot.EntranceCFrame)
 							Services.EconomyService.Notify(other, "🔒 Diese Base ist gesperrt!", "Error")
 						end

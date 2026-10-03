@@ -74,6 +74,7 @@ function MonetizationService.OnPassChanged(player: Player)
 	local plot = Services.PlotService.GetPlot(player)
 	if plot then
 		Services.PlotService.UpdateSlotColors(plot)
+		Services.PlotService.UpdateHatchTimes(plot) -- "2x Schlüpfen" -> Countdown neu berechnen
 	end
 	Services.EconomyService.MarkDirty(player)
 end
@@ -107,31 +108,44 @@ local function grantProduct(player: Player, product): boolean
 		Services.MeteorService.StartShower()
 		Economy.NotifyAll("🌠 " .. player.DisplayName .. " hat einen Meteoritenschauer gestartet!", "Event")
 		return true
-	elseif product.Type == "Speed" then
+	elseif product.Type == "Steps" then
 		local data = Services.DataService.Get(player)
 		if not data then
 			return false
 		end
-		data.SpeedLevel = math.min(Config.MaxSpeedLevel, data.SpeedLevel + product.Levels)
-		Economy.ApplySpeed(player)
-		Economy.MarkDirty(player)
-		Economy.Notify(player, "🏃 +" .. product.Levels .. " Speed-Level!", "Success")
+		-- so viele Schritte wie "Minutes" Minuten auf dem besten freigeschalteten Laufband
+		local best = Config.BestTreadmill(data.Steps)
+		local ticksPerMinute = 60 / Config.TreadmillTick
+		local amount = (best and best.Rate or 1) * ticksPerMinute * product.Minutes * Economy.GetStepsMult(player)
+		amount = math.floor(math.max(product.Min, amount))
+		Economy.AddSteps(player, amount)
+		Economy.Effect(player, "Steps", amount)
+		Economy.Notify(
+			player,
+			"👟 +" .. Util.FormatNumber(amount) .. " Schritte – danke für deinen Kauf!",
+			"Success"
+		)
+		Economy.Effect(player, "Confetti", 1.5)
 		return true
 	elseif product.Type == "Meteor" then
-		local def = Services.MeteorService.RandomOfRarity(product.Rarity)
+		local def = Services.MeteorService.RandomOfRarity(product.Rarity, true)
 		if not def then
 			return false
 		end
 		local entry = { Id = def.Id, Mut = "Normal", Lv = 1 }
-		if Economy.GiveMeteor(player, entry) then
-			Economy.Notify(player, "🌟 " .. def.Name .. " ist in deiner Base!", "Success")
+		if Economy.GiveMeteor(player, entry, true) then
+			Economy.Notify(
+				player,
+				"🌟 " .. def.Name .. " fliegt in deine Base – gleich schlüpft ein Alien! 🐣",
+				"Success"
+			)
 		else
 			-- Base voll -> Wert als Cash, damit der Kauf nie verloren geht
 			local value = math.floor(Config.MeteorValue(entry))
 			Economy.AddCash(player, value)
 			Economy.Notify(
 				player,
-				"Base voll – du bekommst " .. Util.FormatCash(value) .. " statt " .. def.Name,
+				"📦 Base voll – du bekommst " .. Util.FormatCash(value) .. " statt " .. def.Name,
 				"Info"
 			)
 		end

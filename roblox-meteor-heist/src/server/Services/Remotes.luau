@@ -22,7 +22,9 @@ end
 return {
 	Notify = make("RemoteEvent", "Notify") :: RemoteEvent, -- Server -> Client: Toast-Nachricht
 	State = make("RemoteEvent", "State") :: RemoteEvent, -- Server -> Client: Cash, Einkommen, ...
-	Effect = make("RemoteEvent", "Effect") :: RemoteEvent, -- Server -> Client: Effekte (Kamera-Wackeln etc.)
-	Request = make("RemoteFunction", "Request") :: RemoteFunction, -- Client -> Server: Rebirth, Speed, Daily
+	-- Server -> Client: Effekte (name, strength, data) – z.B. "Shake", "Steps", "Deliver", "Hatch"
+	Effect = make("RemoteEvent", "Effect") :: RemoteEvent,
+	-- Client -> Server: "Rebirth", "Daily", "Collect", "Home", "Treadmills"
+	Request = make("RemoteFunction", "Request") :: RemoteFunction,
 	Admin = make("RemoteFunction", "Admin") :: RemoteFunction, -- Client -> Server: Admin-Aktionen (geprüft!)
 }

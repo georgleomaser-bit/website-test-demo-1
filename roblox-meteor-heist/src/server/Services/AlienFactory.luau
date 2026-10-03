@@ -56,8 +56,6 @@ local ROCK = Color3.fromRGB(70, 65, 75)
 local BLACK = Color3.new(0, 0, 0)
 local FALLBACK_RARITY_COLORS: { [string]: Color3 } = { Admin = Color3.fromRGB(255, 40, 40) }
 
--- (ColorSequence/NumberSequence/NumberRange fehlen in rbx.yml -> selene hier erlauben)
--- selene: allow(undefined_variable)
 local RAINBOW_SEQUENCE = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 60, 60)),
 	ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 200, 40)),
@@ -831,7 +829,6 @@ local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s
 		highlight.Parent = model
 	end
 
-	-- selene: allow(undefined_variable)
 	if fx.Aura then
 		local aura = Instance.new("ParticleEmitter")
 		aura.Name = "Aura"

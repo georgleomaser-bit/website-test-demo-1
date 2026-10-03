@@ -1,0 +1,872 @@
+-- =====================================================================
+--  UI-BAUKASTEN im knalligen Simulator-Stil
+--  Knöpfe mit Farbverlauf, dicker schwarzer Kontur und Feder-Effekt,
+--  Fenster, die weich auf- und zugehen, Toasts, die hereingleiten,
+--  flüssig hochzählende Zahlen und getweente Fortschrittsbalken.
+--  Alle anderen Client-Module bauen ihre Oberfläche hiermit.
+-- =====================================================================
+
+local MarketplaceService = game:GetService("MarketplaceService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local UI = {}
+
+local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
+
+UI.Theme = {
+	Panel = Color3.fromRGB(34, 38, 70),
+	PanelDark = Color3.fromRGB(20, 22, 44),
+	PanelLight = Color3.fromRGB(52, 58, 100),
+	Text = WHITE,
+	SubText = Color3.fromRGB(205, 210, 235),
+	Black = BLACK,
+	Yellow = Color3.fromRGB(255, 220, 50),
+	Cash = Color3.fromRGB(110, 255, 100),
+	Red = Color3.fromRGB(255, 65, 75),
+	Blue = Color3.fromRGB(50, 150, 255),
+	Green = Color3.fromRGB(70, 210, 80),
+	Orange = Color3.fromRGB(255, 145, 35),
+	Purple = Color3.fromRGB(175, 85, 255),
+	Pink = Color3.fromRGB(255, 85, 195),
+	Gray = Color3.fromRGB(120, 125, 145),
+	Gold = Color3.fromRGB(255, 200, 40),
+	Cyan = Color3.fromRGB(60, 220, 255),
+}
+
+-- Tween-Einstellungen (einmal angelegt und immer wiederverwendet)
+local HOVER_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local PRESS_INFO = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local RELEASE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local OPEN_FADE_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local OPEN_POP_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local CLOSE_INFO = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local BAR_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local PULSE_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_GROW_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TOAST_SLIDE_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_FADE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TOAST_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+local COUNTER_INTERVAL = 1 / 30 -- Zahlen höchstens 30x pro Sekunde neu schreiben
+local TOAST_HEIGHT = 40
+local MAX_TOASTS = 5
+
+local root: ScreenGui? = nil
+UI.Root = nil :: ScreenGui? -- die ScreenGui der Oberfläche (nach UI.Init gesetzt)
+
+-- ---------------------------------------------------------------------
+-- GRUNDBAUSTEINE
+-- ---------------------------------------------------------------------
+function UI.Create(className: string, props: { [string]: any }?, children: { Instance }?): any
+	local inst = Instance.new(className)
+	local parent = nil
+	if props then
+		for key, value in pairs(props) do
+			if key == "Parent" then
+				parent = value
+			else
+				(inst :: any)[key] = value
+			end
+		end
+	end
+	if children then
+		for _, child in ipairs(children) do
+			child.Parent = inst
+		end
+	end
+	inst.Parent = parent
+	return inst
+end
+
+function UI.Corner(radius: number?): UICorner
+	return UI.Create("UICorner", { CornerRadius = UDim.new(0, radius or 12) })
+end
+
+-- Dicke Kontur um einen Rahmen/Knopf
+function UI.Stroke(color: Color3?, thickness: number?): UIStroke
+	return UI.Create("UIStroke", {
+		Color = color or BLACK,
+		Thickness = thickness or 3,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		LineJoinMode = Enum.LineJoinMode.Round,
+	})
+end
+
+-- Schwarzer Rand um Schrift (gut lesbar auf jedem Hintergrund)
+function UI.TextStroke(thickness: number?): UIStroke
+	return UI.Create("UIStroke", { Thickness = thickness or 2, Color = BLACK })
+end
+
+-- Farbverlauf von oben nach unten
+function UI.Gradient(top: Color3, bottom: Color3, rotation: number?): UIGradient
+	return UI.Create("UIGradient", { Rotation = rotation or 90, Color = ColorSequence.new(top, bottom) })
+end
+
+-- Knallige Verlaufsfarbe für einen Knopf: oben heller, unten dunkler
+function UI.ButtonSequence(color: Color3): ColorSequence
+	return ColorSequence.new(color:Lerp(WHITE, 0.28), color:Lerp(BLACK, 0.18))
+end
+
+-- 1.25 -> "1.25", 2 -> "2", 2.5 -> "2.5"
+function UI.FormatMult(value: number?): string
+	local n = tonumber(value) or 1
+	if n ~= n or n <= 0 then
+		return "1"
+	end
+	local text = string.format("%.2f", n)
+	text = text:gsub("0+$", "")
+	text = text:gsub("%.$", "")
+	return text
+end
+
+-- Kleine Schritte-Mengen mit einer Nachkommastelle (2.5 statt 2), große wie gewohnt (3.1M)
+function UI.FormatSteps(value: number, formatNumber: (number) -> string): string
+	local n = tonumber(value) or 0
+	if n ~= n then
+		return "0"
+	end
+	if math.abs(n) < 100 and math.floor(n) ~= n then
+		local text = string.format("%.1f", n)
+		text = text:gsub("%.0$", "")
+		return text
+	end
+	return formatNumber(n)
+end
+
+function UI.Label(props: { [string]: any }): TextLabel
+	local base: { [string]: any } = {
+		BackgroundTransparency = 1,
+		Font = Enum.Font.FredokaOne,
+		TextColor3 = WHITE,
+		TextScaled = true,
+		Text = "",
+	}
+	for key, value in pairs(props) do
+		if key ~= "MaxText" and key ~= "Outline" then
+			base[key] = value
+		end
+	end
+	local children: { Instance } = { UI.Create("UITextSizeConstraint", { MaxTextSize = props.MaxText or 28 }) }
+	if props.Outline then
+		table.insert(children, UI.TextStroke(props.Outline))
+	end
+	return UI.Create("TextLabel", base, children)
+end
+
+function UI.TextBox(props: { [string]: any }): TextBox
+	local base: { [string]: any } = {
+		BackgroundColor3 = UI.Theme.PanelDark,
+		Font = Enum.Font.GothamBold,
+		TextColor3 = WHITE,
+		PlaceholderColor3 = UI.Theme.SubText,
+		TextScaled = true,
+		ClearTextOnFocus = false,
+		Text = "",
+	}
+	for key, value in pairs(props) do
+		base[key] = value
+	end
+	return UI.Create("TextBox", base, {
+		UI.Corner(8),
+		UI.Stroke(BLACK, 2),
+		UI.Create("UITextSizeConstraint", { MaxTextSize = 18 }),
+		UI.Create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+	})
+end
+
+-- ---------------------------------------------------------------------
+-- KNÖPFE (Halter-Rahmen für das Layout + federnder Knopf in der Mitte)
+-- props: Size, Position, AnchorPoint, LayoutOrder, Parent, Visible, ZIndex,
+--        Text, Sub (kleine zweite Zeile), Color, MaxText, SubMax, Corner, StrokeSize, Wrap
+-- ---------------------------------------------------------------------
+export type Button = {
+	Frame: Frame,
+	Button: TextButton,
+	Label: TextLabel,
+	Sub: TextLabel?,
+	Stroke: UIStroke,
+	SetText: (text: string) -> (),
+	SetSub: (text: string) -> (),
+	SetColor: (color: Color3) -> (),
+}
+
+function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
+	local cornerRadius: number = props.Corner or 12
+	local z: number = props.ZIndex or 1
+	local holder: Frame = UI.Create("Frame", {
+		Name = props.Name or "Button",
+		Size = props.Size or UDim2.fromOffset(120, 40),
+		Position = props.Position or UDim2.new(),
+		AnchorPoint = props.AnchorPoint or Vector2.zero,
+		LayoutOrder = props.LayoutOrder or 0,
+		Visible = props.Visible ~= false,
+		BackgroundTransparency = 1,
+		ZIndex = z,
+		Parent = props.Parent,
+	})
+	local currentColor: Color3 = props.Color or UI.Theme.Orange
+	local gradient: UIGradient = UI.Create("UIGradient", {
+		Rotation = 90,
+		Color = UI.ButtonSequence(currentColor),
+	})
+	local scale: UIScale = UI.Create("UIScale")
+	local outline = UI.Stroke(BLACK, props.StrokeSize or 3)
+	local btn: TextButton = UI.Create("TextButton", {
+		Name = "Button",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WHITE,
+		AutoButtonColor = false,
+		Text = "",
+		ZIndex = z,
+		Parent = holder,
+	}, { UI.Corner(cornerRadius), gradient, outline, scale })
+
+	-- Glanz-Streifen oben (macht den "Bonbon"-Look der Simulator-Knöpfe)
+	UI.Create("Frame", {
+		Name = "Shine",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 3),
+		Size = UDim2.new(1, -8, 0.4, -2),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.8,
+		ZIndex = z,
+		Parent = btn,
+	}, { UI.Corner(math.max(2, cornerRadius - 3)) })
+
+	local hasSub = props.Sub ~= nil
+	local main = UI.Label({
+		Name = "Label",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, hasSub and 0.06 or 0.12, 0),
+		Size = UDim2.new(1, -12, hasSub and 0.58 or 0.76, 0),
+		Text = props.Text or "",
+		TextWrapped = props.Wrap == true,
+		MaxText = props.MaxText or 24,
+		Outline = 2,
+		ZIndex = z + 1,
+		Parent = btn,
+	})
+	local sub: TextLabel? = nil
+	if hasSub then
+		sub = UI.Label({
+			Name = "Sub",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0.62, 0),
+			Size = UDim2.new(1, -12, 0.32, 0),
+			Text = props.Sub,
+			MaxText = props.SubMax or 16,
+			Outline = 2,
+			ZIndex = z + 1,
+			Parent = btn,
+		})
+	end
+
+	-- Feder-Effekt: Maus drüber = etwas größer, drücken = kleiner, loslassen = federt zurück
+	local hovering = false
+	local function spring(target: number, info: TweenInfo)
+		TweenService:Create(scale, info, { Scale = target }):Play()
+	end
+	btn.InputBegan:Connect(function(input)
+		local kind = input.UserInputType
+		if kind == Enum.UserInputType.MouseMovement then
+			hovering = true
+			spring(1.06, HOVER_INFO)
+		elseif kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+			spring(0.9, PRESS_INFO)
+		end
+	end)
+	btn.InputEnded:Connect(function(input)
+		local kind = input.UserInputType
+		if kind == Enum.UserInputType.MouseButton1 then
+			spring(if hovering then 1.06 else 1, RELEASE_INFO)
+		elseif kind == Enum.UserInputType.MouseMovement or kind == Enum.UserInputType.Touch then
+			-- Maus raus bzw. Finger weg: zurück auf normale Größe
+			hovering = false
+			spring(1, RELEASE_INFO)
+		end
+	end)
+
+	-- Klick: Fehler im Callback brechen die Oberfläche nicht, Doppelklicks werden ignoriert
+	local busy = false
+	btn.Activated:Connect(function()
+		if busy or not onClick then
+			return
+		end
+		busy = true
+		local callback = onClick :: () -> ()
+		task.spawn(function()
+			local ok, err = pcall(callback)
+			if not ok then
+				warn("[UI] " .. tostring(err))
+			end
+			busy = false
+		end)
+	end)
+
+	local result: Button = {
+		Frame = holder,
+		Button = btn,
+		Label = main,
+		Sub = sub,
+		Stroke = outline,
+		SetText = function(text: string)
+			if main.Text ~= text then
+				main.Text = text
+			end
+		end,
+		SetSub = function(text: string)
+			if sub and sub.Text ~= text then
+				sub.Text = text
+			end
+		end,
+		SetColor = function(color: Color3)
+			if color ~= currentColor then
+				currentColor = color
+				gradient.Color = UI.ButtonSequence(color)
+			end
+		end,
+	}
+	return result
+end
+
+-- Roter Kreis mit "!" oben rechts an einem Knopf (z.B. Tagesbonus bereit)
+function UI.Badge(target: Button, text: string?): Frame
+	local badge: Frame = UI.Create("Frame", {
+		Name = "Badge",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, -6, 0, 6),
+		Size = UDim2.fromOffset(28, 28),
+		BackgroundColor3 = UI.Theme.Red,
+		Visible = false,
+		ZIndex = target.Button.ZIndex + 2,
+		Parent = target.Button,
+	}, { UI.Corner(14), UI.Stroke(BLACK, 2) })
+	UI.Label({
+		Size = UDim2.fromScale(1, 1),
+		Text = text or "!",
+		MaxText = 20,
+		Outline = 2,
+		ZIndex = target.Button.ZIndex + 3,
+		Parent = badge,
+	})
+	return badge
+end
+
+-- ---------------------------------------------------------------------
+-- LAYOUT-HELFER (für Fenster-Inhalte)
+-- ---------------------------------------------------------------------
+function UI.Section(parent: Instance, text: string, order: number, color: Color3?): TextLabel
+	return UI.Label({
+		Size = UDim2.new(1, 0, 0, 30),
+		Text = text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = color or UI.Theme.Yellow,
+		LayoutOrder = order,
+		MaxText = 24,
+		Outline = 2,
+		Parent = parent,
+	})
+end
+
+function UI.Row(parent: Instance, order: number, height: number?): Frame
+	return UI.Create("Frame", {
+		Size = UDim2.new(1, 0, 0, height or 40),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Parent = parent,
+	}, {
+		UI.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 6),
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+	})
+end
+
+function UI.Grid(parent: Instance, order: number, cellX: number, cellY: number): Frame
+	return UI.Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Parent = parent,
+	}, {
+		UI.Create("UIGridLayout", {
+			CellSize = UDim2.fromOffset(cellX, cellY),
+			CellPadding = UDim2.fromOffset(8, 8),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+		UI.Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 3),
+			PaddingTop = UDim.new(0, 3),
+			PaddingBottom = UDim.new(0, 3),
+		}),
+	})
+end
+
+-- Karte mit hellerem Hintergrund und schwarzer Kontur
+function UI.Card(props: { [string]: any }): Frame
+	local base: { [string]: any } = { BackgroundColor3 = UI.Theme.PanelLight }
+	for key, value in pairs(props) do
+		base[key] = value
+	end
+	return UI.Create("Frame", base, { UI.Corner(12), UI.Stroke(BLACK, 2) })
+end
+
+-- ---------------------------------------------------------------------
+-- FORTSCHRITTSBALKEN (Füllung gleitet weich)
+-- ---------------------------------------------------------------------
+export type Bar = { Frame: Frame, Fill: Frame, Text: TextLabel, Ratio: number }
+
+function UI.Bar(props: { [string]: any }): Bar
+	local color: Color3 = props.Color or UI.Theme.Orange
+	local back: Frame = UI.Create("Frame", {
+		Size = props.Size or UDim2.new(1, 0, 0, 30),
+		Position = props.Position or UDim2.new(),
+		BackgroundColor3 = UI.Theme.PanelDark,
+		LayoutOrder = props.LayoutOrder or 0,
+		Parent = props.Parent,
+	}, { UI.Corner(10), UI.Stroke(BLACK, 3) })
+	local fill: Frame = UI.Create("Frame", {
+		Size = UDim2.fromScale(0, 1),
+		BackgroundColor3 = WHITE,
+		Parent = back,
+	}, { UI.Corner(10), UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(color) }) })
+	local text = UI.Label({
+		Size = UDim2.fromScale(1, 1),
+		Text = "",
+		MaxText = props.MaxText or 18,
+		Outline = 2,
+		ZIndex = 2,
+		Parent = back,
+	})
+	return { Frame = back, Fill = fill, Text = text, Ratio = 0 }
+end
+
+function UI.SetBar(bar: Bar, ratio: number, text: string?)
+	if ratio ~= ratio then
+		ratio = 0
+	end
+	ratio = math.clamp(ratio, 0, 1)
+	if text and bar.Text.Text ~= text then
+		bar.Text.Text = text
+	end
+	if math.abs(ratio - bar.Ratio) > 0.001 then
+		bar.Ratio = ratio
+		TweenService:Create(bar.Fill, BAR_INFO, { Size = UDim2.fromScale(ratio, 1) }):Play()
+	end
+end
+
+-- Kurzes "Aufploppen" (z.B. wenn Geld reinkommt)
+function UI.Pulse(scale: UIScale, amount: number?)
+	scale.Scale = 1 + (amount or 0.12)
+	TweenService:Create(scale, PULSE_INFO, { Scale = 1 }):Play()
+end
+
+-- ---------------------------------------------------------------------
+-- FLÜSSIG ZÄHLENDE ZAHLEN (Geld, Schritte)
+-- ---------------------------------------------------------------------
+export type Counter = {
+	Label: TextLabel,
+	Format: (number) -> string,
+	Target: number,
+	Shown: number,
+	Text: string,
+}
+
+local counters: { Counter } = {}
+local counterClock = 0
+
+function UI.Counter(target: TextLabel, format: (number) -> string): Counter
+	local counter: Counter = { Label = target, Format = format, Target = 0, Shown = 0, Text = format(0) }
+	target.Text = counter.Text
+	table.insert(counters, counter)
+	return counter
+end
+
+-- instant = true: sofort anzeigen (z.B. beim ersten Laden)
+function UI.SetCounter(counter: Counter, value: number, instant: boolean?)
+	if type(value) ~= "number" or value ~= value then
+		return
+	end
+	counter.Target = value
+	if instant then
+		counter.Shown = value
+		UI.RedrawCounter(counter)
+	end
+end
+
+-- Schreibt den Text sofort neu (z.B. wenn sich der Multiplikator in der Anzeige geändert hat)
+function UI.RedrawCounter(counter: Counter)
+	local text = counter.Format(counter.Shown)
+	counter.Text = text
+	counter.Label.Text = text
+end
+
+local function stepCounters(dt: number)
+	counterClock += dt
+	if counterClock < COUNTER_INTERVAL then
+		return
+	end
+	local alpha = 1 - math.exp(-counterClock * 7)
+	counterClock = 0
+	for _, counter in ipairs(counters) do
+		local target = counter.Target
+		if counter.Shown ~= target then
+			local diff = target - counter.Shown
+			if math.abs(diff) <= math.max(0.5, math.abs(target) * 0.0002) then
+				counter.Shown = target
+			else
+				counter.Shown += diff * alpha
+			end
+			local text = counter.Format(counter.Shown)
+			if text ~= counter.Text then
+				counter.Text = text
+				counter.Label.Text = text
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- FENSTER (immer nur eins offen; öffnen = Ploppen + Einblenden)
+-- ---------------------------------------------------------------------
+export type Window = {
+	Group: CanvasGroup,
+	Scale: UIScale,
+	Content: ScrollingFrame,
+	IsOpen: boolean,
+	Token: number,
+	OnOpen: (() -> ())?,
+}
+
+local windows: { Window } = {}
+
+function UI.CloseWindow(win: Window)
+	if not win.IsOpen then
+		return
+	end
+	win.IsOpen = false
+	win.Token += 1
+	local token = win.Token
+	TweenService:Create(win.Scale, CLOSE_INFO, { Scale = 0.9 }):Play()
+	local fade = TweenService:Create(win.Group, CLOSE_INFO, { GroupTransparency = 1 })
+	fade.Completed:Connect(function()
+		if win.Token == token then
+			win.Group.Visible = false
+		end
+	end)
+	fade:Play()
+end
+
+function UI.OpenWindow(win: Window)
+	for _, other in ipairs(windows) do
+		if other ~= win then
+			UI.CloseWindow(other)
+		end
+	end
+	if win.IsOpen then
+		return
+	end
+	win.IsOpen = true
+	win.Token += 1
+	if not win.Group.Visible then
+		win.Group.GroupTransparency = 1
+		win.Scale.Scale = 0.86
+		win.Group.Visible = true
+	end
+	TweenService:Create(win.Group, OPEN_FADE_INFO, { GroupTransparency = 0 }):Play()
+	TweenService:Create(win.Scale, OPEN_POP_INFO, { Scale = 1 }):Play()
+	if win.OnOpen then
+		task.spawn(win.OnOpen)
+	end
+end
+
+function UI.ToggleWindow(win: Window)
+	if win.IsOpen then
+		UI.CloseWindow(win)
+	else
+		UI.OpenWindow(win)
+	end
+end
+
+function UI.CloseAll()
+	for _, win in ipairs(windows) do
+		UI.CloseWindow(win)
+	end
+end
+
+function UI.Window(title: string, width: number, height: number, color: Color3?): Window
+	assert(root, "UI.Init zuerst aufrufen")
+	local accent = color or UI.Theme.Orange
+	local group: CanvasGroup = UI.Create("CanvasGroup", {
+		Name = "Window",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(width, height),
+		BackgroundTransparency = 1,
+		GroupTransparency = 1,
+		Visible = false,
+		ZIndex = 10,
+		Parent = root,
+	})
+	local scale: UIScale = UI.Create("UIScale", { Scale = 0.86, Parent = group })
+	local panel = UI.Create("Frame", {
+		Name = "Panel",
+		Position = UDim2.fromOffset(4, 4),
+		Size = UDim2.new(1, -8, 1, -8),
+		BackgroundColor3 = WHITE,
+		Parent = group,
+	}, {
+		UI.Corner(20),
+		UI.Stroke(BLACK, 4),
+		UI.Gradient(UI.Theme.Panel:Lerp(WHITE, 0.06), UI.Theme.PanelDark),
+	})
+	local header = UI.Create("Frame", {
+		Name = "Header",
+		Position = UDim2.fromOffset(10, 10),
+		Size = UDim2.new(1, -20, 0, 50),
+		BackgroundColor3 = WHITE,
+		Parent = panel,
+	}, {
+		UI.Corner(14),
+		UI.Stroke(BLACK, 3),
+		UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(accent) }),
+	})
+	UI.Label({
+		Position = UDim2.fromOffset(14, 5),
+		Size = UDim2.new(1, -76, 1, -10),
+		Text = title,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		MaxText = 32,
+		Outline = 3,
+		Parent = header,
+	})
+	local content: ScrollingFrame = UI.Create("ScrollingFrame", {
+		Name = "Content",
+		Position = UDim2.fromOffset(12, 70),
+		Size = UDim2.new(1, -24, 1, -82),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ScrollBarThickness = 6,
+		ScrollBarImageColor3 = accent,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		CanvasSize = UDim2.new(),
+		Parent = panel,
+	}, {
+		UI.Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }),
+		UI.Create("UIPadding", {
+			PaddingLeft = UDim.new(0, 3),
+			PaddingRight = UDim.new(0, 12),
+			PaddingTop = UDim.new(0, 3),
+			PaddingBottom = UDim.new(0, 10),
+		}),
+	})
+	local win: Window = {
+		Group = group,
+		Scale = scale,
+		Content = content,
+		IsOpen = false,
+		Token = 0,
+		OnOpen = nil,
+	}
+	UI.Button({
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -6, 0.5, 0),
+		Size = UDim2.fromOffset(40, 40),
+		Text = "✖",
+		Color = UI.Theme.Red,
+		MaxText = 22,
+		Corner = 10,
+		Parent = header,
+	}, function()
+		UI.CloseWindow(win)
+	end)
+	table.insert(windows, win)
+	return win
+end
+
+-- ---------------------------------------------------------------------
+-- TOASTS (gleiten von rechts herein, rutschen nach oben weg)
+-- ---------------------------------------------------------------------
+type ToastEntry = { Container: Frame, Inner: CanvasGroup, Leaving: boolean }
+
+local TOAST_COLORS: { [string]: Color3 } = {
+	Info = Color3.fromRGB(60, 66, 120),
+	Success = Color3.fromRGB(40, 160, 70),
+	Error = Color3.fromRGB(200, 45, 55),
+	Event = Color3.fromRGB(235, 120, 20),
+	Alarm = Color3.fromRGB(230, 20, 30),
+	Announce = Color3.fromRGB(60, 95, 230),
+}
+
+local toastHolder: Frame? = nil
+local toastCount = 0
+local activeToasts: { ToastEntry } = {}
+
+local function removeToast(entry: ToastEntry)
+	if entry.Leaving then
+		return
+	end
+	entry.Leaving = true
+	local index = table.find(activeToasts, entry)
+	if index then
+		table.remove(activeToasts, index)
+	end
+	local fade = TweenService:Create(entry.Inner, TOAST_OUT_INFO, {
+		GroupTransparency = 1,
+		Position = UDim2.fromOffset(-50, 0),
+	})
+	fade.Completed:Connect(function()
+		local shrink = TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, 0) })
+		shrink.Completed:Connect(function()
+			entry.Container:Destroy()
+		end)
+		shrink:Play()
+	end)
+	fade:Play()
+end
+
+function UI.Toast(text: string, kind: string?)
+	local holder = toastHolder
+	if not holder or type(text) ~= "string" or text == "" then
+		return
+	end
+	toastCount += 1
+	local color = TOAST_COLORS[kind or "Info"] or TOAST_COLORS.Info
+	local container: Frame = UI.Create("Frame", {
+		Name = "Toast",
+		Size = UDim2.new(1, 0, 0, 0),
+		BackgroundTransparency = 1,
+		LayoutOrder = toastCount,
+		Parent = holder,
+	})
+	local inner: CanvasGroup = UI.Create("CanvasGroup", {
+		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
+		Position = UDim2.fromOffset(70, 0),
+		BackgroundTransparency = 1,
+		GroupTransparency = 1,
+		Parent = container,
+	})
+	UI.Create("Frame", {
+		Position = UDim2.fromOffset(3, 3),
+		Size = UDim2.new(1, -6, 1, -6),
+		BackgroundColor3 = WHITE,
+		Parent = inner,
+	}, {
+		UI.Corner(12),
+		UI.Stroke(BLACK, 3),
+		UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(color) }),
+	})
+	UI.Label({
+		Position = UDim2.fromOffset(14, 6),
+		Size = UDim2.new(1, -28, 1, -12),
+		Text = text,
+		MaxText = 19,
+		Outline = 2,
+		Parent = inner,
+	})
+	local entry: ToastEntry = { Container = container, Inner = inner, Leaving = false }
+	table.insert(activeToasts, entry)
+	TweenService:Create(container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
+	TweenService:Create(inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
+	TweenService:Create(inner, TOAST_FADE_INFO, { GroupTransparency = 0 }):Play()
+	while #activeToasts > MAX_TOASTS do
+		removeToast(activeToasts[1])
+	end
+	task.delay((kind == "Announce" or kind == "Event") and 7 or 4, function()
+		removeToast(entry)
+	end)
+end
+
+-- ---------------------------------------------------------------------
+-- PREISE (Robux) aus dem Marktplatz – einmal laden, dann merken
+-- ---------------------------------------------------------------------
+local priceCache: { [number]: number } = {}
+local priceWaiting: { [number]: { (number?) -> () } } = {}
+
+function UI.FetchPrice(id: number, infoType: Enum.InfoType, callback: (number?) -> ())
+	if type(id) ~= "number" or id == 0 then
+		task.spawn(callback, nil)
+		return
+	end
+	local cached = priceCache[id]
+	if cached then
+		task.spawn(callback, cached)
+		return
+	end
+	local waiting = priceWaiting[id]
+	if waiting then
+		table.insert(waiting, callback)
+		return
+	end
+	priceWaiting[id] = { callback }
+	task.spawn(function()
+		local ok, info = pcall(MarketplaceService.GetProductInfoAsync, MarketplaceService, id, infoType)
+		local price = if ok and type(info) == "table" then tonumber(info.PriceInRobux) else nil
+		if price then
+			priceCache[id] = price
+		end
+		local list = priceWaiting[id] or {}
+		priceWaiting[id] = nil
+		for _, cb in ipairs(list) do
+			task.spawn(cb, price)
+		end
+	end)
+end
+
+-- ---------------------------------------------------------------------
+-- START
+-- ---------------------------------------------------------------------
+function UI.Init(screenGui: ScreenGui)
+	root = screenGui
+	UI.Root = screenGui
+
+	-- Alles passend zur Bildschirmgröße skalieren (Handy bis großer Monitor)
+	local rootScale: UIScale = UI.Create("UIScale", { Parent = screenGui })
+	local cameraConnection: RBXScriptConnection? = nil
+	local function updateScale()
+		local camera = workspace.CurrentCamera
+		if camera then
+			local size = camera.ViewportSize
+			rootScale.Scale = math.clamp(math.min(size.X / 1280, size.Y / 760), 0.55, 1.15)
+		end
+	end
+	local function bindCamera()
+		if cameraConnection then
+			cameraConnection:Disconnect()
+			cameraConnection = nil
+		end
+		local camera = workspace.CurrentCamera
+		if camera then
+			cameraConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+		end
+		updateScale()
+	end
+	bindCamera()
+	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
+
+	toastHolder = UI.Create("Frame", {
+		Name = "Toasts",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 56),
+		Size = UDim2.fromOffset(480, 320),
+		BackgroundTransparency = 1,
+		ZIndex = 20,
+		Parent = screenGui,
+	}, {
+		UI.Create("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			HorizontalAlignment = Enum.HorizontalAlignment.Center,
+		}),
+	})
+
+	RunService.RenderStepped:Connect(stepCounters)
+end
+
+return UI

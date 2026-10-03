@@ -1,4 +1,5 @@
--- Globale Bestenliste (alle Server): Top 10 "Meistes Geld verdient" in der Lobby.
+-- Globale Bestenliste (alle Server): Top 10 "Meistes Geld verdient" am Spawn-Platz.
+-- Die Tafel steht an PlotService.LeaderboardCFrame (Vorderseite zeigt zur Platzmitte).
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -21,13 +22,14 @@ local function buildBoard()
 	board.Name = "Leaderboard"
 	board.Anchored = true
 	board.Size = Vector3.new(36, 24, 1)
-	board.Position = Vector3.new(0, 13, -190)
+	board.CFrame = Services.PlotService.LeaderboardCFrame
 	board.Color = Color3.fromRGB(25, 20, 35)
 	board.Material = Enum.Material.SmoothPlastic
-	board.Parent = Services.PlotService.MapFolder
+	board.CanTouch = false
+	board.Parent = Services.PlotService.MapFolder or workspace
 
 	local gui = Instance.new("SurfaceGui")
-	gui.Face = Enum.NormalId.Back -- zeigt zur Map-Mitte
+	gui.Face = Enum.NormalId.Front -- LookVector der CFrame zeigt zur Platzmitte
 	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	gui.PixelsPerStud = 25
 	gui.LightInfluence = 0

@@ -2,8 +2,9 @@
 
 Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber eigenem Thema:
 
-> **Meteore krachen in den Krater → du kaufst sie → trägst sie in deine Base → sie bringen Geld →
-> du klaust bei anderen → die anderen bonken dich → Rebirth → immer bessere Meteore.**
+> **Meteore fahren auf dem Laufband vorbei → du kaufst sie (E) → sie fliegen von allein in deine Base →
+> ein Alien schlüpft → es bringt Geld → du klaust bei anderen → die anderen bonken dich → Rebirth →
+> immer bessere Meteore und Aliens.**
 
 ---
 
@@ -11,20 +12,24 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber eigene
 
 | Bereich | Inhalt |
 |---|---|
-| **Kern-Loop** | Meteore schlagen im Krater ein (meistens kleine, selten riesige), kaufen mit **E**, in die Base tragen, Geld am grünen Pad einsammeln |
-| **Klauen** | Bei fremden Basen **E** halten → Meteor tragen → in deine Base rennen |
-| **Verteidigen** | **Bonk-Schläger** (Klick): getroffene Diebe verlieren die Beute. Rotes **Lock-Pad** sperrt deine Base für 60 s |
-| **Twist 1: Aufladen** | Meteore in deiner Base leveln auf (Lv 1 → 20, ca. 3 h). Große, geladene Meteore sind Gold wert, auch zum Klauen |
-| **Twist 2: Meteoritenschauer** | Alle 8 Minuten: 60 s lang **keine Locks**, 3x Glück, viel mehr Meteore → Chaos |
-| **Fallenlassen** | Wer mit einem *gekauften* Meteor gebonkt wird, lässt ihn fallen → **gratis für alle** |
-| **Speed Farm** | 60 Speed-Level für Cash (immer teurer). Schneller = zuerst am Meteor und entkommt beim Klauen |
-| **Lange Progression** | 27 Meteore, 9 Seltenheiten (Common → Secret), Preise bis in die Billionen, Celestial/Divine/Secret erst nach Rebirth kaufbar |
-| **Index** | Alle Meteore sammeln, jeder neue Typ gibt dauerhaft **+2 % Einkommen** |
-| **Rebirth** | +50 % Einkommen für immer, schaltet neue Seltenheiten frei (Speed + Index bleiben) |
+| **Kern-Loop** | In der Map-Mitte fährt ein langes **Laufband** mit Meteoren (ca. 1 pro Sekunde). **E** drücken = kaufen → der Meteor fliegt **automatisch** in einen freien Platz deiner Base |
+| **Schlüpfen** | Im Platz zählt der Meteor herunter (🐣 8 s bei Common bis 6 min bei Secret). Dann schlüpft ein **Alien**: Normal (75 %), Selten (22 %, x2,5 Geld) oder Ultra (3 %, x6 Geld). **Erst das Alien verdient Geld** |
+| **Einsammeln** | Geld sammelt sich an. Lauf über das **grüne Pad** oder einen **deiner Plätze**, um es einzusammeln |
+| **Klauen** | Bei fremden Basen **E** halten → Meteor oder Alien tragen → in deine Base rennen |
+| **Verteidigen** | **Bonk-Schläger** (Klick): getroffene Diebe verlieren die Beute (sie fliegt zurück). Rotes **Lock-Pad** sperrt deine Base für 60 s |
+| **Aufladen** | Aliens in deiner Base leveln auf (Lv 1 → 20, ca. 3 h, +10 % Geld pro Level). Große Aliens sind Gold wert, auch zum Klauen |
+| **Meteoritenschauer** | Alle 8 Minuten: 60 s lang **keine Locks**, 3x Glück, viel mehr Meteore auf dem Band → Chaos |
+| **Speed Farm** | Auf dem Spawn-Platz stehen **7 Laufbänder** (Holz → Regenbogen). Drauf laufen = **Schritte 👟** sammeln (fliegende „+X 👟“-Zahlen). Mehr Schritte = schneller (16 bis 80). Bessere Laufbänder werden mit genug Schritten freigeschaltet |
+| **Lange Progression** | 28 Meteore in 9 Seltenheiten (Common → Secret), 96 Aliens, Preise bis in die Billionen, Celestial/Divine/Secret erst nach Rebirth kaufbar (klauen geht immer) |
+| **👑 Admin-Meteore** | 4 krasse Meteore (Rainbow Overlord, Godly Sun, Void Emperor, Chaos Core), die **nie von selbst** kommen. Nur du spawnst sie im Admin-Panel |
+| **Index** | Alle Aliens sammeln, jedes neue Alien gibt dauerhaft **+1 % Einkommen** |
+| **Rebirth** | +50 % Einkommen und +25 % Schritte für immer, schaltet neue Seltenheiten frei (Schritte + Index bleiben) |
 | **Tagesbonus** | Mit Streak bis Tag 7 |
-| **Offline-Einkommen** | 25 % für bis zu 3 h |
+| **Offline** | 25 % Einkommen für bis zu 3 h, und Meteore schlüpfen auch, während du weg bist |
 | **Geld-Einnahmen** | 6 Gamepasses + 8 Developer Products + Premium-Bonus |
-| **Admin-Panel** | Nur für dich (automatisch, weil dir das Spiel gehört): Meteore spawnen, Meteorregen, Geld/Rebirths/Speed setzen, Pässe schenken, Glück-Events und Schauer (auch auf ALLEN Servern), Nachrichten, Kick/Bann/Entbannen, Reset, Teleport |
+| **Admin-Panel** | Nur für dich (automatisch, weil dir das Spiel gehört): Meteore und Admin-Meteore spawnen, Meteorregen, Geld/Rebirths/Schritte setzen, Pässe schenken, Glück-Events und Schauer (auch auf ALLEN Servern), Nachrichten, Kick/Bann/Entbannen, Reset, Teleport, Admin Abuse, Foto-Modus |
+| **Grafik** | Helles Sonnenlicht mit „Future“-Beleuchtung, Atmosphäre, Wolken, leichtes Leuchten. Knallgrüner Roblox-Rasterboden wie in Simulator-Spielen |
+| **Flüssig** | Die Meteore auf dem Laufband bewegt jeder Spieler selbst auf seinem Gerät (kein Server-Ruckeln). Fenster, Knöpfe und Zahlen sind animiert |
 | **Technik** | Sicheres Speichern mit Session-Lock (keine Duplikate, kein Datenverlust), Käufe doppelt abgesichert, alles serverseitig geprüft (Exploiter können nichts schummeln), globale Top-10-Bestenliste |
 
 Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts zusammenbauen.
@@ -47,10 +52,15 @@ Aktion, auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 ## ▶️ SCHRITT 3 – Testen
 
 1. Oben auf **Play** (F5) klicken.
-2. Du spawnst in deiner Base. Lauf in den Krater, drück **E** an einem Meteor, renn zurück in deine Base.
-3. Lauf über das **grüne Pad**, um Geld einzusammeln. Das **rote Pad** sperrt deine Base.
-4. Admin-Panel: Taste **P** oder Button **🛠️ Admin** links.
-5. Mehrere Spieler testen: **Test → Clients and Servers → 2 Players → Start**, dann kannst du dich selbst beklauen.
+2. Du spawnst in deiner Base. Lauf zum **Laufband** in der Mitte und drück **E** an einem Meteor.
+   Er fliegt von allein in deine Base. Nach ein paar Sekunden schlüpft ein **Alien**.
+3. Lauf über das **grüne Pad** (oder einen deiner Plätze), um Geld einzusammeln. Das **rote Pad** sperrt deine Base.
+4. Rechts auf **🏃 Laufbänder** → **Zu den Laufbändern!** → auf dem Holz-Laufband laufen = Schritte sammeln.
+5. Admin-Panel: Taste **P** oder Button **🛠️ Admin** rechts.
+6. Mehrere Spieler testen: **Test → Clients and Servers → 2 Players → Start**, dann kannst du dich selbst beklauen.
+
+**Tasten:** **E** = kaufen / klauen, **F** = verkaufen (in deiner Base), **P** = Admin-Panel,
+**G** = Fliegen (nur Admin), **H** = Foto-Modus (nur Admin).
 
 ## 🌍 SCHRITT 4 – Veröffentlichen
 
@@ -82,16 +92,17 @@ Aktion, auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 |---|---|---|---|---|
 | 💰 2x Cash | 399 R$ | | 💵 Cash S | 25 R$ |
 | 👑 VIP | 249 R$ | | 💰 Cash M | 99 R$ |
-| ☄️ +5 Plätze | 199 R$ | | 🏦 Cash XL | 399 R$ |
+| ☄️ +6 Plätze | 199 R$ | | 🏦 Cash XL | 399 R$ |
 | 🤖 Auto Collect | 149 R$ | | 🍀 2x Server-Glück | 79 R$ |
-| ⚡ 2x Aufladen | 299 R$ | | 🌠 Meteoritenschauer | 49 R$ |
-| 👟 Speed Boots | 99 R$ | | 🏃 +10 Speed | 39 R$ |
+| ⚡ 2x Schlüpfen & Wachsen | 299 R$ | | 🌠 Meteoritenschauer | 49 R$ |
+| 👟 2x Schritte | 99 R$ | | 👟 Schritte-Paket | 39 R$ |
 | | | | 🌟 Legendary Meteor | 149 R$ |
 | | | | 🔮 Mythic Meteor | 449 R$ |
 
 **Warum das zieht:** Server-Glück und Meteoritenschauer werden **allen im Server angekündigt**
 („Max hat 2x Glück für ALLE gekauft!“). Das macht andere neugierig und sie kaufen auch.
-Cash-Pakete skalieren mit dem Einkommen, bleiben also auch für Profis interessant.
+Cash-Pakete und das Schritte-Paket skalieren mit dem Fortschritt, bleiben also auch für Profis interessant.
+Der Angebots-Knopf **„👟 2x Schritte – NUR … R$“** links im Spiel erscheint, sobald die Pass-ID eingetragen ist.
 
 **Premium Payouts:** Roblox zahlt dir automatisch Robux, wenn Premium-Mitglieder dein Spiel spielen.
 Premium-Spieler bekommen im Spiel +10 % (Anreiz, länger zu bleiben).
@@ -104,10 +115,10 @@ Roblox (aktuell 30.000 verdiente Robux). Infos: https://create.roblox.com/dashbo
 Die Technik ist für sehr viele Spieler gebaut (siehe unten), aber **ob 100.000 Leute kommen, hängt am
 Marketing und am Roblox-Algorithmus**. Das kann niemand garantieren. Was am meisten hilft:
 
-1. **Icon + Thumbnails**: knallig, ein riesiger glühender Meteor, ein Spieler der flüchtet. Titel mit Emoji: `☄️ Meteor Heist`.
-2. **Erste 5 Minuten** entscheiden. Das Spiel gibt sofort Geld und erste Meteore, perfekt dafür.
-3. **Updates jede Woche** (neue Meteore/Events) → „UPDATE 🔥“ im Titel. Schreib mir einfach, was rein soll.
-4. **TikTok/YouTube Shorts**: „Ich habe einen SECRET Meteor geklaut 😱“ Clips.
+1. **Icon + Thumbnails**: knallig, ein riesiger glühender Meteor, ein Alien, ein Spieler der flüchtet. Titel mit Emoji: `☄️ Meteor Heist`.
+2. **Erste 5 Minuten** entscheiden. Das Spiel gibt sofort Geld, der erste Meteor schlüpft nach 8 Sekunden, perfekt dafür.
+3. **Updates jede Woche** (neue Meteore/Aliens/Events) → „UPDATE 🔥“ im Titel. Schreib mir einfach, was rein soll.
+4. **TikTok/YouTube Shorts**: „Ich habe ein ULTRA-Alien geklaut 😱“ Clips.
 5. **Roblox-Werbung** (Ads Manager): mit kleinem Budget testen, sobald die Spielzeit pro Spieler gut ist.
 6. **Codes & Events** am Wochenende (Admin-Panel → Glück auf ALLEN Servern).
 
@@ -116,21 +127,26 @@ Marketing und am Roblox-Algorithmus**. Das kann niemand garantieren. Was am meis
 | Bereich | Funktion |
 |---|---|
 | 🎯 Ziel | `me`, `all`, `others`, (Teil vom) Spielernamen oder UserId. „Spieler laden“ zeigt alle im Server. Über deinem Kopf steht im echten Spiel 🛠️ ADMIN |
-| ☄️ Spawnen | Jeden Meteor + Mutation wählen → **Im Krater** (fällt mit Ankündigung), **Vor mir**, **Gratis vor mir**, **In Ziel-Base** (inkl. Level) |
-| 🌧️ Meteorregen | 10-40 Meteore einer Seltenheit regnen herab |
-| 💰 Werte | Cash geben/setzen, Rebirths setzen, Speed-Level setzen, Gamepässe schenken (bis Server-Wechsel) |
+| 👑 Admin-Meteore | Je Admin-Meteor: **Gratis in die Mitte** (landet mit großem Knall in der Gratis-Zone am Spawn-Platz, Ansage an alle, wer zuerst da ist, bekommt ihn) oder **In meine Base** (schlüpft nach 5 s). Dazu **Admin-Meteor-Regen** (1-8 zufällige Admin-Meteore gratis) |
+| ☄️ Spawnen | Jeden Meteor + Mutation wählen → **Aufs Laufband**, **Vor mir**, **Gratis vor mir**, **Gratis-Zone**, **In Ziel-Base** (inkl. Level) |
+| 🌧️ Meteorregen | 10-40 Meteore einer Seltenheit kommen nacheinander aufs Laufband |
+| 💰 Werte | Cash geben/setzen, Rebirths setzen, **Schritte setzen**, Gamepässe schenken (bis Server-Wechsel) |
 | 🎉 Events | X-fach Glück für Y Minuten, Meteoritenschauer, Nachricht an alle. Mit 🌍 **auf ALLEN Servern gleichzeitig** |
-| 🛡️ Moderation | Kick, Bann (Tage oder für immer, gilt fürs ganze Spiel), Entbannen per UserId, Base leeren, Spielstand zurücksetzen, Teleport zu/holen, Krater leeren. Bann/Reset brauchen einen zweiten Klick |
-| 😈 Admin Abuse | **Fliegen/Schweben** (Taste **G**: WASD + Leertaste hoch, Shift runter), **ADMIN-ABUSE-EVENT** (10x Glück, Schauer, Geld für alle, Gratis-Secrets, Mond-Schwerkraft, auch auf allen Servern), Mond-Schwerkraft an/aus, Spieler einfrieren/auftauen, riesig/mini/normal, unsichtbar |
-| 📸 Foto-Modus | Für schöne Thumbnails: **UI aus/an** (Taste **H**: alle Knöpfe, Roblox-Leisten und E-Hinweise weg, nochmal **H** = zurück), **Showcase-Reihe** (je ein Meteor jeder Seltenheit vor dir, bleibt 5 Min), **Foto-Base füllen** (leere Plätze deiner Base mit Deko-Meteoren, nur zum Anschauen, wird nicht gespeichert), **Foto aufräumen** (Deko weg, Krater leer) |
+| 🛡️ Moderation | Kick, Bann (Tage oder für immer, gilt fürs ganze Spiel), Entbannen per UserId, Base leeren, Spielstand zurücksetzen, Teleport zu/holen, Laufband + Gratis-Zone leeren. Bann/Reset brauchen einen zweiten Klick |
+| 😈 Admin Abuse | **Fliegen/Schweben** (Taste **G**: WASD + Leertaste hoch, Shift runter), **ADMIN-ABUSE-EVENT** (10x Glück, Schauer, Geld für alle, Gratis-Secrets und ein Admin-Meteor in der Gratis-Zone, Mond-Schwerkraft, auch auf allen Servern), Mond-Schwerkraft an/aus, Spieler einfrieren/auftauen, riesig/mini/normal, unsichtbar |
+| 📸 Foto-Modus | Für schöne Thumbnails: **UI aus/an** (Taste **H**: alle Knöpfe, Roblox-Leisten und E-Hinweise weg, nochmal **H** = zurück), **Showcase-Reihe** (je ein Meteor jeder Seltenheit vor dir, bleibt 5 Min), **Foto-Base** (leere Plätze deiner Base mit Deko-Aliens füllen, nur zum Anschauen, wird nicht gespeichert), **Foto aufräumen** (Deko weg, Laufband + Gratis-Zone leer) |
 
 ## ⚙️ Balancing – alles in `Config`
 
 Alles steht kommentiert in `ReplicatedStorage → Shared → Config`:
 - **Neuen Meteor** hinzufügen: eine Zeile in `Config.Meteors` kopieren, neue `Id` vergeben.
-- Spawnchancen: `Config.Rarities` (Weight). Preise/Einkommen pro Meteor.
-- Schauer-Takt, Lock-Dauer, Speed-Kosten, Rebirth-Kosten, Aufladezeit …
+  Danach in `Shared → Aliens` die **3 Aliens** für diesen Meteor eintragen (eine Zeile pro Alien).
+- Spawnchancen und **Schlüpfzeit**: `Config.Rarities` (Weight, HatchTime). Preise/Einkommen pro Meteor.
+- **Laufbänder**: `Config.Treadmills` (Name, ab wie vielen Schritten, Schritte pro Tick, Farbe).
+- **Laufband in der Mitte**: `Config.BeltSpawnInterval` (wie oft ein Meteor kommt), `Config.BeltSpeed` (Tempo).
+- Schauer-Takt, Lock-Dauer, Rebirth-Kosten, Aufladezeit …
 - ⚠️ **`DataStoreName` nie ändern**, sonst sind alle Spielstände weg.
+- ⚠️ **Ids** von Meteoren und Aliens nie umbenennen (sie stehen in den Spielständen).
 
 ---
 
@@ -172,6 +188,8 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | „Server voll – keine Base frei“ | Max Players auf 8 stellen (Schritt 4.3) |
 | Rote Fehler im **Output**-Fenster | Text kopieren und mir hier schicken, ich fixe es |
 | Kauf kam nicht an | Roblox wiederholt den Kauf automatisch, bis er verbucht ist. Nichts geht verloren |
+| „Zu weit weg“ beim Kaufen | Näher ans Geländer vom Laufband gehen. Der Meteor muss direkt vor dir sein |
+| Es ruckelt auf einem alten Handy | In Roblox: Menü → Einstellungen → Grafikqualität etwas runterstellen |
 
 ---
 
@@ -185,6 +203,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 - **Anti-Cheat:** Der Client zeigt nur an. Kaufen, Klauen, Geld, Admin werden alle auf dem Server geprüft
   (Distanz, Geld, Besitz, Lock, Spam-Bremse).
 - **Performance:** wenige einfache Parts, Updates gebündelt (max. 5x/s pro Spieler), Map wird einmal gebaut.
+  Der Server bewegt keine Meteore: jeder Client rechnet die Position auf dem Laufband selbst aus.
 
 ## 📁 Dateien
 
@@ -196,10 +215,13 @@ roblox-meteor-heist/
 └── src/
     ├── shared/   (ReplicatedStorage.Shared)
     │   ├── Config.luau        ← ALLE Einstellungen
+    │   ├── Aliens.luau        ← alle 96 Aliens (3 pro Meteor)
     │   └── Util.luau
     ├── server/   (ServerScriptService.Server)
     │   ├── Main.server.luau
-    │   └── Services/          Data, Plot, Meteor, Carry, Economy, Monetization, Admin, Leaderboard …
+    │   └── Services/          Data, Graphics, Plot + MapBuilder, Meteor, Carry, Economy, Treadmill,
+    │                          Monetization, Admin, Leaderboard, MeteorFactory, AlienFactory …
     └── client/   (StarterPlayerScripts.Client)
-        └── Main.client.luau   ← gesamte Oberfläche
+        ├── Main.client.luau   ← startet die Oberfläche
+        └── Modules/           UI, Hud, Windows, Effects, WorldFX, Prompts, Fly, PhotoMode, AdminPanel
 ```

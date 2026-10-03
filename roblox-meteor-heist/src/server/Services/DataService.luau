@@ -2,6 +2,7 @@
 --  * Session-Lock: ein Spielstand ist immer nur in EINEM Server offen (keine Duplikate)
 --  * Wiederholungen bei DataStore-Fehlern, Auto-Save, Speichern beim Server-Ende
 --  * Wenn Laden fehlschlägt, wird der Spieler gekickt statt mit leerem Stand zu spielen
+--  * Alte Spielstände (v1: Meteore ohne Aliens, Speed-Level) werden automatisch umgebaut
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -11,18 +12,24 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Util = require(Shared:WaitForChild("Util"))
+local Aliens = require(Shared:WaitForChild("Aliens"))
 
 local DataService = {}
 DataService.Profiles = {} :: { [Player]: any }
 
+local DATA_VERSION = 2
+
 local DEFAULT_DATA = {
+	Version = DATA_VERSION,
 	Cash = Config.StartCash,
 	Pending = 0,
-	Meteors = {}, -- ["1"] = { Id = "Pebble", Mut = "Normal", Lv = 1, Xp = 0 }
+	-- ["1"] = { Id = "Pebble", Mut = "Normal", Lv = 1, Xp = 0, Hatch = 0, Alien = "PebbleBlob" }
+	--   Hatch = Restsekunden bis zum Schlüpfen (0 = geschlüpft), Alien = nil solange noch Meteor
+	Meteors = {},
 	Rebirths = 0,
-	SpeedLevel = 0,
+	Steps = 0, -- 👟 Schritte von den Laufbändern (bleiben bei Rebirth)
 	TotalEarned = 0,
-	Index = {}, -- ["Pebble"] = true -> schon entdeckt (bleibt bei Rebirth)
+	Index = {}, -- ["PebbleBlob"] = true -> Alien schon entdeckt (bleibt bei Rebirth)
 	Stats = { Stolen = 0, Robbed = 0, Bought = 0, RobuxSpent = 0 },
 	Daily = { Last = 0, Streak = 0 },
 	Receipts = {}, -- zuletzt verarbeitete Käufe (gegen doppelte Gutschrift)
@@ -71,6 +78,79 @@ function DataService.IsLoaded(player: Player): boolean
 	return profile ~= nil and profile.Loaded == true
 end
 
+-- -------------------------------------------------------------------
+-- MIGRATION: alte Spielstände auf das neue Format bringen
+-- -------------------------------------------------------------------
+-- Ein Slot-Eintrag reparieren (fehlende Felder, unbekannte Aliens)
+local function migrateEntry(entry)
+	local hatch = tonumber(entry.Hatch)
+	if entry.Alien ~= nil and not Aliens.ById[entry.Alien] then
+		-- Alien gibt es nicht mehr (Aliens.luau geändert) -> neu würfeln
+		entry.Alien = Aliens.Roll(entry.Id)
+	end
+	if entry.Alien == nil and hatch == nil then
+		-- Meteor aus v1 (vor den Aliens): sofort geschlüpft
+		entry.Alien = Aliens.Roll(entry.Id)
+		entry.Hatch = 0
+	elseif entry.Alien ~= nil then
+		entry.Hatch = 0
+	else
+		entry.Hatch = math.max(0, hatch or 0)
+		if entry.Hatch ~= entry.Hatch then
+			entry.Hatch = 0
+		end
+	end
+end
+
+function DataService.Migrate(data)
+	local version = tonumber(data.Version) or 1
+	if version < 2 then
+		-- Speed-Level (v1, mit Cash gekauft) -> Schritte, damit niemand langsamer wird
+		local speedLevel = tonumber(data.SpeedLevel) or 0
+		if speedLevel > 0 then
+			data.Steps = math.max(tonumber(data.Steps) or 0, math.floor(10 ^ (speedLevel / 6)))
+		end
+		-- Index (v1 = Meteor-Ids) -> das Normal-Alien jedes entdeckten Meteors
+		local newIndex = {}
+		if type(data.Index) == "table" then
+			for id in pairs(data.Index) do
+				if Aliens.ById[id] then
+					newIndex[id] = true
+				elseif Config.MeteorsById[id] then
+					local options = Aliens.ByMeteor[id]
+					if options and options[1] then
+						newIndex[options[1].Id] = true
+					end
+				end
+			end
+		end
+		data.Index = newIndex
+	end
+	data.SpeedLevel = nil
+	data.Version = DATA_VERSION
+
+	if type(data.Meteors) ~= "table" then
+		data.Meteors = {}
+	end
+	for key, entry in pairs(data.Meteors) do
+		if type(entry) ~= "table" or type(entry.Id) ~= "string" then
+			data.Meteors[key] = nil
+		else
+			migrateEntry(entry)
+		end
+	end
+	if type(data.Index) == "table" then
+		-- Index zählt nur Alien-Ids
+		for id in pairs(data.Index) do
+			if not Aliens.ById[id] then
+				data.Index[id] = nil
+			end
+		end
+	end
+	local steps = tonumber(data.Steps) or 0
+	data.Steps = (steps == steps and steps >= 0) and steps or 0
+end
+
 local function loadData(userId: number): (boolean, any)
 	if not storeOk or not store then
 		return false, "DataStore nicht verfügbar"
@@ -92,6 +172,12 @@ local function loadData(userId: number): (boolean, any)
 		end)
 		if ok and not lockedByOther then
 			local data = (result and result.Data) or Util.DeepCopy(DEFAULT_DATA)
+			-- erst migrieren (Version prüfen), DANN fehlende Felder ergänzen
+			local migrated, err = pcall(DataService.Migrate, data)
+			if not migrated then
+				warn("[DataService] Migration fehlgeschlagen: " .. tostring(err))
+				data.Version = data.Version or 1 -- beim nächsten Laden nochmal versuchen
+			end
 			Util.Reconcile(data, DEFAULT_DATA)
 			return true, data
 		end

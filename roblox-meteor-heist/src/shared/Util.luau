@@ -73,19 +73,39 @@ function Util.Reconcile(target: { [any]: any }, template: { [any]: any })
 end
 
 -- Gewichtete Zufallsauswahl: list = { {Weight = 5, ...}, ... }
+-- Einträge mit Gewicht 0 werden NIE gewählt (z.B. Admin-Seltenheit).
 function Util.WeightedPick(list: { any }, weightOf: ((any) -> number)?, rng: Random?)
+	local function weight(item): number
+		local w = tonumber(if weightOf then weightOf(item) else item.Weight) or 0
+		if w ~= w or w < 0 then
+			return 0
+		end
+		return w
+	end
 	local total = 0
+	local lastPositive = nil
 	for _, item in ipairs(list) do
-		total += weightOf and weightOf(item) or item.Weight
+		local w = weight(item)
+		total += w
+		if w > 0 then
+			lastPositive = item
+		end
+	end
+	if total <= 0 then
+		return list[1]
 	end
 	local roll = (rng or Random.new()):NextNumber() * total
 	for _, item in ipairs(list) do
-		roll -= weightOf and weightOf(item) or item.Weight
-		if roll <= 0 then
-			return item
+		local w = weight(item)
+		if w > 0 then
+			roll -= w
+			if roll <= 0 then
+				return item
+			end
 		end
 	end
-	return list[#list]
+	-- Rundungsfehler: letzter Eintrag mit Gewicht > 0
+	return lastPositive or list[#list]
 end
 
 -- Einfache Spam-Bremse pro Spieler.

@@ -138,10 +138,11 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
         <h3 class="step-title">Auf Play drücken</h3>
         <p>Oben auf den Knopf <kbd>▶ Play</kbd> klicken (oder Taste <kbd>F5</kbd>). Du landest in deiner eigenen Base.</p>
         <ul>
-          <li>Lauf in den <strong>Krater</strong> in der Mitte und drück <kbd>E</kbd> an einem Meteor.</li>
-          <li>Renn mit dem Meteor zurück in <strong>deine Base</strong>.</li>
-          <li>Lauf über das <strong>grüne Feld</strong>, um dein Geld einzusammeln.</li>
-          <li>Drück <kbd>P</kbd> für dein <strong>Admin-Panel</strong>. Spawn zum Spaß einen Secret-Meteor.</li>
+          <li>Lauf zum <strong>Laufband</strong> in der Mitte und drück <kbd>E</kbd> an einem Meteor. Er fliegt von allein in <strong>deine Base</strong>.</li>
+          <li>Warte kurz: In deiner Base <strong>schlüpft ein Alien</strong> aus dem Meteor. Erst das Alien bringt Geld.</li>
+          <li>Lauf über das <strong>grüne Feld</strong> (oder einen deiner Plätze), um dein Geld einzusammeln.</li>
+          <li>Klick rechts auf <kbd>🏃 Laufbänder</kbd> und lauf auf dem Holz-Laufband: Du sammelst <strong>Schritte</strong> und wirst schneller.</li>
+          <li>Drück <kbd>P</kbd> für dein <strong>Admin-Panel</strong>. Spawn zum Spaß einen <strong>👑 Admin-Meteor</strong>.</li>
           <li>Drück <kbd>G</kbd> zum <strong>Fliegen</strong>: Leertaste = hoch, Shift = runter, nochmal G = landen.</li>
         </ul>
       </div>
@@ -170,20 +171,21 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
         <p>Wähl <strong>Create new experience</strong> (neues Spiel). Bei „Owner“ muss <strong>dein Name</strong> stehen, keine Gruppe. Nur dann bist du automatisch Admin. Name und Beschreibung kopierst du von hier:</p>
         <div class="copy"><div class="copy-head"><span>Name</span><button class="copy-btn" type="button" data-copy="title">Kopieren</button></div><pre id="copy-title">☄️ Meteor Heist</pre></div>
         <div class="copy"><div class="copy-head"><span>Beschreibung (Deutsch)</span><button class="copy-btn" type="button" data-copy="desc-de">Kopieren</button></div><pre id="copy-desc-de">☄️ METEOR HEIST ☄️
-Meteore krachen in den Krater! Schnapp sie dir, bring sie in deine Base und werde reich. Aber pass auf: Die anderen wollen sie klauen! 😱
+Meteore fahren auf dem Laufband vorbei! Kauf sie, und sie fliegen sofort in deine Base. Dort schlüpfen ALIENS, die dir Geld bringen. Aber pass auf: Die anderen wollen sie klauen! 😱
 
-💰 Kauf Meteore und verdiene Geld pro Sekunde
-🦹 Klau Meteore aus fremden Basen (E halten)
+🛒 Kauf Meteore am Laufband (E drücken)
+🐣 Aus jedem Meteor schlüpft ein Alien: Normal, Selten oder Ultra
+💰 Aliens verdienen Geld pro Sekunde und werden immer stärker (Level 1 bis 20)
+🦹 Klau Meteore und Aliens aus fremden Basen (E halten)
 🔨 Bonk Diebe mit deinem Schläger weg
 🔒 Sperr deine Base mit dem Lock-Pad
-⚡ Meteore laden sich auf: Level 1 bis 20
+👟 Speed Farm: 7 Laufbänder, sammle Schritte und werde superschnell
 🌠 Alle 8 Minuten Meteoritenschauer: keine Locks, 3x Glück!
-👟 Speed Farm: Werde schneller als alle anderen
-💎 27 Meteore in 9 Seltenheiten, von Common bis Secret
+👽 96 Aliens im Index, 28 Meteore in 9 Seltenheiten
 🔁 Rebirth, Index und Tagesbonus
 👥 8 Spieler pro Server
 
-Schaffst du es, einen SECRET-Meteor zu klauen? 👀
+Schaffst du es, ein ULTRA-Alien zu klauen? 👀
 
 👍 Like das Spiel und ⭐ favorisiere es, damit du kein Update verpasst!</pre></div>
         <p>Fragt Studio nach einem Genre, nimm <strong>Simulation (Untergenre Tycoon)</strong>. Dann auf <kbd>Create</kbd> klicken.</p>
@@ -294,8 +296,8 @@ Schaffst du es, einen SECRET-Meteor zu klauen? 👀
 </div>
 
 <script>
-const PASSES = [{"name": "2x Cash", "description": "Verdopple dein Einkommen für immer! Alle deine Meteore bringen doppelt so viel Geld.", "price": 399, "image": "pass-2x-cash.png", "key": "DoubleCash"}, {"name": "VIP", "description": "Für immer +25 % Geld-Bonus und ein goldenes VIP-Schild über deinem Kopf! Dein Lock-Pad sperrt deine Base 90 statt 60 Sekunden lang.", "price": 249, "image": "pass-vip.png", "key": "VIP"}, {"name": "+5 Meteor-Plätze", "description": "Du hast 15 statt 10 Plätze in deiner Base. Mehr Meteore bringen mehr Geld pro Sekunde!", "price": 199, "image": "pass-extra-plaetze.png", "key": "ExtraSlots"}, {"name": "Auto Collect", "description": "Dein Geld wird automatisch eingesammelt. Du musst nie mehr zum grünen Pad laufen!", "price": 149, "image": "pass-auto-collect.png", "key": "AutoCollect"}, {"name": "2x Aufladen", "description": "Deine Meteore laden doppelt so schnell auf. So erreichen sie viel früher Level 20 und bringen mehr Geld!", "price": 299, "image": "pass-2x-aufladen.png", "key": "FastCharge"}, {"name": "Speed Boots", "description": "+10 Speed für immer! Du schnappst dir Meteore zuerst und entkommst schneller beim Klauen.", "price": 99, "image": "pass-speed-boots.png", "key": "SpeedBoots"}];
-const PRODUCTS = [{"name": "Cash Paket S", "description": "Du bekommst sofort so viel Geld, wie du in 10 Minuten verdienst. Mindestens $2.500!", "price": 25, "image": "produkt-cash-s.png", "key": "CashSmall"}, {"name": "Cash Paket M", "description": "Du bekommst sofort so viel Geld, wie du in 60 Minuten verdienst. Mindestens $20.000!", "price": 99, "image": "produkt-cash-m.png", "key": "CashMedium"}, {"name": "Cash Paket XL", "description": "Du bekommst sofort so viel Geld, wie du in 6 Stunden verdienst. Mindestens $150.000!", "price": 399, "image": "produkt-cash-xl.png", "key": "CashLarge"}, {"name": "2x Glück für den Server (15 Min)", "description": "15 Minuten lang 2x Glück für ALLE im Server! Seltene Meteore kommen öfter, und alle sehen, dass du es warst.", "price": 79, "image": "produkt-server-glueck.png", "key": "ServerLuck"}, {"name": "+10 Speed-Level", "description": "Du bekommst sofort 10 Speed-Level und läufst schneller. Es geht höchstens bis Level 60.", "price": 39, "image": "produkt-speed-10.png", "key": "Speed10"}, {"name": "Meteoritenschauer JETZT", "description": "Startet sofort einen Meteoritenschauer für alle im Server: 60 Sekunden lang mehr Meteore, 3x Glück und keine Locks!", "price": 49, "image": "produkt-meteoritenschauer.png", "key": "MeteorShower"}, {"name": "Zufälliger Legendary Meteor", "description": "Ein zufälliger Legendary-Meteor landet sofort in deiner Base: Solar Flare, Aurora Crystal oder Titan Boulder (jeder mit Chance 1 von 3). Ist deine Base voll, bekommst du seinen Wert als Geld.", "price": 149, "image": "produkt-legendary-meteor.png", "key": "LegendaryMeteor"}, {"name": "Zufälliger Mythic Meteor", "description": "Ein zufälliger Mythic-Meteor landet sofort in deiner Base: Nebula Heart, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 3). Ist deine Base voll, bekommst du seinen Wert als Geld.", "price": 449, "image": "produkt-mythic-meteor.png", "key": "MythicMeteor"}];
+const PASSES = [{"name": "2x Cash", "description": "Verdopple dein Einkommen für immer! Alle deine Aliens bringen doppelt so viel Geld.", "price": 399, "image": "pass-2x-cash.png", "key": "DoubleCash"}, {"name": "VIP", "description": "Für immer +25 % Geld-Bonus und ein goldenes VIP-Schild über deinem Kopf! Dein Lock-Pad sperrt deine Base 90 statt 60 Sekunden lang.", "price": 249, "image": "pass-vip.png", "key": "VIP"}, {"name": "+6 Plätze", "description": "Du hast 18 statt 12 Plätze in deiner Base. Mehr Aliens bringen mehr Geld pro Sekunde!", "price": 199, "image": "pass-extra-plaetze.png", "key": "ExtraSlots"}, {"name": "Auto Collect", "description": "Dein Geld wird automatisch eingesammelt. Du musst nie mehr zum grünen Pad laufen!", "price": 149, "image": "pass-auto-collect.png", "key": "AutoCollect"}, {"name": "2x Schlüpfen & Wachsen", "description": "Deine Meteore schlüpfen doppelt so schnell, und deine Aliens wachsen doppelt so schnell bis Level 20. Mehr Geld, viel früher!", "price": 299, "image": "pass-2x-aufladen.png", "key": "FastCharge"}, {"name": "2x Schritte", "description": "Doppelt so viele Schritte auf jedem Laufband, für immer! Du wirst viel schneller und entkommst beim Klauen.", "price": 99, "image": "pass-speed-boots.png", "key": "SpeedBoots"}];
+const PRODUCTS = [{"name": "Cash Paket S", "description": "Du bekommst sofort so viel Geld, wie du in 10 Minuten verdienst. Mindestens $2.500!", "price": 25, "image": "produkt-cash-s.png", "key": "CashSmall"}, {"name": "Cash Paket M", "description": "Du bekommst sofort so viel Geld, wie du in 60 Minuten verdienst. Mindestens $20.000!", "price": 99, "image": "produkt-cash-m.png", "key": "CashMedium"}, {"name": "Cash Paket XL", "description": "Du bekommst sofort so viel Geld, wie du in 6 Stunden verdienst. Mindestens $150.000!", "price": 399, "image": "produkt-cash-xl.png", "key": "CashLarge"}, {"name": "2x Glück für den Server (15 Min)", "description": "15 Minuten lang 2x Glück für ALLE im Server! Seltene Meteore kommen öfter, und alle sehen, dass du es warst.", "price": 79, "image": "produkt-server-glueck.png", "key": "ServerLuck"}, {"name": "Schritte-Paket", "description": "Du bekommst sofort so viele Schritte, wie du in 10 Minuten auf deinem besten Laufband sammelst. Mindestens 1.000 Schritte!", "price": 39, "image": "produkt-speed-10.png", "key": "Speed10"}, {"name": "Meteoritenschauer JETZT", "description": "Startet sofort einen Meteoritenschauer für alle im Server: 60 Sekunden lang mehr Meteore, 3x Glück und keine Locks!", "price": 49, "image": "produkt-meteoritenschauer.png", "key": "MeteorShower"}, {"name": "Zufälliger Legendary Meteor", "description": "Ein zufälliger Legendary-Meteor fliegt sofort in deine Base: Solar Flare, Aurora Crystal oder Titan Boulder (jeder mit Chance 1 von 3). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.", "price": 149, "image": "produkt-legendary-meteor.png", "key": "LegendaryMeteor"}, {"name": "Zufälliger Mythic Meteor", "description": "Ein zufälliger Mythic-Meteor fliegt sofort in deine Base: Nebula Heart, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 3). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.", "price": 449, "image": "produkt-mythic-meteor.png", "key": "MythicMeteor"}];
 const IMG_BASE = "https://github.com/georgleomaser-bit/website-test-demo-1/blob/claude/nice-bardeen-896r4h/roblox-meteor-heist/vorbereitet/bilder/";
 const STORE_KEY = "meteor-heist-startplan-v1";
 
