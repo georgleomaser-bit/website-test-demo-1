@@ -8,16 +8,18 @@ local Config = {}
 Config.GameName = "Meteor Heist"
 
 -- ---------------------------------------------------------------------
--- 1) ADMINS – NUR diese UserIds sehen und benutzen das Admin-Panel.
---    Deine UserId steht in der Adresszeile deines Roblox-Profils:
---    https://www.roblox.com/users/123456789/profile  ->  123456789
+-- 1) ADMINS – wer das Admin-Panel sehen und benutzen darf.
+--    NUR DU: Wem das Spiel gehört (dein Account, mit dem du es
+--    veröffentlichst), ist Admin. Du musst hier nichts eintragen!
+--    Admin kann man NICHT kaufen – der Server prüft es bei jeder Aktion.
 -- ---------------------------------------------------------------------
-Config.AdminUserIds = {
-	0, -- <<< HIER DEINE USERID EINTRAGEN (z.B. 123456789)
-}
+Config.OwnerIsAdmin = true
 
--- Beim Testen in Roblox Studio ist jeder Tester Admin (praktisch zum Ausprobieren).
--- Im veröffentlichten Spiel zählt NUR die Liste oben.
+-- Weitere Admins: LEER LASSEN, dann bist nur du Admin.
+Config.AdminUserIds = {}
+
+-- Beim Testen in Roblox Studio bist du Admin (zum Ausprobieren).
+-- Im veröffentlichten Spiel zählt nur der Besitzer (siehe oben).
 Config.StudioIsAdmin = true
 
 -- ---------------------------------------------------------------------

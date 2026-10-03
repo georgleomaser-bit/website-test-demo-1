@@ -1,0 +1,6 @@
+{
+  "name": "meteor-heist-bilder",
+  "private": true,
+  "type": "commonjs",
+  "description": "Erzeugt die Roblox-Upload-Bilder fuer Meteor Heist (node generate.js)"
+}

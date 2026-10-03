@@ -7,6 +7,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
+local PolicyService = game:GetService("PolicyService")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -490,11 +491,28 @@ for i, pass in ipairs(Config.GamePasses) do
 end
 
 section(shopContent, "💎 Boosts & Pakete", 3)
-local productGrid = grid(shopContent, 4, 255, 84)
+local productGrid = grid(shopContent, 4, 255, 104)
+-- Roblox-Regel "Paid Random Items": Chancen vor dem Kauf anzeigen und in Ländern,
+-- in denen solche Käufe verboten sind, gar nicht anbieten.
+local randomCards = {}
+local function oddsText(rarityName: string): string
+	local list = Config.MeteorsByRarity[rarityName] or {}
+	if #list == 0 then
+		return ""
+	end
+	local names = {}
+	for _, def in ipairs(list) do
+		table.insert(names, def.Name)
+	end
+	local chance = math.floor(1000 / #list + 0.5) / 10
+	return ("Chance je %s%%: %s"):format(tostring(chance), table.concat(names, ", "))
+end
 for i, product in ipairs(Config.Products) do
+	local isRandom = product.Type == "Meteor"
 	local card = create("Frame", {
 		BackgroundColor3 = THEME.PanelLight,
 		LayoutOrder = i,
+		Visible = not isRandom, -- erst zeigen, wenn die Länder-Regel geprüft ist
 		Parent = productGrid,
 	}, { corner(12) })
 	label({
@@ -505,6 +523,19 @@ for i, product in ipairs(Config.Products) do
 		MaxText = 18,
 		TextWrapped = true,
 	})
+	if isRandom then
+		table.insert(randomCards, card)
+		label({
+			Position = UDim2.new(0, 8, 0, 36),
+			Size = UDim2.new(1, -16, 0, 26),
+			Text = oddsText(product.Rarity),
+			Font = Enum.Font.Gotham,
+			TextColor3 = THEME.SubText,
+			TextWrapped = true,
+			MaxText = 12,
+			Parent = card,
+		})
+	end
 	local buy = button({
 		Position = UDim2.new(0, 8, 1, -40),
 		Size = UDim2.new(1, -16, 0, 32),
@@ -518,6 +549,14 @@ for i, product in ipairs(Config.Products) do
 	end)
 	fetchPrice(product.Id, Enum.InfoType.Product, buy, "")
 end
+task.spawn(function()
+	local ok, info = pcall(PolicyService.GetPolicyInfoForPlayerAsync, PolicyService, player)
+	-- Im Zweifel (Fehler) lieber nicht anzeigen
+	local allowed = ok and type(info) == "table" and info.ArePaidRandomItemsRestricted == false
+	for _, card in ipairs(randomCards) do
+		card.Visible = allowed
+	end
+end)
 
 -- ---------------------------------------------------------------------
 -- SPEED FARM
@@ -1002,6 +1041,118 @@ Remotes.Effect.OnClientEvent:Connect(function(name: string, strength: number)
 end)
 
 -- =====================================================================
+-- FLIEGEN / SCHWEBEN (Taste G) – nur wenn der Server es erlaubt (Attribut CanFly)
+-- WASD/Stick = Richtung (folgt der Kamera, auch hoch/runter), Leertaste = hoch, Shift = runter
+-- =====================================================================
+local FLY_SPEED = 70
+local flying = false
+local flyParts: { Instance } = {}
+local flyConnection: RBXScriptConnection? = nil
+
+local function stopFlying()
+	flying = false
+	if flyConnection then
+		flyConnection:Disconnect()
+		flyConnection = nil
+	end
+	for _, inst in ipairs(flyParts) do
+		inst:Destroy()
+	end
+	flyParts = {}
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.PlatformStand = false
+		humanoid:ChangeState(Enum.HumanoidStateType.Freefall)
+	end
+end
+
+local function startFlying()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	if not humanoid or not root or humanoid.Health <= 0 then
+		return
+	end
+	flying = true
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "FlyAttachment"
+	attachment.Parent = root
+	local velocity = Instance.new("LinearVelocity")
+	velocity.Attachment0 = attachment
+	velocity.MaxForce = 1e7
+	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	velocity.VectorVelocity = Vector3.zero
+	velocity.Parent = root
+	local align = Instance.new("AlignOrientation")
+	align.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	align.Attachment0 = attachment
+	align.MaxTorque = 1e7
+	align.Responsiveness = 40
+	align.CFrame = root.CFrame.Rotation
+	align.Parent = root
+	flyParts = { attachment, velocity, align }
+	humanoid.PlatformStand = true
+
+	flyConnection = RunService.RenderStepped:Connect(function()
+		local camera = workspace.CurrentCamera
+		if not camera or not root.Parent or humanoid.Health <= 0 then
+			stopFlying()
+			return
+		end
+		local look = camera.CFrame.LookVector
+		local move = humanoid.MoveDirection -- funktioniert mit Tastatur, Gamepad und Handy-Stick
+		local direction = Vector3.zero
+		if move.Magnitude > 0.05 then
+			local flatLook = Vector3.new(look.X, 0, look.Z)
+			local forwardAmount = flatLook.Magnitude > 0.01 and move:Dot(flatLook.Unit) or 0
+			direction = move + Vector3.new(0, look.Y * math.max(forwardAmount, 0) * 1.5, 0)
+		end
+		if not UserInputService:GetFocusedTextBox() then
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+				direction += Vector3.new(0, 1, 0)
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.Q) then
+				direction -= Vector3.new(0, 1, 0)
+			end
+		end
+		velocity.VectorVelocity = direction.Magnitude > 0.01 and direction.Unit * FLY_SPEED or Vector3.zero
+		local flat = Vector3.new(look.X, 0, look.Z)
+		if flat.Magnitude > 0.01 then
+			align.CFrame = CFrame.lookAt(Vector3.zero, flat)
+		end
+	end)
+end
+
+local function toggleFly()
+	if flying then
+		stopFlying()
+		toast("🕊️ Fliegen aus", "Info")
+	elseif player:GetAttribute("CanFly") == true then
+		startFlying()
+		if flying then
+			toast("🕊️ Fliegen an! Leertaste = hoch, Shift = runter, G = aus", "Success")
+		end
+	end
+end
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if not processed and input.KeyCode == Enum.KeyCode.G then
+		toggleFly()
+	end
+end)
+player.CharacterAdded:Connect(function()
+	if flying then
+		stopFlying()
+	end
+end)
+player:GetAttributeChangedSignal("CanFly"):Connect(function()
+	if player:GetAttribute("CanFly") ~= true and flying then
+		stopFlying()
+	end
+end)
+
+-- =====================================================================
 -- ADMIN-PANEL (wird nur angezeigt, wenn der Server dich als Admin markiert;
 -- jede Aktion wird zusätzlich auf dem Server geprüft)
 -- =====================================================================
@@ -1371,6 +1522,92 @@ local function buildAdminPanel()
 		end)
 	end
 
+	-- Admin Abuse
+	section(content, "😈 Admin Abuse", 23)
+	local abuseGrid = grid(content, 24, 146, 40)
+	local abuseActions = {
+		{
+			"🕊️ Fliegen an/aus (G)",
+			THEME.Blue,
+			function()
+				toggleFly()
+			end,
+		},
+		{
+			"🎉 ADMIN ABUSE EVENT",
+			Color3.fromRGB(200, 40, 120),
+			function()
+				admin("AdminAbuse", { Global = globalToggle })
+			end,
+		},
+		{
+			"🌙 Mond-Schwerkraft",
+			THEME.Purple,
+			function()
+				admin("Gravity", { Moon = true, Global = globalToggle })
+			end,
+		},
+		{
+			"🌍 Normale Schwerkraft",
+			THEME.Gray,
+			function()
+				admin("Gravity", { Moon = false, Global = globalToggle })
+			end,
+		},
+		{
+			"🧊 Ziel einfrieren",
+			Color3.fromRGB(80, 170, 220),
+			function()
+				admin("Freeze", { Target = targetBox.Text, Enabled = true })
+			end,
+		},
+		{
+			"🔥 Ziel auftauen",
+			THEME.Accent,
+			function()
+				admin("Freeze", { Target = targetBox.Text, Enabled = false })
+			end,
+		},
+		{
+			"📏 Ziel RIESIG",
+			THEME.Green,
+			function()
+				admin("Size", { Target = targetBox.Text, Scale = 3 })
+			end,
+		},
+		{
+			"🐜 Ziel MINI",
+			THEME.Green,
+			function()
+				admin("Size", { Target = targetBox.Text, Scale = 0.5 })
+			end,
+		},
+		{
+			"📐 Ziel normal groß",
+			THEME.Gray,
+			function()
+				admin("Size", { Target = targetBox.Text, Scale = 1 })
+			end,
+		},
+		{
+			"👻 Ziel unsichtbar",
+			Color3.fromRGB(110, 110, 140),
+			function()
+				admin("Invisible", { Target = targetBox.Text, Enabled = true })
+			end,
+		},
+		{
+			"👀 Ziel sichtbar",
+			THEME.Gray,
+			function()
+				admin("Invisible", { Target = targetBox.Text, Enabled = false })
+			end,
+		},
+	}
+	for i, info in ipairs(abuseActions) do
+		button({ Text = info[1], Color = info[2], LayoutOrder = i, MaxText = 14, Parent = abuseGrid }, info[3])
+	end
+
 	sideButton("🛠️ Admin", Color3.fromRGB(200, 40, 40), 7, function()
 		openWindow(adminWindow)
 	end)
@@ -1379,7 +1616,7 @@ local function buildAdminPanel()
 			openWindow(adminWindow)
 		end
 	end)
-	toast("🛠️ Admin-Panel aktiv – Taste P oder Button links", "Info")
+	toast("🛠️ Admin-Panel: Taste P • Fliegen: Taste G", "Info")
 end
 
 local adminBuilt = false

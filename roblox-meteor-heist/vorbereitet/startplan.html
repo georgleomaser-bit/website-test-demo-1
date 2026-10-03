@@ -1,0 +1,412 @@
+<title>Meteor Heist Startplan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: eine schmale Spalte wie ein Missions-Logbuch – Fortschritt oben, Schritte als abhakbare Karten darunter */
+:root {
+  color-scheme: dark;
+  --space: #120f1f;
+  --panel: #1d1830;
+  --panel-2: #272040;
+  --line: #3a3159;
+  --text: #f3efff;
+  --muted: #b7aed6;
+  --ember: #ff9a3c;
+  --ember-deep: #e2621b;
+  --done: #5fd38a;
+  --link: #8fc3ff;
+  --font-display: "Lilita One", "Arial Black", Impact, sans-serif;
+  --font-body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--space);
+  background-image: radial-gradient(circle at 85% -10%, #3b1f4f 0, transparent 45%), radial-gradient(circle at 0% 30%, #1d2650 0, transparent 40%);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  padding: 24px 16px 64px;
+}
+.wrap { max-width: 760px; margin: 0 auto; display: grid; gap: 28px; }
+header { display: grid; gap: 14px; }
+.eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--ember); }
+h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(34px, 7vw, 52px); line-height: 1.05; margin: 0; text-wrap: balance; letter-spacing: .01em; }
+h1 span { color: var(--ember); }
+.lead { color: var(--muted); margin: 0; max-width: 62ch; }
+.progress { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: color-mix(in srgb, var(--space) 88%, transparent); backdrop-filter: blur(8px); padding: 12px 0; display: grid; gap: 8px; }
+.bar { height: 14px; border-radius: 99px; background: var(--panel-2); overflow: hidden; border: 1px solid var(--line); }
+.bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ember-deep), var(--ember)); border-radius: 99px; transition: width .35s ease; }
+.progress-row { display: flex; justify-content: space-between; gap: 12px; font-weight: 800; font-size: 14px; flex-wrap: wrap; }
+.progress-row button { background: none; border: 0; color: var(--muted); font: inherit; font-weight: 600; cursor: pointer; text-decoration: underline; padding: 0; }
+section { display: grid; gap: 12px; }
+section > h2 { font-family: var(--font-display); font-weight: 400; font-size: 26px; margin: 0; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+section > h2 small { font-family: var(--font-body); font-size: 14px; color: var(--muted); font-weight: 600; }
+.step { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; grid-template-columns: 40px 1fr; gap: 14px; align-items: start; transition: opacity .2s, border-color .2s; }
+.step.is-done { opacity: .62; border-color: color-mix(in srgb, var(--done) 45%, var(--line)); }
+.step.is-done .step-title { text-decoration: line-through; text-decoration-color: var(--done); }
+.check { width: 40px; height: 40px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel-2); display: grid; place-items: center; cursor: pointer; padding: 0; color: transparent; font-size: 22px; font-weight: 800; }
+.check:hover { border-color: var(--ember); }
+.check:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--ember); outline-offset: 2px; }
+.step.is-done .check { background: var(--done); border-color: var(--done); color: #0d2316; }
+.step-body { min-width: 0; display: grid; gap: 8px; }
+.step-num { font-family: var(--font-mono); font-size: 12px; color: var(--ember); letter-spacing: .08em; }
+.step-title { font-weight: 800; font-size: 18px; margin: 0; }
+.step-body p { margin: 0; color: var(--text); }
+.step-body ul, .step-body ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.path { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.path kbd { font-family: var(--font-mono); font-size: 13px; background: var(--panel-2); border: 1px solid var(--line); border-bottom-width: 3px; border-radius: 8px; padding: 1px 8px; color: var(--text); white-space: nowrap; }
+.path em { font-style: normal; color: var(--muted); font-size: 13px; }
+.note { background: color-mix(in srgb, var(--ember) 12%, var(--panel)); border: 1px solid color-mix(in srgb, var(--ember) 40%, var(--line)); border-radius: 12px; padding: 10px 12px; font-size: 15px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; background: var(--ember); color: #2a1200; font-weight: 800; border: 0; border-radius: 12px; padding: 10px 16px; text-decoration: none; font-size: 15px; cursor: pointer; width: fit-content; }
+.btn.secondary { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); }
+.copy { display: grid; gap: 6px; }
+.copy-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.copy-head span { font-size: 13px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.copy-btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 6px 12px; font: inherit; font-weight: 800; font-size: 14px; cursor: pointer; }
+.copy-btn.ok { background: var(--done); color: #0d2316; border-color: var(--done); }
+.copy pre { margin: 0; background: #0d0b17; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-family: var(--font-mono); font-size: 13.5px; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; color: var(--text); }
+.items { display: grid; gap: 10px; }
+details.item { background: var(--panel-2); border: 1px solid var(--line); border-radius: 12px; padding: 0; }
+details.item summary { list-style: none; cursor: pointer; padding: 12px 14px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; font-weight: 800; }
+details.item summary::-webkit-details-marker { display: none; }
+details.item summary .price { font-family: var(--font-mono); color: var(--ember); font-size: 14px; white-space: nowrap; }
+details.item summary .key { display: block; font-family: var(--font-mono); font-size: 12px; color: var(--muted); font-weight: 500; }
+details.item[open] summary { border-bottom: 1px solid var(--line); }
+.item-body { padding: 12px 14px; display: grid; gap: 10px; }
+.item-body .img-line { font-size: 14px; color: var(--muted); }
+.item-body .img-line code { font-family: var(--font-mono); color: var(--text); }
+a { color: var(--link); }
+footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 16px; }
+@media (max-width: 480px) {
+  .step { grid-template-columns: 1fr; }
+  .check { width: 100%; height: 44px; }
+  .check::after { content: "Erledigt?"; color: var(--muted); font-size: 15px; }
+  .step.is-done .check::after { content: "Erledigt ✓"; color: #0d2316; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Roblox · Meteor Heist · Startplan</div>
+    <h1>Dein Spiel geht <span>online</span></h1>
+    <p class="lead">Mach einfach einen Schritt nach dem anderen und hak ihn ab. Alles, was du eintippen musst, kannst du mit einem Klick kopieren. Dein Fortschritt bleibt in diesem Browser gespeichert.</p>
+  </header>
+
+  <div class="progress" aria-live="polite">
+    <div class="progress-row"><span id="progress-text">0 von 0 erledigt</span><button type="button" id="reset">Alles zurücksetzen</button></div>
+    <div class="bar"><i id="progress-bar"></i></div>
+  </div>
+
+  <section>
+    <h2>Teil 1 · Spiel öffnen <small>ca. 3 Minuten</small></h2>
+
+    <div class="step" data-step="download">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 1</div>
+        <h3 class="step-title">Spieldatei herunterladen</h3>
+        <p>Lade die Datei <strong>MeteorHeist.rbxlx</strong> herunter. Fragt GitHub nach einem Login, melde dich an. Alternativ nimmst du die Datei aus dem Chat mit Claude.</p>
+        <a class="btn" href="https://github.com/georgleomaser-bit/website-test-demo-1/raw/claude/nice-bardeen-896r4h/roblox-meteor-heist/MeteorHeist.rbxlx" target="_blank" rel="noopener">⬇ MeteorHeist.rbxlx herunterladen</a>
+        <p class="note">Speicher sie dir am besten auf den <strong>Desktop</strong>, dann findest du sie gleich wieder.</p>
+      </div>
+    </div>
+
+    <div class="step" data-step="open">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 2</div>
+        <h3 class="step-title">In Roblox Studio öffnen</h3>
+        <p>Roblox Studio starten. Ganz oben links:</p>
+        <p class="path"><kbd>File</kbd><em>›</em><kbd>Open from File…</kbd></p>
+        <p>Dann <strong>MeteorHeist.rbxlx</strong> auswählen und öffnen.</p>
+        <p class="note">Die Welt sieht erst leer aus. Das ist richtig so: Die Map baut sich beim Starten von allein auf.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Teil 2 · Ausprobieren <small>ca. 5 Minuten</small></h2>
+
+    <div class="step" data-step="play">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 3</div>
+        <h3 class="step-title">Auf Play drücken</h3>
+        <p>Oben auf den Knopf <kbd>▶ Play</kbd> klicken (oder Taste <kbd>F5</kbd>). Du landest in deiner eigenen Base.</p>
+        <ul>
+          <li>Lauf in den <strong>Krater</strong> in der Mitte und drück <kbd>E</kbd> an einem Meteor.</li>
+          <li>Renn mit dem Meteor zurück in <strong>deine Base</strong>.</li>
+          <li>Lauf über das <strong>grüne Feld</strong>, um dein Geld einzusammeln.</li>
+          <li>Drück <kbd>P</kbd> für dein <strong>Admin-Panel</strong>. Spawn zum Spaß einen Secret-Meteor.</li>
+          <li>Drück <kbd>G</kbd> zum <strong>Fliegen</strong>: Leertaste = hoch, Shift = runter, nochmal G = landen.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step" data-step="stop">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 4</div>
+        <h3 class="step-title">Test beenden</h3>
+        <p>Oben auf den roten Knopf <kbd>■ Stop</kbd> klicken.</p>
+        <p class="note">Steht unten im Fenster <strong>Output</strong> roter Text? Kopier ihn und schick ihn Claude im Chat, dann wird es repariert. (Fenster öffnen: <span class="path"><kbd>View</kbd><em>›</em><kbd>Output</kbd></span>)</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Teil 3 · Veröffentlichen <small>ca. 10 Minuten</small></h2>
+
+    <div class="step" data-step="publish">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 5</div>
+        <h3 class="step-title">Auf Roblox hochladen</h3>
+        <p class="path"><kbd>File</kbd><em>›</em><kbd>Publish to Roblox</kbd></p>
+        <p>Wähl <strong>Create new experience</strong> (neues Spiel). Bei „Owner“ muss <strong>dein Name</strong> stehen, keine Gruppe. Nur dann bist du automatisch Admin. Name und Beschreibung kopierst du von hier:</p>
+        <div class="copy"><div class="copy-head"><span>Name</span><button class="copy-btn" type="button" data-copy="title">Kopieren</button></div><pre id="copy-title">☄️ Meteor Heist</pre></div>
+        <div class="copy"><div class="copy-head"><span>Beschreibung (Deutsch)</span><button class="copy-btn" type="button" data-copy="desc-de">Kopieren</button></div><pre id="copy-desc-de">☄️ METEOR HEIST ☄️
+Meteore krachen in den Krater! Schnapp sie dir, bring sie in deine Base und werde reich. Aber pass auf: Die anderen wollen sie klauen! 😱
+
+💰 Kauf Meteore und verdiene Geld pro Sekunde
+🦹 Klau Meteore aus fremden Basen (E halten)
+🔨 Bonk Diebe mit deinem Schläger weg
+🔒 Sperr deine Base mit dem Lock-Pad
+⚡ Meteore laden sich auf: Level 1 bis 20
+🌠 Alle 8 Minuten Meteoritenschauer: keine Locks, 3x Glück!
+👟 Speed Farm: Werde schneller als alle anderen
+💎 27 Meteore in 9 Seltenheiten, von Common bis Secret
+🔁 Rebirth, Index und Tagesbonus
+👥 8 Spieler pro Server
+
+Schaffst du es, einen SECRET-Meteor zu klauen? 👀
+
+👍 Like das Spiel und ⭐ favorisiere es, damit du kein Update verpasst!</pre></div>
+        <p>Fragt Studio nach einem Genre, nimm <strong>Simulation (Untergenre Tycoon)</strong>. Dann auf <kbd>Create</kbd> klicken.</p>
+      </div>
+    </div>
+
+    <div class="step" data-step="api">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 6</div>
+        <h3 class="step-title">Speichern einschalten (wichtig!)</h3>
+        <p class="path"><kbd>Home</kbd><em>›</em><kbd>Game Settings</kbd><em>›</em><kbd>Security</kbd></p>
+        <p>Den Schalter <strong>Enable Studio Access to API Services</strong> einschalten und unten auf <kbd>Save</kbd> klicken.</p>
+        <p class="note">Ohne diesen Schritt werden Spielstände nicht gespeichert.</p>
+      </div>
+    </div>
+
+    <div class="step" data-step="maxplayers">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 7</div>
+        <h3 class="step-title">8 Spieler pro Server einstellen</h3>
+        <p>Es gibt genau 8 Basen, deshalb maximal 8 Spieler pro Server.</p>
+        <p class="path"><kbd>Game Settings</kbd><em>›</em><kbd>Places</kbd><em>›</em><kbd>⋯</kbd><em>›</em><kbd>Edit</kbd></p>
+        <p><strong>Max Players</strong> auf <strong>8</strong> stellen und <kbd>Save</kbd> klicken.</p>
+        <p class="note">Je nach Studio-Version heißt das Feld auch „Server Size“. Findest du es nicht, geh im Browser auf <a href="https://create.roblox.com/dashboard/creations" target="_blank" rel="noopener">create.roblox.com/dashboard/creations</a>, dann dein Spiel › Places › den Place anklicken.</p>
+      </div>
+    </div>
+
+    <div class="step" data-step="images">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 8</div>
+        <h3 class="step-title">Icon und Vorschaubilder hochladen</h3>
+        <p>Die fertigen Bilder liegen bereit. Öffne den Ordner und lade jedes Bild herunter (Bild anklicken › Download-Knopf).</p>
+        <a class="btn secondary" href="https://github.com/georgleomaser-bit/website-test-demo-1/tree/claude/nice-bardeen-896r4h/roblox-meteor-heist/vorbereitet/bilder" target="_blank" rel="noopener">🖼 Bilder-Ordner öffnen</a>
+        <p class="path"><kbd>Game Settings</kbd><em>›</em><kbd>Basic Info</kbd></p>
+        <ul>
+          <li>Bei <strong>Game Icon</strong>: <code>spiel-icon.png</code></li>
+          <li>Bei <strong>Thumbnails</strong>: <code>thumbnail-1.png</code>, <code>thumbnail-2.png</code>, <code>thumbnail-3.png</code></li>
+        </ul>
+        <p>Dann <kbd>Save</kbd>. Neue Bilder prüft Roblox kurz, bevor alle sie sehen.</p>
+      </div>
+    </div>
+
+    <div class="step" data-step="public">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 9</div>
+        <h3 class="step-title">Spiel öffentlich machen</h3>
+        <p class="path"><kbd>Game Settings</kbd><em>›</em><kbd>Permissions</kbd></p>
+        <p>Bei <strong>Playability</strong> auf <strong>Public</strong> stellen und <kbd>Save</kbd> klicken. Ab jetzt kann jeder dein Spiel finden und spielen.</p>
+        <p>Vorher stellt Roblox dir ein paar Fragen zu deinem Spiel (Fragebogen „Maturity &amp; Compliance“). Antworte ehrlich:</p>
+        <ul>
+          <li><strong>Gewalt:</strong> Es gibt nur einen Bonk-Schläger, der Spieler wegschubst. Kein Blut, keine echten Waffen.</li>
+          <li><strong>Paid Random Items</strong> (für Robux etwas Zufälliges kaufen): <strong>Ja</strong>, wegen „Zufälliger Legendary/Mythic Meteor“.</li>
+        </ul>
+        <p class="note">Danach einmal im Browser auf roblox.com unter <strong>Create › Creations</strong> dein Spiel öffnen und auf Play drücken. Dein erstes eigenes Roblox-Spiel ist online! 🎉</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Teil 4 · Robux verdienen <small>wenn das Spiel läuft</small></h2>
+
+    <div class="step" data-step="passes">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 10</div>
+        <h3 class="step-title">Gamepasses anlegen</h3>
+        <p>Im Browser: <a href="https://create.roblox.com/dashboard/creations" target="_blank" rel="noopener">create.roblox.com/dashboard/creations</a> › dein Spiel › <strong>Monetization</strong> › <strong>Passes</strong> › <strong>Create a Pass</strong>.</p>
+        <ol>
+          <li>Bild hochladen, Name und Beschreibung von unten kopieren, <kbd>Create Pass</kbd>.</li>
+          <li>Den neuen Pass anklicken › <strong>Sales</strong> › <strong>Item for Sale</strong> einschalten › Preis eintragen › <kbd>Save</kbd>.</li>
+          <li>Die <strong>ID</strong> kopieren (Zahl in der Adresszeile) und unten in die Vorlage schreiben.</li>
+        </ol>
+        <div class="items" id="passes"></div>
+      </div>
+    </div>
+
+    <div class="step" data-step="products">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 11</div>
+        <h3 class="step-title">Developer Products anlegen</h3>
+        <p>Gleiche Seite: <strong>Monetization</strong> › <strong>Developer Products</strong> › <strong>Create</strong>. Bild, Name, Beschreibung und Preis eintragen, speichern, <strong>ID</strong> kopieren.</p>
+        <div class="items" id="products"></div>
+      </div>
+    </div>
+
+    <div class="step" data-step="ids">
+      <button class="check" type="button" aria-label="Schritt erledigt">✓</button>
+      <div class="step-body">
+        <div class="step-num">SCHRITT 12</div>
+        <h3 class="step-title">IDs an Claude schicken</h3>
+        <p>Kopier diese Vorlage, schreib hinter jedes <code>=</code> die passende ID und schick sie Claude im Chat. Claude trägt alles ein, du bekommst eine neue Datei.</p>
+        <div class="copy"><div class="copy-head"><span>Vorlage</span><button class="copy-btn" type="button" data-copy="ids">Kopieren</button></div><pre id="copy-ids"></pre></div>
+        <p>Neue Datei öffnen (<span class="path"><kbd>File</kbd><em>›</em><kbd>Open from File…</kbd></span>), dann:</p>
+        <p class="path"><kbd>File</kbd><em>›</em><kbd>Publish to Roblox As…</kbd><em>›</em> dein Spiel auswählen <em>›</em><kbd>Overwrite</kbd></p>
+        <p class="note">Wichtig ist <strong>„Publish to Roblox As…“</strong> mit deinem bestehenden Spiel. Sonst entsteht ein zweites, neues Spiel.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Fragen oder ein Fehler? Schreib Claude einfach im Chat, was passiert ist. Ein Screenshot hilft am meisten.
+  </footer>
+</div>
+
+<script>
+const PASSES = [{"name": "2x Cash", "description": "Verdopple dein Einkommen für immer! Alle deine Meteore bringen doppelt so viel Geld.", "price": 399, "image": "pass-2x-cash.png", "key": "DoubleCash"}, {"name": "VIP", "description": "Für immer +25 % Geld-Bonus und ein goldenes VIP-Schild über deinem Kopf! Dein Lock-Pad sperrt deine Base 90 statt 60 Sekunden lang.", "price": 249, "image": "pass-vip.png", "key": "VIP"}, {"name": "+5 Meteor-Plätze", "description": "Du hast 15 statt 10 Plätze in deiner Base. Mehr Meteore bringen mehr Geld pro Sekunde!", "price": 199, "image": "pass-extra-plaetze.png", "key": "ExtraSlots"}, {"name": "Auto Collect", "description": "Dein Geld wird automatisch eingesammelt. Du musst nie mehr zum grünen Pad laufen!", "price": 149, "image": "pass-auto-collect.png", "key": "AutoCollect"}, {"name": "2x Aufladen", "description": "Deine Meteore laden doppelt so schnell auf. So erreichen sie viel früher Level 20 und bringen mehr Geld!", "price": 299, "image": "pass-2x-aufladen.png", "key": "FastCharge"}, {"name": "Speed Boots", "description": "+10 Speed für immer! Du schnappst dir Meteore zuerst und entkommst schneller beim Klauen.", "price": 99, "image": "pass-speed-boots.png", "key": "SpeedBoots"}];
+const PRODUCTS = [{"name": "Cash Paket S", "description": "Du bekommst sofort so viel Geld, wie du in 10 Minuten verdienst. Mindestens $2.500!", "price": 25, "image": "produkt-cash-s.png", "key": "CashSmall"}, {"name": "Cash Paket M", "description": "Du bekommst sofort so viel Geld, wie du in 60 Minuten verdienst. Mindestens $20.000!", "price": 99, "image": "produkt-cash-m.png", "key": "CashMedium"}, {"name": "Cash Paket XL", "description": "Du bekommst sofort so viel Geld, wie du in 6 Stunden verdienst. Mindestens $150.000!", "price": 399, "image": "produkt-cash-xl.png", "key": "CashLarge"}, {"name": "2x Glück für den Server (15 Min)", "description": "15 Minuten lang 2x Glück für ALLE im Server! Seltene Meteore kommen öfter, und alle sehen, dass du es warst.", "price": 79, "image": "produkt-server-glueck.png", "key": "ServerLuck"}, {"name": "+10 Speed-Level", "description": "Du bekommst sofort 10 Speed-Level und läufst schneller. Es geht höchstens bis Level 60.", "price": 39, "image": "produkt-speed-10.png", "key": "Speed10"}, {"name": "Meteoritenschauer JETZT", "description": "Startet sofort einen Meteoritenschauer für alle im Server: 60 Sekunden lang mehr Meteore, 3x Glück und keine Locks!", "price": 49, "image": "produkt-meteoritenschauer.png", "key": "MeteorShower"}, {"name": "Zufälliger Legendary Meteor", "description": "Ein zufälliger Legendary-Meteor landet sofort in deiner Base: Solar Flare, Aurora Crystal oder Titan Boulder (jeder mit Chance 1 von 3). Ist deine Base voll, bekommst du seinen Wert als Geld.", "price": 149, "image": "produkt-legendary-meteor.png", "key": "LegendaryMeteor"}, {"name": "Zufälliger Mythic Meteor", "description": "Ein zufälliger Mythic-Meteor landet sofort in deiner Base: Nebula Heart, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 3). Ist deine Base voll, bekommst du seinen Wert als Geld.", "price": 449, "image": "produkt-mythic-meteor.png", "key": "MythicMeteor"}];
+const IMG_BASE = "https://github.com/georgleomaser-bit/website-test-demo-1/blob/claude/nice-bardeen-896r4h/roblox-meteor-heist/vorbereitet/bilder/";
+const STORE_KEY = "meteor-heist-startplan-v1";
+
+function loadDone() {
+  try { return JSON.parse(localStorage.getItem(STORE_KEY) || "{}") || {}; } catch (e) { return {}; }
+}
+function saveDone(state) {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* Speicher nicht verfügbar – Seite funktioniert trotzdem */ }
+}
+
+function el(tag, attrs, text) {
+  const node = document.createElement(tag);
+  Object.entries(attrs || {}).forEach(([k, v]) => node.setAttribute(k, v));
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function copyBlock(label, id, value) {
+  const wrap = el("div", { class: "copy" });
+  const head = el("div", { class: "copy-head" });
+  head.append(el("span", {}, label));
+  const btn = el("button", { class: "copy-btn", type: "button", "data-copy": id }, "Kopieren");
+  head.append(btn);
+  const pre = el("pre", { id: "copy-" + id }, value);
+  wrap.append(head, pre);
+  return wrap;
+}
+
+function renderItems(list, containerId, prefix) {
+  const box = document.getElementById(containerId);
+  list.forEach((item, i) => {
+    const d = el("details", { class: "item" });
+    const s = el("summary");
+    const left = el("div");
+    left.append(document.createTextNode(item.name));
+    left.append(el("span", { class: "key" }, item.key));
+    s.append(left, el("span", { class: "price" }, item.price + " R$"));
+    const body = el("div", { class: "item-body" });
+    body.append(copyBlock("Name", prefix + i + "-name", item.name));
+    body.append(copyBlock("Beschreibung", prefix + i + "-desc", item.description));
+    body.append(copyBlock("Preis (Robux)", prefix + i + "-price", String(item.price)));
+    const img = el("p", { class: "img-line" });
+    img.append(document.createTextNode("Bild: "));
+    const a = el("a", { href: IMG_BASE + item.image, target: "_blank", rel: "noopener" });
+    a.append(el("code", {}, item.image));
+    img.append(a);
+    body.append(img);
+    d.append(s, body);
+    box.append(d);
+  });
+}
+
+renderItems(PASSES, "passes", "p");
+renderItems(PRODUCTS, "products", "d");
+document.getElementById("copy-ids").textContent =
+  "Gamepasses:\n" + PASSES.map(p => p.key + " = ").join("\n") +
+  "\n\nProducts:\n" + PRODUCTS.map(p => p.key + " = ").join("\n");
+
+// Kopieren
+document.addEventListener("click", (event) => {
+  const btn = event.target.closest(".copy-btn");
+  if (!btn) return;
+  const pre = document.getElementById("copy-" + btn.dataset.copy);
+  if (!pre) return;
+  const text = pre.textContent;
+  const done = () => {
+    btn.textContent = "Kopiert ✓";
+    btn.classList.add("ok");
+    setTimeout(() => { btn.textContent = "Kopieren"; btn.classList.remove("ok"); }, 1600);
+  };
+  const fallback = () => {
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    btn.textContent = "Markiert – jetzt Strg+C";
+  };
+  try {
+    navigator.clipboard.writeText(text).then(done, fallback);
+  } catch (e) {
+    fallback();
+  }
+});
+
+// Abhaken + Fortschritt
+const steps = Array.from(document.querySelectorAll(".step"));
+let state = loadDone();
+function render() {
+  let count = 0;
+  steps.forEach((step) => {
+    const isDone = !!state[step.dataset.step];
+    step.classList.toggle("is-done", isDone);
+    const check = step.querySelector(".check");
+    check.setAttribute("aria-pressed", String(isDone));
+    if (isDone) count++;
+  });
+  document.getElementById("progress-text").textContent = count + " von " + steps.length + " erledigt" + (count === steps.length ? " 🎉" : "");
+  document.getElementById("progress-bar").style.width = (count / steps.length * 100) + "%";
+}
+steps.forEach((step) => {
+  step.querySelector(".check").addEventListener("click", () => {
+    state[step.dataset.step] = !state[step.dataset.step];
+    saveDone(state);
+    render();
+  });
+});
+document.getElementById("reset").addEventListener("click", () => {
+  state = {};
+  saveDone(state);
+  render();
+});
+render();
+</script>

@@ -1,5 +1,5 @@
 -- Admin-Panel (Server-Seite). JEDE Aktion prüft hier auf dem Server, ob der Spieler
--- in Config.AdminUserIds steht. Exploiter können das Panel also nicht benutzen,
+-- der Besitzer des Spiels ist oder in Config.AdminUserIds steht. Exploiter können das Panel also nicht benutzen,
 -- selbst wenn sie es sich im Client anzeigen lassen.
 
 local MessagingService = game:GetService("MessagingService")
@@ -16,11 +16,36 @@ local AdminService = {}
 local Services
 local limiter = Util.RateLimiter(12, 1)
 
-function AdminService.IsAdmin(player: Player): boolean
+local adminCache: { [Player]: boolean } = {}
+
+-- Gehört das Spiel diesem Spieler? (Spiel unter dem eigenen Account veröffentlicht)
+-- Bei Gruppen-Spielen: Admins per UserId in Config.AdminUserIds eintragen.
+local function isGameOwner(player: Player): boolean
+	return Config.OwnerIsAdmin
+		and game.CreatorType == Enum.CreatorType.User
+		and game.CreatorId ~= 0
+		and player.UserId == game.CreatorId
+end
+
+local function computeAdmin(player: Player): boolean
 	if table.find(Config.AdminUserIds, player.UserId) then
 		return true
 	end
+	if isGameOwner(player) then
+		return true
+	end
 	return RunService:IsStudio() and Config.StudioIsAdmin
+end
+
+function AdminService.IsAdmin(player: Player): boolean
+	local cached = adminCache[player]
+	if cached == nil then
+		cached = computeAdmin(player)
+		if player.Parent then
+			adminCache[player] = cached
+		end
+	end
+	return cached
 end
 
 -- "me", "all", "others" oder (Teil vom) Namen
@@ -81,6 +106,155 @@ end
 -- -------------------------------------------------------------------
 -- SERVERÜBERGREIFEND (alle Server gleichzeitig)
 -- -------------------------------------------------------------------
+-- -------------------------------------------------------------------
+-- ADMIN ABUSE (Spaß-Befehle)
+-- -------------------------------------------------------------------
+local DEFAULT_GRAVITY = 196.2
+local MOON_GRAVITY = 45
+local gravityToken = 0
+
+local function setGravity(value: number, seconds: number?)
+	gravityToken += 1
+	local token = gravityToken
+	workspace.Gravity = value
+	if seconds then
+		task.delay(seconds, function()
+			if gravityToken == token then
+				workspace.Gravity = DEFAULT_GRAVITY
+			end
+		end)
+	end
+end
+
+local function runAdminAbuse()
+	Services.EconomyService.NotifyAll(
+		"😈 ADMIN ABUSE! 10x Glück, Meteoritenschauer, Geld für alle, Gratis-Secrets & Mond-Schwerkraft!",
+		"Event"
+	)
+	Services.MeteorService.SetServerLuck(10, workspace:GetServerTimeNow() + 600)
+	Services.MeteorService.StartShower(120)
+	setGravity(MOON_GRAVITY, 90)
+	for _, p in ipairs(Players:GetPlayers()) do
+		local gift = math.floor(math.max(10000, Services.EconomyService.GetIncome(p) * 600))
+		Services.EconomyService.AddCash(p, gift)
+		Services.EconomyService.Notify(p, "🎁 Admin-Geschenk: " .. Util.FormatCash(gift), "Success")
+		Services.EconomyService.Effect(p, "Confetti", 3)
+	end
+	task.spawn(function()
+		for i = 1, 6 do
+			Services.MeteorService.SpawnMeteor({
+				Rarity = i <= 2 and "Secret" or "Mythic",
+				Free = true,
+				Announce = false,
+			})
+			task.wait(1.5)
+		end
+	end)
+end
+
+local function getRoot(p: Player): BasePart?
+	local character = p.Character
+	return character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
+local function setInvisible(p: Player, invisible: boolean)
+	local character = p.Character
+	if not character then
+		return
+	end
+	for _, d in ipairs(character:GetDescendants()) do
+		if d:IsA("BasePart") or d:IsA("Decal") then
+			if invisible then
+				if d:GetAttribute("AdminOrigT") == nil then
+					d:SetAttribute("AdminOrigT", d.Transparency)
+				end
+				d.Transparency = 1
+			else
+				local orig = d:GetAttribute("AdminOrigT")
+				if orig ~= nil then
+					d.Transparency = orig
+					d:SetAttribute("AdminOrigT", nil)
+				end
+			end
+		end
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = invisible and Enum.HumanoidDisplayDistanceType.None
+			or Enum.HumanoidDisplayDistanceType.Viewer
+	end
+	local head = character:FindFirstChild("Head")
+	local overhead = head and head:FindFirstChild("OverheadTag")
+	if overhead and overhead:IsA("BillboardGui") then
+		overhead.Enabled = not invisible
+	end
+end
+
+local function setScale(p: Player, scale: number): boolean
+	local character = p.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not character or not humanoid then
+		return false
+	end
+	local found = false
+	for _, name in ipairs({ "BodyHeightScale", "BodyWidthScale", "BodyDepthScale", "HeadScale" }) do
+		local value = humanoid:FindFirstChild(name)
+		if value and value:IsA("NumberValue") then
+			value.Value = scale
+			found = true
+		end
+	end
+	if not found then
+		-- Fallback (z.B. R6-Avatare)
+		local ok = pcall(function()
+			character:ScaleTo(scale)
+		end)
+		found = ok
+	end
+	return found
+end
+
+-- Schild über dem Kopf: 🛠️ ADMIN (Besitzer/Admins) oder 👑 VIP (VIP-Gamepass)
+local function updateTag(p: Player)
+	local character = p.Character
+	local head = character and character:FindFirstChild("Head")
+	if not head then
+		return
+	end
+	local old = head:FindFirstChild("OverheadTag")
+	if old then
+		old:Destroy()
+	end
+	local text, color
+	if p:GetAttribute("IsAdmin") == true and not RunService:IsStudio() then
+		text, color = "🛠️ ADMIN", Color3.fromRGB(255, 80, 80)
+	elseif p:GetAttribute("VIP") == true then
+		text, color = "👑 VIP", Color3.fromRGB(255, 205, 60)
+	end
+	if not text then
+		return
+	end
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "OverheadTag"
+	gui.Size = UDim2.new(0, 120, 0, 28)
+	gui.StudsOffset = Vector3.new(0, 2.6, 0)
+	gui.MaxDistance = 80
+	gui.LightInfluence = 0
+	gui.Enabled = head.Transparency < 1
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.TextColor3 = color
+	label.Text = text
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Parent = label
+	label.Parent = gui
+	gui.Parent = head
+end
+
 local function handleGlobal(message)
 	if type(message) ~= "table" then
 		return
@@ -95,6 +269,10 @@ local function handleGlobal(message)
 		)
 	elseif message.Type == "Shower" then
 		Services.MeteorService.StartShower(num(message.Seconds, Config.ShowerDuration, 10, 3600))
+	elseif message.Type == "AdminAbuse" then
+		runAdminAbuse()
+	elseif message.Type == "Gravity" then
+		setGravity(num(message.Value, DEFAULT_GRAVITY, 5, 500))
 	end
 end
 
@@ -319,7 +497,8 @@ function Actions.Ban(admin, args)
 		userId = targets[1].UserId
 		display = targets[1].DisplayName
 	end
-	if userId == admin.UserId or table.find(Config.AdminUserIds, userId) then
+	local isOwner = game.CreatorType == Enum.CreatorType.User and userId == game.CreatorId
+	if userId == admin.UserId or isOwner or table.find(Config.AdminUserIds, userId) then
 		return false, "Admins können nicht gebannt werden"
 	end
 	local days = num(args.Days, 0, 0, 3650)
@@ -422,6 +601,64 @@ function Actions.ClearGround(_admin)
 	return true, "Krater geleert"
 end
 
+function Actions.AdminAbuse(_admin, args)
+	if args.Global then
+		publishGlobal({ Type = "AdminAbuse" })
+		return true, "😈 ADMIN ABUSE auf ALLEN Servern!"
+	end
+	runAdminAbuse()
+	return true, "😈 ADMIN ABUSE gestartet!"
+end
+
+function Actions.Gravity(_admin, args)
+	local value = args.Moon and MOON_GRAVITY or DEFAULT_GRAVITY
+	if args.Global then
+		publishGlobal({ Type = "Gravity", Value = value })
+	else
+		setGravity(value)
+	end
+	if args.Moon then
+		Services.EconomyService.NotifyAll("🌙 Mond-Schwerkraft! Spring mal hoch!", "Event")
+	end
+	return true, args.Moon and "🌙 Mond-Schwerkraft an" or "Normale Schwerkraft"
+end
+
+function Actions.Freeze(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	local done = {}
+	for _, p in ipairs(targets) do
+		local root = getRoot(p)
+		if root then
+			root.Anchored = args.Enabled == true
+			table.insert(done, p.DisplayName)
+			if args.Enabled == true and p ~= admin then
+				Services.EconomyService.Notify(p, "🧊 Ein Admin hat dich eingefroren!", "Error")
+			end
+		end
+	end
+	return #done > 0, (args.Enabled and "🧊 Eingefroren: " or "Aufgetaut: ") .. table.concat(done, ", ")
+end
+
+function Actions.Size(admin, args)
+	local scale = num(args.Scale, 1, 0.3, 4)
+	local targets = resolveTargets(admin, args.Target)
+	local done = {}
+	for _, p in ipairs(targets) do
+		if setScale(p, scale) then
+			table.insert(done, p.DisplayName)
+		end
+	end
+	return #done > 0, "📏 Größe x" .. scale .. ": " .. table.concat(done, ", ")
+end
+
+function Actions.Invisible(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	for _, p in ipairs(targets) do
+		setInvisible(p, args.Enabled == true)
+	end
+	return #targets > 0, (args.Enabled and "👻 Unsichtbar: " or "Sichtbar: ") .. names(targets)
+end
+
 -- -------------------------------------------------------------------
 function AdminService.Init(services)
 	Services = services
@@ -431,14 +668,26 @@ function AdminService.Start()
 	local function onPlayer(player: Player)
 		if AdminService.IsAdmin(player) then
 			player:SetAttribute("IsAdmin", true)
+			player:SetAttribute("CanFly", true)
+		end
+		player.CharacterAdded:Connect(function(character)
+			character:WaitForChild("Head", 10)
+			updateTag(player)
+		end)
+		player:GetAttributeChangedSignal("VIP"):Connect(function()
+			updateTag(player)
+		end)
+		if player.Character then
+			updateTag(player)
 		end
 	end
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in ipairs(Players:GetPlayers()) do
-		onPlayer(player)
+		task.spawn(onPlayer, player)
 	end
 	Players.PlayerRemoving:Connect(function(player)
 		limiter.Clear(player)
+		adminCache[player] = nil
 	end)
 
 	Remotes.Admin.OnServerInvoke = function(player: Player, action: any, args: any)

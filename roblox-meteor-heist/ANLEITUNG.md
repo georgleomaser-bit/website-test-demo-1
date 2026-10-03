@@ -24,7 +24,7 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber eigene
 | **Tagesbonus** | Mit Streak bis Tag 7 |
 | **Offline-Einkommen** | 25 % für bis zu 3 h |
 | **Geld-Einnahmen** | 6 Gamepasses + 8 Developer Products + Premium-Bonus |
-| **Admin-Panel** | Nur für deine UserId: Meteore spawnen, Meteorregen, Geld/Rebirths/Speed setzen, Pässe schenken, Glück-Events und Schauer (auch auf ALLEN Servern), Nachrichten, Kick/Bann/Entbannen, Reset, Teleport |
+| **Admin-Panel** | Nur für dich (automatisch, weil dir das Spiel gehört): Meteore spawnen, Meteorregen, Geld/Rebirths/Speed setzen, Pässe schenken, Glück-Events und Schauer (auch auf ALLEN Servern), Nachrichten, Kick/Bann/Entbannen, Reset, Teleport |
 | **Technik** | Sicheres Speichern mit Session-Lock (keine Duplikate, kein Datenverlust), Käufe doppelt abgesichert, alles serverseitig geprüft (Exploiter können nichts schummeln), globale Top-10-Bestenliste |
 
 Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts zusammenbauen.
@@ -38,21 +38,11 @@ Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts 
    (auf GitHub: Datei anklicken → Download-Button „Download raw file“).
 3. Öffne Roblox Studio → **File → Open from File…** → `MeteorHeist.rbxlx` wählen.
 
-## 👑 SCHRITT 2 – Admin-Panel NUR für dich freischalten
+## 👑 SCHRITT 2 – Admin-Panel (passiert automatisch!)
 
-1. Öffne dein Roblox-Profil im Browser. In der Adresszeile steht z. B.
-   `https://www.roblox.com/users/123456789/profile`. Die Zahl **123456789** ist deine **UserId**.
-2. In Studio links im **Explorer**: `ReplicatedStorage → Shared → Config` doppelklicken.
-3. Ganz oben ändern:
-   ```lua
-   Config.AdminUserIds = {
-       123456789, -- deine UserId
-   }
-   ```
-4. Speichern mit **Strg + S**.
-
-> Im Studio-Test ist jeder Tester Admin (zum Ausprobieren). Im echten Spiel **nur** die IDs in der Liste.
-> Das wird auf dem Server geprüft, Hacker können das Panel also nicht benutzen.
+Du musst **nichts** eintragen. **Nur du** bist Admin, weil das Spiel deinem Account gehört.
+Niemand sonst ist Admin, und Admin kann man **nicht kaufen**. Der Server prüft das bei jeder
+Aktion, auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du sowieso Admin.)
 
 ## ▶️ SCHRITT 3 – Testen
 
@@ -125,12 +115,13 @@ Marketing und am Roblox-Algorithmus**. Das kann niemand garantieren. Was am meis
 
 | Bereich | Funktion |
 |---|---|
-| 🎯 Ziel | `me`, `all`, `others`, (Teil vom) Spielernamen oder UserId. „Spieler laden“ zeigt alle im Server |
+| 🎯 Ziel | `me`, `all`, `others`, (Teil vom) Spielernamen oder UserId. „Spieler laden“ zeigt alle im Server. Über deinem Kopf steht im echten Spiel 🛠️ ADMIN |
 | ☄️ Spawnen | Jeden Meteor + Mutation wählen → **Im Krater** (fällt mit Ankündigung), **Vor mir**, **Gratis vor mir**, **In Ziel-Base** (inkl. Level) |
 | 🌧️ Meteorregen | 10-40 Meteore einer Seltenheit regnen herab |
 | 💰 Werte | Cash geben/setzen, Rebirths setzen, Speed-Level setzen, Gamepässe schenken (bis Server-Wechsel) |
 | 🎉 Events | X-fach Glück für Y Minuten, Meteoritenschauer, Nachricht an alle. Mit 🌍 **auf ALLEN Servern gleichzeitig** |
 | 🛡️ Moderation | Kick, Bann (Tage oder für immer, gilt fürs ganze Spiel), Entbannen per UserId, Base leeren, Spielstand zurücksetzen, Teleport zu/holen, Krater leeren. Bann/Reset brauchen einen zweiten Klick |
+| 😈 Admin Abuse | **Fliegen/Schweben** (Taste **G**: WASD + Leertaste hoch, Shift runter), **ADMIN-ABUSE-EVENT** (10x Glück, Schauer, Geld für alle, Gratis-Secrets, Mond-Schwerkraft, auch auf allen Servern), Mond-Schwerkraft an/aus, Spieler einfrieren/auftauen, riesig/mini/normal, unsichtbar |
 
 ## ⚙️ Balancing – alles in `Config`
 
@@ -175,7 +166,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | Problem | Lösung |
 |---|---|
 | Spielstand wird in Studio nicht gespeichert | Schritt 4.2: „Enable Studio Access to API Services“ einschalten (Spiel muss veröffentlicht sein) |
-| Admin-Panel fehlt im echten Spiel | UserId in `Config.AdminUserIds` falsch, nochmal prüfen und neu publishen |
+| Admin-Panel fehlt im echten Spiel | Das Spiel muss unter **deinem** Account veröffentlicht sein (bei „Owner“ dein Name, keine Gruppe) |
 | Shop zeigt „Bald verfügbar“ | Die ID in `Config` ist noch `0` |
 | „Server voll – keine Base frei“ | Max Players auf 8 stellen (Schritt 4.3) |
 | Rote Fehler im **Output**-Fenster | Text kopieren und mir hier schicken, ich fixe es |
