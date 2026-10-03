@@ -3,8 +3,11 @@
 --   "Steps"    -> fliegende "+X 👟"-Zahl über deinem Charakter (wie im Speed-Simulator)
 --   "Collect"  -> großes "+$X" in der Bildschirmmitte
 --   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base
+--                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter)
 --   "Hatch"    -> Funken-Explosion + Lichtblitz, wenn ein Alien schlüpft
+--   "HatchReveal" -> große Karte in der Bildschirmmitte (seltenes Alien geschlüpft) + Konfetti
 --   "Shake", "Confetti", "Alarm" wie bisher
+--  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
 -- =====================================================================
 
@@ -336,10 +339,11 @@ type Flight = {
 	Height: number,
 	Age: number,
 	Color: Color3,
+	Fall: boolean, -- fast senkrecht von oben: beschleunigt fallen statt Bogen
 }
 
-local DELIVER_TIME = 0.9
-local MAX_FLIGHTS = 12
+local DELIVER_TIME = 0.9 -- gleich lang wie die Fall-Zeit auf dem Server
+local MAX_FLIGHTS = 32 -- Egg Rush: viele Eier fallen fast gleichzeitig
 local flights: { Flight } = {}
 
 local function addTrail(part: BasePart, size: number, color: Color3, tail: Color3)
@@ -394,13 +398,16 @@ local function deliver(data: any)
 		Parent = folder,
 	})
 	addTrail(part, size, color, tail)
+	local flat = Vector3.new(to.X - from.X, 0, to.Z - from.Z).Magnitude
+	local fall = from.Y - to.Y > flat * 2
 	table.insert(flights, {
 		Part = part,
 		From = from,
 		To = to,
-		Height = math.clamp((to - from).Magnitude * 0.35, 8, 45),
+		Height = if fall then 0 else math.clamp((to - from).Magnitude * 0.35, 8, 45),
 		Age = 0,
 		Color = tail,
+		Fall = fall,
 	})
 end
 
@@ -409,14 +416,15 @@ local function stepFlights(dt: number)
 		local flight = flights[i]
 		flight.Age += dt
 		local t = math.min(1, flight.Age / DELIVER_TIME)
-		local e = t * t * (3 - 2 * t) -- weich anfahren und abbremsen
+		-- Bogen: weich anfahren und abbremsen. Fall: immer schneller (wie Schwerkraft)
+		local e = if flight.Fall then t * t else t * t * (3 - 2 * t)
 		local pos = flight.From:Lerp(flight.To, e) + Vector3.new(0, flight.Height * 4 * e * (1 - e), 0)
 		flight.Part.CFrame = CFrame.Angles(flight.Age * 6, flight.Age * 4, 0) + pos
 		if t >= 1 then
 			flight.Part:Destroy()
 			flights[i] = flights[#flights]
 			flights[#flights] = nil
-			burst(flight.To, flight.Color, 14, false)
+			burst(flight.To, flight.Color, if flight.Fall then 22 else 14, false)
 		end
 	end
 end
@@ -502,6 +510,422 @@ local function alarm()
 end
 
 -- ---------------------------------------------------------------------
+-- HATCH REVEAL: große Karte in der Mitte (Name in Seltenheits-Farbe, Stufe, Mutation)
+-- Eine Karte wird einmal gebaut und wiederverwendet; mehrere hintereinander warten kurz.
+-- ---------------------------------------------------------------------
+local REVEAL_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local REVEAL_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+local REVEAL_SPIN_INFO = TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+local REVEAL_TIME = 3.2
+local MAX_REVEAL_QUEUE = 4
+-- Ersatz-Symbole (Config.Mutations -> Icon hat Vorrang; gleiche Symbole wie an Aliens und Meteoren)
+local MUTATION_ICONS: { [string]: string } = {
+	Gold = "🪙",
+	Diamond = "💎",
+	Cosmic = "🌌",
+	Frost = "❄️",
+	Lava = "🔥",
+	Rainbow = "🌈",
+}
+
+type RevealUI = {
+	Holder: Frame,
+	Scale: UIScale,
+	Rays: Frame,
+	RayTween: Tween?,
+	Card: Frame,
+	CardGradient: UIGradient,
+	Title: TextLabel,
+	Face: Frame,
+	FaceStroke: UIStroke,
+	Eyes: { Frame },
+	Name: TextLabel,
+	Info: TextLabel,
+	Mutation: TextLabel,
+	MutationGradient: UIGradient,
+	Income: TextLabel,
+}
+
+local reveal: RevealUI? = nil
+local revealQueue: { any } = {}
+local revealBusy = false
+local revealSkip = false
+
+local function rainbowSequence(): ColorSequence
+	local keys = {}
+	for i = 0, 6 do
+		table.insert(keys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6, 0.85, 1)))
+	end
+	return ColorSequence.new(keys)
+end
+
+local function buildReveal(): RevealUI?
+	local gui = UI.Root
+	if not gui then
+		return nil
+	end
+	local holder: Frame = UI.Create("Frame", {
+		Name = "HatchReveal",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.45),
+		Size = UDim2.fromOffset(440, 290),
+		BackgroundTransparency = 1,
+		Visible = false,
+		ZIndex = 30,
+		Parent = gui,
+	})
+	local scale: UIScale = UI.Create("UIScale", { Scale = 0, Parent = holder })
+	-- Strahlen hinter der Karte (drehen sich langsam)
+	local rays: Frame = UI.Create("Frame", {
+		Name = "Rays",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(560, 560),
+		BackgroundTransparency = 1,
+		ZIndex = 30,
+		Parent = holder,
+	})
+	for i = 0, 5 do
+		UI.Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0, 46, 1, 0),
+			Rotation = i * 30,
+			BackgroundColor3 = WHITE,
+			BackgroundTransparency = 0.72,
+			BorderSizePixel = 0,
+			ZIndex = 30,
+			Parent = rays,
+		})
+	end
+	local cardGradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
+	local card: Frame = UI.Create("Frame", {
+		Name = "Card",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WHITE,
+		ZIndex = 31,
+		Parent = holder,
+	}, { UI.Corner(22), UI.Stroke(BLACK, 4), cardGradient })
+	local closeButton: TextButton = UI.Create("TextButton", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 40,
+		Parent = card,
+	})
+	closeButton.Activated:Connect(function()
+		revealSkip = true
+	end)
+	local title = UI.Label({
+		Position = UDim2.fromOffset(14, 10),
+		Size = UDim2.new(1, -28, 0, 40),
+		Text = "🐣 GESCHLÜPFT!",
+		TextColor3 = UI.Theme.Yellow,
+		MaxText = 34,
+		Outline = 3,
+		ZIndex = 32,
+		Parent = card,
+	})
+	-- Gesicht des Aliens (Kreis in seiner Farbe + Augen)
+	local faceStroke = UI.Stroke(BLACK, 4)
+	local face: Frame = UI.Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 56),
+		Size = UDim2.fromOffset(92, 92),
+		BackgroundColor3 = WHITE,
+		ZIndex = 32,
+		Parent = card,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), faceStroke })
+	local eyes: { Frame } = {}
+	for _ = 1, 4 do
+		local eye: Frame = UI.Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromOffset(22, 22),
+			BackgroundColor3 = WHITE,
+			Visible = false,
+			ZIndex = 33,
+			Parent = face,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), UI.Stroke(BLACK, 2) })
+		UI.Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.58, 0.58),
+			Size = UDim2.fromScale(0.45, 0.45),
+			BackgroundColor3 = BLACK,
+			ZIndex = 34,
+			Parent = eye,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+		table.insert(eyes, eye)
+	end
+	local nameLabel = UI.Label({
+		Position = UDim2.fromOffset(14, 152),
+		Size = UDim2.new(1, -28, 0, 44),
+		Text = "",
+		MaxText = 38,
+		Outline = 3,
+		ZIndex = 32,
+		Parent = card,
+	})
+	local info = UI.Label({
+		Position = UDim2.fromOffset(14, 196),
+		Size = UDim2.new(1, -28, 0, 26),
+		Text = "",
+		MaxText = 22,
+		Outline = 2,
+		ZIndex = 32,
+		Parent = card,
+	})
+	local mutationGradient: UIGradient = UI.Create("UIGradient", { Color = rainbowSequence(), Enabled = false })
+	local mutation = UI.Label({
+		Position = UDim2.fromOffset(14, 222),
+		Size = UDim2.new(0.5, -18, 0, 26),
+		Text = "",
+		TextXAlignment = Enum.TextXAlignment.Right,
+		MaxText = 20,
+		Outline = 2,
+		ZIndex = 32,
+		Parent = card,
+	})
+	mutationGradient.Parent = mutation
+	local income = UI.Label({
+		Position = UDim2.new(0.5, 4, 0, 222),
+		Size = UDim2.new(0.5, -18, 0, 26),
+		Text = "",
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = UI.Theme.Cash,
+		MaxText = 20,
+		Outline = 2,
+		ZIndex = 32,
+		Parent = card,
+	})
+	UI.Label({
+		Position = UDim2.new(0, 14, 1, -30),
+		Size = UDim2.new(1, -28, 0, 20),
+		Text = "Klick zum Schließen",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = UI.Theme.SubText,
+		MaxText = 13,
+		ZIndex = 32,
+		Parent = card,
+	})
+	return {
+		Holder = holder,
+		Scale = scale,
+		Rays = rays,
+		RayTween = nil,
+		Card = card,
+		CardGradient = cardGradient,
+		Title = title,
+		Face = face,
+		FaceStroke = faceStroke,
+		Eyes = eyes,
+		Name = nameLabel,
+		Info = info,
+		Mutation = mutation,
+		MutationGradient = mutationGradient,
+		Income = income,
+	}
+end
+
+-- Augen gleichmäßig nebeneinander (1-4)
+local function placeEyes(ui: RevealUI, count: number)
+	count = math.clamp(math.floor(count), 1, 4)
+	for i, eye in ipairs(ui.Eyes) do
+		eye.Visible = i <= count
+		if i <= count then
+			local x = if count == 1 then 0.5 else 0.22 + (i - 1) * (0.56 / (count - 1))
+			eye.Position = UDim2.fromScale(x, 0.42)
+			local size = if count == 1 then 34 elseif count == 2 then 24 else 18
+			eye.Size = UDim2.fromOffset(size, size)
+		end
+	end
+end
+
+local function fillReveal(ui: RevealUI, data: any): boolean
+	local Config = ctx.Config
+	local def = ctx.Aliens.ById[data.AlienId]
+	if not def then
+		return false
+	end
+	local rarity = Config.RaritiesByName[def.Rarity]
+	local rarityColor: Color3 = if rarity then rarity.Color else WHITE
+	local tierColors = ctx.Aliens.TierColors or {}
+	local tierColor: Color3 = tierColors[def.Tier] or WHITE
+	local look = def.Look or {}
+	local mut = Config.MutationsByName[data.Mut]
+	local ultra = def.Tier == "Ultra"
+	ui.Title.Text = if ultra
+		then "🌟 ULTRA GESCHLÜPFT! 🌟"
+		elseif def.Tier == "Selten" then "✨ SELTEN GESCHLÜPFT!"
+		else "🐣 GESCHLÜPFT!"
+	ui.CardGradient.Color = ColorSequence.new(rarityColor:Lerp(BLACK, 0.35), UI.Theme.PanelDark)
+	ui.Face.BackgroundColor3 = if typeof(look.Color) == "Color3" then look.Color else rarityColor
+	ui.FaceStroke.Color = if typeof(look.Accent) == "Color3" then look.Accent else BLACK
+	placeEyes(ui, tonumber(look.Eyes) or 2)
+	ui.Name.Text = tostring(def.Name)
+	ui.Name.TextColor3 = rarityColor
+	ui.Info.Text = tostring(def.Tier) .. "  •  " .. tostring(def.Rarity)
+	ui.Info.TextColor3 = tierColor
+	local mutName = if mut and mut.Name ~= "Normal" then mut.Name else nil
+	if mutName and mut then
+		local icon = if type(mut.Icon) == "string" and mut.Icon ~= "" then mut.Icon else MUTATION_ICONS[mutName]
+		ui.Mutation.Text = (icon or "✨") .. " " .. mutName .. " x" .. UI.FormatMult(mut.Mult)
+		ui.Mutation.TextColor3 = if mut.Rainbow == true then WHITE else (mut.Color or WHITE)
+		ui.MutationGradient.Enabled = mut.Rainbow == true
+	else
+		ui.Mutation.Text = "Normal"
+		ui.Mutation.TextColor3 = UI.Theme.SubText
+		ui.MutationGradient.Enabled = false
+	end
+	-- Einkommen auf Level 1 (gleiche Rechnung wie Config.MeteorIncome)
+	local meteor = Config.MeteorsById[def.Meteor]
+	local perSecond = (if meteor then tonumber(meteor.Income) or 0 else 0)
+		* (tonumber(def.IncomeMult) or 1)
+		* (if mut then tonumber(mut.Mult) or 1 else 1)
+	ui.Income.Text = "💵 +" .. ctx.Util.FormatCash(perSecond) .. "/s"
+	for _, ray in ipairs(ui.Rays:GetChildren()) do
+		if ray:IsA("Frame") then
+			ray.BackgroundColor3 = if ultra then UI.Theme.Yellow else rarityColor:Lerp(WHITE, 0.4)
+		end
+	end
+	return true
+end
+
+local function showNextReveal()
+	if revealBusy then
+		return
+	end
+	revealBusy = true
+	while #revealQueue > 0 do
+		local data = table.remove(revealQueue, 1)
+		local ui = reveal or buildReveal()
+		reveal = ui
+		if ui and not hidden and fillReveal(ui, data) then
+			revealSkip = false
+			ui.Holder.Visible = true
+			ui.Scale.Scale = 0.2
+			ui.Rays.Rotation = 0
+			local rayTween = TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 })
+			ui.RayTween = rayTween
+			rayTween:Play()
+			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = 1 }):Play()
+			confetti(1.6)
+			shake(0.35)
+			local shown = 0
+			while shown < REVEAL_TIME and not revealSkip and not hidden do
+				shown += task.wait(0.1)
+			end
+			local out = TweenService:Create(ui.Scale, REVEAL_OUT_INFO, { Scale = 0 })
+			out:Play()
+			out.Completed:Wait()
+			rayTween:Cancel()
+			ui.RayTween = nil
+			ui.Holder.Visible = false
+		end
+	end
+	revealBusy = false
+end
+
+local function hatchReveal(data: any)
+	if type(data) ~= "table" or type(data.AlienId) ~= "string" then
+		return
+	end
+	if #revealQueue >= MAX_REVEAL_QUEUE then
+		table.remove(revealQueue, 1) -- die älteste wartende Karte fällt weg
+	end
+	table.insert(revealQueue, data)
+	task.spawn(showNextReveal)
+end
+
+-- ---------------------------------------------------------------------
+-- 🧊 EINGEFROREN (Falle / Admin-Freeze): HumanoidRootPart ist verankert
+-- ---------------------------------------------------------------------
+local FROZEN_FADE_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local frozenFrame: Frame? = nil
+local frozenLabel: TextLabel? = nil
+local frozenConnection: RBXScriptConnection? = nil
+local frozenShown = false
+
+local function setFrozen(on: boolean)
+	local frame = frozenFrame
+	local label = frozenLabel
+	if not frame or not label or on == frozenShown then
+		return
+	end
+	frozenShown = on
+	if on then
+		frame.Visible = true
+		frame.BackgroundTransparency = 1
+		label.TextTransparency = 1
+		TweenService:Create(frame, FROZEN_FADE_INFO, { BackgroundTransparency = 0.72 }):Play()
+		TweenService:Create(label, FROZEN_FADE_INFO, { TextTransparency = 0 }):Play()
+	else
+		local fade = TweenService:Create(frame, FROZEN_FADE_INFO, { BackgroundTransparency = 1 })
+		TweenService:Create(label, FROZEN_FADE_INFO, { TextTransparency = 1 }):Play()
+		fade.Completed:Connect(function()
+			if not frozenShown then
+				frame.Visible = false
+			end
+		end)
+		fade:Play()
+	end
+end
+
+local function watchFrozen(character: Model)
+	if frozenConnection then
+		frozenConnection:Disconnect()
+		frozenConnection = nil
+	end
+	setFrozen(false)
+	local root = character:WaitForChild("HumanoidRootPart", 10)
+	if not root or not root:IsA("BasePart") or player.Character ~= character then
+		return
+	end
+	frozenConnection = root:GetPropertyChangedSignal("Anchored"):Connect(function()
+		setFrozen(root.Anchored)
+	end)
+	setFrozen(root.Anchored)
+end
+
+local function buildFrozen()
+	local gui = UI.Root
+	if not gui then
+		return
+	end
+	local frame: Frame = UI.Create("Frame", {
+		Name = "Frozen",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(150, 220, 255),
+		BackgroundTransparency = 1,
+		Visible = false,
+		ZIndex = 1,
+		Parent = gui,
+	})
+	-- Eis-Rand: innen durchsichtig, außen hellblau
+	UI.Create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.25, 0.85),
+			NumberSequenceKeypoint.new(0.75, 0.85),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Parent = frame,
+	})
+	frozenLabel = UI.Label({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.3),
+		Size = UDim2.fromOffset(520, 60),
+		Text = "🧊 EINGEFROREN! 🧊",
+		TextColor3 = Color3.fromRGB(200, 240, 255),
+		TextTransparency = 1,
+		MaxText = 46,
+		Outline = 3,
+		ZIndex = 2,
+		Parent = frame,
+	})
+	frozenFrame = frame
+end
+
+-- ---------------------------------------------------------------------
 -- ÖFFENTLICH
 -- ---------------------------------------------------------------------
 function Effects.Play(name: any, strength: any, data: any)
@@ -527,6 +951,8 @@ function Effects.Play(name: any, strength: any, data: any)
 		deliver(data)
 	elseif name == "Hatch" then
 		hatch(data)
+	elseif name == "HatchReveal" then
+		hatchReveal(data)
 	elseif name == "Shake" then
 		shake(amount)
 	elseif name == "Confetti" then
@@ -536,7 +962,7 @@ function Effects.Play(name: any, strength: any, data: any)
 	end
 end
 
--- Foto-Modus: fliegende Zahlen ausblenden
+-- Foto-Modus: fliegende Zahlen + große Karten ausblenden
 function Effects.SetHidden(value: boolean)
 	hidden = value
 	if value then
@@ -544,6 +970,7 @@ function Effects.SetHidden(value: boolean)
 			fly.Active = false
 			fly.Gui.Enabled = false
 		end
+		table.clear(revealQueue)
 	end
 end
 
@@ -559,6 +986,7 @@ function Effects.Init(context: any)
 		Parent = UI.Root,
 	})
 	buildFlyPool()
+	buildFrozen()
 	RunService.RenderStepped:Connect(function(dt: number)
 		stepFlyNumbers(dt)
 		if #flights > 0 then
@@ -566,11 +994,15 @@ function Effects.Init(context: any)
 		end
 		stepShake(dt)
 	end)
-	-- Neuer Charakter: Wackeln zurücksetzen
-	player.CharacterAdded:Connect(function()
+	-- Neuer Charakter: Wackeln zurücksetzen, Eingefroren-Anzeige neu verbinden
+	player.CharacterAdded:Connect(function(character)
 		shakeLeft = 0
 		shakeHumanoid = nil
+		watchFrozen(character)
 	end)
+	if player.Character then
+		task.spawn(watchFrozen, player.Character)
+	end
 end
 
 return Effects

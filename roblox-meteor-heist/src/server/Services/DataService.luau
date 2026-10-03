@@ -30,10 +30,17 @@ local DEFAULT_DATA = {
 	Steps = 0, -- 👟 Schritte von den Laufbändern (bleiben bei Rebirth)
 	TotalEarned = 0,
 	Index = {}, -- ["PebbleBlob"] = true -> Alien schon entdeckt (bleibt bei Rebirth)
-	Stats = { Stolen = 0, Robbed = 0, Bought = 0, RobuxSpent = 0 },
+	Stats = { Stolen = 0, Robbed = 0, Bought = 0, RobuxSpent = 0, Grabbed = 0 }, -- Grabbed = Eier vom Band/Boden
 	Daily = { Last = 0, Streak = 0 },
 	Receipts = {}, -- zuletzt verarbeitete Käufe (gegen doppelte Gutschrift)
 	LastOnline = 0,
+	-- v2.1 (alte Spielstände bekommen die Felder automatisch über Reconcile):
+	Spins = 1, -- 🎡 Glücksrad-Drehs (gekauft/gewonnen; der Gratis-Dreh zählt extra)
+	LastFreeSpin = 0, -- os.time() des letzten Gratis-Drehs
+	-- 📜 Tagesaufgaben: Day = UTC-Tag "YYYY-MM-DD", List = { { Id, Kind, Goal, Progress, Claimed } }
+	Quests = { Day = "", List = {} },
+	Gadgets = {}, -- ["SpeedCoil"] = true -> besessen (bleibt bei Rebirth)
+	StarterBought = false, -- ⭐ Starter-Paket schon gekauft (nur einmal im Shop)
 }
 
 local LOCK_EXPIRE = 30 * 60 -- ein Lock älter als 30 Min gilt als verwaist
@@ -102,6 +109,36 @@ local function migrateEntry(entry)
 	end
 end
 
+-- v2.1-Felder prüfen: kaputte Werte auf nil setzen -> Reconcile trägt danach den Standard ein
+local function sanitizeRewards(data)
+	local spins = data.Spins
+	if type(spins) ~= "number" or spins ~= spins then
+		data.Spins = nil
+	else
+		data.Spins = math.clamp(math.floor(spins), 0, 1e6)
+	end
+	local lastFree = data.LastFreeSpin
+	if type(lastFree) ~= "number" or lastFree ~= lastFree or math.abs(lastFree) == math.huge then
+		data.LastFreeSpin = nil
+	end
+	local quests = data.Quests
+	if type(quests) ~= "table" or type(quests.Day) ~= "string" or type(quests.List) ~= "table" then
+		data.Quests = nil -- der RewardService würfelt dann neue Aufgaben
+	end
+	if type(data.Gadgets) ~= "table" then
+		data.Gadgets = nil
+	else
+		for id, owned in pairs(data.Gadgets) do
+			if type(id) ~= "string" or owned ~= true then
+				data.Gadgets[id] = nil
+			end
+		end
+	end
+	if type(data.StarterBought) ~= "boolean" then
+		data.StarterBought = nil
+	end
+end
+
 function DataService.Migrate(data)
 	local version = tonumber(data.Version) or 1
 	if version < 2 then
@@ -149,6 +186,7 @@ function DataService.Migrate(data)
 	end
 	local steps = tonumber(data.Steps) or 0
 	data.Steps = (steps == steps and steps >= 0) and steps or 0
+	sanitizeRewards(data)
 end
 
 local function loadData(userId: number): (boolean, any)
@@ -300,6 +338,7 @@ function DataService.Reset(player: Player)
 	if profile and profile.Loaded then
 		local fresh = Util.DeepCopy(DEFAULT_DATA)
 		fresh.Receipts = profile.Data.Receipts -- Käufe bleiben verbucht
+		fresh.StarterBought = profile.Data.StarterBought == true -- Starter-Paket gibt es nur einmal
 		for k in pairs(profile.Data) do
 			profile.Data[k] = nil
 		end

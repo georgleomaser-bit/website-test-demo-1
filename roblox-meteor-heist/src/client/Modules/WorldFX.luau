@@ -1,6 +1,7 @@
 -- =====================================================================
 --  WELT-ANIMATIONEN (alles lokal auf deinem Gerät -> butterweich, kein Server-Lag)
 --   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start)
+--     (sichtbare in der Nähe jedes Frame, weit weg / hinter der Kamera seltener)
 --   • Streifen auf dem Laufband und auf den Treadmills laufen mit
 --   • Aliens wippen sanft, Regenbogen-Teile färben sich durch
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
@@ -20,6 +21,9 @@ local fxFolder: Folder? = nil
 
 local NEAR_DISTANCE = 260 -- näher dran: jedes Frame bewegen
 local FAR_FRAME_SKIP = 4 -- weiter weg: nur jedes 4. Frame
+local BEHIND_FRAME_SKIP = 8 -- hinter der Kamera (nicht zu sehen): nur jedes 8. Frame
+local CLOSE_DISTANCE = 40 -- so nah immer jedes Frame (auch knapp hinter/neben der Kamera sichtbar)
+local STRIPE_NEAR = 180 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
 local BOB_RANGE = 100 -- Aliens nur in der Nähe wippen lassen
 local MAX_BOB = 24 -- höchstens so viele (die nächsten) wippen gleichzeitig
@@ -91,7 +95,7 @@ local function addBeltMeteor(inst: Instance): boolean
 		T0 = t0,
 		MaxDist = beltLength + 6,
 		Phase = math.random() * math.pi * 2,
-		Slot = math.random(0, FAR_FRAME_SKIP - 1),
+		Slot = math.random(0, BEHIND_FRAME_SKIP - 1),
 	}
 	beltByPart[inst] = record
 	table.insert(beltRecords, record)
@@ -113,8 +117,10 @@ local function watchBeltMeteor(inst: Instance)
 	end)
 end
 
--- Gibt die Anzahl der eingetragenen Teile zurück
-local function stepBelt(now: number, camPos: Vector3, count: number): number
+-- Gibt die Anzahl der eingetragenen Teile zurück.
+-- Viele Meteore (bis ~110): sichtbare in der Nähe jedes Frame, weit weg jedes 4., hinter der
+-- Kamera nur jedes 8. Frame (dreht man sich um, sind sie spätestens nach 8 Frames richtig).
+local function stepBelt(now: number, camPos: Vector3, look: Vector3, count: number): number
 	for i = #beltRecords, 1, -1 do
 		local record = beltRecords[i]
 		local part = record.Part
@@ -124,7 +130,18 @@ local function stepBelt(now: number, camPos: Vector3, count: number): number
 			local elapsed = now - record.T0
 			local dist = math.clamp(record.Speed * elapsed, 0, record.MaxDist)
 			local pos = record.Start + record.Dir * dist
-			if (pos - camPos).Magnitude < NEAR_DISTANCE or (frameNumber + record.Slot) % FAR_FRAME_SKIP == 0 then
+			local rel = pos - camPos
+			local distance = rel.Magnitude
+			local slot = frameNumber + record.Slot
+			local due
+			if distance >= CLOSE_DISTANCE and rel:Dot(look) < -8 then
+				due = slot % BEHIND_FRAME_SKIP == 0 -- hinter der Kamera
+			elseif distance < NEAR_DISTANCE then
+				due = true
+			else
+				due = slot % FAR_FRAME_SKIP == 0
+			end
+			if due then
 				local angle = elapsed * BELT_SPIN + record.Phase
 				local c, s = math.cos(angle), math.sin(angle)
 				count += 1
@@ -220,12 +237,15 @@ local function stepStripes(now: number, camPos: Vector3, count: number): number
 			local r00, r01, r02, r10, r11, r12, r20, r21, r22 =
 				rot[1], rot[2], rot[3], rot[4], rot[5], rot[6], rot[7], rot[8], rot[9]
 			local shift = (now * set.Speed) % set.Length
+			local thin = set.Always -- langes Hauptband: weit entfernte Streifen seltener bewegen
 			for i, stripe in ipairs(set.Parts) do
 				local s = ((i - 0.5) * set.Spacing + shift) % set.Length
 				local pos = set.Origin + set.Dir * s
-				count += 1
-				moveParts[count] = stripe
-				moveCFrames[count] = CFrame.new(pos.X, pos.Y, pos.Z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+				if not thin or (frameNumber + i) % FAR_FRAME_SKIP == 0 or (pos - camPos).Magnitude < STRIPE_NEAR then
+					count += 1
+					moveParts[count] = stripe
+					moveCFrames[count] = CFrame.new(pos.X, pos.Y, pos.Z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+				end
 			end
 		end
 	end
@@ -836,12 +856,13 @@ function WorldFX.Init(context: any, map: Instance)
 			return
 		end
 		frameNumber += 1
-		local camPos = camera.CFrame.Position
+		local camCFrame = camera.CFrame
+		local camPos = camCFrame.Position
 		local now = workspace:GetServerTimeNow()
 
 		table.clear(moveParts)
 		table.clear(moveCFrames)
-		local count = stepBelt(now, camPos, 0)
+		local count = stepBelt(now, camPos, camCFrame.LookVector, 0)
 		count = stepStripes(now, camPos, count)
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)

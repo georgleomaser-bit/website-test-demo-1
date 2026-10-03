@@ -21,7 +21,8 @@
  *  echte In-Game-Bilder (base, krater, tragen, showcase, secret als
  *  .png/.jpg), werden Spiel-Icon und Thumbnails daraus gebaut (plus
  *  thumbnail-4/5). Fehlt ein Screenshot, wird das Bild wie bisher
- *  gezeichnet. Die 14 Pass/Produkt-Icons sind immer gezeichnet.
+ *  gezeichnet. Die 22 Pass/Produkt-Icons (8 Gamepasses, 14 Developer
+ *  Products) sind immer gezeichnet.
  *
  *  Qualitaets-Automatik:
  *   - Text wird automatisch verkleinert, bis er in seine Breite passt.
@@ -351,6 +352,154 @@ function speedLines(x, y, { n = 3, len = 90, gap = 34, color = '#ffffff', w = 13
   return s;
 }
 
+// Weiches Leuchten hinter einem Motiv (Deko)
+function glowSpot(x, y, r, col, op = 0.7) {
+  const id = uid('gl');
+  return `<defs><radialGradient id="${id}"><stop offset="0" stop-color="${col}" stop-opacity="${op}"/><stop offset="0.45" stop-color="${col}" stop-opacity="${n1(op * 0.4 * 100) / 100}"/><stop offset="1" stop-color="${col}" stop-opacity="0"/></radialGradient></defs><circle class="deco" cx="${n1(x)}" cy="${n1(y)}" r="${n1(r)}" fill="url(#${id})"/>`;
+}
+
+// Fall-Streifen (Deko, wird bei der 80%-Kreis-Pruefung nicht mitgezaehlt)
+function streak(x1, y1, x2, y2, w = 9) {
+  const l = `x1="${n1(x1)}" y1="${n1(y1)}" x2="${n1(x2)}" y2="${n1(y2)}" stroke-linecap="round"`;
+  return `<line class="deco" ${l} stroke="#14062a" stroke-width="${w + 7}"/><line class="deco" ${l} stroke="#ffffff" stroke-width="${w}" opacity="0.9"/>`;
+}
+
+// ---------------------------------------------------------------------
+//  ALIEN-EI (gezeichnet, v2.1): Ei mit Flecken, Glanz und Sticker-Rand.
+//  crack = 'bottom' -> nur die untere Schale mit Zickzack-Kante (geschluepft)
+//  crack = 'top'    -> nur der abgesprungene Deckel
+// ---------------------------------------------------------------------
+const EGG = {
+  green: { light: '#f0ffe0', mid: '#86ff5c', dark: '#1d9a2c', spot: '#0c5e1c', glow: '#8aff6a' },
+  purple: { light: '#f8ecff', mid: '#c884ff', dark: '#5a1aa8', spot: '#34096e', glow: '#c070ff' },
+  gold: { light: '#fffbe0', mid: '#ffd23a', dark: '#c27800', spot: '#7a4200', glow: '#ffd84a' },
+  cyan: { light: '#eaffff', mid: '#62e8ff', dark: '#0a7fa0', spot: '#064c66', glow: '#6af0ff' },
+  pink: { light: '#fff0fa', mid: '#ff8ad8', dark: '#b01a8a', spot: '#6e0a54', glow: '#ff9ae8' },
+};
+
+function alienEgg(o) {
+  const { x, y, r, pal = 'green', rot = 0, seed = 1, glow = 0.8, crack = null } = o;
+  const P = EGG[pal];
+  const id = uid('egg');
+  const rand = rng(seed);
+  const w = r * 0.8; // halbe Breite
+  const body = `M0,${n1(-r)} C${n1(w * 0.62)},${n1(-r)} ${n1(w)},${n1(-r * 0.22)} ${n1(w)},${n1(r * 0.24)} C${n1(w)},${n1(r * 0.7)} ${n1(w * 0.56)},${n1(r)} 0,${n1(r)} C${n1(-w * 0.56)},${n1(r)} ${n1(-w)},${n1(r * 0.7)} ${n1(-w)},${n1(r * 0.24)} C${n1(-w)},${n1(-r * 0.22)} ${n1(-w * 0.62)},${n1(-r)} 0,${n1(-r)}Z`;
+  // Flecken (weiter unten = breiteres Ei -> mehr Platz)
+  let spots = '';
+  for (let i = 0; i < 7; i++) {
+    const sy = (rand() - 0.42) * r * 1.5;
+    const sx = (rand() - 0.5) * w * 1.5;
+    const sr = r * (0.07 + rand() * 0.09);
+    spots += `<ellipse cx="${n1(sx)}" cy="${n1(sy)}" rx="${n1(sr)}" ry="${n1(sr * 0.82)}" fill="${P.spot}" opacity="0.42"/>`;
+  }
+  // Zickzack-Bruchkante etwas ueber der Mitte
+  let zig = '';
+  if (crack) {
+    const cutY = -r * 0.08;
+    const teeth = 7;
+    const pts = [];
+    for (let i = 0; i <= teeth; i++) {
+      const px = -w * 1.15 + (i / teeth) * w * 2.3;
+      pts.push(`${n1(px)},${n1(cutY + (i % 2 === 0 ? r * 0.13 : -r * 0.13))}`);
+    }
+    zig = pts.join(' L');
+  }
+  const clipD = crack === 'bottom' ? `M${zig} L${n1(w * 1.3)},${n1(r * 1.4)} L${n1(-w * 1.3)},${n1(r * 1.4)}Z` : crack === 'top' ? `M${zig} L${n1(w * 1.3)},${n1(-r * 1.4)} L${n1(-w * 1.3)},${n1(-r * 1.4)}Z` : '';
+  const crackClip = crack ? ` clip-path="url(#${id}k)"` : '';
+  return `<g transform="translate(${n1(x)} ${n1(y)}) rotate(${rot})">
+    <defs>
+      <radialGradient id="${id}g" cx="0.36" cy="0.3" r="0.82"><stop offset="0" stop-color="${P.light}"/><stop offset="0.42" stop-color="${P.mid}"/><stop offset="1" stop-color="${P.dark}"/></radialGradient>
+      <radialGradient id="${id}h"><stop offset="0" stop-color="${P.glow}" stop-opacity="0.75"/><stop offset="0.45" stop-color="${P.glow}" stop-opacity="0.28"/><stop offset="1" stop-color="${P.glow}" stop-opacity="0"/></radialGradient>
+      <clipPath id="${id}c"><path d="${body}"/></clipPath>
+      ${crack ? `<clipPath id="${id}k"><path d="${clipD}"/></clipPath>` : ''}
+    </defs>
+    ${glow > 0 ? `<circle class="deco" r="${n1(r * 1.85 * glow)}" fill="url(#${id}h)"/>` : ''}
+    <g filter="url(#sticker)"><g${crackClip}>
+      <path d="${body}" fill="url(#${id}g)"/>
+      <g clip-path="url(#${id}c)">
+        ${spots}
+        <ellipse cx="${n1(w * 0.55)}" cy="${n1(r * 0.3)}" rx="${n1(w * 0.7)}" ry="${n1(r * 0.85)}" fill="${P.dark}" opacity="0.28"/>
+        <ellipse cx="${n1(-w * 0.38)}" cy="${n1(-r * 0.45)}" rx="${n1(w * 0.2)}" ry="${n1(r * 0.13)}" fill="#ffffff" opacity="0.75" transform="rotate(-28 ${n1(-w * 0.38)} ${n1(-r * 0.45)})"/>
+        ${crack ? `<path d="M${zig}" fill="none" stroke="#14062a" stroke-width="${n1(r * 0.07)}" stroke-linejoin="round"/>` : ''}
+      </g>
+    </g></g>
+  </g>`;
+}
+
+// ---------------------------------------------------------------------
+//  GLUECKSRAD (gezeichnet, v2.1): 8 Felder in den Farben von
+//  Config.WheelPrizes (mit deren Icons), goldener Rand mit Lampen,
+//  Nabe und roter Zeiger oben.
+// ---------------------------------------------------------------------
+const WHEEL = [
+  ['#6edc6e', '💵'], ['#50c8ff', '👟'], ['#ffcd3c', '💰'], ['#ff78c8', '🎡'],
+  ['#ff9632', '🏦'], ['#b450ff', '🥚'], ['#ffbe28', '🌟'], ['#ff3c5a', '🔮'],
+];
+
+function wheel(cx, cy, r, { rot = -10, icons = true } = {}) {
+  const id = uid('wh');
+  const n = WHEEL.length;
+  const rim = r * 0.13;
+  let segs = '';
+  let ico = '';
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * Math.PI * 2 - Math.PI / 2 - Math.PI / n;
+    const a1 = a0 + (Math.PI * 2) / n;
+    const [col, emoji] = WHEEL[i];
+    segs += `<path d="M0,0 L${n1(Math.cos(a0) * r)},${n1(Math.sin(a0) * r)} A${n1(r)},${n1(r)} 0 0 1 ${n1(Math.cos(a1) * r)},${n1(Math.sin(a1) * r)}Z" fill="${col}"/>`;
+    if (icons) {
+      const am = (a0 + a1) / 2;
+      const ex = Math.cos(am) * r * 0.66;
+      const ey = Math.sin(am) * r * 0.66;
+      const deg = n1((am * 180) / Math.PI + 90);
+      ico += `<text class="e" x="${n1(ex)}" y="${n1(ey)}" font-size="${n1(r * 0.27)}" text-anchor="middle" dominant-baseline="central" transform="rotate(${deg} ${n1(ex)} ${n1(ey)})">${emoji}</text>`;
+    }
+  }
+  let lines = '';
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 - Math.PI / 2 - Math.PI / n;
+    lines += `<line x1="0" y1="0" x2="${n1(Math.cos(a) * r)}" y2="${n1(Math.sin(a) * r)}" stroke="#ffffff" stroke-width="${n1(r * 0.035)}" stroke-linecap="round" opacity="0.9"/>`;
+  }
+  let bulbs = '';
+  const nb = 16;
+  for (let i = 0; i < nb; i++) {
+    const a = (i / nb) * Math.PI * 2;
+    const br = r + rim / 2;
+    bulbs += `<circle cx="${n1(Math.cos(a) * br)}" cy="${n1(Math.sin(a) * br)}" r="${n1(rim * 0.26)}" fill="${i % 2 ? '#fff6c0' : '#ffffff'}" stroke="#7a3a00" stroke-width="${n1(rim * 0.08)}"/>`;
+  }
+  // Zeiger oben (dreht nicht mit)
+  const pw = r * 0.2;
+  const pTop = -r - rim - r * 0.1;
+  const pTip = -r + r * 0.14;
+  const ptr = `M${n1(-pw)},${n1(pTop)} L${n1(pw)},${n1(pTop)} L0,${n1(pTip)}Z`;
+  return `<g transform="translate(${n1(cx)} ${n1(cy)})">
+    <defs>
+      <linearGradient id="${id}r" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3a0"/><stop offset="0.5" stop-color="#ffc21a"/><stop offset="1" stop-color="#b86e00"/></linearGradient>
+      <radialGradient id="${id}s"><stop offset="0.55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity="0.3"/></radialGradient>
+      <radialGradient id="${id}l" cx="0.35" cy="0.3" r="0.7"><stop offset="0" stop-color="#ffffff" stop-opacity="0.45"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></radialGradient>
+      <radialGradient id="${id}h" cx="0.38" cy="0.32" r="0.75"><stop offset="0" stop-color="#ffffff"/><stop offset="0.4" stop-color="#ffd84a"/><stop offset="1" stop-color="#c27800"/></radialGradient>
+      <linearGradient id="${id}p" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ff8a8a"/><stop offset="1" stop-color="#d4000f"/></linearGradient>
+    </defs>
+    <g filter="url(#dropS)">
+      <circle r="${n1(r + rim)}" fill="#14062a" stroke="#14062a" stroke-width="${n1(r * 0.08)}"/>
+      <circle r="${n1(r + rim * 0.55)}" fill="none" stroke="url(#${id}r)" stroke-width="${n1(rim * 0.95)}"/>
+    </g>
+    <g transform="rotate(${rot})">
+      ${segs}
+      <circle r="${n1(r)}" fill="url(#${id}s)"/>
+      ${lines}
+      ${ico}
+      ${bulbs}
+    </g>
+    <circle r="${n1(r)}" fill="url(#${id}l)"/>
+    <circle r="${n1(r)}" fill="none" stroke="#14062a" stroke-width="${n1(r * 0.035)}"/>
+    <circle r="${n1(r * 0.19)}" fill="url(#${id}h)" stroke="#14062a" stroke-width="${n1(r * 0.05)}"/>
+    ${sparkle(0, 0, r * 0.1, '#ffffff', 0.95)}
+    <path d="${ptr}" fill="#14062a" stroke="#14062a" stroke-width="${n1(r * 0.1)}" stroke-linejoin="round" transform="translate(0 ${n1(r * 0.03)})"/>
+    <path d="${ptr}" fill="url(#${id}p)" stroke="#ffffff" stroke-width="${n1(r * 0.035)}" stroke-linejoin="round"/>
+  </g>`;
+}
+
 // ---------------------------------------------------------------------
 //  ICON-RAHMEN (512x512): Weltraum-Hintergrund mit Akzentfarbe,
 //  Strahlen, Sterne, Ring. Inhalt kommt in <g id="content">.
@@ -366,6 +515,13 @@ const ACC = {
   orange: { acc: '#ff7a12', light: '#ffd6a0', dark: '#a33600' },
   legend: { acc: '#ffbe28', light: '#fff2a8', dark: '#9c5c00' },
   mythic: { acc: '#ff3c5a', light: '#ffc0cc', dark: '#8e0626' },
+  // v2.1
+  emerald: { acc: '#14e8a0', light: '#c8fff0', dark: '#067a56' },
+  red: { acc: '#ff4646', light: '#ffc8c8', dark: '#9a0c18' },
+  rose: { acc: '#ff5aa0', light: '#ffd0e6', dark: '#a0105a' },
+  wheel: { acc: '#7a5cff', light: '#d8ceff', dark: '#3a1ab0' },
+  teal: { acc: '#12c8c0', light: '#c0fffa', dark: '#06615e' },
+  lime: { acc: '#8cff1a', light: '#e4ffc0', dark: '#3c8a00' },
 };
 
 function iconSVG(spec) {
@@ -530,6 +686,95 @@ const ICONS = [
       sparkle(136, 128, 24, '#ffe6ee', 1) + sparkle(388, 300, 16, '#ffe6ee', 1) + sparkle(150, 300, 12, '#ffe6ee', 1) +
       meteor({ x: 244, y: 214, r: 108, angle: -38, tail: 2.5, pal: 'mythic', seed: 42 }) +
       txt('MYTHIC', { x: 256, cy: L_Y - 8, size: 104, fill: ['#ffffff', '#ffc4d4', '#ff3c64'], stroke: '#2a0010', maxW: 370 }),
+  },
+  // ------------------- v2.1: NEUE GAMEPASSES -------------------
+  {
+    file: 'pass-gluck.png', key: 'Lucky', accent: 'emerald', seed: 17,
+    desc: 'Gamepass "2x Glueck": Alien mit Kleeblatt-Sticker, rotem "2X"-Sticker und GLUECK auf Smaragdgruen.',
+    content: () =>
+      sparkle(122, 136, 22, '#ffffff', 1) + sparkle(396, 292, 15, '#d8fff0', 1) + sparkle(140, 300, 12, '#d8fff0', 1) +
+      emo('👽', { x: 248, y: 204, size: 224 }) +
+      emo('🍀', { x: 150, y: 262, size: 112, rotate: -16 }) +
+      burst('2X', { x: 352, y: 150, r: 70 }) +
+      txt('GLÜCK', { x: 256, cy: L_Y + 2, size: 112, fill: labelFill('emerald'), stroke: '#03261a', maxW: 350 }),
+  },
+  {
+    file: 'pass-volle-speed.png', key: 'CarryFast', accent: 'red', seed: 18,
+    desc: 'Gamepass "Volle Speed beim Tragen": rennende Figur mit gluehendem Meteor ueber dem Kopf, Tempo-Streifen und VOLLGAS auf Rot.',
+    content: () =>
+      speedLines(150, 250, { n: 3, len: 62, gap: 40, dir: -1, w: 12 }) +
+      avatar({
+        x: 266, y: 256, u: 30, lean: 11, legA: 33, armL: -165, armR: 165, armLen: 2.5,
+        head: '#ffd23a', torso: '#2a6fe8', legs: '#2fae4a', groundY: 332,
+        held: meteor({ x: 0, y: -30 * 4.85, r: 30 * 1.5, angle: 194, tail: 2.6, pal: 'fire', seed: 4, sparks: 8, glow: 1.1 }),
+        heldBehind: true,
+      }) +
+      txt('VOLLGAS', { x: 256, cy: L_Y + 2, size: 104, fill: FILL.fire, maxW: 370 }),
+  },
+  // ---------------- v2.1: NEUE DEVELOPER PRODUCTS ----------------
+  {
+    file: 'produkt-starter-paket.png', key: 'StarterPack', accent: 'rose', seed: 29,
+    desc: 'Produkt "Starter-Paket": grosses Geschenk mit goldenem Stern, Geldsack und Alien-Ei, darunter STARTER.',
+    content: () =>
+      sparkle(112, 150, 20, '#ffffff', 1) + sparkle(406, 214, 14, '#ffe6f2', 1) +
+      emo('🎁', { x: 250, y: 194, size: 206 }) +
+      emo('⭐', { x: 360, y: 106, size: 96, rotate: 14 }) +
+      emo('💰', { x: 140, y: 282, size: 96, rotate: -14 }) +
+      alienEgg({ x: 370, y: 284, r: 44, pal: 'gold', rot: 14, seed: 7, glow: 0 }) +
+      txt('STARTER', { x: 256, cy: L_Y + 2, size: 104, fill: FILL.gold, maxW: 370 }),
+  },
+  {
+    file: 'produkt-dreh-1.png', key: 'Spin1', accent: 'wheel', seed: 30,
+    desc: 'Produkt "1 Gluecksrad-Dreh": buntes Gluecksrad mit 8 Feldern, Lampen und rotem Zeiger, darunter 1 DREH.',
+    content: () =>
+      sparkle(112, 142, 20, '#ffffff', 1) + sparkle(404, 150, 16, '#e6deff', 1) +
+      wheel(256, 212, 122, { rot: -12 }) +
+      txt('1 DREH', { x: 256, cy: L_Y + 8, size: 110, fill: FILL.gold, maxW: 350 }),
+  },
+  {
+    file: 'produkt-dreh-12.png', key: 'Spin10', accent: 'wheel', seed: 31,
+    desc: 'Produkt "10+2 Gluecksrad-Drehs": zwei Gluecksraeder hintereinander, goldener "+2"-Sticker und 10+2.',
+    content: () =>
+      sparkle(404, 296, 15, '#e6deff', 1) +
+      wheel(160, 156, 72, { rot: 20, icons: false }) +
+      wheel(262, 218, 116, { rot: -12 }) +
+      burst('+2', { x: 380, y: 136, r: 64, fill: ['#ffd84a', '#ff8a00'], textFill: FILL.white }) +
+      txt('10+2', { x: 256, cy: L_Y + 8, size: 130, fill: FILL.gold, maxW: 350 }),
+  },
+  {
+    file: 'produkt-sofort-schluepfen.png', key: 'InstantHatch', accent: 'violet', seed: 32,
+    desc: 'Produkt "Alle Eier sofort schluepfen": Alien springt aus einem aufgebrochenen gruenen Alien-Ei, Deckel fliegt weg, gelber Blitz und SOFORT.',
+    content: () =>
+      sparkle(392, 300, 14, '#f0e0ff', 1) + sparkle(116, 290, 12, '#f0e0ff', 1) +
+      glowSpot(236, 232, 160, EGG.green.glow, 0.6) +
+      alienEgg({ x: 132, y: 128, r: 54, pal: 'green', rot: -32, seed: 5, glow: 0, crack: 'top' }) +
+      emo('👽', { x: 236, y: 180, size: 150 }) +
+      alienEgg({ x: 236, y: 252, r: 92, pal: 'green', seed: 5, glow: 0, crack: 'bottom' }) +
+      bolt(366, 196, 176, { rot: 14 }) +
+      txt('SOFORT', { x: 256, cy: L_Y + 4, size: 112, fill: FILL.gold, maxW: 360 }),
+  },
+  {
+    file: 'produkt-base-schild.png', key: 'BaseShield', accent: 'teal', seed: 33,
+    desc: 'Produkt "Base-Schild 10 Min": grosser Schild mit Schloss-Sticker, Funkeln und SCHILD auf Tuerkis.',
+    content: () =>
+      sparkle(124, 140, 22, '#ffffff', 1) + sparkle(392, 128, 16, '#d8fffc', 1) + sparkle(130, 296, 12, '#d8fffc', 1) +
+      emo('🛡️', { x: 248, y: 204, size: 230 }) +
+      emo('🔒', { x: 352, y: 262, size: 108, rotate: 10 }) +
+      txt('SCHILD', { x: 256, cy: L_Y + 2, size: 112, fill: labelFill('teal'), stroke: '#04302e', maxW: 360 }),
+  },
+  {
+    file: 'produkt-egg-rush.png', key: 'EggRush', accent: 'lime', seed: 34,
+    desc: 'Produkt "Egg Rush JETZT": bunte Alien-Eier regnen auf eine gruene Wiese, darunter EGG RUSH.',
+    content: () =>
+      `<path class="deco" d="M0,296 Q128,262 256,282 Q384,302 512,264 L512,512 L0,512Z" fill="${ACC.lime.dark}" opacity="0.55"/>` +
+      streak(164, 76, 196, 36, 9) + streak(186, 92, 210, 62, 7) +
+      streak(340, 64, 312, 24, 9) + streak(320, 82, 298, 52, 7) +
+      alienEgg({ x: 148, y: 108, r: 32, pal: 'cyan', rot: 28, seed: 21, glow: 0.6 }) +
+      alienEgg({ x: 356, y: 96, r: 30, pal: 'pink', rot: -24, seed: 22, glow: 0.6 }) +
+      alienEgg({ x: 150, y: 236, r: 58, pal: 'purple', rot: -14, seed: 23 }) +
+      alienEgg({ x: 362, y: 232, r: 62, pal: 'gold', rot: 14, seed: 24 }) +
+      alienEgg({ x: 256, y: 206, r: 86, pal: 'green', rot: -4, seed: 25 }) +
+      txt('EGG RUSH', { x: 256, cy: L_Y + 2, size: 96, fill: ['#ffffff', '#efffc8', '#9cff2e'], stroke: '#0f2a00', maxW: 380 }),
   },
 ];
 
@@ -1161,7 +1406,7 @@ function shotThumb4(pl) {
 function shotThumb5(pl) {
   const head1 = txt('', {
     x: 960, cy: 140, size: 190, fill: headlineFill(), maxW: 1800, ...HEAD,
-    tspans: [{ text: '27 ', fill: ['#ffffff', '#c4f6ff', '#1ed2ff'] }, { text: 'METEORE' }],
+    tspans: [{ text: '28 ', fill: ['#ffffff', '#c4f6ff', '#1ed2ff'] }, { text: 'METEORE' }],
   });
   const head2 = txt('ZUM SAMMELN!', { x: 960, cy: 950, size: 165, fill: headlineFill(), maxW: 1700, ...HEAD });
   return thumbSVG(shotBackdrop(TW, TH, pl, { top: 420, bottom: 400 }) + head1 + head2);
@@ -1206,7 +1451,7 @@ const JOBS = [
     shot: { from: ['krater'], svg: shotThumb3 } },
   { file: 'thumbnail-4.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 4 (nur mit Screenshot "base"): "WERDE REICH!" - Deine Base voller Meteore.', svg: null,
     shot: { from: ['base'], svg: shotThumb4 } },
-  { file: 'thumbnail-5.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 5 (nur mit Screenshot "showcase"): "27 METEORE ZUM SAMMELN!".', svg: null,
+  { file: 'thumbnail-5.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 5 (nur mit Screenshot "showcase"): "28 METEORE ZUM SAMMELN!".', svg: null,
     shot: { from: ['showcase'], svg: shotThumb5 } },
 ];
 

@@ -15,7 +15,11 @@
 --    Augen  = 1 bis 4, Antennen = 0 bis 3
 --    Extras = optional, z.B. { Scale = 1.1, Effects = { Rainbow = true } }
 --             (oder unten in der Tabelle EXTRAS unter der Alien-Id eintragen)
---  Effekte (Aura, Umriss, Licht) kommen automatisch nach Seltenheit + Stufe.
+--  Effekte (Aura, Licht) kommen automatisch nach Seltenheit + Stufe.
+--  Umriss (Highlight) gibt es nur noch bei Ultra-Aliens der Seltenheit "Admin"
+--  (Roblox zeigt nur ~31 Highlights gleichzeitig – sonst überall anders ignoriert).
+--  Mutationen (Gold, Diamond, Cosmic, Frost, Lava, Rainbow) färben jedes Alien automatisch
+--  um (AlienFactory) – dafür muss hier nichts eingetragen werden.
 --
 --  WICHTIG: Diese Datei darf Config NICHT laden (Config lädt diese Datei).
 --  Die Seltenheiten-Namen müssen genau wie in Config.Rarities heißen.
@@ -33,7 +37,7 @@ export type AlienLook = {
 export type AlienEffects = {
 	Rainbow: boolean?,
 	Aura: boolean?,
-	Highlight: boolean?,
+	Highlight: boolean?, -- wirkt nur bei Tier "Ultra" + Rarity "Admin" (AlienFactory)
 	BigLight: boolean?,
 	Fire: boolean?,
 }
@@ -126,23 +130,21 @@ for _, name in ipairs(Aliens.Archetypes) do
 end
 local namesTaken: { [string]: string } = {}
 
--- Effekte automatisch nach Seltenheit + Stufe (sparsam, damit nichts laggt)
+-- Effekte automatisch nach Seltenheit + Stufe (sparsam, damit nichts laggt).
+-- Umriss (Highlight) nur bei Ultra + Admin: Roblox zeigt höchstens ~31 Highlights gleichzeitig.
 local function autoEffects(rank: number, tierIndex: number): AlienEffects
 	local fx: AlienEffects = {}
 	if rank >= 10 then
 		-- Admin: alles krass
 		fx.Aura = true
-		fx.Highlight = true
 		fx.BigLight = true
 		if tierIndex == 3 then
 			fx.Rainbow = true
+			fx.Highlight = true
 		end
 	elseif tierIndex == 3 then
 		if rank >= 3 then
 			fx.Aura = true
-		end
-		if rank >= 6 then
-			fx.Highlight = true
 		end
 		if rank >= 8 then
 			fx.BigLight = true

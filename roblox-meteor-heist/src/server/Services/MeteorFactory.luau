@@ -68,7 +68,8 @@ function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: n
 	nameLabel.TextColor3 = rarity.Color
 	local tag = def.Rarity == "Admin" and "👑 ADMIN" or def.Rarity
 	if mut.Name ~= "Normal" then
-		tag = mut.Name .. " • " .. tag
+		-- gleiche Symbole wie an den Aliens und auf der Schlüpf-Karte (Config.Mutations -> Icon)
+		tag = (if type(mut.Icon) == "string" then mut.Icon .. " " else "") .. mut.Name .. " • " .. tag
 	end
 	rarityLabel.Text = tag
 	rarityLabel.TextColor3 = mut.Color or rarity.Color
@@ -83,7 +84,10 @@ function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: n
 	elseif entry.Alien == nil then
 		-- Noch nicht geschlüpft: der Client zählt über das Attribut "HatchAt" live herunter
 		local hatch = math.max(0, tonumber(entry.Hatch) or 0)
-		if mode == "Carry" then
+		if mode == "Carry" and entry.Hatch == nil then
+			-- frisch vom Förderband/Boden geklaut: Countdown startet erst in der Base
+			valueLabel.Text = "🏠 Heimbringen! 🐣 " .. Util.FormatTime(Config.HatchTime(entry.Id))
+		elseif mode == "Carry" then
 			valueLabel.Text = "🐣 ⏸ " .. Util.FormatTime(hatch)
 		elseif hatch <= 0 then
 			valueLabel.Text = "🐣 Schlüpft..."
@@ -190,9 +194,21 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		part.Material = Enum.Material.Glass
 		part.Transparency = 0.15
 		part.Color = mut.Color
-	elseif mut.Name == "Cosmic" then
+	elseif mut.Name == "Cosmic" or mut.Name == "Lava" then
+		-- Cosmic leuchtet lila, Lava glühend orange (+ kleines Feuer, unten bei den Effekten)
 		part.Material = Enum.Material.Neon
 		part.Color = mut.Color
+	elseif mut.Name == "Frost" then
+		-- hellblaues Eis
+		part.Material = Enum.Material.Glass
+		part.Transparency = 0.1
+		part.Reflectance = 0.15
+		part.Color = mut.Color
+	elseif mut.Rainbow == true then
+		-- Regenbogen: der Client färbt alle Teile mit dem Attribut "Rainbow" lokal durch
+		part.Material = Enum.Material.Neon
+		part.Color = mut.Color or Color3.new(1, 1, 1)
+		part:SetAttribute("Rainbow", true)
 	end
 
 	part:SetAttribute("MeteorId", entry.Id)
@@ -217,7 +233,17 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		fire.Heat = 4
 		fire.Parent = part
 	end
-	if (rarityIndex >= (SPARKLES_FROM[mode] or 99) or (mut.Name == "Cosmic" and mode ~= "Carry")) and not isAdmin then
+	if mut.Name == "Lava" and not part:FindFirstChildOfClass("Fire") then
+		-- Lava-Mutation: kleines Feuer (auch am Band – Lava ist selten genug)
+		local fire = Instance.new("Fire")
+		fire.Color = mut.Color
+		fire.SecondaryColor = Color3.fromRGB(120, 20, 0)
+		fire.Size = math.max(1.5, size * 0.45)
+		fire.Heat = 3
+		fire.Parent = part
+	end
+	local specialMut = mut.Name == "Cosmic" or mut.Rainbow == true
+	if (rarityIndex >= (SPARKLES_FROM[mode] or 99) or (specialMut and mode ~= "Carry")) and not isAdmin then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or rarity.Color
 		sparkles.Parent = part
@@ -269,12 +295,17 @@ function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 	end
 	local fire = part:FindFirstChildOfClass("Fire")
 	if fire then
-		fire.Size = size * 0.9
+		local mut = Config.MutationsByName[entry.Mut]
+		-- Lava-Feuer bleibt klein, Seltenheits-Feuer wächst mit
+		local onlyLava = mut ~= nil and mut.Name == "Lava" and fire.Color == mut.Color
+		fire.Size = onlyLava and math.max(1.5, size * 0.45) or size * 0.9
 	end
 	MeteorFactory.UpdateLabel(part, entry, mode)
 end
 
 -- distance = optionale Aktivierungs-Reichweite (sonst aus der Größe des Teils)
+-- Hinweis: Zwei Prompts am selben Teil (z.B. Klauen + Kaufen am Förderband) bekommen über
+-- prompt.UIOffset (Pixel) verschiedene Plätze, sonst liegen sie übereinander.
 function MeteorFactory.AddPrompt(
 	part: BasePart,
 	name: string,

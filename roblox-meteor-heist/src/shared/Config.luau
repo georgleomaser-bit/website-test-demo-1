@@ -66,6 +66,20 @@ Config.GamePasses = {
 		Description = "Doppelt so viele Schritte auf jedem Laufband",
 		Icon = "👟",
 	},
+	{
+		Key = "Lucky",
+		Id = 0,
+		Name = "🍀 2x Glück",
+		Description = "Seltenere Aliens beim Schlüpfen",
+		Icon = "🍀",
+	},
+	{
+		Key = "CarryFast",
+		Id = 0,
+		Name = "🏃 Volle Speed beim Tragen",
+		Description = "Beim Tragen wirst du nicht langsamer",
+		Icon = "🏃",
+	},
 }
 
 -- Developer Products (beliebig oft kaufbar).
@@ -103,6 +117,37 @@ Config.Products = {
 		Type = "Meteor",
 		Rarity = "Mythic",
 	},
+	-- Type "StarterPack": nur EINMAL kaufbar (Cash, 3 Drehs, Legendary-Ei, Speed Coil)
+	{ Key = "StarterPack", Id = 0, Name = "⭐ Starter-Paket", Icon = "⭐", Type = "StarterPack" },
+	-- Type "Spins": so viele Glücksrad-Drehs ("Amount")
+	{ Key = "Spin1", Id = 0, Name = "🎡 1 Glücksrad-Dreh", Icon = "🎡", Type = "Spins", Amount = 1 },
+	{ Key = "Spin10", Id = 0, Name = "🎡 10+2 Glücksrad-Drehs", Icon = "🎡", Type = "Spins", Amount = 12 },
+	-- Type "InstantHatch": alle Eier in der Base schlüpfen sofort
+	{ Key = "InstantHatch", Id = 0, Name = "🐣 Alle Eier sofort schlüpfen", Icon = "🐣", Type = "InstantHatch" },
+	-- Type "Shield": Base "Minutes" Minuten gesperrt (auch während des Meteoritenschauers)
+	{
+		Key = "BaseShield",
+		Id = 0,
+		Name = "🛡️ Base-Schild 10 Min",
+		Icon = "🛡️",
+		Type = "Shield",
+		Minutes = 10,
+	},
+	-- Type "EggRush": startet sofort ein Egg Rush für den ganzen Server
+	{ Key = "EggRush", Id = 0, Name = "🥚 Egg Rush JETZT", Icon = "🥚", Type = "EggRush" },
+}
+
+-- Inhalt des ⭐ Starter-Pakets (Server UND Shop-Text lesen diese Werte):
+-- Cash = max(MinCash, Einkommen pro Sekunde * IncomeSeconds), dazu Spins Drehs,
+-- ein zufälliges Ei der Seltenheit EggRarity und das Gadget "Gadget" (schon besessen -> sein Preis als Cash).
+-- Länder ohne bezahlte Zufalls-Käufe: keine Drehs, Cash * RestrictedCashMult, festes statt zufälliges Ei.
+Config.StarterPack = {
+	MinCash = 100000,
+	IncomeSeconds = 900,
+	Spins = 3,
+	EggRarity = "Legendary",
+	Gadget = "SpeedCoil",
+	RestrictedCashMult = 1.5,
 }
 
 -- ---------------------------------------------------------------------
@@ -117,11 +162,19 @@ Config.SellRatio = 0.5 -- Verkauf = 50% vom Wert
 Config.LockDuration = 60 -- Sekunden Base-Sperre
 Config.LockDurationVIP = 90
 
-Config.GrabHoldDuration = 0.25 -- E halten zum Kaufen/Schnappen
-Config.StealHoldDuration = 1.5 -- E halten zum Klauen
+Config.GrabHoldDuration = 0.25 -- E halten zum Schnappen in der Gratis-Zone
+Config.StealHoldDuration = 1.5 -- E halten zum Klauen aus einer fremden Base
+-- FÖRDERBAND: jeder Meteor hat ZWEI Knöpfe
+--   E halten = KLAUEN (gratis, aber du musst ihn selbst nach Hause TRAGEN)
+--   F        = KAUFEN (kostet Cash, fliegt automatisch in deine Base)
+Config.BeltGrabHold = 0.8 -- E halten zum Klauen vom Förderband
+Config.BeltBuyHold = 0.15 -- F halten zum Kaufen am Förderband
+Config.GroundGrabHold = 0.3 -- E halten zum Schnappen eines Eis am Boden (fallen gelassen / Egg Rush)
+Config.DroppedLifetime = 30 -- Sekunden, bis ein fallen gelassenes Ei verschwindet
+Config.MaxDroppedMeteors = 90 -- Sicherheitsgrenze für Eier am Boden (fallen gelassen + Egg Rush)
 Config.CarryTimeout = 60 -- Sekunden Zeit, um die Beute in die eigene Base zu bringen
 Config.NormalWalkSpeed = 16
-Config.CarrySpeedFactor = 0.65 -- beim Tragen: 65% vom eigenen Tempo
+Config.CarrySpeedFactor = 0.7 -- beim Tragen: 70% vom eigenen Tempo (Gamepass "Volle Speed beim Tragen" = 100%)
 
 -- SPEED FARM: Auf den Laufbändern (Treadmills) am Spawn-Platz laufen = Schritte 👟 sammeln.
 -- Mehr Schritte = schneller laufen. Höhere Laufbänder geben viel mehr Schritte,
@@ -164,6 +217,47 @@ Config.BonkCooldown = 0.8
 Config.BonkRange = 9
 Config.BonkForce = 70
 
+-- GADGETS: mit Cash im Shop kaufen, gehören dir für immer (auch nach Rebirth).
+-- Sie liegen nach jedem Spawn als Werkzeug in deinem Rucksack.
+Config.Gadgets = {
+	{
+		Id = "SpeedCoil",
+		Name = "Speed Coil",
+		Icon = "🌀",
+		Price = 25000,
+		Description = "+30% Tempo, solange du sie hältst",
+	},
+	{
+		Id = "Trap",
+		Name = "Falle",
+		Icon = "🪤",
+		Price = 1500000,
+		Description = "Klick in deiner Base = Falle aufstellen (max. 2). Diebe frieren 3 s ein und verlieren ihre Beute",
+	},
+	{
+		Id = "SuperBonk",
+		Name = "Super-Bonk",
+		Icon = "🔨",
+		Price = 750000,
+		Description = "Doppelte Reichweite und Wucht, schnellerer Schlag",
+	},
+	{
+		Id = "Cloak",
+		Name = "Unsichtbarkeits-Umhang",
+		Icon = "👻",
+		Price = 5000000,
+		Description = "Klick = 10 s unsichtbar (60 s Abklingzeit)",
+	},
+}
+Config.SpeedCoilBonus = 0.3 -- Speed Coil: +30% Laufgeschwindigkeit
+Config.MaxTrapsPerBase = 2 -- Fallen: so viele gleichzeitig pro Base
+Config.TrapFreezeTime = 3 -- Fallen: so viele Sekunden eingefroren
+Config.SuperBonkRangeMult = 2 -- Super-Bonk: doppelte Reichweite
+Config.SuperBonkForceMult = 2 -- Super-Bonk: doppelte Wucht
+Config.SuperBonkCooldown = 0.5 -- Super-Bonk: schneller schlagen (normal: BonkCooldown)
+Config.CloakDuration = 10 -- Umhang: Sekunden unsichtbar (in der Zeit kann dich niemand bonken)
+Config.CloakCooldown = 60 -- Umhang: Abklingzeit in Sekunden
+
 -- SCHLÜPFEN: Gekaufte Meteore brauchen Zeit (HatchTime bei den Seltenheiten unten),
 -- dann schlüpft ein ALIEN. Erst das Alien verdient Geld!
 -- AUFLADEN: Aliens in deiner Base wachsen (Level 1 -> MaxLevel).
@@ -175,10 +269,10 @@ Config.IncomePerLevel = 0.1 -- +10% Einkommen pro Level
 -- INDEX: jedes neu entdeckte Alien gibt dauerhaft +1% Einkommen
 Config.IndexBonusPerAlien = 0.01
 
--- LAUFBAND (Förderband) in der Map-Mitte: Meteore fahren vorbei, E = kaufen
-Config.BeltSpawnInterval = 1.0 -- alle X Sekunden kommt ein neuer Meteor aufs Band
+-- LAUFBAND (Förderband) in der Map-Mitte: Meteore fahren vorbei, E = klauen, F = kaufen
+Config.BeltSpawnInterval = 0.5 -- alle X Sekunden kommt ein neuer Meteor aufs Band
 Config.BeltSpeed = 9 -- Studs pro Sekunde
-Config.MaxBeltMeteors = 160 -- Sicherheitsgrenze (mehr liegen nie gleichzeitig auf dem Band)
+Config.MaxBeltMeteors = 110 -- Sicherheitsgrenze (mehr liegen nie gleichzeitig auf dem Band)
 
 -- GRATIS-ZONE am Spawn-Platz: hier landen Gratis- und Admin-Meteore
 Config.FreeMeteorLifetime = 180 -- Sekunden, bis ein Gratis-Meteor verschwindet
@@ -187,8 +281,15 @@ Config.MaxFreeMeteors = 20
 -- METEORITENSCHAUER-EVENT: alle X Sekunden, Y Sekunden lang, mehr + bessere Meteore
 Config.ShowerInterval = 480
 Config.ShowerDuration = 60
-Config.ShowerBeltInterval = 0.35 -- im Schauer kommen die Meteore viel schneller
+Config.ShowerBeltInterval = 0.2 -- im Schauer kommen die Meteore viel schneller
 Config.ShowerLuck = 3
+
+-- EGG RUSH-EVENT: alle X Sekunden regnen Y Gratis-Eier auf die Wiese der ganzen Map.
+-- Wer zuerst da ist, schnappt sie (E) und trägt sie nach Hause. Nach "Duration" Sekunden sind sie weg.
+Config.EggRushInterval = 360
+Config.EggRushDuration = 45
+Config.EggRushCount = 25
+Config.EggRushLuck = 3 -- Egg-Rush-Eier sind 3x so oft selten
 
 Config.OfflineIncomeRate = 0.25 -- 25% Einkommen während man offline ist
 Config.OfflineMaxSeconds = 3 * 3600
@@ -201,6 +302,91 @@ Config.RebirthMultPerLevel = 0.5
 
 Config.DailyRewardMinCash = 500
 Config.DailyRewardIncomeSeconds = 120 -- Tagesbonus = 2 Min Einkommen x Streak (max 7)
+
+-- BELOHNUNGEN (Spielzeit-Geschenke + Glücksrad). Gemeinsame Felder je Eintrag:
+--   Type = "Cash"  -> max(Min, Einkommen pro Sekunde * Seconds)
+--   Type = "Steps" -> max(Min, Schritte, die man in "Seconds" Sekunden auf dem besten Laufband läuft)
+--   Type = "Spins" -> "Amount" Glücksrad-Drehs
+--   Type = "Egg"   -> zufälliges Ei der Seltenheit "Rarity" fliegt in die Base (Base voll -> Wert als Cash)
+--   Icon / Name    -> Anzeige im Spiel
+-- SPIELZEIT-GESCHENKE: pro Sitzung, "Minutes" = Minuten seit dem Beitreten
+Config.PlaytimeGifts = {
+	{ Minutes = 2, Type = "Cash", Seconds = 60, Min = 500, Icon = "💵", Name = "Cash" },
+	{ Minutes = 5, Type = "Steps", Seconds = 120, Min = 300, Icon = "👟", Name = "Schritte" },
+	{ Minutes = 10, Type = "Spins", Amount = 1, Icon = "🎡", Name = "1 Dreh" },
+	{ Minutes = 15, Type = "Cash", Seconds = 300, Min = 5000, Icon = "💰", Name = "Cash" },
+	{ Minutes = 20, Type = "Egg", Rarity = "Epic", Icon = "🥚", Name = "Epic-Ei" },
+	{ Minutes = 30, Type = "Spins", Amount = 2, Icon = "🎡", Name = "2 Drehs" },
+	{ Minutes = 45, Type = "Cash", Seconds = 900, Min = 25000, Icon = "🏦", Name = "Viel Cash" },
+	{ Minutes = 60, Type = "Egg", Rarity = "Legendary", Icon = "🌟", Name = "Legendary-Ei" },
+}
+
+-- GLÜCKSRAD: alle FreeSpinHours Stunden 1 Gratis-Dreh. Genau 8 Felder (im Uhrzeigersinn),
+-- Weight = Chance (relativ, Summe 100 -> Prozent). Color = Farbe des Felds auf dem Rad.
+Config.FreeSpinHours = 4
+Config.WheelPrizes = {
+	{
+		Name = "Cash S",
+		Icon = "💵",
+		Type = "Cash",
+		Seconds = 60,
+		Min = 1000,
+		Weight = 26,
+		Color = Color3.fromRGB(110, 220, 110),
+	},
+	{
+		Name = "Schritte",
+		Icon = "👟",
+		Type = "Steps",
+		Seconds = 180,
+		Min = 500,
+		Weight = 18,
+		Color = Color3.fromRGB(80, 200, 255),
+	},
+	{
+		Name = "Cash M",
+		Icon = "💰",
+		Type = "Cash",
+		Seconds = 300,
+		Min = 5000,
+		Weight = 18,
+		Color = Color3.fromRGB(255, 205, 60),
+	},
+	{ Name = "2 Drehs", Icon = "🎡", Type = "Spins", Amount = 2, Weight = 8, Color = Color3.fromRGB(255, 120, 200) },
+	{
+		Name = "Cash XL",
+		Icon = "🏦",
+		Type = "Cash",
+		Seconds = 1200,
+		Min = 25000,
+		Weight = 10,
+		Color = Color3.fromRGB(255, 150, 50),
+	},
+	{
+		Name = "Epic-Ei",
+		Icon = "🥚",
+		Type = "Egg",
+		Rarity = "Epic",
+		Weight = 10,
+		Color = Color3.fromRGB(180, 80, 255),
+	},
+	{
+		Name = "Legendary-Ei",
+		Icon = "🌟",
+		Type = "Egg",
+		Rarity = "Legendary",
+		Weight = 8,
+		Color = Color3.fromRGB(255, 190, 40),
+	},
+	{
+		Name = "Mythic-Ei",
+		Icon = "🔮",
+		Type = "Egg",
+		Rarity = "Mythic",
+		Weight = 2,
+		Color = Color3.fromRGB(255, 60, 90),
+	},
+}
 
 Config.PremiumBonus = 0.1 -- +10% für Roblox Premium (bringt dir mehr Premium-Payouts)
 Config.VIPBonus = 0.25
@@ -248,11 +434,23 @@ Config.Rarities = {
 }
 
 -- Mutationen multiplizieren Wert UND Einkommen
+-- (Rainbow = true: Farbe läuft beim Client durch alle Regenbogenfarben;
+--  Icon = Symbol vor dem Namen auf Schildern, Schlüpf-Karte und im Admin-Panel)
 Config.Mutations = {
-	{ Name = "Normal", Weight = 88, Mult = 1 },
-	{ Name = "Gold", Weight = 10, Mult = 2, Color = Color3.fromRGB(255, 205, 50) },
-	{ Name = "Diamond", Weight = 1.8, Mult = 4, Color = Color3.fromRGB(120, 230, 255) },
-	{ Name = "Cosmic", Weight = 0.2, Mult = 10, Color = Color3.fromRGB(150, 70, 255) },
+	{ Name = "Normal", Weight = 82.9, Mult = 1 },
+	{ Name = "Gold", Weight = 10, Mult = 2, Color = Color3.fromRGB(255, 205, 50), Icon = "🪙" },
+	{ Name = "Diamond", Weight = 1.8, Mult = 4, Color = Color3.fromRGB(120, 230, 255), Icon = "💎" },
+	{ Name = "Cosmic", Weight = 0.2, Mult = 10, Color = Color3.fromRGB(150, 70, 255), Icon = "🌌" },
+	{ Name = "Frost", Weight = 2.5, Mult = 3, Color = Color3.fromRGB(150, 220, 255), Icon = "❄️" },
+	{ Name = "Lava", Weight = 2.5, Mult = 3, Color = Color3.fromRGB(255, 110, 30), Icon = "🔥" },
+	{
+		Name = "Rainbow",
+		Weight = 0.1,
+		Mult = 15,
+		Color = Color3.fromRGB(255, 255, 255),
+		Rainbow = true,
+		Icon = "🌈",
+	},
 }
 
 -- ---------------------------------------------------------------------
@@ -555,6 +753,7 @@ Config.MeteorsByRarity = {} -- nur Meteore, die von selbst aufs Laufband kommen
 Config.MeteorsByRarityAll = {} -- alle Meteore (auch Admin / nicht spawnbare)
 Config.AdminMeteors = {} -- alle Meteore mit Rarity "Admin"
 Config.TreadmillsById = {}
+Config.GadgetsById = {}
 
 for i, rarity in ipairs(Config.Rarities) do
 	Config.RaritiesByName[rarity.Name] = rarity
@@ -590,6 +789,16 @@ for _, product in ipairs(Config.Products) do
 		assert(Config.ProductsById[product.Id] == nil, "Doppelte Product-Id: " .. product.Id)
 		Config.ProductsById[product.Id] = product
 	end
+end
+for _, gadget in ipairs(Config.Gadgets) do
+	assert(Config.GadgetsById[gadget.Id] == nil, "Doppelte Gadget-Id: " .. gadget.Id)
+	Config.GadgetsById[gadget.Id] = gadget
+end
+if not Config.GadgetsById[Config.StarterPack.Gadget] or not Config.RaritiesByName[Config.StarterPack.EggRarity] then
+	warn("[Config] Config.StarterPack: Gadget oder EggRarity gibt es nicht!")
+end
+if #Config.WheelPrizes ~= 8 then
+	warn("[Config] Das Glücksrad braucht genau 8 Felder in Config.WheelPrizes!")
 end
 for i, treadmill in ipairs(Config.Treadmills) do
 	assert(Config.TreadmillsById[treadmill.Id] == nil, "Doppelte Laufband-Id: " .. treadmill.Id)

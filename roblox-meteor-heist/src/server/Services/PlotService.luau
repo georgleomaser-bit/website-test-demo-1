@@ -1,5 +1,8 @@
 -- Lässt die Map bauen (MapBuilder) und verwaltet die Basen:
 -- Zuweisung, Meteore/Aliens anzeigen, Collect-Pad + Slot-Pads, Lock-Pad, Schutz gegen Eindringlinge.
+-- BASE-SCHILD (Produkt): plot.ShieldUntil (Serverzeit) sperrt die Base zusätzlich zum Lock –
+-- auch während des Meteoritenschauers. Setzen über PlotService.AddShield/SetShield
+-- (wer plot.ShieldUntil direkt ändert: wird innerhalb von 0,25 s übernommen).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -43,8 +46,15 @@ function PlotService.IsInside(plot, position: Vector3): boolean
 	return math.abs(localPos.X) <= half and math.abs(localPos.Z) <= half and localPos.Y > -6 and localPos.Y < 40
 end
 
+-- Gesperrt = Lock (Lock-Pad) ODER Base-Schild aktiv
 function PlotService.IsLocked(plot): boolean
-	return plot.LockedUntil > workspace:GetServerTimeNow()
+	local now = workspace:GetServerTimeNow()
+	return plot.LockedUntil > now or (tonumber(plot.ShieldUntil) or 0) > now
+end
+
+-- Läuft ein gekauftes Base-Schild?
+function PlotService.IsShielded(plot): boolean
+	return (tonumber(plot.ShieldUntil) or 0) > workspace:GetServerTimeNow()
 end
 
 function PlotService.SlotCount(player: Player): number
@@ -333,29 +343,72 @@ local function setText(label: TextLabel, text: string)
 	end
 end
 
+local LOCK_BARRIER_COLOR = Color3.fromRGB(255, 40, 40)
+local SHIELD_BARRIER_COLOR = Color3.fromRGB(60, 170, 255)
+
+local function setColor(part: BasePart, color: Color3)
+	if part.Color ~= color then
+		part.Color = color
+	end
+end
+
 function PlotService.UpdateLockVisual(plot)
 	local now = workspace:GetServerTimeNow()
 	local showerActive = Services.MeteorService and Services.MeteorService.IsShowerActive()
-	if plot.LockedUntil > now then
+	local shieldUntil = tonumber(plot.ShieldUntil) or 0
+	if shieldUntil > now then
+		plot.Barrier.Transparency = 0.25
+		setColor(plot.Barrier, SHIELD_BARRIER_COLOR)
+		setText(plot.LockLabel, "🛡️ SCHILD " .. Util.FormatTime(math.ceil(shieldUntil - now)))
+		setColor(plot.LockPad, Color3.fromRGB(70, 130, 200))
+	elseif plot.LockedUntil > now then
 		plot.Barrier.Transparency = 0.35
+		setColor(plot.Barrier, LOCK_BARRIER_COLOR)
 		setText(plot.LockLabel, "🔒 " .. math.ceil(plot.LockedUntil - now) .. "s")
-		plot.LockPad.Color = Color3.fromRGB(90, 90, 90)
+		setColor(plot.LockPad, Color3.fromRGB(90, 90, 90))
 	else
 		plot.Barrier.Transparency = 1
+		setColor(plot.Barrier, LOCK_BARRIER_COLOR)
 		setText(plot.LockLabel, showerActive and "🌠 KEIN LOCK IM SCHAUER" or "🔒 LOCK")
-		plot.LockPad.Color = Color3.fromRGB(230, 60, 60)
+		setColor(plot.LockPad, Color3.fromRGB(230, 60, 60))
 	end
+end
+
+-- Attribute fürs Model (der Client liest sie): LockedUntil = Ende der Sperre (Lock ODER Schild),
+-- ShieldUntil = Ende des Base-Schilds
+local function publishLock(plot)
+	local shieldUntil = tonumber(plot.ShieldUntil) or 0
+	plot.PublishedShield = shieldUntil
+	local effective = math.max(plot.LockedUntil, shieldUntil)
+	if plot.Model:GetAttribute("LockedUntil") ~= effective then
+		plot.Model:SetAttribute("LockedUntil", effective)
+	end
+	if plot.Model:GetAttribute("ShieldUntil") ~= shieldUntil then
+		plot.Model:SetAttribute("ShieldUntil", shieldUntil)
+	end
+	PlotService.UpdateLockVisual(plot)
 end
 
 function PlotService.SetLocked(plot, untilTime: number)
 	plot.LockedUntil = untilTime
-	plot.Model:SetAttribute("LockedUntil", untilTime)
-	PlotService.UpdateLockVisual(plot)
+	publishLock(plot)
+end
+
+-- Base-Schild bis zu dieser Serverzeit (0 = aus)
+function PlotService.SetShield(plot, untilTime: number)
+	plot.ShieldUntil = math.max(0, tonumber(untilTime) or 0)
+	publishLock(plot)
+end
+
+-- Base-Schild um "seconds" verlängern (läuft schon eins, wird es länger)
+function PlotService.AddShield(plot, seconds: number)
+	local now = workspace:GetServerTimeNow()
+	PlotService.SetShield(plot, math.max(tonumber(plot.ShieldUntil) or 0, now) + math.max(0, seconds))
 end
 
 local function tryLock(player: Player, plot)
 	if plot.Owner ~= player or PlotService.IsLocked(plot) then
-		return
+		return -- schon gesperrt (Lock oder Base-Schild)
 	end
 	if Services.MeteorService.IsShowerActive() then
 		local t = os.clock()
@@ -400,6 +453,7 @@ function PlotService.AssignPlot(player: Player)
 			plot.Model:SetAttribute("OwnerUserId", player.UserId)
 			plot.SignLabel.Text = player.DisplayName .. "s Base"
 			PlotService.ByPlayer[player] = plot
+			plot.ShieldUntil = 0
 			PlotService.SetLocked(plot, 0)
 			PlotService.UpdateSlotColors(plot)
 			return plot
@@ -418,7 +472,13 @@ function PlotService.ReleasePlot(player: Player)
 	plot.Model:SetAttribute("OwnerUserId", 0)
 	plot.SignLabel.Text = "Freie Base"
 	PlotService.SetCollectText(plot, 0)
+	plot.ShieldUntil = 0
 	PlotService.SetLocked(plot, 0)
+	-- Fallen (Gadget) gehören dem alten Besitzer -> weg
+	local traps = plot.Model:FindFirstChild("Traps")
+	if traps then
+		traps:Destroy()
+	end
 	for slot, object in pairs(plot.MeteorParts) do
 		object:Destroy()
 		plot.MeteorParts[slot] = nil
@@ -515,6 +575,8 @@ function PlotService.Init(services)
 	for _, plot in ipairs(PlotService.Plots) do
 		plot.MeteorParts = plot.MeteorParts or {}
 		plot.LockedUntil = plot.LockedUntil or 0
+		plot.ShieldUntil = plot.ShieldUntil or 0
+		plot.PublishedShield = plot.ShieldUntil
 		maxSlots = math.min(maxSlots, #plot.Slots)
 	end
 	PlotService.MaxSlots = maxSlots
@@ -601,6 +663,10 @@ function PlotService.Start()
 			task.wait(0.25)
 			tick += 1
 			for _, plot in ipairs(PlotService.Plots) do
+				-- plot.ShieldUntil direkt geändert (z.B. vom Produkt)? -> Attribute + Anzeige nachziehen
+				if (tonumber(plot.ShieldUntil) or 0) ~= plot.PublishedShield then
+					publishLock(plot)
+				end
 				if plot.Owner and PlotService.IsLocked(plot) then
 					for _, other in ipairs(Players:GetPlayers()) do
 						local character = other.Character

@@ -7,6 +7,8 @@
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
+local PolicyService = game:GetService("PolicyService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
@@ -335,19 +337,22 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 end
 
 -- Roter Kreis mit "!" oben rechts an einem Knopf (z.B. Tagesbonus bereit)
+-- (rechts verankert: längere Texte wie "4:59" wachsen als Pille nach links, nicht aus dem Bild)
 function UI.Badge(target: Button, text: string?): Frame
 	local badge: Frame = UI.Create("Frame", {
 		Name = "Badge",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(1, -6, 0, 6),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, 8, 0, 6),
 		Size = UDim2.fromOffset(28, 28),
 		BackgroundColor3 = UI.Theme.Red,
 		Visible = false,
 		ZIndex = target.Button.ZIndex + 2,
 		Parent = target.Button,
-	}, { UI.Corner(14), UI.Stroke(BLACK, 2) })
+	}, { UI.Corner(14), UI.Stroke(BLACK, 2), UI.Create("UIScale", { Name = "Pulse" }) })
 	UI.Label({
-		Size = UDim2.fromScale(1, 1),
+		Name = "Text",
+		Position = UDim2.fromOffset(3, 2),
+		Size = UDim2.new(1, -6, 1, -4),
 		Text = text or "!",
 		MaxText = 20,
 		Outline = 2,
@@ -355,6 +360,46 @@ function UI.Badge(target: Button, text: string?): Frame
 		Parent = badge,
 	})
 	return badge
+end
+
+local BADGE_PULSE_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local badgePulses: { [Frame]: Tween } = {}
+
+-- Badge setzen: text nil/"" = ausblenden. pulse = sanft pulsieren (z.B. "abholbereit").
+-- Schreibt nur bei Änderungen (wird jede Sekunde aufgerufen).
+function UI.SetBadge(badge: Frame, text: string?, color: Color3?, pulse: boolean?)
+	local show = text ~= nil and text ~= ""
+	if badge.Visible ~= show then
+		badge.Visible = show
+	end
+	local label = badge:FindFirstChild("Text")
+	if show and label and label:IsA("TextLabel") and label.Text ~= text then
+		local value = text :: string
+		label.Text = value
+		local chars = utf8.len(value) or #value
+		local width = if chars <= 1 then 28 else math.min(76, 12 + chars * 10)
+		badge.Size = UDim2.fromOffset(width, 28)
+	end
+	local wanted = color or UI.Theme.Red
+	if badge.BackgroundColor3 ~= wanted then
+		badge.BackgroundColor3 = wanted
+	end
+	local scale = badge:FindFirstChild("Pulse")
+	if not scale or not scale:IsA("UIScale") then
+		return
+	end
+	local tween = badgePulses[badge]
+	local wantPulse = show and pulse == true
+	if wantPulse and not tween then
+		scale.Scale = 1
+		local newTween = TweenService:Create(scale, BADGE_PULSE_INFO, { Scale = 1.22 })
+		badgePulses[badge] = newTween
+		newTween:Play()
+	elseif not wantPulse and tween then
+		tween:Cancel()
+		badgePulses[badge] = nil
+		scale.Scale = 1
+	end
 end
 
 -- ---------------------------------------------------------------------
@@ -921,6 +966,41 @@ function UI.FetchPrice(id: number, infoType: Enum.InfoType, callback: (number?) 
 			task.spawn(cb, price)
 		end
 	end)
+end
+
+-- ---------------------------------------------------------------------
+-- LÄNDER-REGEL "Paid Random Items": Dürfen wir Zufalls-Käufe (Zufalls-Ei, Glücksrad-Drehs) zeigen?
+-- Einmal fragen, dann merken. Im Zweifel/bei Fehler: NICHT zeigen.
+-- ---------------------------------------------------------------------
+local randomAllowed: boolean? = nil
+local randomWaiting: { (boolean) -> () } = {}
+local randomStarted = false
+
+function UI.WhenRandomItemsKnown(callback: (allowed: boolean) -> ())
+	if randomAllowed ~= nil then
+		task.spawn(callback, randomAllowed)
+		return
+	end
+	table.insert(randomWaiting, callback)
+	if randomStarted then
+		return
+	end
+	randomStarted = true
+	task.spawn(function()
+		local ok, info = pcall(PolicyService.GetPolicyInfoForPlayerAsync, PolicyService, Players.LocalPlayer)
+		local allowed = ok and type(info) == "table" and info.ArePaidRandomItemsRestricted == false
+		randomAllowed = allowed
+		local waiting = randomWaiting
+		randomWaiting = {}
+		for _, cb in ipairs(waiting) do
+			task.spawn(cb, allowed)
+		end
+	end)
+end
+
+-- true/false, oder nil solange die Antwort noch nicht da ist
+function UI.RandomItemsAllowed(): boolean?
+	return randomAllowed
 end
 
 -- ---------------------------------------------------------------------

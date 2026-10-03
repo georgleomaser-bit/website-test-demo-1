@@ -162,6 +162,14 @@ local function tickPlayer(player: Player)
 	local gain = def.Rate * Services.EconomyService.GetStepsMult(player)
 	Services.EconomyService.AddSteps(player, gain) -- passt die Laufgeschwindigkeit an + MarkDirty
 	Remotes.Effect:FireClient(player, "Steps", gain)
+	-- Tagesaufgabe "Lauf X Schritte" (ein Fehler dort darf das Schritte-Sammeln nicht stoppen)
+	local rewards = Services.RewardService
+	if rewards and rewards.Track then
+		local ok, err = pcall(rewards.Track, player, "Steps", gain)
+		if not ok then
+			warn("[TreadmillService] RewardService.Track fehlgeschlagen: " .. tostring(err))
+		end
+	end
 end
 
 function TreadmillService.Init(services)

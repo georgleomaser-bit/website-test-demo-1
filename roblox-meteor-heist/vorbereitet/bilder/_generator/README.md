@@ -7,7 +7,35 @@
 | `spiel-icon.png` | 512 × 512 | Screenshot (falls vorhanden), sonst gezeichnet |
 | `thumbnail-1.png` … `thumbnail-3.png` | 1920 × 1080 | Screenshot (falls vorhanden), sonst gezeichnet |
 | `thumbnail-4.png`, `thumbnail-5.png` | 1920 × 1080 | **nur** mit Screenshot (sonst übersprungen) |
-| 14 × `pass-*.png` / `produkt-*.png` | 512 × 512 | immer gezeichnet |
+| 22 × `pass-*.png` / `produkt-*.png` (8 Gamepasses, 14 Developer Products) | 512 × 512 | immer gezeichnet |
+
+### Pass- und Produkt-Icons
+
+| Bild | Config-Key | Motiv |
+|---|---|---|
+| `pass-2x-cash.png` | `DoubleCash` | Geldsack, „2X“-Sticker, CASH |
+| `pass-vip.png` | `VIP` | Krone, VIP |
+| `pass-extra-plaetze.png` | `ExtraSlots` | Feuer-Meteor, +5 |
+| `pass-auto-collect.png` | `AutoCollect` | Roboter mit Geldscheinen, AUTO |
+| `pass-2x-aufladen.png` | `FastCharge` | Meteor mit Blitz, 2X |
+| `pass-speed-boots.png` | `SpeedBoots` | Turnschuh, SPEED |
+| `pass-gluck.png` | `Lucky` | Alien mit Kleeblatt, „2X“-Sticker, GLÜCK (v2.1) |
+| `pass-volle-speed.png` | `CarryFast` | Blockfigur rennt mit Meteor über dem Kopf, VOLLGAS (v2.1) |
+| `produkt-cash-s.png` / `-m` / `-xl` | `CashSmall` / `CashMedium` / `CashLarge` | Geld, S / M / XL |
+| `produkt-server-glueck.png` | `ServerLuck` | Kleeblatt, „2X“-Sticker, GLÜCK |
+| `produkt-speed-10.png` | `Speed10` | rennende Figur, +10 |
+| `produkt-meteoritenschauer.png` | `MeteorShower` | drei Feuer-Meteore, SCHAUER |
+| `produkt-legendary-meteor.png` | `LegendaryMeteor` | goldener Meteor, LEGENDARY |
+| `produkt-mythic-meteor.png` | `MythicMeteor` | rot-pinker Meteor, MYTHIC |
+| `produkt-starter-paket.png` | `StarterPack` | Geschenk mit Stern, Geldsack, goldenes Ei, STARTER (v2.1) |
+| `produkt-dreh-1.png` | `Spin1` | Glücksrad, 1 DREH (v2.1) |
+| `produkt-dreh-12.png` | `Spin10` | zwei Glücksräder, „+2“-Sticker, 10+2 (v2.1) |
+| `produkt-sofort-schluepfen.png` | `InstantHatch` | Alien springt aus dem Ei, Blitz, SOFORT (v2.1) |
+| `produkt-base-schild.png` | `BaseShield` | Schild mit Schloss, SCHILD (v2.1) |
+| `produkt-egg-rush.png` | `EggRush` | bunte Alien-Eier regnen auf die Wiese, EGG RUSH (v2.1) |
+
+Das Glücksrad hat dieselben 8 Farben und Icons wie `Config.WheelPrizes` im Spiel (Konstante `WHEEL` in `generate.js`).
+Ein neues Icon ist ein neuer Eintrag in der Liste `ICONS`. Jedes Bild wird für sich gezeichnet, darum bleiben alle bisherigen Bilder Byte für Byte gleich (vorher/nachher mit `md5sum` prüfen).
 
 ## Starten
 
@@ -29,7 +57,7 @@ Voraussetzung: Node.js und Playwright mit Chromium (wird automatisch über `npm 
    | `secret` | Ein Secret-Meteor ganz nah | `thumbnail-2.png` „SECRET METEOR GEFUNDEN!“ und `spiel-icon.png` |
    | `krater` | Der Krater beim Meteoritenschauer | `thumbnail-3.png` „METEORITENSCHAUER!“ (mit „3X GLÜCK“ / „KEINE LOCKS!“) |
    | `base` | Deine Base voller Meteore | `thumbnail-4.png` „WERDE REICH!“ |
-   | `showcase` | Die Showcase-Reihe mit allen Seltenheiten | `thumbnail-5.png` „27 METEORE ZUM SAMMELN!“ |
+   | `showcase` | Die Showcase-Reihe mit allen Seltenheiten | `thumbnail-5.png` „28 METEORE ZUM SAMMELN!“ |
 
 3. `node generate.js` starten.
 

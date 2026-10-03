@@ -1,11 +1,11 @@
 -- =====================================================================
---  FENSTER: Shop, Laufbänder, Rebirth, Tagesbonus, Alien-Index
+--  FENSTER: Shop (Reiter Gamepässe / Boosts / Gadgets), Laufbänder, Rebirth, Tagesbonus, Alien-Index
 --  Jedes Fenster wird EINMAL gebaut; Refresh(state) schreibt nur die Werte neu.
+--  Andere Module (z.B. Rewards) melden ihre Fenster mit Windows.Register an.
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
-local PolicyService = game:GetService("PolicyService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
 
@@ -16,6 +16,7 @@ local ctx: any = nil
 local Theme = UI.Theme
 
 local list: { [string]: UI.Window } = {}
+local refreshers: { [string]: (state: any) -> () } = {}
 
 local GRAY = Theme.Gray
 local TIER_COLORS: { [string]: Color3 } = {
@@ -67,13 +68,41 @@ local function bestTreadmill(steps: number): any
 end
 
 -- ---------------------------------------------------------------------
--- SHOP
+-- SHOP (Reiter: ⭐ Gamepässe / 💎 Boosts / 🛠️ Gadgets)
 -- ---------------------------------------------------------------------
 type PassCard = { Pass: any, Button: UI.Button, Price: number? }
-type ProductCard = { Product: any, Info: TextLabel? }
+type ProductCard = { Product: any, Info: TextLabel?, Button: UI.Button, Price: number? }
+type GadgetCard = { Gadget: any, Button: UI.Button, Stroke: UIStroke, Card: Frame }
 
 local passCards: { PassCard } = {}
 local productCards: { ProductCard } = {}
+local gadgetCards: { GadgetCard } = {}
+local shopPages: { [string]: Frame } = {}
+local shopTabButtons: { [string]: UI.Button } = {}
+local shopTab = "Passes"
+
+local SHOP_TABS = {
+	{ Id = "Passes", Text = "⭐ Gamepässe", Color = Theme.Gold },
+	{ Id = "Boosts", Text = "💎 Boosts", Color = Theme.Blue },
+	{ Id = "Gadgets", Text = "🛠️ Gadgets", Color = Theme.Orange },
+}
+
+-- Starter-Paket: Werte aus Config.StarterPack (der MonetizationService liest dieselben).
+-- Wo Zufalls-Käufe verboten sind, gibt es statt Drehs + Zufalls-Ei mehr Cash + ein festes Ei.
+local function starterValues(): (number, number, number, number, string, string)
+	local starter = ctx.Config.StarterPack or {}
+	return tonumber(starter.MinCash) or 100000,
+		tonumber(starter.IncomeSeconds) or 900,
+		tonumber(starter.Spins) or 3,
+		tonumber(starter.RestrictedCashMult) or 1.5,
+		tostring(starter.EggRarity or "Legendary"),
+		tostring(starter.Gadget or "SpeedCoil")
+end
+
+-- Zufalls-Käufe (Chancen werden angezeigt, nur wo erlaubt)
+local function isRandomProduct(product: any): boolean
+	return product.Type == "Meteor" or product.Type == "Spins"
+end
 
 local function hatchOddsText(meteorId: string): string
 	local Aliens = ctx.Aliens
@@ -91,11 +120,11 @@ local function hatchOddsText(meteorId: string): string
 		local pct = if total > 0 then option.Weight / total * 100 else 0
 		table.insert(parts, percentText(pct) .. "% " .. (def and def.Tier or "?"))
 	end
-	return "🐣 Schlüpft: " .. table.concat(parts, " • ") .. " (Glück-Events: besser)"
+	return "🐣 Schlüpft: " .. table.concat(parts, " • ") .. " (Glück & 🍀-Pass: besser)"
 end
 
--- Roblox-Regel "Paid Random Items": Chancen VOR dem Kauf anzeigen
-local function oddsText(rarityName: string): string
+-- "Je 33%: Solar Flare, Aurora Crystal, Titan Boulder"
+local function meteorOddsShort(rarityName: string): string
 	local defs = meteorsOfRarity(rarityName)
 	if #defs == 0 then
 		return ""
@@ -104,15 +133,41 @@ local function oddsText(rarityName: string): string
 	for _, def in ipairs(defs) do
 		table.insert(names, def.Name)
 	end
-	local chance = percentText(100 / #defs)
-	return ("🎲 Je %s%%: %s\n%s"):format(chance, table.concat(names, ", "), hatchOddsText(defs[1].Id))
+	return ("Je %s%%: %s"):format(percentText(100 / #defs), table.concat(names, ", "))
+end
+
+-- Roblox-Regel "Paid Random Items": Chancen VOR dem Kauf anzeigen
+local function oddsText(rarityName: string): string
+	local defs = meteorsOfRarity(rarityName)
+	if #defs == 0 then
+		return ""
+	end
+	return "🎲 " .. meteorOddsShort(rarityName) .. "\n" .. hatchOddsText(defs[1].Id)
+end
+
+-- Glücksrad-Chancen kurz: "🎲 💵26% 👟18% ..."
+local function wheelOddsShort(): string
+	local prizes = ctx.Config.WheelPrizes
+	if type(prizes) ~= "table" or #prizes == 0 then
+		return ""
+	end
+	local total = 0
+	for _, prize in ipairs(prizes) do
+		total += math.max(0, tonumber(prize.Weight) or 0)
+	end
+	local parts = {}
+	for _, prize in ipairs(prizes) do
+		local pct = if total > 0 then math.max(0, tonumber(prize.Weight) or 0) / total * 100 else 0
+		table.insert(parts, tostring(prize.Icon or "?") .. percentText(pct) .. "%")
+	end
+	return "🎲 Chancen: " .. table.concat(parts, " ")
 end
 
 local function productInfoText(product: any, state: any): string
 	local Util = ctx.Util
 	local kind = product.Type
+	local income = state and tonumber(state.Income) or 0
 	if kind == "Cash" then
-		local income = state and tonumber(state.Income) or 0
 		local amount = math.max(tonumber(product.Min) or 0, income * 60 * (tonumber(product.Minutes) or 0))
 		return ("%s Min. Einkommen  ≈ %s"):format(tostring(product.Minutes or 0), Util.FormatCash(amount))
 	elseif kind == "Steps" then
@@ -130,8 +185,51 @@ local function productInfoText(product: any, state: any): string
 		)
 	elseif kind == "Shower" then
 		return "🌠 Sofort mehr + bessere Meteore für alle!"
+	elseif kind == "Meteor" then
+		return oddsText(product.Rarity)
+	elseif kind == "StarterPack" then
+		local minCash, incomeSeconds, spins, restrictedMult, eggRarity, gadgetId = starterValues()
+		local cash = math.max(minCash, income * incomeSeconds)
+		local coil = ctx.Config.GadgetsById and ctx.Config.GadgetsById[gadgetId]
+		local coilText = if coil then (tostring(coil.Icon) .. " " .. tostring(coil.Name)) else "🌀 Speed Coil"
+		if UI.RandomItemsAllowed() == true then
+			return ("NUR 1x: 💰 ≈%s + 🎡 %d Drehs + 🌟 %s-Ei + %s\n🎲 Ei: %s"):format(
+				Util.FormatCash(cash),
+				spins,
+				eggRarity,
+				coilText,
+				meteorOddsShort(eggRarity)
+			)
+		end
+		local eggs = ctx.Config.MeteorsByRarity and ctx.Config.MeteorsByRarity[eggRarity]
+		local egg = eggs and eggs[1]
+		return ("NUR 1x: 💰 ≈%s + 🌟 %s + %s"):format(
+			Util.FormatCash(cash * restrictedMult),
+			if egg then tostring(egg.Name) else eggRarity .. "-Ei",
+			coilText
+		)
+	elseif kind == "Spins" then
+		local amount = math.max(1, math.floor(tonumber(product.Amount) or 1))
+		return ("🎡 +%d %s fürs Glücksrad\n%s"):format(
+			amount,
+			if amount == 1 then "Dreh" else "Drehs",
+			wheelOddsShort()
+		)
+	elseif kind == "InstantHatch" then
+		return "🐣 Alle Eier in deiner Base schlüpfen SOFORT!"
+	elseif kind == "Shield" then
+		return ("🛡️ %s Min. kann niemand bei dir klauen – sogar im Schauer!"):format(
+			tostring(product.Minutes or 10)
+		)
+	elseif kind == "EggRush" then
+		return ("🥚 %s Gratis-Eier regnen für ALLE auf die Map!"):format(tostring(ctx.Config.EggRushCount or 25))
 	end
 	return ""
+end
+
+local function ownsGadget(state: any, id: string): boolean
+	local owned = state and state.Gadgets
+	return type(owned) == "table" and table.find(owned, id) ~= nil
 end
 
 function Windows.RefreshShop(state: any)
@@ -150,22 +248,83 @@ function Windows.RefreshShop(state: any)
 		end
 	end
 	for _, entry in ipairs(productCards) do
+		local product = entry.Product
 		if entry.Info then
-			local text = productInfoText(entry.Product, state)
+			local text = productInfoText(product, state)
 			if entry.Info.Text ~= text then
 				entry.Info.Text = text
 			end
 		end
+		if product.Id == 0 then
+			entry.Button.SetText("Bald verfügbar")
+			entry.Button.SetColor(GRAY)
+		elseif product.Type == "StarterPack" and state and state.StarterBought == true then
+			entry.Button.SetText("✅ Gekauft")
+			entry.Button.SetColor(GRAY)
+		else
+			entry.Button.SetText(if entry.Price then ("R$ " .. entry.Price) else "Kaufen")
+			entry.Button.SetColor(if product.Type == "StarterPack" then Theme.Gold else Theme.Blue)
+		end
+	end
+	local cash = state and tonumber(state.Cash) or 0
+	for _, entry in ipairs(gadgetCards) do
+		local gadget = entry.Gadget
+		local price = tonumber(gadget.Price) or 0
+		local owned = ownsGadget(state, gadget.Id)
+		if owned then
+			entry.Button.SetText("✅ Besitzt du")
+			entry.Button.SetColor(GRAY)
+		else
+			entry.Button.SetText("💵 " .. ctx.Util.FormatCash(price))
+			entry.Button.SetColor(if cash >= price then Theme.Green else GRAY)
+		end
+		local strokeColor = if owned then Theme.Gold else Color3.new(0, 0, 0)
+		if entry.Stroke.Color ~= strokeColor then
+			entry.Stroke.Color = strokeColor
+			entry.Stroke.Thickness = if owned then 4 else 2
+		end
 	end
 end
 
-local function buildShop()
-	local win = UI.Window("🛒 SHOP", 620, 520, Theme.Red)
-	list.Shop = win
-	local content = win.Content
+local function selectShopTab(id: string)
+	if not shopPages[id] then
+		id = "Passes"
+	end
+	shopTab = id
+	for pageId, page in pairs(shopPages) do
+		page.Visible = pageId == id
+	end
+	for _, tab in ipairs(SHOP_TABS) do
+		local button = shopTabButtons[tab.Id]
+		if button then
+			button.SetColor(if tab.Id == id then tab.Color else GRAY)
+		end
+	end
+	local win = list.Shop
+	if win then
+		win.Content.CanvasPosition = Vector2.zero
+	end
+end
 
-	UI.Section(content, "⭐ Gamepasses (für immer)", 1)
-	local passGrid = UI.Grid(content, 2, 280, 136)
+local function newShopPage(id: string, order: number, parent: Instance): Frame
+	local page = UI.Create("Frame", {
+		Name = id,
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		Visible = false,
+		Parent = parent,
+	}, {
+		UI.Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }),
+	})
+	shopPages[id] = page
+	return page
+end
+
+local function buildPassPage(page: Frame)
+	UI.Section(page, "⭐ Gamepässe (gehören dir für immer)", 1)
+	local passGrid = UI.Grid(page, 2, 280, 136)
 	for i, pass in ipairs(ctx.Config.GamePasses) do
 		local card = UI.Card({ LayoutOrder = i, Parent = passGrid })
 		UI.Label({
@@ -206,17 +365,28 @@ local function buildShop()
 			Windows.RefreshShop(ctx.State)
 		end)
 	end
+end
 
-	UI.Section(content, "💎 Boosts & Pakete", 3)
-	local productGrid = UI.Grid(content, 4, 280, 150)
+local function buildBoostPage(page: Frame)
+	UI.Section(page, "💎 Boosts & Pakete", 1)
+	local productGrid = UI.Grid(page, 2, 280, 156)
 	local randomCards: { Frame } = {}
 	for i, product in ipairs(ctx.Config.Products) do
-		local isRandom = product.Type == "Meteor"
+		local isRandom = isRandomProduct(product)
+		local starter = product.Type == "StarterPack"
 		local card = UI.Card({
-			LayoutOrder = i,
+			-- Starter-Paket ganz vorne
+			LayoutOrder = if starter then 0 else i,
 			Visible = not isRandom, -- erst zeigen, wenn die Länder-Regel geprüft ist
 			Parent = productGrid,
 		})
+		if starter then
+			local stroke = card:FindFirstChildOfClass("UIStroke")
+			if stroke then
+				stroke.Color = Theme.Gold
+				stroke.Thickness = 4
+			end
+		end
 		UI.Label({
 			Position = UDim2.fromOffset(10, 6),
 			Size = UDim2.new(1, -20, 0, 30),
@@ -228,47 +398,138 @@ local function buildShop()
 		})
 		local info = UI.Label({
 			Position = UDim2.fromOffset(10, 38),
-			Size = UDim2.new(1, -20, 0, 56),
-			Text = if isRandom then oddsText(product.Rarity) else productInfoText(product, nil),
+			Size = UDim2.new(1, -20, 0, 62),
+			Text = productInfoText(product, nil),
 			Font = Enum.Font.GothamBold,
 			TextColor3 = Theme.SubText,
 			TextWrapped = true,
-			MaxText = if isRandom then 12 else 14,
+			MaxText = if isRandom or starter then 12 else 14,
 			Parent = card,
 		})
 		if isRandom then
 			table.insert(randomCards, card)
 		end
-		table.insert(productCards, { Product = product, Info = if isRandom then nil else info })
 		local buy = UI.Button({
 			Position = UDim2.new(0, 10, 1, -46),
 			Size = UDim2.new(1, -20, 0, 36),
 			Text = "...",
-			Color = Theme.Blue,
+			Color = if starter then Theme.Gold else Theme.Blue,
 			MaxText = 20,
 			Parent = card,
 		}, function()
-			if product.Id ~= 0 then
-				MarketplaceService:PromptProductPurchase(player, product.Id)
+			local state = ctx.State
+			if product.Id == 0 or (starter and state and state.StarterBought == true) then
+				return
 			end
+			MarketplaceService:PromptProductPurchase(player, product.Id)
 		end)
+		local entry: ProductCard = { Product = product, Info = info, Button = buy, Price = nil }
+		table.insert(productCards, entry)
 		UI.FetchPrice(product.Id, Enum.InfoType.Product, function(price)
-			if product.Id == 0 then
-				buy.SetText("Bald verfügbar")
-				buy.SetColor(GRAY)
-			else
-				buy.SetText(if price then ("R$ " .. price) else "Kaufen")
-			end
+			entry.Price = price
+			Windows.RefreshShop(ctx.State)
 		end)
 	end
 	-- Zufalls-Käufe nur zeigen, wo sie erlaubt sind (im Zweifel/bei Fehler: nicht zeigen)
-	task.spawn(function()
-		local ok, info = pcall(PolicyService.GetPolicyInfoForPlayerAsync, PolicyService, player)
-		local allowed = ok and type(info) == "table" and info.ArePaidRandomItemsRestricted == false
+	UI.WhenRandomItemsKnown(function(allowed)
 		for _, card in ipairs(randomCards) do
 			card.Visible = allowed
 		end
+		Windows.RefreshShop(ctx.State) -- Starter-Paket-Text hängt davon ab
 	end)
+end
+
+local function buildGadgetPage(page: Frame)
+	UI.Section(page, "🛠️ Gadgets – mit 💵 Cash, gehören dir für immer!", 1)
+	UI.Label({
+		Size = UDim2.new(1, 0, 0, 36),
+		Text = "Liegen nach jedem Spawn in deinem Rucksack – auch nach Rebirth. Super-Bonk ersetzt den normalen Bonk.",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = Theme.SubText,
+		TextWrapped = true,
+		LayoutOrder = 2,
+		MaxText = 14,
+		Parent = page,
+	})
+	local grid = UI.Grid(page, 3, 280, 176)
+	local gadgets = ctx.Config.Gadgets
+	if type(gadgets) ~= "table" then
+		gadgets = {}
+	end
+	for i, gadget in ipairs(gadgets) do
+		local card = UI.Card({ LayoutOrder = i, Parent = grid })
+		local stroke = card:FindFirstChildOfClass("UIStroke") :: UIStroke
+		UI.Label({
+			Position = UDim2.fromOffset(10, 6),
+			Size = UDim2.new(1, -20, 0, 32),
+			Text = displayName(gadget),
+			MaxText = 22,
+			Outline = 2,
+			Parent = card,
+		})
+		UI.Label({
+			Position = UDim2.fromOffset(10, 40),
+			Size = UDim2.new(1, -20, 0, 76),
+			Text = tostring(gadget.Description or ""),
+			Font = Enum.Font.GothamBold,
+			TextColor3 = Theme.SubText,
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			MaxText = 14,
+			Parent = card,
+		})
+		local button = UI.Button({
+			Position = UDim2.new(0, 10, 1, -48),
+			Size = UDim2.new(1, -20, 0, 38),
+			Text = "...",
+			Color = Theme.Green,
+			MaxText = 20,
+			Parent = card,
+		}, function()
+			if ownsGadget(ctx.State, gadget.Id) then
+				return
+			end
+			ctx.Request("BuyGadget", gadget.Id)
+		end)
+		table.insert(gadgetCards, { Gadget = gadget, Button = button, Stroke = stroke, Card = card })
+	end
+end
+
+local function buildShop()
+	local win = UI.Window("🛒 SHOP", 620, 560, Theme.Red)
+	list.Shop = win
+	-- Reiter fest über dem Inhalt (scrollen nicht mit weg)
+	local tabBar = UI.Create("Frame", {
+		Name = "Tabs",
+		Position = UDim2.fromOffset(12, 68),
+		Size = UDim2.new(1, -24, 0, 46),
+		BackgroundTransparency = 1,
+		Parent = win.Panel,
+	}, {
+		UI.Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 6),
+		}),
+	})
+	win.Content.Position = UDim2.fromOffset(12, 122)
+	win.Content.Size = UDim2.new(1, -24, 1, -134)
+	for i, tab in ipairs(SHOP_TABS) do
+		shopTabButtons[tab.Id] = UI.Button({
+			Size = UDim2.new(1 / #SHOP_TABS, -4, 1, 0),
+			Text = tab.Text,
+			Color = GRAY,
+			LayoutOrder = i,
+			MaxText = 20,
+			Parent = tabBar,
+		}, function()
+			selectShopTab(tab.Id)
+		end)
+	end
+	buildPassPage(newShopPage("Passes", 1, win.Content))
+	buildBoostPage(newShopPage("Boosts", 2, win.Content))
+	buildGadgetPage(newShopPage("Gadgets", 3, win.Content))
+	selectShopTab(shopTab)
 end
 
 -- ---------------------------------------------------------------------
@@ -905,14 +1166,27 @@ function Windows.Open(name: string)
 	end
 end
 
--- Fenstername -> Aktualisieren
-local refreshers: { [string]: (state: any) -> () } = {
-	Shop = Windows.RefreshShop,
-	Treadmills = Windows.RefreshTreadmills,
-	Rebirth = Windows.RefreshRebirth,
-	Daily = Windows.RefreshDaily,
-	Index = Windows.RefreshIndex,
-}
+-- Shop auf einem bestimmten Reiter öffnen ("Passes", "Boosts", "Gadgets")
+function Windows.OpenShop(tab: string?)
+	if tab then
+		selectShopTab(tab)
+	end
+	Windows.Open("Shop")
+end
+
+-- Fenster aus anderen Modulen anmelden (z.B. Geschenke, Glücksrad, Aufgaben):
+-- Toggle/Open per Name, beim Öffnen und bei neuen Daten wird refresh(state) aufgerufen.
+function Windows.Register(name: string, win: UI.Window, refresh: ((state: any) -> ())?)
+	list[name] = win
+	if refresh then
+		refreshers[name] = refresh
+		win.OnOpen = function()
+			if ctx.State then
+				refresh(ctx.State)
+			end
+		end
+	end
+end
 
 -- Neue Daten vom Server: nur OFFENE Fenster neu beschreiben (geschlossene beim Öffnen)
 function Windows.Refresh(state: any)
@@ -934,18 +1208,21 @@ function Windows.Init(context: any)
 	buildRebirth()
 	buildDaily()
 	buildIndex()
-	Windows.RefreshShop(nil)
-	-- Beim Öffnen einmal mit den neuesten Daten füllen
-	for name, win in pairs(list) do
-		local refresh = refreshers[name]
-		if refresh then
-			win.OnOpen = function()
-				if ctx.State then
-					refresh(ctx.State)
-				end
-			end
+	-- Fenstername -> Aktualisieren (beim Öffnen einmal mit den neuesten Daten füllen)
+	local own: { [string]: (state: any) -> () } = {
+		Shop = Windows.RefreshShop,
+		Treadmills = Windows.RefreshTreadmills,
+		Rebirth = Windows.RefreshRebirth,
+		Daily = Windows.RefreshDaily,
+		Index = Windows.RefreshIndex,
+	}
+	for name, refresh in pairs(own) do
+		local win = list[name]
+		if win then
+			Windows.Register(name, win, refresh)
 		end
 	end
+	Windows.RefreshShop(nil)
 end
 
 return Windows

@@ -20,7 +20,7 @@ Das dauert ungefähr **15 Minuten**.
 |---|---|---|
 | `base` | Deine Base voller Aliens, schräg von oben | Thumbnail 4 |
 | `krater` | Das Meteor-Laufband in der Mitte während eines **Meteoritenschauers** (viele Meteore!) | Thumbnail 3 |
-| `tragen` | Du rennst mit einem Alien oder Meteor über dem Kopf | Thumbnail 1 |
+| `tragen` | Du rennst mit einem geklauten Ei (Meteor) oder Alien über dem Kopf | Thumbnail 1 |
 | `showcase` | Die Showcase-Reihe: ein Meteor von jeder Seltenheit nebeneinander | Thumbnail 5 |
 | `secret` | Ein Secret-Meteor oder Admin-Meteor ganz nah | Thumbnail 2 und das Icon |
 
@@ -57,7 +57,7 @@ Das dauert ungefähr **15 Minuten**.
 **So geht der Foto-Modus (H):**
 1. Stell zuerst alles mit dem Admin-Panel ein.
 2. Drück **H**. Kurz erscheint die Meldung „📸 Foto-Modus: H drücken zum Beenden“.
-3. Warte **2 Sekunden**. Dann sind alle Knöpfe, Fenster und E-Hinweise weg.
+3. Warte **2 Sekunden**. Dann sind alle Knöpfe, Fenster, Schlüpf-Karten, fliegende Zahlen und E/F-Hinweise weg.
 4. Jetzt das Foto machen (siehe nächster Abschnitt).
 5. Drück wieder **H**. Alles ist wieder da.
 
@@ -115,6 +115,7 @@ Das dauert ungefähr **15 Minuten**.
 2. Ins Feld **Minuten** zum Beispiel `3` schreiben. So lange dauert der Schauer.
 3. Auf **🌠 Meteoritenschauer** klicken. Jetzt kommen ganz viele Meteore aufs Laufband.
 4. Noch mehr gute Meteore? Bereich **🌧️ Meteorregen** → zum Beispiel **Legendary** oder **Mythic** klicken.
+   Das Band ist jetzt richtig voll. Im Schauer kommen ungefähr 5 Meteore pro Sekunde.
 5. Panel zu. Drück **G** und flieg über das Laufband in der Map-Mitte.
 6. Schau schräg von oben auf das Band, sodass man viele Meteore sieht.
 7. **H**, warten, Screenshot, **H**.
@@ -122,7 +123,23 @@ Das dauert ungefähr **15 Minuten**.
 
 ### 3. `tragen` – du rennst mit Beute
 
-Klauen geht nur bei einer **fremden** Base. Darum brauchst du beim Testen **2 Spieler**.
+**Weg A – Ei vom Laufband klauen (am einfachsten, allein):**
+
+1. Für ein schönes, großes Ei: Admin-Panel → **☄️ Meteor spawnen** → einen großen Meteor anklicken
+   (zum Beispiel **Nebula Heart** oder **Big Bang Core**), Mutation zum Beispiel **Rainbow x15** → **Aufs Laufband**.
+2. Panel zu (**P**). Stell dich ans Geländer vom Laufband.
+3. Kommt dein Meteor vorbei: **Halte E** (knapp 1 Sekunde). Jetzt trägst du ihn über dem Kopf.
+   Wichtig: **E**, nicht **F**. Mit **F** kaufst du ihn, dann fliegt er von allein in deine Base.
+4. Lauf los, weg vom Band. Dreh die Kamera so, dass man dich **von vorne oder von der Seite** sieht, mit dem Ei über dem Kopf.
+5. **H**, warten, Screenshot, **H**.
+6. Datei **`tragen`** nennen.
+
+> 💡 Du hast **60 Sekunden** Zeit. Danach fällt das Ei auf den Boden. Nicht schlimm: mit **E** wieder schnappen.
+> Klauen geht nur, wenn deine Base noch einen freien Platz hat.
+
+**Weg B – ein Alien aus einer fremden Base klauen (noch krasser):**
+
+Klauen aus einer Base geht nur bei einer **fremden** Base. Darum brauchst du dafür **2 Spieler**.
 Das geht in Studio ganz einfach, auch allein:
 
 1. Stopp das Spiel (**Stop**-Knopf oben).
@@ -136,8 +153,9 @@ Das geht in Studio ganz einfach, auch allein:
 8. Im Fenster Player2: **H**, warten, Screenshot, **H**.
 9. Datei **`tragen`** nennen.
 
-> 💡 Du hast **60 Sekunden** Zeit. Danach fliegt die Beute zurück in die Base. Nicht schlimm: einfach nochmal klauen.
+> 💡 Auch hier hast du **60 Sekunden** Zeit. Danach fliegt das Alien zurück in die Base. Einfach nochmal klauen.
 > Beim Testen in Studio sind beide Spieler Admin. Deshalb klappt **H** auch im Fenster von Player2.
+> Hat Player1 eine **🪤 Falle** aufgestellt, nicht reintreten: Dann bist du 3 Sekunden eingefroren und das Alien ist weg.
 
 ### 4. `showcase` – alle Seltenheiten nebeneinander
 
@@ -157,7 +175,7 @@ Das geht in Studio ganz einfach, auch allein:
 
 **Weg B – Secret-Meteor:**
 1. Admin-Panel → **☄️ Meteor spawnen / geben** → **Big Bang Core** anklicken (oder einen anderen Secret).
-2. Mutation **Cosmic x10** anklicken (glitzert lila).
+2. Mutation **Rainbow x15** anklicken (leuchtet in allen Farben) oder **Cosmic x10** (glitzert lila).
 3. Auf **Vor mir** klicken.
 
 Dann: **H**, warten, Screenshot, **H**. Datei **`secret`** nennen.
@@ -168,6 +186,7 @@ Dann: **H**, warten, Screenshot, **H**. Datei **`secret`** nennen.
 
 Admin-Panel → **📸 Foto-Modus** → **🧹 Foto aufräumen**.
 Die Deko-Aliens sind weg, Laufband und Gratis-Zone sind leer.
+Liegen noch Eier auf dem Boden? **🛡️ Moderation** → **🧽 Boden leeren**.
 Die echten Admin-Aliens in deiner Base bleiben. Weg damit: Ziel `me` → **🛡️ Moderation** → **🧹 Base leeren**.
 
 ---
@@ -228,3 +247,5 @@ Ich baue dann das Icon und die Thumbnails und lade sie ins GitHub-Repo hoch.
 - **Hochkant oder schief ist okay.** Ich schneide alles passend zu, nichts wird verzerrt.
 - **Lieber zu viele als zu wenige.** Du darfst mir auch mehrere Fotos pro Motiv schicken (z. B. `base-2`). Ich nehme das beste.
 - **Fehlt ein Foto?** Kein Problem. Für das Icon und die Thumbnails 1 bis 3 gibt es die gezeichneten Bilder als Ersatz.
+- **Extra-Foto für Social Media:** Admin-Panel → **🎉 Events** → **🥚 Egg Rush starten (dieser Server)**. Dann liegen überall auf der Wiese bunte Eier. Flieg hoch (**G**) und mach ein Foto von oben. Super für TikTok oder YouTube Shorts.
+- **Die Bilder für Gamepässe und Produkte brauchen keine Fotos.** Sie sind schon fertig gezeichnet (22 Stück in `bilder/`).

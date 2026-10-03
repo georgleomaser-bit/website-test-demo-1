@@ -338,10 +338,13 @@ local ADMIN_METEOR_LIFETIME = 300 -- Sekunden in der Gratis-Zone
 local MAX_ADMIN_METEOR_SPAWN = 5
 -- Öfter Gold/Diamond/Cosmic als Normal – glänzt schöner auf dem Foto
 local PHOTO_MUTATIONS = {
-	{ Name = "Normal", Weight = 16 },
-	{ Name = "Gold", Weight = 32 },
-	{ Name = "Diamond", Weight = 28 },
-	{ Name = "Cosmic", Weight = 24 },
+	{ Name = "Normal", Weight = 12 },
+	{ Name = "Gold", Weight = 24 },
+	{ Name = "Diamond", Weight = 20 },
+	{ Name = "Cosmic", Weight = 16 },
+	{ Name = "Frost", Weight = 10 },
+	{ Name = "Lava", Weight = 10 },
+	{ Name = "Rainbow", Weight = 8 },
 }
 
 -- Zufälliges Deko-Alien für die Foto-Base (wird NICHT gespeichert)
@@ -787,7 +790,60 @@ end
 
 function Actions.ClearGround(_admin)
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Förderband & Gratis-Zone geleert"
+	return true, "🧹 Förderband, Gratis-Zone & Eier am Boden geleert"
+end
+
+-- 🥚 Egg Rush sofort starten (läuft schon einer: wird verlängert, mehr Eier)
+function Actions.EggRush(_admin)
+	local count = Services.MeteorService.StartEggRush()
+	if count <= 0 then
+		return false, "Egg Rush fehlgeschlagen (kein Wiesenboden gefunden)"
+	end
+	return true, "🥚 Egg Rush gestartet: " .. count .. " Eier!"
+end
+
+-- 🛠️ Gadget schenken (gehört dem Spieler danach für immer)
+function Actions.GiveGadget(admin, args)
+	local gadget = type(args.GadgetId) == "string" and Config.GadgetsById[args.GadgetId] or nil
+	if not gadget then
+		return false, "Unbekanntes Gadget"
+	end
+	local targets = resolveTargets(admin, args.Target)
+	local given = {}
+	for _, p in ipairs(targets) do
+		if Services.GadgetService.Give(p, gadget.Id) then
+			table.insert(given, p.DisplayName)
+			Services.EconomyService.Notify(
+				p,
+				"🎁 Ein Admin hat dir " .. gadget.Icon .. " " .. gadget.Name .. " geschenkt!",
+				"Success"
+			)
+		end
+	end
+	return #given > 0, gadget.Icon .. " " .. gadget.Name .. " für " .. table.concat(given, ", ")
+end
+
+-- 🎡 Glücksrad-Drehs schenken
+function Actions.GiveSpins(admin, args)
+	local amount = math.floor(num(args.Amount, 1, 1, 1000))
+	local rewards = Services.RewardService
+	if not rewards or not rewards.AddSpins then
+		return false, "Glücksrad nicht verfügbar"
+	end
+	local targets = resolveTargets(admin, args.Target)
+	local given = {}
+	for _, p in ipairs(targets) do
+		if Services.DataService.Get(p) then
+			rewards.AddSpins(p, amount)
+			table.insert(given, p.DisplayName)
+			Services.EconomyService.Notify(
+				p,
+				"🎁 Ein Admin hat dir " .. amount .. " 🎡 Drehs geschenkt!",
+				"Success"
+			)
+		end
+	end
+	return #given > 0, "🎡 " .. amount .. " Drehs für " .. table.concat(given, ", ")
 end
 
 function Actions.AdminAbuse(_admin, args)
@@ -818,6 +874,7 @@ function Actions.Freeze(admin, args)
 	for _, p in ipairs(targets) do
 		local root = getRoot(p)
 		if root then
+			root:SetAttribute("TrapFreeze", nil) -- Fallen tauen einen Admin-Freeze nicht auf
 			root.Anchored = args.Enabled == true
 			table.insert(done, p.DisplayName)
 			if args.Enabled == true and p ~= admin then
@@ -901,7 +958,7 @@ function Actions.PhotoClear(admin)
 		Services.PlotService.UpdateSlotColors(plot)
 	end
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Foto-Deko entfernt, Förderband & Gratis-Zone geleert"
+	return true, "🧹 Foto-Deko entfernt, Förderband, Gratis-Zone & Eier geleert"
 end
 
 -- -------------------------------------------------------------------

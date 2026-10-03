@@ -1,5 +1,7 @@
 -- Geld & Fortschritt: Einkommen, Schlüpfen (Meteor -> Alien), Aufladen (Level), Einsammeln,
 -- Verkaufen, Schritte/Speed, Rebirth, Tagesbonus, Index, Leaderstats und Daten an den Client.
+-- Verteilt außerdem die Anfragen vom Client (Remotes.Request) – auch für Geschenke, Glücksrad,
+-- Tagesaufgaben (RewardService) und Gadgets (GadgetService) – und zählt Fortschritt für die Aufgaben.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,6 +31,10 @@ local fullStateAt: { [Player]: number } = {}
 
 local DELIVER_TIME = 0.9 -- so lange fliegt ein gekaufter Meteor in die Base (Client-Effekt)
 local ULTRA_ANNOUNCE_RARITY = 5 -- ab Legendary wird ein Ultra-Alien allen angesagt
+local REVEAL_RARITY = Config.RarityIndex.Epic or 4 -- ab Epic: große Schlüpf-Karte beim Besitzer
+local LUCKY_PASS_MULT = 2 -- Gamepass "2x Glück": Selten/Ultra beim Schlüpfen doppelt so wahrscheinlich
+local MAX_COIL_BONUS = 1 + (Config.SpeedCoilBonus or 0.3) -- Speed Coil: +30% (auch über MaxWalkSpeed)
+local TIER_RANK = { Normal = 1, Selten = 2, Ultra = 3 }
 
 -- -------------------------------------------------------------------
 -- NACHRICHTEN & EFFEKTE
@@ -53,6 +59,17 @@ end
 -- Effekt für alle Spieler (z.B. "Deliver", "Hatch")
 function EconomyService.EffectAll(name: string, strength: number?, data: any?)
 	Remotes.Effect:FireAllClients(name, strength or 1, data)
+end
+
+-- Fortschritt für die Tagesaufgaben (RewardService) – ein Fehler dort darf Geld/Schlüpfen nie stoppen
+local function track(player: Player, kind: string, amount: number)
+	local rewards = Services.RewardService
+	if rewards then
+		local ok, err = pcall(rewards.Track, player, kind, amount)
+		if not ok then
+			warn("[EconomyService] RewardService.Track(" .. kind .. ") fehlgeschlagen: " .. tostring(err))
+		end
+	end
 end
 
 function EconomyService.MarkDirty(player: Player?)
@@ -124,10 +141,46 @@ function EconomyService.GetStepsMult(player: Player): number
 	return pass * (1 + Config.StepsPerRebirth * rebirths)
 end
 
+-- Tempo aus den Schritten (ohne Gadgets, ohne Tragen) – wird im HUD angezeigt
 function EconomyService.GetSpeed(player: Player): number
 	local data = Services.DataService.Get(player)
 	local steps = data and data.Steps or 0
 	return math.min(Config.MaxWalkSpeed, Config.StepsSpeed(steps))
+end
+
+-- Speed Coil (GadgetService): Faktor 1 .. 1.3, solange sie ausgerüstet ist
+local function gadgetSpeedBonus(player: Player): number
+	local gadgets = Services.GadgetService
+	if not gadgets or type(gadgets.SpeedBonus) ~= "function" then
+		return 1
+	end
+	local ok, bonus = pcall(gadgets.SpeedBonus, player)
+	local factor = ok and tonumber(bonus) or 1
+	if factor ~= factor then
+		return 1
+	end
+	return math.clamp(factor, 1, MAX_COIL_BONUS)
+end
+
+-- Beim Tragen: Config.CarrySpeedFactor, mit Gamepass "Volle Speed beim Tragen" kein Abzug
+local function carryFactor(player: Player): number
+	if Services.MonetizationService.HasPass(player, "CarryFast") then
+		return 1
+	end
+	return Config.CarrySpeedFactor
+end
+
+-- Echte Laufgeschwindigkeit: Schritte-Tempo x Speed Coil (Deckel MaxWalkSpeed * 1.3), beim Tragen langsamer
+function EconomyService.GetWalkSpeed(player: Player, carrying: boolean): number
+	local speed = EconomyService.GetSpeed(player)
+	local bonus = gadgetSpeedBonus(player)
+	if bonus > 1 then
+		speed = math.min(speed * bonus, Config.MaxWalkSpeed * MAX_COIL_BONUS)
+	end
+	if carrying then
+		speed = math.max(8, speed * carryFactor(player))
+	end
+	return speed
 end
 
 function EconomyService.ApplySpeed(player: Player)
@@ -136,16 +189,14 @@ function EconomyService.ApplySpeed(player: Player)
 	if not humanoid then
 		return
 	end
-	local speed = EconomyService.GetSpeed(player)
-	if Services.CarryService.IsCarrying(player) then
-		speed = math.max(8, speed * Config.CarrySpeedFactor)
-	end
+	local speed = EconomyService.GetWalkSpeed(player, Services.CarryService.IsCarrying(player))
 	if humanoid.WalkSpeed ~= speed then
 		humanoid.WalkSpeed = speed
 	end
 end
 
--- Schritte gutschreiben (Laufband, Produkte, Admin). Passt die Laufgeschwindigkeit an.
+-- Schritte gutschreiben (Laufband, Produkte, Belohnungen). Passt die Laufgeschwindigkeit an.
+-- (Die Tagesaufgabe "Lauf X Schritte" zählt der TreadmillService – gekaufte Schritte zählen nicht.)
 function EconomyService.AddSteps(player: Player, amount: number)
 	local data = Services.DataService.Get(player)
 	if not data or amount ~= amount or amount == math.huge then
@@ -183,6 +234,7 @@ function EconomyService.Collect(player: Player)
 	data.Pending -= amount
 	EconomyService.AddCash(player, amount)
 	EconomyService.Effect(player, "Collect", amount)
+	track(player, "Collect", amount)
 	local plot = Services.PlotService.GetPlot(player)
 	if plot then
 		Services.PlotService.SetCollectText(plot, data.Pending)
@@ -296,9 +348,24 @@ end
 -- -------------------------------------------------------------------
 -- SCHLÜPFEN
 -- -------------------------------------------------------------------
--- Meteor in Slot schlüpft jetzt -> Alien würfeln, Index, Effekt, neu anzeigen
-function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: number?)
-	local alienId = Aliens.Roll(entry.Id, luck or Services.MeteorService.GetLuck())
+-- Glück beim Schlüpfen: Server-Glück/Schauer (baseLuck) x2 mit Gamepass "2x Glück"
+function EconomyService.HatchLuck(player: Player, baseLuck: number?): number
+	local luck = baseLuck or Services.MeteorService.GetLuck()
+	if Services.MonetizationService.HasPass(player, "Lucky") then
+		luck *= LUCKY_PASS_MULT
+	end
+	return luck
+end
+
+-- Wertung fürs "beste" Alien (Seltenheit vor Stufe)
+local function alienScore(def, tier: string): number
+	return (def and Config.RarityIndex[def.Rarity] or 0) * 10 + (TIER_RANK[tier] or 1)
+end
+
+-- Meteor in Slot schlüpft jetzt -> Alien würfeln, Index, Effekt, neu anzeigen. Gibt die Alien-Id zurück.
+-- quiet = keine Einzel-Nachrichten/-Karten (z.B. "Alle Eier sofort schlüpfen" meldet gesammelt)
+function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: number?, quiet: boolean?): string
+	local alienId = Aliens.Roll(entry.Id, EconomyService.HatchLuck(player, luck))
 	entry.Alien = alienId
 	entry.Hatch = 0
 	entry.Lv = math.max(1, tonumber(entry.Lv) or 1)
@@ -313,10 +380,13 @@ function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: n
 
 	local name = alien and alien.Name or alienId
 	local tier = alien and alien.Tier or "Normal"
-	local tierText = tier == "Ultra" and "🌟 ULTRA " or (tier == "Selten" and "✨ Selten: " or "")
-	EconomyService.Notify(player, "🐣 Geschlüpft: " .. tierText .. name .. "!", "Success")
-	if tier ~= "Normal" then
-		EconomyService.Effect(player, "Confetti", tier == "Ultra" and 2 or 1)
+	if not quiet then
+		local tierText = tier == "Ultra" and "🌟 ULTRA " or (tier == "Selten" and "✨ Selten: " or "")
+		EconomyService.Notify(player, "🐣 Geschlüpft: " .. tierText .. name .. "!", "Success")
+		-- Große Karte in der Bildschirmmitte (mit Konfetti) ab Epic oder bei Selten/Ultra
+		if tier ~= "Normal" or (def and (Config.RarityIndex[def.Rarity] or 0) >= REVEAL_RARITY) then
+			EconomyService.Effect(player, "HatchReveal", 0, { AlienId = alienId, Mut = entry.Mut })
+		end
 	end
 	if tier == "Ultra" and def and Config.RarityIndex[def.Rarity] >= ULTRA_ANNOUNCE_RARITY then
 		EconomyService.NotifyAll(
@@ -324,7 +394,51 @@ function EconomyService.Hatch(player: Player, plot, slot: number, entry, luck: n
 			"Event"
 		)
 	end
-	EconomyService.Discover(player, alienId)
+	EconomyService.Discover(player, alienId, quiet)
+	track(player, "Hatch", 1)
+	return alienId
+end
+
+-- Alle Eier in der Base schlüpfen sofort (Produkt "🐣 Alle Eier sofort schlüpfen").
+-- Eine Sammel-Nachricht + große Karte fürs beste Alien statt vieler Einzel-Nachrichten.
+-- Gibt die Anzahl der geschlüpften Aliens zurück (0 = keine Eier in der Base).
+function EconomyService.HatchAll(player: Player): number
+	local data = Services.DataService.Get(player)
+	local plot = Services.PlotService.GetPlot(player)
+	if not data or not plot then
+		return 0
+	end
+	local luck = Services.MeteorService.GetLuck()
+	local indexBefore = EconomyService.IndexCount(data)
+	local count = 0
+	local bestId, bestMut, bestScore = nil, nil, -1
+	for key, entry in pairs(data.Meteors) do
+		local slot = tonumber(key)
+		if slot and entry.Alien == nil and not Services.CarryService.IsSlotBeingStolen(plot, slot) then
+			local alienId = EconomyService.Hatch(player, plot, slot, entry, luck, true)
+			count += 1
+			local alien = Aliens.ById[alienId]
+			local score = alienScore(Config.MeteorsById[entry.Id], alien and alien.Tier or "Normal")
+			if score > bestScore then
+				bestId, bestMut, bestScore = alienId, entry.Mut, score
+			end
+		end
+	end
+	if count > 0 then
+		local discovered = EconomyService.IndexCount(data) - indexBefore
+		EconomyService.Notify(
+			player,
+			"🐣 "
+				.. (count == 1 and "1 Alien ist" or (count .. " Aliens sind"))
+				.. " geschlüpft!"
+				.. (discovered > 0 and (" 📖 " .. discovered .. " neu im Index!") or ""),
+			"Success"
+		)
+		if bestId then
+			EconomyService.Effect(player, "HatchReveal", 0, { AlienId = bestId, Mut = bestMut })
+		end
+	end
+	return count
 end
 
 -- -------------------------------------------------------------------
@@ -401,6 +515,20 @@ end
 -- -------------------------------------------------------------------
 -- DATEN AN DEN CLIENT
 -- -------------------------------------------------------------------
+-- Besessene Gadgets als Liste von Ids (Reihenfolge wie in Config.Gadgets)
+local function ownedGadgets(data): { string }
+	local list = {}
+	local gadgets = data.Gadgets
+	if type(gadgets) == "table" then
+		for _, def in ipairs(Config.Gadgets) do
+			if gadgets[def.Id] == true then
+				table.insert(list, def.Id)
+			end
+		end
+	end
+	return list
+end
+
 local function buildState(player: Player)
 	local data = Services.DataService.Get(player)
 	if not data then
@@ -430,7 +558,17 @@ local function buildState(player: Player)
 		Carrying = Services.CarryService.IsCarrying(player),
 		HasPlot = plot ~= nil,
 		TotalEarned = data.TotalEarned,
+		Gadgets = ownedGadgets(data),
+		StarterBought = data.StarterBought == true,
 	}
+	-- 🎁 Geschenke, 🎡 Glücksrad (Spins, FreeSpinIn), 📜 Aufgaben – ein Fehler dort darf den State nie stoppen
+	local rewards = Services.RewardService
+	if rewards then
+		local ok, err = pcall(rewards.FillState, player, data, state)
+		if not ok then
+			warn("[EconomyService] Belohnungs-Daten fehlgeschlagen: " .. tostring(err))
+		end
+	end
 
 	-- Index, Pässe und Statistik nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden)
 	local clock = os.clock()
@@ -546,11 +684,12 @@ local function onProfileLoaded(player: Player, data)
 	local hatchedOffline = 0
 	if offline > 0 then
 		local speed = Services.PlotService.HatchSpeed(player)
+		local luck = EconomyService.HatchLuck(player, 1) -- ohne Server-Glück, aber mit "2x Glück"-Pass
 		for _, entry in pairs(data.Meteors) do
 			if entry.Alien == nil then
 				entry.Hatch = math.max(0, entry.Hatch - offline * speed)
 				if entry.Hatch <= 0 then
-					entry.Alien = Aliens.Roll(entry.Id, 1)
+					entry.Alien = Aliens.Roll(entry.Id, luck)
 					entry.Hatch = 0
 					entry.Xp = 0
 					EconomyService.Discover(player, entry.Alien, true)
@@ -576,6 +715,7 @@ local function onProfileLoaded(player: Player, data)
 		end
 	end
 	if hatchedOffline > 0 then
+		track(player, "Hatch", hatchedOffline)
 		task.delay(4, function()
 			EconomyService.Notify(
 				player,
@@ -635,9 +775,29 @@ local function tickPlayer(player: Player, data, plot, dt: number)
 		local amount = math.floor(data.Pending)
 		data.Pending -= amount
 		EconomyService.AddCash(player, amount)
+		if amount > 0 then
+			track(player, "Collect", amount) -- Auto Collect zählt fürs "Sammle $X ein"
+		end
 	end
 	Services.PlotService.SetCollectText(plot, data.Pending)
 	dirty[player] = true
+end
+
+-- Gadget mit Cash kaufen (GadgetService prüft Cash, zieht ab, gibt das Tool)
+local function buyGadget(player: Player, id: any): (boolean, string)
+	local gadgets = Services.GadgetService
+	if type(id) ~= "string" or #id > 40 then
+		return false, "Unbekanntes Gadget"
+	end
+	if not gadgets or type(gadgets.Buy) ~= "function" then
+		return false, "🛠️ Gadgets kommen bald!"
+	end
+	local ok, success, message = pcall(gadgets.Buy, player, id)
+	if not ok then
+		warn("[EconomyService] Gadget-Kauf fehlgeschlagen: " .. tostring(success))
+		return false, "Kauf fehlgeschlagen – versuch es nochmal"
+	end
+	return success == true, type(message) == "string" and message or ""
 end
 
 function EconomyService.Init(services)
@@ -647,7 +807,8 @@ end
 function EconomyService.Start()
 	Services.DataService.OnProfileLoaded(onProfileLoaded)
 
-	Remotes.Request.OnServerInvoke = function(player: Player, action: any, _arg: any)
+	-- Anfragen vom Client. Antwort: { Ok, Message, ...Extras } (z.B. Segment beim Glücksrad)
+	Remotes.Request.OnServerInvoke = function(player: Player, action: any, arg: any)
 		if not requestLimiter.Check(player) then
 			return { Ok = false, Message = "Langsam! 🐢" }
 		end
@@ -658,7 +819,19 @@ function EconomyService.Start()
 			return { Ok = false, Message = "Lädt noch... ⏳" }
 		end
 		local ok, message = false, "Unbekannt"
-		if action == "Rebirth" then
+		local extra: { [string]: any }? = nil
+		local rewards = Services.RewardService
+		if (action == "ClaimGift" or action == "Spin" or action == "ClaimQuest") and not rewards then
+			ok, message = false, "🎁 Belohnungen kommen bald!"
+		elseif action == "ClaimGift" then
+			ok, message = rewards.ClaimGift(player, arg)
+		elseif action == "Spin" then
+			ok, message, extra = rewards.Spin(player)
+		elseif action == "ClaimQuest" then
+			ok, message = rewards.ClaimQuest(player, arg)
+		elseif action == "BuyGadget" then
+			ok, message = buyGadget(player, arg)
+		elseif action == "Rebirth" then
 			ok, message = EconomyService.Rebirth(player)
 		elseif action == "Daily" then
 			ok, message = EconomyService.ClaimDaily(player)
@@ -690,7 +863,15 @@ function EconomyService.Start()
 			end
 		end
 		dirty[player] = true
-		return { Ok = ok, Message = message }
+		local response: { [string]: any } = { Ok = ok, Message = message }
+		if extra then
+			for key, value in pairs(extra) do
+				if response[key] == nil then
+					response[key] = value
+				end
+			end
+		end
+		return response
 	end
 
 	Players.PlayerRemoving:Connect(function(player)

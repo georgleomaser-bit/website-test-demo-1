@@ -2,11 +2,13 @@
 --  METEOR HEIST – Client (alles, was der Spieler sieht)
 --  Dieses Skript startet nur die Module im Ordner "Modules" und verbindet sie mit dem Server:
 --    UI         Baukasten (Knöpfe, Fenster, Toasts, zählende Zahlen)
---    Hud        Knöpfe links/rechts, Schritte + Geld, Event-Banner
---    Windows    Shop, Laufbänder, Rebirth, Tagesbonus, Alien-Index
---    Effects    fliegende Zahlen, Lieferflug, Schlüpf-Explosion, Wackeln, Konfetti
+--    Hud        Knöpfe links/rechts (mit Badges), Schritte + Geld, Banner (Schauer, Egg Rush),
+--               Wegweiser (Base beim Tragen, nächstes Ei), Prompt-Hinweis am Förderband
+--    Windows    Shop (Gamepässe / Boosts / Gadgets), Laufbänder, Rebirth, Tagesbonus, Alien-Index
+--    Rewards    🎁 Geschenke, 🎡 Glücksrad, 📜 Tagesaufgaben
+--    Effects    fliegende Zahlen, Lieferflug, Schlüpf-Explosion, Hatch-Karte, Wackeln, Konfetti
 --    WorldFX    Laufband-Meteore, Streifen, wippende Aliens, Regenbogen, Schlüpf-Countdown
---    Prompts    Klauen/Verkaufen-Prompts passend ein-/ausblenden
+--    Prompts    Klauen/Kaufen/Verkaufen-Prompts passend ein-/ausblenden
 --    Fly, PhotoMode, AdminPanel (nur für Admins)
 --  Die gesamte Oberfläche wird per Code gebaut – du musst nichts in Studio zusammenklicken.
 -- =====================================================================
@@ -24,6 +26,7 @@ local Modules = script.Parent:WaitForChild("Modules")
 local UI = require(Modules:WaitForChild("UI"))
 local Hud = require(Modules:WaitForChild("Hud"))
 local Windows = require(Modules:WaitForChild("Windows"))
+local Rewards = require(Modules:WaitForChild("Rewards"))
 local Effects = require(Modules:WaitForChild("Effects"))
 local WorldFX = require(Modules:WaitForChild("WorldFX"))
 local Prompts = require(Modules:WaitForChild("Prompts"))
@@ -61,29 +64,43 @@ local ctx = {
 	Remotes = Remotes,
 	Gui = gui,
 	State = nil :: any, -- letzte Daten vom Server
+	StateTime = os.clock(), -- wann der letzte State ankam (Countdowns darin gelten ab dann)
 	Toast = UI.Toast,
 	Request = nil :: any,
+	RequestFull = nil :: any,
 	Hooks = {} :: { [string]: (number) -> () },
 	Hud = Hud,
 	Windows = Windows,
+	Rewards = Rewards,
 	Effects = Effects,
 	Prompts = Prompts,
 	Fly = Fly,
 	PhotoMode = PhotoMode,
 }
 
--- Anfrage an den Server (Rebirth, Daily, Collect, Home, Treadmills). Gibt true bei Erfolg zurück.
-function ctx.Request(action: string, arg: any?): boolean
+-- Anfrage an den Server mit ganzer Antwort: (Erfolg, Antwort-Tabelle oder nil).
+-- silent = true: keinen Toast zeigen (z.B. Glücksrad – Gewinn erst nach dem Drehen anzeigen).
+function ctx.RequestFull(action: string, arg: any?, silent: boolean?): (boolean, { [string]: any }?)
 	local ok, result = pcall(function()
 		return Remotes.Request:InvokeServer(action, arg)
 	end)
 	if ok and type(result) == "table" then
-		if type(result.Message) == "string" and result.Message ~= "" then
+		if not silent and type(result.Message) == "string" and result.Message ~= "" then
 			UI.Toast(result.Message, if result.Ok then "Success" else "Error")
 		end
-		return result.Ok == true
+		return result.Ok == true, result
 	end
-	return false
+	if not silent then
+		UI.Toast("📡 Keine Antwort vom Server – nochmal versuchen!", "Error")
+	end
+	return false, nil
+end
+
+-- Anfrage an den Server (Rebirth, Daily, Collect, Home, Treadmills, ClaimGift, ClaimQuest,
+-- BuyGadget ...). Gibt true bei Erfolg zurück.
+function ctx.Request(action: string, arg: any?): boolean
+	local ok = ctx.RequestFull(action, arg)
+	return ok
 end
 
 ctx.Hooks.OnSteps = function(_amount: number)
@@ -98,6 +115,7 @@ end
 -- ---------------------------------------------------------------------
 Effects.Init(ctx)
 Windows.Init(ctx)
+Rewards.Init(ctx)
 Hud.Init(ctx)
 Fly.Init(UI.Toast)
 PhotoMode.Init(ctx)
@@ -109,7 +127,8 @@ task.spawn(function()
 		warn("[Client] MeteorHeistMap nicht gefunden – Welt-Animationen aus")
 		return
 	end
-	Prompts.Init(map)
+	Hud.SetMap(map)
+	Prompts.Init(map, ctx)
 	WorldFX.Init(ctx, map)
 	if ctx.State then
 		WorldFX.UpdateTreadmills(tonumber(ctx.State.Steps) or 0, ctx.State.BestTreadmill)
@@ -147,6 +166,7 @@ Remotes.State.OnClientEvent:Connect(function(newState)
 		end
 	end
 	ctx.State = newState
+	ctx.StateTime = os.clock()
 	refreshAll()
 end)
 Remotes.Notify.OnClientEvent:Connect(function(text, kind)
@@ -156,9 +176,10 @@ Remotes.Effect.OnClientEvent:Connect(function(name, strength, data)
 	Effects.Play(name, strength, data)
 end)
 
--- Jede Sekunde: Event-Banner + Tagesbonus-Countdown
+-- Jede Sekunde: Banner, Badges, Countdowns (Tagesbonus, Geschenke, Gratis-Dreh, Aufgaben)
 local function tick()
 	Hud.Tick()
+	Rewards.Tick()
 	local state = ctx.State
 	if state and state.DailyReady == false then
 		state.DailyIn = math.max(0, (tonumber(state.DailyIn) or 0) - 1)
@@ -191,7 +212,10 @@ end
 player:GetAttributeChangedSignal("IsAdmin"):Connect(checkAdmin)
 checkAdmin()
 
-UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Kauf Meteore am Förderband [E]!", "Event")
+UI.Toast("☄️ Willkommen bei " .. tostring(Config.GameName) .. "! Klau Eier am Förderband [E] – gratis!", "Event")
 task.delay(4, function()
+	UI.Toast("🏃 Schnell heimtragen – oder kauf sie mit [F], dann werden sie geliefert!", "Info")
+end)
+task.delay(8, function()
 	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld!", "Info")
 end)

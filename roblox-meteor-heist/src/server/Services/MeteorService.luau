@@ -1,10 +1,17 @@
--- Meteore: das LAUFBAND in der Map-Mitte (E = kaufen, Meteor fliegt automatisch in die Base),
--- die Gratis-Zone am Spawn-Platz (Gratis- und Admin-Meteore), Meteoritenschauer-Event und Server-Glück.
+-- Meteore: das FÖRDERBAND in der Map-Mitte, die Gratis-Zone am Spawn-Platz, Eier am Boden,
+-- Meteoritenschauer, EGG RUSH und Server-Glück.
 --
--- PERFORMANCE: Laufband-Meteore werden vom Server EINMAL am Bandstart erzeugt und NIE bewegt.
+-- FÖRDERBAND: jeder Meteor hat ZWEI Knöpfe
+--   E halten = KLAUEN (GrabPrompt): gratis, aber man muss ihn selbst nach Hause TRAGEN
+--              (CarryService, Source = "Ground"). Klappt das nicht (Bonk, Tod, Falle, zu langsam),
+--              fällt er als GRATIS-Ei auf den Boden und jeder kann ihn schnappen.
+--   F        = KAUFEN (BuyPrompt): kostet Cash, fliegt automatisch in die eigene Base.
+-- EIER AM BODEN ("Drop"): fallen gelassen oder vom Egg Rush – nur E = Schnappen und Tragen.
+--
+-- PERFORMANCE: Förderband-Meteore werden vom Server EINMAL am Bandstart erzeugt und NIE bewegt.
 -- Jeder Client rechnet die Position selbst aus (Attribute BeltT0, BeltSpeed, BeltStart, BeltDir):
 --   Position = BeltStart + BeltDir * BeltSpeed * (Serverzeit - BeltT0)
--- Der Server prüft beim Kaufen mit genau dieser Formel.
+-- Der Server prüft beim Kaufen/Klauen mit genau dieser Formel.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,14 +26,18 @@ local Services
 
 local rng = Random.new()
 
--- Laufband-Meteore: { Kind = "Belt", Entry, Part, Price, T0, Start, Dir, Speed, Expires, Claimed, ClientReach }
+-- Förderband-Meteore: { Kind = "Belt", Entry, Part, Price, T0, Start, Dir, Speed, Expires, Claimed, ClientReach }
 local beltRecords = {}
--- Gratis-Zone/Showcase: { Kind = "Ground", Entry, Part, Price, Position, Expires, Claimed, Landed, ClientReach }
+-- Gratis-Zone/Showcase (Kaufen/Schnappen = fliegt automatisch in die Base):
+--   { Kind = "Ground", Entry, Part, Price, Position, Expires, Claimed, Landed, ClientReach }
 local groundRecords = {}
+-- Eier am Boden zum Schnappen + Tragen (fallen gelassen / Egg Rush):
+--   { Kind = "Drop", Entry, Part, Price = 0, Position, Expires, Claimed, Landed, ClientReach, EggRush }
+local dropRecords = {}
 local beltFolder: Folder
 local groundFolder: Folder
 
--- Warteschlange für Laufband-Meteore (Admin-Regen etc.), damit sie sich nicht überlappen
+-- Warteschlange für Förderband-Meteore (Admin-Regen etc.), damit sie sich nicht überlappen
 local beltQueue = {}
 local lastBeltT0 = -math.huge
 local lastBeltRadius = 0
@@ -34,15 +45,34 @@ local pendingNatural = nil -- schon gewürfelter nächster Meteor, wartet auf Pl
 local nextNaturalAt = 0
 
 local BELT_GAP = 0.6 -- Mindestabstand (Studs) zwischen zwei Meteoren auf dem Band
-local BELT_PROMPT_REACH_EXTRA = 8 -- großzügige Toleranz beim Kaufen (Ping, Bandbewegung)
--- Kaufen-Reichweite am Laufband: wer am Geländer steht, ist ca. 10 Studs von der Bandmitte weg
+local BELT_PROMPT_REACH_EXTRA = 8 -- großzügige Toleranz beim Kaufen/Klauen (Ping, Bandbewegung)
+-- Reichweite am Förderband: wer am Geländer steht, ist ca. 10 Studs von der Bandmitte weg
 local BELT_CLIENT_REACH = 15
 local FALL_TIME = 0.9 -- so lange fliegt ein Meteor vom Himmel bzw. in die Base (Client-Effekt)
+-- Zwei Knöpfe am selben Meteor: Klauen oben, Kaufen darunter (Pixel), sonst liegen sie übereinander
+local GRAB_UI_OFFSET = Vector2.new(0, -40)
+local BUY_UI_OFFSET = Vector2.new(0, 40)
+local RARE_GRAB_ANNOUNCE = 6 -- ab Mythic wird allen gesagt, wer gerade vom Band klaut
+
+-- Egg Rush: Eier fallen nacheinander (sieht nach Regen aus) aus dieser Höhe
+local EGG_RUSH_SKY = 120
+local EGG_RUSH_SPAWN_GAP = 0.08
+local EGG_SPOT_TRIES = 30 -- Versuche pro Ei, einen freien Wiesen-Platz zu finden
+local EGG_EDGE_MARGIN = 8 -- Abstand zum Map-Rand
+local EGG_BELT_CLEARANCE = 12 -- Abstand zur Bandmitte (Geländer, Rahmen)
+local EGG_PLOT_MARGIN = 3 -- Abstand zu Basen
+local EGG_SPACING = 3 -- Abstand zwischen zwei Eiern
+local EGG_RUSH_SHOWER_GAP = 60 -- Egg Rush nicht direkt vor/nach dem Meteoritenschauer
+local SHOWER_AFTER_RUSH = 20 -- Schauer wartet, bis der Egg Rush vorbei ist (+ so viele Sekunden)
+-- Ersatz-Grenzen, falls die Map keine "Boundary"-Wände hat
+local FALLBACK_AREA = { MinX = -150, MaxX = 150, MinZ = -406, MaxZ = 256 }
 
 local serverLuckMult = 1
 local serverLuckUntil = 0
 local showerUntil = 0
 local nextShowerAt = 0
+local eggRushUntil = 0
+local nextEggRushAt = 0
 
 -- -------------------------------------------------------------------
 -- GLÜCK & EVENTS
@@ -56,10 +86,16 @@ local function publishAttributes()
 	ReplicatedStorage:SetAttribute("LuckUntil", serverLuckUntil)
 	ReplicatedStorage:SetAttribute("ShowerUntil", showerUntil)
 	ReplicatedStorage:SetAttribute("NextShowerAt", nextShowerAt)
+	ReplicatedStorage:SetAttribute("EggRushUntil", eggRushUntil)
+	ReplicatedStorage:SetAttribute("NextEggRushAt", nextEggRushAt)
 end
 
 function MeteorService.IsShowerActive(): boolean
 	return showerUntil > now()
+end
+
+function MeteorService.IsEggRushActive(): boolean
+	return eggRushUntil > now()
 end
 
 function MeteorService.GetLuck(): number
@@ -96,9 +132,11 @@ function MeteorService.StartShower(duration: number?)
 	showerUntil = math.max(showerUntil, t) + (duration or Config.ShowerDuration)
 	nextShowerAt = showerUntil + Config.ShowerInterval
 	publishAttributes()
-	-- Im Schauer gibt es keine Locks!
+	-- Im Schauer gibt es keine Locks! (Ein gekauftes Base-Schild bleibt aber an.)
 	for _, plot in ipairs(Services.PlotService.Plots) do
-		Services.PlotService.SetLocked(plot, 0)
+		if not Services.PlotService.IsShielded(plot) then
+			Services.PlotService.SetLocked(plot, 0)
+		end
 	end
 	Services.EconomyService.NotifyAll(
 		"🌠 METEORITENSCHAUER! Viel mehr Meteore, keine Locks, " .. Config.ShowerLuck .. "x Glück!",
@@ -126,7 +164,7 @@ function MeteorService.RollMutation(luck: number): string
 	return mut.Name
 end
 
--- Zufälliger Meteor einer Seltenheit (nur Laufband-Meteore; includeAll = auch Admin/nicht spawnbare)
+-- Zufälliger Meteor einer Seltenheit (nur Förderband-Meteore; includeAll = auch Admin/nicht spawnbare)
 function MeteorService.RandomOfRarity(rarityName: string, includeAll: boolean?)
 	local list = Config.MeteorsByRarity[rarityName]
 	if (not list or #list == 0) and includeAll then
@@ -146,7 +184,7 @@ function MeteorService.RandomAdminMeteor()
 	return list[rng:NextInteger(1, #list)]
 end
 
--- Neuer (noch nicht gekaufter) Eintrag – Hatch/Alien kommen erst beim Kaufen dazu
+-- Neuer (noch nicht gekaufter) Eintrag – Hatch/Alien kommen erst in der Base dazu
 function MeteorService.RollEntry(luck: number?)
 	local l = luck or MeteorService.GetLuck()
 	local rarity = MeteorService.RollRarity(l)
@@ -176,11 +214,11 @@ local function makeEntry(opts)
 end
 
 -- -------------------------------------------------------------------
--- LAUFBAND
+-- FÖRDERBAND – Grundlagen
 -- -------------------------------------------------------------------
 local beltWarned = false
 
--- Laufband-Daten (von MapBuilder über PlotService, sonst aus den Attributen des Belt-Parts)
+-- Förderband-Daten (von MapBuilder über PlotService, sonst aus den Attributen des Belt-Parts)
 local function getBelt()
 	local belt = Services.PlotService.Belt
 	if belt and belt.Start and belt.Dir and belt.Length then
@@ -200,7 +238,7 @@ local function getBelt()
 	end
 	if not beltWarned then
 		beltWarned = true
-		warn("[MeteorService] Kein Laufband gefunden – Meteore können nicht spawnen!")
+		warn("[MeteorService] Kein Förderband gefunden – Meteore können nicht spawnen!")
 	end
 	return nil
 end
@@ -209,8 +247,17 @@ function MeteorService.BeltPosition(record): Vector3
 	return record.Start + record.Dir * record.Speed * (now() - record.T0)
 end
 
+local function listFor(kind: string)
+	if kind == "Belt" then
+		return beltRecords
+	elseif kind == "Drop" then
+		return dropRecords
+	end
+	return groundRecords
+end
+
 local function removeRecord(record)
-	local list = record.Kind == "Belt" and beltRecords or groundRecords
+	local list = listFor(record.Kind)
 	local index = table.find(list, record)
 	if index then
 		table.remove(list, index)
@@ -231,24 +278,25 @@ local function currentPosition(record): Vector3?
 	return record.Position
 end
 
--- Kaufen / Schnappen: Meteor fliegt AUTOMATISCH in einen freien Slot der eigenen Base
-local function tryClaim(player: Player, record)
-	if record.Claimed or not record.Part or record.Landed == false then
-		return
-	end
-	local data = Services.DataService.Get(player)
-	if not data or not Services.EconomyService.IsReady(player) then
-		return
-	end
+-- -------------------------------------------------------------------
+-- KAUFEN / KLAUEN / SCHNAPPEN (alles serverseitig geprüft)
+-- -------------------------------------------------------------------
+local function aliveRoot(player: Player): BasePart?
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not root or not humanoid or humanoid.Health <= 0 then
-		return
+		return nil
 	end
+	return root
+end
+
+-- Steht der Spieler nah genug dran (analytisch, mit Toleranz) und hat sich nicht unmöglich schnell
+-- bewegt? Gibt die aktuelle Meteor-Position zurück, sonst nil (Hinweis wurde dann schon geschickt).
+local function checkReach(player: Player, record, root: BasePart): Vector3?
 	local position = currentPosition(record)
 	if not position then
-		return
+		return nil
 	end
 	-- gleiche Reichweite wie beim Client (ClientMaxDistance) + großzügige Toleranz
 	local reach = (record.ClientReach or 10) + BELT_PROMPT_REACH_EXTRA
@@ -257,12 +305,32 @@ local function tryClaim(player: Player, record)
 	end
 	if (root.Position - position).Magnitude > reach then
 		Services.EconomyService.Notify(player, "🏃 Zu weit weg – lauf näher ran!", "Error")
-		return
+		return nil
 	end
 	-- Die Position kommt vom Client: wer gerade unmöglich weit "gesprungen" ist (Teleport-Exploit),
-	-- darf nicht schnappen. (Server-Teleports wie Home sind erlaubt, danach kurz warten.)
+	-- darf nicht kaufen/klauen. (Server-Teleports wie Home sind erlaubt, danach kurz warten.)
 	if Services.CarryService.MoveStatus(player) ~= "ok" then
 		Services.EconomyService.Notify(player, "⏳ Kurz warten und nochmal versuchen!", "Error")
+		return nil
+	end
+	return position
+end
+
+-- KAUFEN (Förderband, F) / Schnappen in der Gratis-Zone: fliegt AUTOMATISCH in einen freien Slot
+local function tryClaim(player: Player, record)
+	if record.Claimed or not record.Part or record.Landed == false then
+		return
+	end
+	local data = Services.DataService.Get(player)
+	if not data or not Services.EconomyService.IsReady(player) then
+		return
+	end
+	local root = aliveRoot(player)
+	if not root then
+		return
+	end
+	local position = checkReach(player, record, root)
+	if not position then
 		return
 	end
 	local plot = Services.PlotService.GetPlot(player)
@@ -277,12 +345,17 @@ local function tryClaim(player: Player, record)
 	end
 	local def = Config.MeteorsById[record.Entry.Id]
 	if record.Price > 0 then
+		-- Rebirth-Anforderung gilt nur fürs KAUFEN – klauen (E) geht immer
 		local rarity = Config.RaritiesByName[def.Rarity]
 		local required = rarity.RequiredRebirths or 0
 		if data.Rebirths < required then
 			Services.EconomyService.Notify(
 				player,
-				"🔥 " .. def.Rarity .. " braucht " .. required .. " Rebirth(s) zum Kaufen – aber klauen geht! 😈",
+				"🔥 "
+					.. def.Rarity
+					.. " braucht "
+					.. required
+					.. " Rebirth(s) zum Kaufen – aber klauen (E) geht! 😈",
 				"Error"
 			)
 			return
@@ -290,7 +363,9 @@ local function tryClaim(player: Player, record)
 		if data.Cash < record.Price then
 			Services.EconomyService.Notify(
 				player,
-				"💸 Nicht genug Cash! Du brauchst " .. Util.FormatCash(record.Price),
+				"💸 Nicht genug Cash! Du brauchst "
+					.. Util.FormatCash(record.Price)
+					.. " – oder klau ihn mit E! 😈",
 				"Error"
 			)
 			return
@@ -309,13 +384,116 @@ local function tryClaim(player: Player, record)
 	)
 end
 
-local function attachClaimPrompt(record, reach: number?)
+-- KLAUEN vom Förderband (E) / Schnappen eines Eis am Boden: gratis, aber selbst nach Hause tragen
+local function tryGrab(player: Player, record)
+	if record.Claimed or not record.Part or record.Landed == false then
+		return
+	end
+	local data = Services.DataService.Get(player)
+	if not data or not Services.EconomyService.IsReady(player) then
+		return
+	end
+	local root = aliveRoot(player)
+	if not root then
+		return
+	end
+	if Services.CarryService.IsCarrying(player) then
+		Services.EconomyService.Notify(player, "🎒 Du trägst schon etwas – erst nach Hause bringen!", "Error")
+		return
+	end
+	local plot = Services.PlotService.GetPlot(player)
+	if not plot then
+		Services.EconomyService.Notify(player, "Du hast keine Base auf diesem Server.", "Error")
+		return
+	end
+	if not Services.PlotService.FreeSlot(player) then
+		Services.EconomyService.Notify(player, "📦 Deine Base ist voll! Verkaufe etwas (F).", "Error")
+		return
+	end
+	local position = checkReach(player, record, root)
+	if not position then
+		return
+	end
+	record.Claimed = true
+	local entry = record.Entry
+	local fromBelt = record.Kind == "Belt"
+	removeRecord(record)
+	Services.CarryService.StartCarry(player, entry, {
+		Source = "Ground",
+		From = fromBelt and "Belt" or "Drop",
+		GrabPosition = position,
+	})
+	local def = Config.MeteorsById[entry.Id]
+	if fromBelt and def and Config.RarityIndex[def.Rarity] >= RARE_GRAB_ANNOUNCE then
+		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
+		Services.EconomyService.NotifyAll(
+			"😈 "
+				.. player.DisplayName
+				.. " klaut "
+				.. def.Rarity
+				.. " "
+				.. mut
+				.. def.Name
+				.. " vom Band – BONK IHN! 🔨",
+			"Event"
+		)
+	end
+end
+
+-- -------------------------------------------------------------------
+-- PROMPTS
+-- -------------------------------------------------------------------
+-- Förderband: E = Klauen (gratis, tragen), F = Kaufen (automatische Lieferung)
+local function attachBeltPrompts(record, serverReach: number)
+	local part: BasePart = record.Part
+	local def = Config.MeteorsById[record.Entry.Id]
+	local radius = part.Size.X / 2
+	-- man steht hinter dem Geländer -> größere Reichweite als am Boden
+	local clientReach = math.max(BELT_CLIENT_REACH, radius + 10)
+	record.ClientReach = clientReach
+
+	local grab = MeteorFactory.AddPrompt(
+		part,
+		"GrabPrompt",
+		"Klauen",
+		def.Name,
+		Config.BeltGrabHold,
+		Enum.KeyCode.E,
+		serverReach
+	)
+	grab.GamepadKeyCode = Enum.KeyCode.ButtonX
+	grab.UIOffset = GRAB_UI_OFFSET
+	-- Der Client stellt die echte Reichweite lokal ein (die Server-Reichweite ist absichtlich riesig,
+	-- weil der Meteor auf dem Server am Bandstart bleibt).
+	grab:SetAttribute("ClientMaxDistance", clientReach)
+	grab.Triggered:Connect(function(player)
+		tryGrab(player, record)
+	end)
+
+	local action = record.Price > 0 and ("Kaufen " .. Util.FormatCash(record.Price)) or "🎁 Gratis holen"
+	local buy = MeteorFactory.AddPrompt(
+		part,
+		"BuyPrompt",
+		action,
+		def.Name .. " (" .. def.Rarity .. ")",
+		Config.BeltBuyHold,
+		Enum.KeyCode.F,
+		serverReach
+	)
+	buy.GamepadKeyCode = Enum.KeyCode.ButtonY
+	buy.UIOffset = BUY_UI_OFFSET
+	buy:SetAttribute("ClientMaxDistance", clientReach)
+	buy.Triggered:Connect(function(player)
+		tryClaim(player, record)
+	end)
+end
+
+-- Gratis-Zone / Showcase: E = Kaufen bzw. Schnappen (automatische Lieferung)
+local function attachClaimPrompt(record)
 	local def = Config.MeteorsById[record.Entry.Id]
 	local action = record.Price > 0 and ("Kaufen " .. Util.FormatCash(record.Price)) or "🎁 Schnappen (GRATIS)"
-	local radius = record.Part.Size.X / 2
-	-- Laufband: man steht hinter dem Geländer -> größere Reichweite als am Boden
-	local normalReach = record.Kind == "Belt" and math.max(BELT_CLIENT_REACH, radius + 10) or math.max(10, radius + 7)
-	record.ClientReach = normalReach
+	local reach = math.max(10, record.Part.Size.X / 2 + 7)
+	record.ClientReach = reach
 	local prompt = MeteorFactory.AddPrompt(
 		record.Part,
 		"BuyPrompt",
@@ -323,16 +501,44 @@ local function attachClaimPrompt(record, reach: number?)
 		def.Name .. " (" .. def.Rarity .. ")",
 		Config.GrabHoldDuration,
 		Enum.KeyCode.E,
-		reach or normalReach
+		reach
 	)
-	-- Der Client stellt die echte Reichweite lokal ein (die Server-Reichweite ist beim Laufband
-	-- absichtlich riesig, weil der Meteor auf dem Server am Bandstart bleibt).
-	prompt:SetAttribute("ClientMaxDistance", normalReach)
+	prompt:SetAttribute("ClientMaxDistance", reach)
 	prompt.Enabled = record.Landed ~= false
 	prompt.Triggered:Connect(function(player)
 		tryClaim(player, record)
 	end)
 	return prompt
+end
+
+-- Ei am Boden: nur E = Schnappen (dann selbst nach Hause tragen)
+local function attachDropPrompt(record)
+	local def = Config.MeteorsById[record.Entry.Id]
+	local reach = math.max(10, record.Part.Size.X / 2 + 7)
+	record.ClientReach = reach
+	local prompt = MeteorFactory.AddPrompt(
+		record.Part,
+		"GrabPrompt",
+		"Schnappen",
+		def.Name,
+		Config.GroundGrabHold,
+		Enum.KeyCode.E,
+		reach
+	)
+	prompt:SetAttribute("ClientMaxDistance", reach)
+	prompt.Enabled = record.Landed ~= false
+	prompt.Triggered:Connect(function(player)
+		tryGrab(player, record)
+	end)
+	return prompt
+end
+
+local function enablePrompts(part: BasePart)
+	for _, child in ipairs(part:GetChildren()) do
+		if child:IsA("ProximityPrompt") then
+			child.Enabled = true
+		end
+	end
 end
 
 local function announce(entry, text: string)
@@ -341,6 +547,9 @@ local function announce(entry, text: string)
 	Services.EconomyService.NotifyAll(text:format(def.Rarity .. " " .. mut .. def.Name), "Event")
 end
 
+-- -------------------------------------------------------------------
+-- FÖRDERBAND – Spawnen
+-- -------------------------------------------------------------------
 -- Legt einen Meteor sofort an den Bandstart (ohne Platzprüfung – dafür sorgt die Schleife)
 local function spawnOnBelt(entry, price: number, shouldAnnounce: boolean?)
 	local belt = getBelt()
@@ -374,8 +583,8 @@ local function spawnOnBelt(entry, price: number, shouldAnnounce: boolean?)
 		Claimed = false,
 	}
 	table.insert(beltRecords, record)
-	-- Server-Reichweite = ganzes Band (siehe attachClaimPrompt), echte Prüfung in tryClaim
-	attachClaimPrompt(record, belt.Length + 60)
+	-- Server-Reichweite = ganzes Band (siehe attachBeltPrompts), echte Prüfung in checkReach
+	attachBeltPrompts(record, belt.Length + 60)
 	part.Parent = beltFolder
 
 	lastBeltT0 = t0
@@ -399,7 +608,7 @@ function MeteorService.QueueBelt(opts)
 	table.insert(beltQueue, opts or {})
 end
 
--- Ein Schritt der Laufband-Schleife: Warteschlange zuerst, dann natürliche Meteore
+-- Ein Schritt der Förderband-Schleife: Warteschlange zuerst, dann natürliche Meteore
 local function beltStep()
 	local t = now()
 	-- abgelaufene Meteore (über das Bandende) entfernen. Die Liste ist nach Startzeit sortiert
@@ -439,6 +648,275 @@ local function beltStep()
 		pendingNatural = nil
 		spawnOnBelt(entry, math.floor(Config.MeteorValue(entry)))
 	end
+end
+
+-- -------------------------------------------------------------------
+-- BODEN: Raycasts
+-- -------------------------------------------------------------------
+-- Spieler und Meteore ignorieren (die Liste wird bei jedem Aufruf neu gefüllt)
+local function rayParams(respectCanCollide: boolean): RaycastParams
+	local ignore: { Instance } = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			table.insert(ignore, player.Character)
+		end
+	end
+	if beltFolder then
+		table.insert(ignore, beltFolder)
+	end
+	if groundFolder then
+		table.insert(ignore, groundFolder)
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignore
+	params.RespectCanCollide = respectCanCollide
+	return params
+end
+
+-- Boden unter einer Position (nur begehbare Teile). Nichts gefunden -> Höhe 0 (Wiese)
+local function groundBelow(position: Vector3): Vector3
+	local result = workspace:Raycast(position + Vector3.new(0, 3, 0), Vector3.new(0, -80, 0), rayParams(true))
+	if result then
+		return result.Position
+	end
+	return Vector3.new(position.X, 0, position.Z)
+end
+
+-- -------------------------------------------------------------------
+-- EIER AM BODEN (fallen gelassen / Egg Rush)
+-- -------------------------------------------------------------------
+-- Legt ein Ei auf den Boden. groundPos = Punkt AUF dem Boden.
+-- opts: { From: Vector3?, SkyHeight: number?, Lifetime: number?, EggRush: boolean? }
+--   From/SkyHeight -> fällt sichtbar dorthin (Client-Effekt "Deliver"), sonst liegt es sofort da
+local function spawnDrop(entry, groundPos: Vector3, opts)
+	while #dropRecords >= Config.MaxDroppedMeteors do
+		removeRecord(dropRecords[1]) -- älteste weg
+	end
+	local size = MeteorFactory.GetSize(entry)
+	local position = Vector3.new(groundPos.X, groundPos.Y + size / 2 + 0.1, groundPos.Z)
+	local part = MeteorFactory.Create(entry, "Ground", 0)
+	part.CFrame = CFrame.new(position)
+
+	local record = {
+		Kind = "Drop",
+		Entry = entry,
+		Part = part,
+		Price = 0,
+		Position = position,
+		Expires = os.clock() + math.max(1, tonumber(opts.Lifetime) or Config.DroppedLifetime),
+		Claimed = false,
+		Landed = false,
+		EggRush = opts.EggRush == true,
+	}
+	table.insert(dropRecords, record)
+	attachDropPrompt(record)
+
+	local from: Vector3? = opts.From
+	if not from and opts.SkyHeight then
+		from = position + Vector3.new(0, opts.SkyHeight, 0)
+	end
+	local function land()
+		if record.Part ~= part or record.Claimed then
+			return -- schon weg (abgelaufen, Admin hat aufgeräumt ...)
+		end
+		part.Parent = groundFolder
+		record.Landed = true
+		enablePrompts(part)
+	end
+	if from then
+		Remotes.Effect:FireAllClients("Deliver", 0, {
+			From = from,
+			To = position,
+			MeteorId = entry.Id,
+			Mut = entry.Mut,
+		})
+		task.delay(FALL_TIME, land)
+	else
+		land()
+	end
+	return record
+end
+
+-- Stelle über dem Förderband (oder im Geländer)? -> seitlich daneben auf die Wiese schieben.
+-- Sonst läge das Ei still auf dem Band, während die anderen Meteore hindurchfahren.
+local DROP_BELT_MARGIN = 3 -- so weit neben der Lauffläche zählt noch als "auf dem Band"
+local DROP_BELT_GAP = 5 -- so weit neben der Lauffläche landet das Ei (plus sein Radius)
+local function offBelt(position: Vector3, radius: number): Vector3
+	local belt = getBelt()
+	if not belt then
+		return position
+	end
+	local halfWidth = (tonumber(belt.Width) or 14) / 2
+	local rel = Vector3.new(position.X - belt.Start.X, 0, position.Z - belt.Start.Z)
+	local along = rel:Dot(belt.Dir)
+	local sideVec = rel - belt.Dir * along
+	local side = sideVec.Magnitude
+	if along < -2 or along > belt.Length + 2 or side >= halfWidth + DROP_BELT_MARGIN then
+		return position
+	end
+	local outward = if side > 0.05 then sideVec.Unit else belt.Dir:Cross(Vector3.yAxis).Unit
+	local target = belt.Start + belt.Dir * along + outward * (halfWidth + DROP_BELT_GAP + radius)
+	return Vector3.new(target.X, position.Y, target.Z)
+end
+
+-- Getragenes Ei fällt zu Boden (gebonkt, gestorben, Falle, zu langsam ...). Es liegt dann GRATIS da
+-- und JEDER kann es schnappen. position = ungefähre Stelle (der Boden darunter wird gesucht),
+-- from = optional: von hier fällt es sichtbar herunter (z.B. über dem Kopf des Trägers).
+function MeteorService.DropMeteor(entry, position: Vector3, from: Vector3?)
+	if type(entry) ~= "table" or not Config.MeteorsById[entry.Id] or typeof(position) ~= "Vector3" then
+		return nil
+	end
+	local clean = {
+		Id = entry.Id,
+		Mut = Config.MutationsByName[entry.Mut] and entry.Mut or "Normal",
+		Lv = math.clamp(math.floor(tonumber(entry.Lv) or 1), 1, Config.MaxLevel),
+		Xp = 0,
+		Alien = entry.Alien,
+	}
+	local spot = offBelt(position, MeteorFactory.GetSize(clean) / 2)
+	return spawnDrop(clean, groundBelow(spot), { From = from, Lifetime = Config.DroppedLifetime })
+end
+
+-- Spielfläche aus den unsichtbaren Randwänden der Map (sonst Ersatz-Grenzen).
+-- Wände links/rechts sind in X dünn, vorne/hinten in Z dünn; gerechnet wird mit den Innenkanten.
+local areaCache = nil
+local function mapArea()
+	if areaCache then
+		return areaCache
+	end
+	local map = Services.PlotService.MapFolder
+	local xWalls: { BasePart } = {}
+	local zWalls: { BasePart } = {}
+	if map then
+		for _, child in ipairs(map:GetChildren()) do
+			if child.Name == "Boundary" and child:IsA("BasePart") then
+				table.insert(child.Size.X < child.Size.Z and xWalls or zWalls, child)
+			end
+		end
+	end
+	local area = table.clone(FALLBACK_AREA)
+	if #xWalls >= 2 and #zWalls >= 2 then
+		table.sort(xWalls, function(a, b)
+			return a.Position.X < b.Position.X
+		end)
+		table.sort(zWalls, function(a, b)
+			return a.Position.Z < b.Position.Z
+		end)
+		local low, high = xWalls[1], xWalls[#xWalls]
+		local back, front = zWalls[1], zWalls[#zWalls]
+		local candidate = {
+			MinX = low.Position.X + low.Size.X / 2,
+			MaxX = high.Position.X - high.Size.X / 2,
+			MinZ = back.Position.Z + back.Size.Z / 2,
+			MaxZ = front.Position.Z - front.Size.Z / 2,
+		}
+		if candidate.MinX < candidate.MaxX and candidate.MinZ < candidate.MaxZ then
+			area = candidate
+		end
+	end
+	areaCache = area
+	return area
+end
+
+-- Freier Platz auf der Wiese: innerhalb der Map, nicht in/an Basen, nicht am Förderband,
+-- nicht auf dem Spawn-Platz/Bäumen (der Strahl muss genau den Wiesenboden "Ground" treffen).
+local function findEggSpot(radius: number, groundPart: BasePart, params: RaycastParams): Vector3?
+	local area = mapArea()
+	local margin = EGG_EDGE_MARGIN + radius
+	if area.MaxX - area.MinX <= margin * 2 or area.MaxZ - area.MinZ <= margin * 2 then
+		return nil
+	end
+	local belt = getBelt()
+	for _ = 1, EGG_SPOT_TRIES do
+		local x = rng:NextNumber(area.MinX + margin, area.MaxX - margin)
+		local z = rng:NextNumber(area.MinZ + margin, area.MaxZ - margin)
+		local flatPos = Vector3.new(x, 0, z)
+		local ok = true
+		if belt then
+			local rel = flatPos - Vector3.new(belt.Start.X, 0, belt.Start.Z)
+			local along = rel:Dot(belt.Dir)
+			local side = (rel - belt.Dir * along).Magnitude
+			if along > -20 and along < belt.Length + 20 and side < EGG_BELT_CLEARANCE + radius then
+				ok = false
+			end
+		end
+		if ok then
+			for _, plot in ipairs(Services.PlotService.Plots) do
+				local half = (plot.HalfSize or 36) + radius + EGG_PLOT_MARGIN
+				local localPos = plot.CFrame:PointToObjectSpace(flatPos)
+				if math.abs(localPos.X) <= half and math.abs(localPos.Z) <= half then
+					ok = false
+					break
+				end
+			end
+		end
+		if ok then
+			for _, record in ipairs(dropRecords) do
+				local other = record.Position
+				local otherRadius = record.Part and record.Part.Size.X / 2 or 2
+				local dx, dz = other.X - x, other.Z - z
+				local minDist = radius + otherRadius + EGG_SPACING
+				if dx * dx + dz * dz < minDist * minDist then
+					ok = false
+					break
+				end
+			end
+		end
+		if ok then
+			local result = workspace:Raycast(Vector3.new(x, 80, z), Vector3.new(0, -120, 0), params)
+			if result and result.Instance == groundPart then
+				return result.Position
+			end
+		end
+	end
+	return nil
+end
+
+-- 🥚 EGG RUSH: Config.EggRushCount Gratis-Eier (3x Glück) regnen auf die ganze Wiese.
+-- Läuft schon einer, wird er verlängert und es kommen noch mehr Eier dazu.
+-- duration/count optional (Standard aus Config). Gibt die Anzahl der geplanten Eier zurück.
+function MeteorService.StartEggRush(duration: number?, count: number?): number
+	local t = now()
+	local map = Services.PlotService.MapFolder
+	local groundPart = map and map:FindFirstChild("Ground")
+	if not groundPart or not groundPart:IsA("BasePart") then
+		warn("[MeteorService] Egg Rush: Wiesenboden 'Ground' nicht gefunden – keine Eier")
+		nextEggRushAt = t + Config.EggRushInterval
+		publishAttributes()
+		return 0
+	end
+	local length = math.clamp(tonumber(duration) or Config.EggRushDuration, 5, 600)
+	local amount = math.clamp(math.floor(tonumber(count) or Config.EggRushCount), 1, Config.MaxDroppedMeteors)
+	eggRushUntil = math.max(eggRushUntil, t + length)
+	nextEggRushAt = eggRushUntil + Config.EggRushInterval
+	publishAttributes()
+	-- Eier eines laufenden Rush bleiben so lange liegen wie der verlängerte Rush
+	local clock = os.clock()
+	for _, record in ipairs(dropRecords) do
+		if record.EggRush then
+			record.Expires = math.max(record.Expires, clock + (eggRushUntil - t))
+		end
+	end
+	Services.EconomyService.NotifyAll("🥚 EGG RUSH! Überall liegen Eier – der Schnellste gewinnt!", "Event")
+
+	task.spawn(function()
+		-- Bäume/Büsche sollen auch treffen (dann ist dort kein Platz) -> CanCollide nicht beachten
+		local params = rayParams(false)
+		for _ = 1, amount do
+			local remaining = eggRushUntil - now()
+			if remaining <= 1 then
+				break
+			end
+			local entry = MeteorService.RollEntry(MeteorService.GetLuck() * Config.EggRushLuck)
+			local spot = findEggSpot(MeteorFactory.GetSize(entry) / 2, groundPart, params)
+			if spot then
+				spawnDrop(entry, spot, { SkyHeight = EGG_RUSH_SKY, Lifetime = remaining, EggRush = true })
+			end
+			task.wait(EGG_RUSH_SPAWN_GAP)
+		end
+	end)
+	return amount
 end
 
 -- -------------------------------------------------------------------
@@ -548,10 +1026,7 @@ function MeteorService.SpawnStatic(opts)
 		end
 		part.Parent = groundFolder
 		record.Landed = true
-		local prompt = part:FindFirstChild("BuyPrompt")
-		if prompt and prompt:IsA("ProximityPrompt") then
-			prompt.Enabled = true
-		end
+		enablePrompts(part)
 		impactEffect(position, size, def.Rarity)
 	end)
 	return record
@@ -567,16 +1042,49 @@ function MeteorService.SpawnMeteor(opts)
 	return nil
 end
 
--- Laufband + Gratis-Zone leeren
+-- Förderband, Gratis-Zone und alle Eier am Boden leeren
 function MeteorService.ClearGround()
 	for i = #groundRecords, 1, -1 do
 		removeRecord(groundRecords[i])
+	end
+	for i = #dropRecords, 1, -1 do
+		removeRecord(dropRecords[i])
 	end
 	for i = #beltRecords, 1, -1 do
 		removeRecord(beltRecords[i])
 	end
 	table.clear(beltQueue)
 	pendingNatural = nil
+end
+
+-- -------------------------------------------------------------------
+-- EVENT-TIMER (Schauer + Egg Rush, zeitlich versetzt)
+-- -------------------------------------------------------------------
+local function eventStep()
+	local t = now()
+	-- Meteoritenschauer: wartet, bis ein laufender Egg Rush vorbei ist
+	if not MeteorService.IsShowerActive() and t >= nextShowerAt then
+		if MeteorService.IsEggRushActive() then
+			nextShowerAt = eggRushUntil + SHOWER_AFTER_RUSH
+			publishAttributes()
+		else
+			MeteorService.StartShower()
+		end
+	end
+	-- Egg Rush: nicht im Schauer und nicht kurz davor (sonst gehen beide Events unter)
+	if not MeteorService.IsEggRushActive() and t >= nextEggRushAt then
+		local showerSoon = nextShowerAt - t < Config.EggRushDuration + SHOWER_AFTER_RUSH
+		if #Players:GetPlayers() == 0 then
+			nextEggRushAt = t + 30
+			publishAttributes()
+		elseif MeteorService.IsShowerActive() or showerSoon then
+			local showerEnd = MeteorService.IsShowerActive() and showerUntil or (nextShowerAt + Config.ShowerDuration)
+			nextEggRushAt = showerEnd + EGG_RUSH_SHOWER_GAP
+			publishAttributes()
+		else
+			MeteorService.StartEggRush()
+		end
+	end
 end
 
 function MeteorService.Init(services)
@@ -602,25 +1110,28 @@ function MeteorService.Init(services)
 end
 
 function MeteorService.Start()
-	nextShowerAt = now() + Config.ShowerInterval
+	local t = now()
+	nextShowerAt = t + Config.ShowerInterval
+	nextEggRushAt = t + Config.EggRushInterval / 2 -- versetzt: erster Egg Rush lange vor dem ersten Schauer
 	publishAttributes()
 
-	-- Laufband-Schleife (nur Rechnen + gelegentlich ein neues Part – kein Bewegen!)
+	-- Förderband-Schleife (nur Rechnen + gelegentlich ein neues Part – kein Bewegen!)
 	task.spawn(function()
 		while true do
 			task.wait(0.05)
 			local ok, err = pcall(beltStep)
 			if not ok then
-				warn("[MeteorService] Laufband-Fehler: " .. tostring(err))
+				warn("[MeteorService] Förderband-Fehler: " .. tostring(err))
 				pendingNatural = nil
 				task.wait(1)
 			end
 		end
 	end)
 
-	-- Gratis-Meteore verschwinden lassen + Event-Timer
+	-- Meteore am Boden verschwinden lassen + Event-Timer
 	task.spawn(function()
 		local wasShower = false
+		local wasRush = false
 		while true do
 			task.wait(1)
 			local clock = os.clock()
@@ -630,15 +1141,26 @@ function MeteorService.Start()
 					removeRecord(record)
 				end
 			end
-			local t = now()
-			if not MeteorService.IsShowerActive() and t >= nextShowerAt then
-				MeteorService.StartShower()
+			for i = #dropRecords, 1, -1 do
+				local record = dropRecords[i]
+				if record and not record.Claimed and clock > record.Expires then
+					removeRecord(record)
+				end
 			end
-			local active = MeteorService.IsShowerActive()
-			if wasShower and not active then
+			local ok, err = pcall(eventStep)
+			if not ok then
+				warn("[MeteorService] Event-Fehler: " .. tostring(err))
+			end
+			local shower = MeteorService.IsShowerActive()
+			if wasShower and not shower then
 				Services.EconomyService.NotifyAll("Der Meteoritenschauer ist vorbei. Locks gehen wieder! 🔒", "Info")
 			end
-			wasShower = active
+			wasShower = shower
+			local rush = MeteorService.IsEggRushActive()
+			if wasRush and not rush then
+				Services.EconomyService.NotifyAll("🥚 Der Egg Rush ist vorbei!", "Info")
+			end
+			wasRush = rush
 		end
 	end)
 end

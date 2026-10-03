@@ -17,6 +17,14 @@ local function darker(color: Color3, amount: number): Color3
 	return color:Lerp(Color3.new(0, 0, 0), amount)
 end
 
+local function rainbowSequence(): ColorSequence
+	local keys = {}
+	for k = 0, 6 do
+		table.insert(keys, ColorSequenceKeypoint.new(k / 6, Color3.fromHSV(k / 6, 0.8, 1)))
+	end
+	return ColorSequence.new(keys)
+end
+
 function AdminPanel.Build(ctx: any)
 	if built then
 		return
@@ -148,11 +156,7 @@ function AdminPanel.Build(ctx: any)
 		})
 		if def.Effects and def.Effects.Rainbow then
 			nameLabel.TextColor3 = Color3.new(1, 1, 1)
-			local keys = {}
-			for k = 0, 6 do
-				table.insert(keys, ColorSequenceKeypoint.new(k / 6, Color3.fromHSV(k / 6, 0.8, 1)))
-			end
-			UI.Create("UIGradient", { Color = ColorSequence.new(keys), Parent = nameLabel })
+			UI.Create("UIGradient", { Color = rainbowSequence(), Parent = nameLabel })
 		end
 		UI.Button({
 			AnchorPoint = Vector2.new(1, 0.5),
@@ -239,19 +243,22 @@ function AdminPanel.Build(ctx: any)
 			updateSelected()
 		end)
 	end
-	local mutRow = UI.Row(content, 1000, 38)
+	local mutGrid = UI.Grid(content, 1000, 120, 38)
 	for i, mut in ipairs(Config.Mutations) do
-		UI.Button({
-			Size = UDim2.new(1 / #Config.Mutations, -5, 1, 0),
-			Text = mut.Name .. " x" .. mut.Mult,
+		local mutButton = UI.Button({
+			Text = (if type(mut.Icon) == "string" then mut.Icon .. " " else "") .. mut.Name .. " x" .. mut.Mult,
 			Color = darker(mut.Color or Theme.Gray, 0.25),
 			LayoutOrder = i,
 			MaxText = 16,
-			Parent = mutRow,
+			Parent = mutGrid,
 		}, function()
 			selectedMutation = mut.Name
 			updateSelected()
 		end)
+		if mut.Rainbow == true then
+			mutButton.Label.TextColor3 = Color3.new(1, 1, 1)
+			UI.Create("UIGradient", { Color = rainbowSequence(), Parent = mutButton.Label })
+		end
 	end
 	updateSelected()
 	local countRow = UI.Row(content, 1100, 38)
@@ -384,6 +391,46 @@ function AdminPanel.Build(ctx: any)
 		end)
 	end
 
+	-- 🎡 Glücksrad-Drehs geben
+	local spinRow = UI.Row(content, 1810, 44)
+	local spinBox = UI.TextBox({
+		Size = UDim2.new(0.3, -3, 1, 0),
+		PlaceholderText = "Drehs (1-1000)",
+		Text = "5",
+		LayoutOrder = 1,
+		Parent = spinRow,
+	})
+	UI.Button({
+		Size = UDim2.new(0.7, -3, 1, 0),
+		Text = "🎡 Drehs geben (Ziel)",
+		Color = Color3.fromRGB(255, 110, 190),
+		LayoutOrder = 2,
+		MaxText = 18,
+		Parent = spinRow,
+	}, function()
+		local amount = math.clamp(math.floor(tonumber(spinBox.Text) or 5), 1, 1000)
+		spinBox.Text = tostring(amount)
+		admin("GiveSpins", { Target = targetBox.Text, Amount = amount })
+	end)
+
+	-- 🛠️ Gadget geben (Auswahl aus Config.Gadgets)
+	UI.Section(content, "🛠️ Gadget geben (für Ziel-Spieler)", 1820)
+	local gadgetGrid = UI.Grid(content, 1830, 152, 40)
+	local gadgets = if type(Config.Gadgets) == "table" then Config.Gadgets else {}
+	for i, gadget in ipairs(gadgets) do
+		UI.Button({
+			Text = tostring(gadget.Icon or "🛠️") .. " " .. tostring(gadget.Name),
+			Color = Theme.Orange,
+			LayoutOrder = i,
+			MaxText = 14,
+			Wrap = true,
+			StrokeSize = 2,
+			Parent = gadgetGrid,
+		}, function()
+			admin("GiveGadget", { Target = targetBox.Text, GadgetId = gadget.Id })
+		end)
+	end
+
 	-- -----------------------------------------------------------------
 	-- Events
 	-- -----------------------------------------------------------------
@@ -437,6 +484,16 @@ function AdminPanel.Build(ctx: any)
 		Parent = eventRow2,
 	}, function()
 		admin("StartShower", { Seconds = (tonumber(minutesBox.Text) or 1) * 60, Global = globalToggle })
+	end)
+	UI.Button({
+		Size = UDim2.new(1, 0, 0, 46),
+		Text = "🥚 Egg Rush starten (dieser Server)",
+		Color = Color3.fromRGB(230, 170, 20),
+		LayoutOrder = 2150,
+		MaxText = 20,
+		Parent = content,
+	}, function()
+		admin("EggRush", {})
 	end)
 	local announceRow = UI.Row(content, 2200, 42)
 	local announceBox = UI.TextBox({
@@ -624,7 +681,7 @@ function AdminPanel.Build(ctx: any)
 	end
 
 	-- Öffnen: Knopf rechts + Taste P
-	ctx.Hud.AddRightButton("🛠️", "Admin", Theme.Red, 4, function()
+	ctx.Hud.AddRightButton("🛠️", "Admin", Theme.Red, 99, function()
 		UI.ToggleWindow(win)
 	end)
 	UserInputService.InputBegan:Connect(function(input, processed)

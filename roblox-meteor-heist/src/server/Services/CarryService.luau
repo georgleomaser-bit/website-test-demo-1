@@ -1,10 +1,13 @@
 -- Klauen & Tragen:
 --  * Fremde Meteore UND Aliens kann man klauen (E halten), wenn die Base nicht gesperrt ist,
---    und muss sie dann in die eigene Base tragen.
---  * Wer gebonkt wird, stirbt, zu langsam ist oder das Spiel verlässt, verliert die Beute:
---    sie fliegt zurück zum Besitzer.
---  * Gekaufte Meteore muss man NICHT tragen – sie fliegen automatisch in die Base.
---  * Bonk-Schläger zum Verteidigen.
+--    und muss sie dann in die eigene Base tragen (Source = "Plot").
+--    Wer gebonkt wird, stirbt, in eine Falle tritt, zu langsam ist oder das Spiel verlässt,
+--    verliert die Beute: sie fliegt zurück zum Besitzer.
+--  * Eier vom FÖRDERBAND (E = Klauen) und Eier am Boden (fallen gelassen / Egg Rush) sind gratis,
+--    müssen aber auch nach Hause getragen werden (Source = "Ground"). Klappt das nicht,
+--    fällt das Ei an Ort und Stelle auf den Boden – und JEDER kann es schnappen.
+--  * Gekaufte Meteore (F) muss man NICHT tragen – sie fliegen automatisch in die Base.
+--  * Bonk-Schläger (bzw. Super-Bonk-Gadget) zum Verteidigen.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,6 +28,36 @@ local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der B
 -- Mindest-Tragezeit: kürzester möglicher Weg (raus aus der fremden Base, rein in die eigene)
 -- geteilt durch Trage-Tempo * diesen Faktor. Schneller geht es nur mit Teleport/Durch-Wände-Laufen.
 local MIN_CARRY_SPEED_FACTOR = 1.5
+-- Förderband und Laufbänder schieben mit (wer mit Beute auf dem Band mitfährt, ist schneller)
+local CONVEYOR_EXTRA_SPEED = math.max(Config.BeltSpeed, 14)
+local SUPER_BONK_NAME = "Super-Bonk" -- Werkzeug-Name im Rucksack (normaler Schläger: "Bonk")
+
+-- Fortschritt für die Tagesaufgaben (RewardService) – ein Fehler dort darf das Klauen nie stören
+local function trackReward(player: Player, kind: string, amount: number)
+	local rewards = Services.RewardService
+	if rewards and rewards.Track then
+		local ok, err = pcall(rewards.Track, player, kind, amount)
+		if not ok then
+			warn("[CarryService] RewardService.Track(" .. kind .. ") fehlgeschlagen: " .. tostring(err))
+		end
+	end
+end
+
+local function ownsGadget(player: Player, id: string): boolean
+	local gadgets = Services.GadgetService
+	return gadgets ~= nil and gadgets.Owns(player, id) == true
+end
+
+-- Höchstes mögliches Trage-Tempo (für die Mindest-Tragezeit): Schritte-Tempo * Trage-Faktor
+-- (Gamepass "Volle Speed beim Tragen" = kein Abzug), Speed Coil obendrauf, plus Förderband-Schub
+local function maxCarrySpeed(player: Player): number
+	local factor = Services.MonetizationService.HasPass(player, "CarryFast") and 1 or Config.CarrySpeedFactor
+	local speed = math.max(8, Services.EconomyService.GetSpeed(player) * factor)
+	if ownsGadget(player, "SpeedCoil") then
+		speed *= 1 + Config.SpeedCoilBonus
+	end
+	return speed + CONVEYOR_EXTRA_SPEED
+end
 
 function CarryService.IsCarrying(player: Player): boolean
 	return carrying[player] ~= nil
@@ -171,6 +204,16 @@ local function minCarryDistance(victimPlot, ownPlot, from: Vector3): number
 	return toExit + between
 end
 
+-- Mindest-Tragezeit für ein Ei vom Band/Boden: Luftlinie bis zum Eingang der eigenen Base
+local function minGroundCarryTime(player: Player, from: Vector3?): number
+	local plot = Services.PlotService.GetPlot(player)
+	if not plot or not from or Services.PlotService.IsInside(plot, from) then
+		return 0
+	end
+	local a, b = entranceSegment(plot)
+	return pointSegmentDistance(flat(from), a, b) / (maxCarrySpeed(player) * MIN_CARRY_SPEED_FACTOR)
+end
+
 function CarryService.IsSlotBeingStolen(plot, slot: number): boolean
 	local map = stealing[plot]
 	return map ~= nil and map[slot] ~= nil
@@ -261,21 +304,90 @@ local function createVisual(player: Player, entry): Instance?
 	return visual
 end
 
--- info: { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef, MinTime? }
+-- info (Plot):   { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef, MinTime? }
+-- info (Ground): { Source = "Ground", From = "Belt"|"Drop"?, GrabPosition?, MinTime? }
+-- Dazu kommen hier: Entry, Started, Character, StartPos, LastPos (laufend), Visual
 function CarryService.StartCarry(player: Player, entry, info)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	info.Entry = entry
 	info.Started = os.clock()
-	info.MinTime = info.MinTime or 0
+	info.Character = character
+	info.StartPos = root and root.Position or info.GrabPosition
+	info.LastPos = info.StartPos
+	if info.MinTime == nil then
+		info.MinTime = info.Source == "Ground" and minGroundCarryTime(player, info.StartPos) or 0
+	end
 	info.Visual = createVisual(player, entry)
 	carrying[player] = info
 	Services.EconomyService.ApplySpeed(player)
 	Services.EconomyService.MarkDirty(player)
-	Services.EconomyService.Notify(player, "🏃 Bring " .. Config.EntryName(entry) .. " in deine Base!", "Info")
+	if info.Source == "Ground" then
+		Services.EconomyService.Notify(
+			player,
+			"😈 Geschnappt: "
+				.. Config.EntryName(entry)
+				.. "! Schnell in deine Base – wer dich bonkt, kriegt es! 🏃",
+			"Info"
+		)
+	else
+		Services.EconomyService.Notify(player, "🏃 Bring " .. Config.EntryName(entry) .. " in deine Base!", "Info")
+	end
+end
+
+-- Weltposition der getragenen Beute (für den Fall-Effekt beim Fallenlassen)
+local function visualPosition(info): Vector3?
+	local visual = info.Visual
+	if not visual or not visual.Parent then
+		return nil
+	end
+	if visual:IsA("BasePart") then
+		return visual.Position
+	elseif visual:IsA("Model") then
+		return visual:GetPivot().Position
+	end
+	return nil
+end
+
+-- Ei vom Band/Boden sicher zu Hause -> in einen freien Slot, Schlüpf-Countdown startet
+local function succeedGround(player: Player, info)
+	local data = Services.DataService.Get(player)
+	local plot = Services.PlotService.GetPlot(player)
+	local slot = Services.PlotService.FreeSlot(player)
+	if not data or not plot or not slot then
+		CarryService.Fail(player, "full")
+		return
+	end
+	local from = visualPosition(info)
+	cleanup(player, info)
+	local placed = Services.EconomyService.DeliverMeteor(player, plot, slot, info.Entry, from)
+	if not placed then
+		-- (sollte nie passieren) Ei nicht verlieren: an Ort und Stelle fallen lassen
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local spot = root and root.Position or info.LastPos
+		if spot then
+			Services.MeteorService.DropMeteor(info.Entry, spot, from)
+		end
+		return
+	end
+	data.Stats.Grabbed = (tonumber(data.Stats.Grabbed) or 0) + 1
+	trackReward(player, "Grab", 1)
+	Services.EconomyService.Notify(
+		player,
+		"🏠 Zuhause! " .. Config.EntryName(info.Entry) .. " schlüpft bald 🐣",
+		"Success"
+	)
+	Services.EconomyService.Effect(player, "Confetti", 1)
 end
 
 local function succeed(player: Player)
 	local info = carrying[player]
 	if not info then
+		return
+	end
+	if info.Source == "Ground" then
+		succeedGround(player, info)
 		return
 	end
 	local data = Services.DataService.Get(player)
@@ -302,6 +414,7 @@ local function succeed(player: Player)
 	Services.PlotService.RenderSlot(plot, slot)
 	Services.PlotService.RenderSlot(info.VictimPlot, info.Slot)
 	Services.EconomyService.MarkDirty(victim)
+	trackReward(player, "Steal", 1)
 	Services.EconomyService.Notify(player, "😈 Geklaut: " .. name .. "!", "Success")
 	Services.EconomyService.Notify(
 		victim,
@@ -311,14 +424,69 @@ local function succeed(player: Player)
 	Services.EconomyService.Effect(player, "Confetti", 1)
 end
 
+-- Hinweise beim Verlieren: Beute aus einer Base fliegt zurück, ein Ei vom Band fällt herunter
+local PLOT_FAIL_TEXT = {
+	bonked = "💥 Gebonkt! Die Beute fliegt zurück.",
+	timeout = "⏰ Zu langsam! Die Beute fliegt zurück.",
+	full = "📦 Deine Base ist voll – die Beute fliegt zurück!",
+	teleport = "🚫 Mit Beute kann man nicht teleportieren!",
+	locked = "🔒 Die Base wurde gesperrt – deine Beute fliegt zurück!",
+	trap = "🪤 FALLE! Die Beute fliegt zurück.",
+}
+local GROUND_FAIL_TEXT = {
+	bonked = "💥 Gebonkt! Das Ei ist runtergefallen – schnapp es dir zurück!",
+	timeout = "⏰ Zu langsam! Das Ei ist runtergefallen.",
+	full = "📦 Deine Base ist voll – das Ei liegt jetzt am Boden!",
+	teleport = "🚫 Mit Beute kann man nicht teleportieren!",
+	locked = "🔒 Gesperrte Base – das Ei ist runtergefallen!",
+	trap = "🪤 FALLE! Das Ei ist runtergefallen.",
+	died = "💀 Das Ei ist runtergefallen – jemand anderes kann es jetzt schnappen!",
+}
+
+-- Ei vom Band/Boden verloren -> fällt als GRATIS-Ei auf den Boden (jeder darf es schnappen)
+local function dropGroundLoot(player: Player, info, reason: string, from: Vector3?)
+	local spot: Vector3? = nil
+	if reason == "teleport" or reason == "invalid" then
+		-- Verdacht auf Teleport-Trick: dort ablegen, wo das Tragen angefangen hat
+		spot = info.StartPos
+	else
+		-- nur der Charakter, der das Ei getragen hat (nach einem Respawn steht der neue woanders)
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if character == info.Character and root and humanoid and humanoid.Health > 0 then
+			spot = root.Position
+		else
+			spot = info.LastPos or info.StartPos
+		end
+	end
+	if not spot then
+		return
+	end
+	local ok, err = pcall(Services.MeteorService.DropMeteor, info.Entry, spot, from)
+	if not ok then
+		warn("[CarryService] Ei fallen lassen fehlgeschlagen: " .. tostring(err))
+	end
+end
+
 function CarryService.Fail(player: Player, reason: string)
 	local info = carrying[player]
 	if not info then
 		return
 	end
+	local from = visualPosition(info)
 	clearStealMark(info)
 	cleanup(player, info)
 	local name = Config.EntryName(info.Entry)
+
+	if info.Source == "Ground" then
+		dropGroundLoot(player, info, reason, from)
+		local text = GROUND_FAIL_TEXT[reason]
+		if text then
+			Services.EconomyService.Notify(player, text, "Error")
+		end
+		return
+	end
 
 	-- zurück zum Besitzer
 	if info.VictimPlot and info.VictimPlot.Owner == info.VictimPlayer then
@@ -328,16 +496,9 @@ function CarryService.Fail(player: Player, reason: string)
 			Services.EconomyService.Notify(info.VictimPlayer, "🛡️ Dein " .. name .. " ist zurück!", "Success")
 		end
 	end
-	if reason == "bonked" then
-		Services.EconomyService.Notify(player, "💥 Gebonkt! Die Beute fliegt zurück.", "Error")
-	elseif reason == "timeout" then
-		Services.EconomyService.Notify(player, "⏰ Zu langsam! Die Beute fliegt zurück.", "Error")
-	elseif reason == "full" then
-		Services.EconomyService.Notify(player, "📦 Deine Base ist voll – die Beute fliegt zurück!", "Error")
-	elseif reason == "teleport" then
-		Services.EconomyService.Notify(player, "🚫 Mit Beute kann man nicht teleportieren!", "Error")
-	elseif reason == "locked" then
-		Services.EconomyService.Notify(player, "🔒 Die Base wurde gesperrt – deine Beute fliegt zurück!", "Error")
+	local text = PLOT_FAIL_TEXT[reason]
+	if text then
+		Services.EconomyService.Notify(player, text, "Error")
 	end
 end
 
@@ -390,8 +551,7 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 		Services.EconomyService.Notify(thief, "⏳ Kurz warten und nochmal versuchen!", "Error")
 		return
 	end
-	local speed = math.max(8, Services.EconomyService.GetSpeed(thief) * Config.CarrySpeedFactor)
-	local minTime = minCarryDistance(plot, thiefPlot, root.Position) / (speed * MIN_CARRY_SPEED_FACTOR)
+	local minTime = minCarryDistance(plot, thiefPlot, root.Position) / (maxCarrySpeed(thief) * MIN_CARRY_SPEED_FACTOR)
 
 	stealing[plot] = stealing[plot] or {}
 	stealing[plot][slot] = thief
@@ -423,11 +583,12 @@ function CarryService.CancelStealsFromPlot(plot, reason: string?)
 end
 
 -- -------------------------------------------------------------------
--- BONK-SCHLÄGER
+-- BONK-SCHLÄGER (normal bzw. Super-Bonk-Gadget: doppelte Reichweite + Wucht, schneller)
 -- -------------------------------------------------------------------
-local function bonk(player: Player, tool: Tool)
+local function bonk(player: Player, tool: Tool, super: boolean)
 	local t = os.clock()
-	if t - (lastBonk[player] or 0) < Config.BonkCooldown then
+	local cooldown = super and Config.SuperBonkCooldown or Config.BonkCooldown
+	if t - (lastBonk[player] or 0) < cooldown then
 		return
 	end
 	lastBonk[player] = t
@@ -441,12 +602,16 @@ local function bonk(player: Player, tool: Tool)
 
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root then
-		return
+	if not root or tool.Parent ~= character then
+		return -- nur mit dem Schläger in der Hand
 	end
-	local best, bestDist = nil, Config.BonkRange
+	local range = super and Config.BonkRange * Config.SuperBonkRangeMult or Config.BonkRange
+	local force = super and Config.BonkForce * Config.SuperBonkForceMult or Config.BonkForce
+	local gadgets = Services.GadgetService
+	local best, bestDist = nil, range
 	for _, other in ipairs(Players:GetPlayers()) do
-		if other ~= player then
+		-- Unsichtbare (Umhang) kann man nicht bonken
+		if other ~= player and not (gadgets and gadgets.IsCloaked(other)) then
 			local otherRoot = other.Character and other.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 			local otherHum = other.Character and other.Character:FindFirstChildOfClass("Humanoid")
 			if otherRoot and otherHum and otherHum.Health > 0 then
@@ -471,20 +636,23 @@ local function bonk(player: Player, tool: Tool)
 	direction = direction.Magnitude > 0.01 and direction.Unit or root.CFrame.LookVector
 
 	-- Rückstoß (läuft beim getroffenen Spieler, weil der seine Physik besitzt)
-	local attachment = Instance.new("Attachment")
-	attachment.Parent = targetRoot
-	local velocity = Instance.new("LinearVelocity")
-	velocity.Attachment0 = attachment
-	velocity.MaxForce = 1e6
-	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-	velocity.VectorVelocity = direction * Config.BonkForce + Vector3.new(0, 30, 0)
-	velocity.Parent = targetRoot
-	Debris:AddItem(velocity, 0.18)
-	Debris:AddItem(attachment, 0.18)
+	if not targetRoot.Anchored then
+		local attachment = Instance.new("Attachment")
+		attachment.Parent = targetRoot
+		local velocity = Instance.new("LinearVelocity")
+		velocity.Attachment0 = attachment
+		velocity.MaxForce = 1e6
+		velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+		velocity.VectorVelocity = direction * force + Vector3.new(0, super and 45 or 30, 0)
+		velocity.Parent = targetRoot
+		Debris:AddItem(velocity, 0.18)
+		Debris:AddItem(attachment, 0.18)
+	end
 
-	Services.EconomyService.Effect(best, "Shake", 0.6)
+	Services.EconomyService.Effect(best, "Shake", super and 1 or 0.6)
 	if carrying[best] then
 		CarryService.Fail(best, "bonked")
+		trackReward(player, "Bonk", 1)
 		Services.EconomyService.Notify(
 			player,
 			"💥 Treffer! " .. best.DisplayName .. " hat die Beute verloren!",
@@ -493,32 +661,57 @@ local function bonk(player: Player, tool: Tool)
 	end
 end
 
-local function createBonkTool(): Tool
+local function createBonkTool(super: boolean): Tool
 	local tool = Instance.new("Tool")
-	tool.Name = "Bonk"
-	tool.ToolTip = "Klick = Bonk! Diebe verlieren ihre Beute."
+	tool.Name = super and SUPER_BONK_NAME or "Bonk"
+	tool.ToolTip = super and "Klick = SUPER-BONK! Doppelte Reichweite und Wucht."
+		or "Klick = Bonk! Diebe verlieren ihre Beute."
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
-	tool.Grip = CFrame.new(0, 0, -1.6) * CFrame.Angles(math.rad(-90), 0, 0)
+	local length = super and 5.2 or 4.2
+	tool.Grip = CFrame.new(0, 0, -length * 0.38) * CFrame.Angles(math.rad(-90), 0, 0)
+	tool:SetAttribute("Gadget", super and "SuperBonk" or nil)
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.6, 0.6, 4.2)
-	handle.Color = Color3.fromRGB(255, 170, 60)
-	handle.Material = Enum.Material.SmoothPlastic
+	handle.Size = Vector3.new(0.6, 0.6, length)
+	handle.Color = super and Color3.fromRGB(60, 60, 70) or Color3.fromRGB(255, 170, 60)
+	handle.Material = super and Enum.Material.Metal or Enum.Material.SmoothPlastic
 	handle.CanCollide = false
 	handle.Massless = true
 	handle.Parent = tool
 
 	local head = Instance.new("Part")
 	head.Name = "Head"
-	head.Shape = Enum.PartType.Ball
-	head.Size = Vector3.new(1.6, 1.6, 1.6)
-	head.Color = Color3.fromRGB(255, 90, 60)
-	head.Material = Enum.Material.SmoothPlastic
 	head.CanCollide = false
 	head.Massless = true
-	head.CFrame = handle.CFrame * CFrame.new(0, 0, -2.2)
+	if super then
+		-- großer goldener Hammerkopf mit Leuchtring
+		head.Size = Vector3.new(2.4, 2.4, 3.4)
+		head.Color = Color3.fromRGB(255, 200, 40)
+		head.Material = Enum.Material.Foil
+		head.CFrame = handle.CFrame * CFrame.new(0, 0, -length / 2 - 0.4) * CFrame.Angles(0, math.rad(90), 0)
+		local glow = Instance.new("Part")
+		glow.Name = "Glow"
+		glow.Shape = Enum.PartType.Cylinder
+		glow.Size = Vector3.new(0.5, 2.8, 2.8)
+		glow.Color = Color3.fromRGB(255, 90, 40)
+		glow.Material = Enum.Material.Neon
+		glow.CanCollide = false
+		glow.Massless = true
+		glow.CFrame = head.CFrame
+		local glowWeld = Instance.new("WeldConstraint")
+		glowWeld.Part0 = head
+		glowWeld.Part1 = glow
+		glowWeld.Parent = glow
+		glow.Parent = tool
+	else
+		head.Shape = Enum.PartType.Ball
+		head.Size = Vector3.new(1.6, 1.6, 1.6)
+		head.Color = Color3.fromRGB(255, 90, 60)
+		head.Material = Enum.Material.SmoothPlastic
+		head.CFrame = handle.CFrame * CFrame.new(0, 0, -2.2)
+	end
 	local weld = Instance.new("WeldConstraint")
 	weld.Part0 = handle
 	weld.Part1 = head
@@ -528,28 +721,59 @@ local function createBonkTool(): Tool
 end
 
 local bonkTemplate: Tool
+local superBonkTemplate: Tool
 
-local function giveTool(player: Player)
-	local backpack = player:WaitForChild("Backpack", 10)
-	if not backpack or backpack:FindFirstChild("Bonk") then
+local function findTool(container: Instance?, name: string): Tool?
+	local found = container and container:FindFirstChild(name)
+	if found and found:IsA("Tool") then
+		return found
+	end
+	return nil
+end
+
+-- Gibt den passenden Schläger (Bonk oder Super-Bonk) – ohne Doppelte, alter Schläger fliegt raus.
+-- Wird beim Spawnen und nach dem Kauf/Geschenk des Super-Bonks aufgerufen.
+function CarryService.GiveBonk(player: Player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack or not bonkTemplate then
 		return
 	end
-	local tool = bonkTemplate:Clone()
+	local character = player.Character
+	local super = ownsGadget(player, "SuperBonk")
+	local wanted = super and SUPER_BONK_NAME or "Bonk"
+	local unwanted = super and "Bonk" or SUPER_BONK_NAME
+	for _, container in ipairs({ backpack, character }) do
+		local old = findTool(container, unwanted)
+		if old then
+			old:Destroy()
+		end
+	end
+	if findTool(backpack, wanted) or findTool(character, wanted) then
+		return
+	end
+	local tool = (super and superBonkTemplate or bonkTemplate):Clone()
 	tool.Activated:Connect(function()
-		bonk(player, tool)
+		bonk(player, tool, super)
 	end)
 	tool.Parent = backpack
 end
 
+local function giveTool(player: Player)
+	if player:WaitForChild("Backpack", 10) then
+		CarryService.GiveBonk(player)
+	end
+end
+
 function CarryService.Init(services)
 	Services = services
-	bonkTemplate = createBonkTool()
+	bonkTemplate = createBonkTool(false)
+	superBonkTemplate = createBonkTool(true)
 end
 
 function CarryService.Start()
 	local function onPlayer(player: Player)
 		player.CharacterAdded:Connect(function(character)
-			-- neuer Charakter -> alte Beute ist weg (fliegt zurück)
+			-- neuer Charakter -> alte Beute ist weg (fliegt zurück bzw. das Ei fällt herunter)
 			if carrying[player] then
 				CarryService.Fail(player, "died")
 			end
@@ -600,6 +824,9 @@ function CarryService.Start()
 				local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 				local plot = Services.PlotService.GetPlot(player)
 				local elapsed = os.clock() - info.Started
+				if root and character == info.Character then
+					info.LastPos = root.Position -- falls das Ei gleich herunterfällt (Tod, Verlassen)
+				end
 				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
 					-- (Visual weg = Charakter neu gespawnt oder Beute zerstört)
 					CarryService.Fail(player, "died")

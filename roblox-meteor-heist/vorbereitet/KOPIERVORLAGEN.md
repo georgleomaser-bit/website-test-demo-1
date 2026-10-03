@@ -68,24 +68,24 @@ Später ändern: **Home → Game Settings → Basic Info**.
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteore fahren auf dem Laufband vorbei! Kauf sie, und sie fliegen sofort in deine Base. Dort schlüpfen ALIENS, die dir Geld bringen. Aber pass auf: Die anderen wollen sie klauen! 😱
+Meteore sind Alien-Eier und fahren auf dem Laufband vorbei! KLAU sie gratis und renn nach Hause, bevor dich jemand bonkt. Oder kauf sie: Dann fliegen sie von allein in deine Base. Dort schlüpfen ALIENS und bringen dir Geld! 😱
 
-🛒 Kauf Meteore am Laufband (E drücken)
-🐣 Aus jedem Meteor schlüpft ein Alien: Normal, Selten oder Ultra
-💰 Aliens verdienen Geld pro Sekunde und werden immer stärker (Level 1 bis 20)
-🦹 Klau Meteore und Aliens aus fremden Basen (E halten)
-🔨 Bonk Diebe mit deinem Schläger weg
-🔒 Sperr deine Base mit dem Lock-Pad
-👟 Speed Farm: 7 Laufbänder, sammle Schritte und werde superschnell
-🌠 Alle 8 Minuten Meteoritenschauer: keine Locks, 3x Glück!
-👽 Über 90 Aliens zum Sammeln, 28 Meteore in 9 Seltenheiten
-👑 Krasse Admin-Meteore bei Admin-Events
+🦹 Klau Eier vom Band (E halten) oder kauf sie (F)
+🐣 Aus jedem Ei schlüpft ein Alien: Normal, Selten oder Ultra
+💰 Aliens bringen Geld pro Sekunde
+😈 Klau aus fremden Basen, bonk Diebe weg
+🥚 EGG RUSH: Eier regnen auf die ganze Map. Der Schnellste gewinnt!
+🌠 Meteoritenschauer: keine Locks, 3x Glück
+🎡 Glücksrad, 🎁 Geschenke und 📜 Tagesaufgaben
+🛠️ Gadgets: Speed Coil, Falle, Super-Bonk, Unsichtbarkeits-Umhang
+👟 7 Laufbänder: sammle Schritte, werde superschnell
+✨ Mutationen: Gold, Frost, Lava, Diamond, Cosmic, Rainbow
+👽 96 Aliens, 28 Meteore, 9 Seltenheiten
 🔁 Rebirth, Index und Tagesbonus
-👥 8 Spieler pro Server
 
 Schaffst du es, ein ULTRA-Alien zu klauen? 👀
 
-👍 Like das Spiel und ⭐ favorisiere es, damit du kein Update verpasst!
+👍 Like und ⭐ favorisiere das Spiel!
 ```
 
 ### Englisch
@@ -94,25 +94,27 @@ Viele Roblox-Spieler sprechen Englisch. Darum gibt es auch eine englische Versio
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteors roll by on the conveyor belt! Buy them and they fly straight into your base. There, ALIENS hatch and earn you cash. But watch out: Other players want to steal them! 😱
+Meteors are alien eggs and roll by on the conveyor belt! STEAL them for free and run home before someone bonks you. Or buy them and they fly straight into your base. There, ALIENS hatch and earn you cash! 😱
 
-🛒 Buy meteors on the conveyor belt (press E)
-🐣 Every meteor hatches an alien: Normal, Rare or Ultra
-💰 Aliens earn cash every second and level up from 1 to 20
-🦹 Steal meteors and aliens from other bases (hold E)
-🔨 Bonk thieves away with your bat
-🔒 Lock your base with the lock pad
-👟 Speed Farm: 7 treadmills, collect steps and get super fast
-🌠 Meteor shower every 8 minutes: no locks, 3x luck!
-👽 Over 90 aliens to collect, 28 meteors in 9 rarities
-👑 Insane admin meteors during admin events
-🔁 Rebirth, Index and daily rewards
-👥 8 players per server
+🦹 Steal eggs from the belt (hold E) or buy them (F)
+🐣 Every egg hatches an alien: Normal, Rare or Ultra
+💰 Aliens earn cash every second
+😈 Steal from other bases, bonk thieves away
+🥚 EGG RUSH: eggs rain all over the map. Fastest player wins!
+🌠 Meteor showers: no locks, 3x luck
+🎡 Lucky wheel, 🎁 gifts and 📜 daily quests
+🛠️ Gadgets: Speed Coil, trap, Super Bonk, invisibility cloak
+👟 7 treadmills: collect steps, get super fast
+✨ Mutations: Gold, Frost, Lava, Diamond, Cosmic, Rainbow
+👽 96 aliens, 28 meteors, 9 rarities
+🔁 Rebirth, index and daily rewards
 
 Can you steal an ULTRA alien? 👀
 
-👍 Like the game and ⭐ favorite it so you never miss an update!
+👍 Like and ⭐ favorite the game!
 ```
+
+> 💡 Beide Texte sind kürzer als 1000 Zeichen. Mehr erlaubt Roblox nicht.
 
 **Wo eintragen?**
 - Die **deutsche** Beschreibung kommt ins Feld **Description**. Das ist an derselben Stelle wie der Name.
@@ -161,7 +163,7 @@ Wie das geht, steht Schritt für Schritt in **`FOTOS-MACHEN.md`** (im selben Ord
 
 ---
 
-## 5. 🎟️ Gamepasses (6 Stück)
+## 5. 🎟️ Gamepasses (8 Stück)
 
 **So legst du einen Gamepass an:**
 
@@ -177,7 +179,7 @@ Wie das geht, steht Schritt für Schritt in **`FOTOS-MACHEN.md`** (im selben Ord
 
 > 💡 Roblox zeigt Pass-Bilder **rund** an. Das ist normal.
 
-> 💡 Im Spiel stehen manche Namen mit Emoji, zum Beispiel **„👟 2x Schritte“** oder **„⚡ 2x Schlüpfen & Wachsen“**. Das macht das Spiel selbst. Bei Roblox reicht der Name aus dem grauen Kasten.
+> 💡 Im Spiel stehen manche Namen mit Emoji, zum Beispiel **„👟 2x Schritte“**, **„🍀 2x Glück“** oder **„⭐ Starter-Paket“**. Das macht das Spiel selbst. Bei Roblox reicht der Name aus dem grauen Kasten.
 
 ### 💰 2x Cash
 
@@ -287,9 +289,45 @@ Doppelt so viele Schritte auf jedem Laufband, für immer! Du wirst viel schnelle
 - Bild: `pass-speed-boots.png`
 - Config-Key: `SpeedBoots`
 
+### 🍀 2x Glück
+
+Name:
+
+```
+2x Glück
+```
+
+Beschreibung:
+
+```
+Doppeltes Glück beim Schlüpfen, für immer! Aus deinen Eiern schlüpfen viel öfter Selten- und Ultra-Aliens: Selten 35 % statt 22 %, Ultra fast 5 % statt 3 %. Selten-Aliens bringen 2,5x so viel Geld, Ultra-Aliens sogar 6x!
+```
+
+- Preis: **349 Robux**
+- Bild: `pass-gluck.png`
+- Config-Key: `Lucky`
+
+### 🏃 Volle Speed beim Tragen
+
+Name:
+
+```
+Volle Speed beim Tragen
+```
+
+Beschreibung:
+
+```
+Beim Tragen von Eiern und Aliens wirst du nicht mehr langsamer, für immer! Ohne diesen Pass rennst du mit Beute nur mit 70 % Tempo. Mit ihm entkommst du viel leichter!
+```
+
+- Preis: **299 Robux**
+- Bild: `pass-volle-speed.png`
+- Config-Key: `CarryFast`
+
 ---
 
-## 6. 🛒 Developer Products (8 Stück)
+## 6. 🛒 Developer Products (14 Stück)
 
 **So legst du ein Developer Product an:**
 
@@ -445,6 +483,120 @@ Ein zufälliger Mythic-Meteor fliegt sofort in deine Base: Nebula Heart, Black H
 - Bild: `produkt-mythic-meteor.png`
 - Config-Key: `MythicMeteor`
 
+### ⭐ Starter-Paket
+
+Name:
+
+```
+Starter-Paket
+```
+
+Beschreibung:
+
+```
+Das Super-Angebot für den Start, nur EINMAL kaufbar! Du bekommst: Geld (15 Minuten Einkommen, mindestens $100.000), 3 Glücksrad-Drehs, ein zufälliges Legendary-Ei (Solar Flare, Aurora Crystal oder Titan Boulder, jedes mit Chance 1 von 3) und das Gadget Speed Coil (+30 % Tempo). Hast du die Speed Coil schon, bekommst du ihren Preis als Geld. Ist deine Base voll, bekommst du den Wert vom Ei als Geld.
+```
+
+- Preis: **49 Robux** (Super-Angebot! Es soll sich wie ein Schnäppchen anfühlen.)
+- Bild: `produkt-starter-paket.png`
+- Config-Key: `StarterPack`
+
+> 💡 Roblox selbst kann ein Developer Product nicht auf „nur 1x“ begrenzen. Das macht das Spiel: Nach dem Kauf verschwindet der Knopf **⭐ STARTER-PAKET**. Er erscheint erst, wenn die ID eingetragen ist.
+
+> 💡 In manchen Ländern verbietet Roblox bezahlte Zufalls-Gegenstände. Dort zeigt das Spiel im Shop automatisch den anderen Inhalt an: mehr Geld statt Drehs und ein festes Legendary-Ei (Solar Flare) statt eines zufälligen.
+
+### 🎡 1 Glücksrad-Dreh
+
+Name:
+
+```
+1 Glücksrad-Dreh
+```
+
+Beschreibung:
+
+```
+Einmal am Glücksrad drehen! Du gewinnst Geld, Schritte, Extra-Drehs oder sogar ein seltenes Ei. Chancen: Cash S 26 %, Schritte 18 %, Cash M 18 %, Cash XL 10 %, Epic-Ei 10 %, 2 Drehs 8 %, Legendary-Ei 8 %, Mythic-Ei 2 %.
+```
+
+- Preis: **25 Robux**
+- Bild: `produkt-dreh-1.png`
+- Config-Key: `Spin1`
+
+### 🎡 10+2 Glücksrad-Drehs
+
+Name:
+
+```
+10+2 Glücksrad-Drehs
+```
+
+Beschreibung:
+
+```
+12 Drehs am Glücksrad, 2 davon gratis! Du gewinnst Geld, Schritte, Extra-Drehs oder sogar seltene Eier. Chancen pro Dreh: Cash S 26 %, Schritte 18 %, Cash M 18 %, Cash XL 10 %, Epic-Ei 10 %, 2 Drehs 8 %, Legendary-Ei 8 %, Mythic-Ei 2 %.
+```
+
+- Preis: **199 Robux**
+- Bild: `produkt-dreh-12.png`
+- Config-Key: `Spin10`
+
+> 💡 Die Chancen stehen auch im Spiel: im Shop und im Fenster **🎡 Glücksrad**. Änderst du später die Felder in `Config.WheelPrizes`, sag mir Bescheid. Dann passe ich diese zwei Beschreibungen an.
+
+### 🐣 Alle Eier sofort schlüpfen
+
+Name:
+
+```
+Alle Eier sofort schlüpfen
+```
+
+Beschreibung:
+
+```
+Alle Eier in deiner Base schlüpfen SOFORT! Kein Warten mehr: Deine neuen Aliens verdienen ab jetzt Geld. Liegt gerade kein Ei in deiner Base, bekommst du stattdessen Geld (5 Minuten Einkommen, mindestens $5.000).
+```
+
+- Preis: **79 Robux**
+- Bild: `produkt-sofort-schluepfen.png`
+- Config-Key: `InstantHatch`
+
+### 🛡️ Base-Schild 10 Min
+
+Name:
+
+```
+Base-Schild 10 Min
+```
+
+Beschreibung:
+
+```
+Deine Base ist 10 Minuten lang gesperrt, sogar im Meteoritenschauer! Niemand kann bei dir klauen. Kaufst du noch ein Schild, wird die Zeit einfach länger.
+```
+
+- Preis: **59 Robux**
+- Bild: `produkt-base-schild.png`
+- Config-Key: `BaseShield`
+
+### 🥚 Egg Rush JETZT
+
+Name:
+
+```
+Egg Rush JETZT
+```
+
+Beschreibung:
+
+```
+Startet sofort einen EGG RUSH für alle im Server: 25 Gratis-Eier regnen auf die ganze Map, mit 3x Glück! 45 Sekunden lang kann jeder sie schnappen und nach Hause tragen. Alle sehen, dass du es warst.
+```
+
+- Preis: **69 Robux**
+- Bild: `produkt-egg-rush.png`
+- Config-Key: `EggRush`
+
 ---
 
 ## 7. ❓ Der Roblox-Fragebogen
@@ -455,8 +607,13 @@ Roblox bestimmt damit, ab welchem Alter das Spiel passt.
 
 **Antworte immer ehrlich.** Das hilft dir bei Meteor Heist:
 
-- **Gewalt:** Es gibt nur einen **Bonk-Schläger**. Er schubst andere Spieler weg. Es gibt **kein Blut** und **keine echten Waffen**.
-- **Paid Random Items** (heißt: Man bezahlt Robux und bekommt etwas Zufälliges): Hier musst du **JA** antworten. Grund: „Zufälliger Legendary Meteor“ und „Zufälliger Mythic Meteor“ (und welches Alien daraus schlüpft). Das Spiel zeigt die Chancen vor dem Kauf im Shop an.
+- **Gewalt:** Es gibt nur einen **Bonk-Schläger** (auch als **Super-Bonk**). Er schubst andere Spieler weg. Die **Falle** friert Diebe 3 Sekunden ein. Es gibt **keinen Schaden**, **kein Blut** und **keine echten Waffen**.
+- **Paid Random Items** (heißt: Man bezahlt Robux und bekommt etwas Zufälliges): Hier musst du **JA** antworten. Gründe:
+  - „Zufälliger Legendary Meteor“ und „Zufälliger Mythic Meteor“ (und welches Alien daraus schlüpft)
+  - „1 Glücksrad-Dreh“ und „10+2 Glücksrad-Drehs“ (das Glücksrad ist Zufall)
+  - „Starter-Paket“ (darin sind ein zufälliges Legendary-Ei und Glücksrad-Drehs)
+
+  Das Spiel zeigt die Chancen vor dem Kauf an. In Ländern, in denen Roblox solche Zufalls-Käufe verbietet, versteckt das Spiel die Zufalls-Produkte automatisch. Das Starter-Paket hat dort einen Inhalt ohne Zufall.
 
 Bei einer Frage bist du unsicher? Schick mir die Frage. Ich helfe dir.
 
@@ -472,6 +629,8 @@ Bei einer Frage bist du unsicher? Schick mir die Frage. Ich helfe dir.
 | Pass | Auto Collect | 149 | `pass-auto-collect.png` | `AutoCollect` |
 | Pass | 2x Schlüpfen & Wachsen | 299 | `pass-2x-aufladen.png` | `FastCharge` |
 | Pass | 2x Schritte | 99 | `pass-speed-boots.png` | `SpeedBoots` |
+| Pass | 2x Glück | 349 | `pass-gluck.png` | `Lucky` |
+| Pass | Volle Speed beim Tragen | 299 | `pass-volle-speed.png` | `CarryFast` |
 | Produkt | Cash Paket S | 25 | `produkt-cash-s.png` | `CashSmall` |
 | Produkt | Cash Paket M | 99 | `produkt-cash-m.png` | `CashMedium` |
 | Produkt | Cash Paket XL | 399 | `produkt-cash-xl.png` | `CashLarge` |
@@ -480,6 +639,12 @@ Bei einer Frage bist du unsicher? Schick mir die Frage. Ich helfe dir.
 | Produkt | Meteoritenschauer JETZT | 49 | `produkt-meteoritenschauer.png` | `MeteorShower` |
 | Produkt | Zufälliger Legendary Meteor | 149 | `produkt-legendary-meteor.png` | `LegendaryMeteor` |
 | Produkt | Zufälliger Mythic Meteor | 449 | `produkt-mythic-meteor.png` | `MythicMeteor` |
+| Produkt | Starter-Paket | 49 | `produkt-starter-paket.png` | `StarterPack` |
+| Produkt | 1 Glücksrad-Dreh | 25 | `produkt-dreh-1.png` | `Spin1` |
+| Produkt | 10+2 Glücksrad-Drehs | 199 | `produkt-dreh-12.png` | `Spin10` |
+| Produkt | Alle Eier sofort schlüpfen | 79 | `produkt-sofort-schluepfen.png` | `InstantHatch` |
+| Produkt | Base-Schild 10 Min | 59 | `produkt-base-schild.png` | `BaseShield` |
+| Produkt | Egg Rush JETZT | 69 | `produkt-egg-rush.png` | `EggRush` |
 
 Alle Preise sind in Robux.
 
@@ -498,6 +663,8 @@ ExtraSlots =
 AutoCollect = 
 FastCharge = 
 SpeedBoots = 
+Lucky = 
+CarryFast = 
 
 CashSmall = 
 CashMedium = 
@@ -507,6 +674,12 @@ Speed10 =
 MeteorShower = 
 LegendaryMeteor = 
 MythicMeteor = 
+StarterPack = 
+Spin1 = 
+Spin10 = 
+InstantHatch = 
+BaseShield = 
+EggRush = 
 ```
 
 **Kopier den ausgefüllten Kasten hier in den Chat.**

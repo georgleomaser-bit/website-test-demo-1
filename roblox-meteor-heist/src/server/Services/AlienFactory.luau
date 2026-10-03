@@ -3,6 +3,10 @@
 -- Körperform nach "Archetype" (Aliens.luau), Farben, Material/Farbe nach Mutation,
 -- Effekte (Regenbogen, Aura, Umriss, Licht) und Namensschild darüber.
 --
+--  * Mutationen: Gold (Folie), Diamond (Glas), Cosmic (Neon + Funken), Frost (Eis-Körper,
+--    Schnee-Füße, Schneeflocken), Lava (glühender Körper, Vulkangestein, kleines Feuer),
+--    Rainbow (alle farbigen Teile mit Attribut "Rainbow" -> der Client färbt sie durch).
+--  * Umriss (Highlight) nur noch bei Tier "Ultra" + Rarity "Admin" (Roblox zeigt nur ~31 gleichzeitig).
 --  * Pivot (model:GetPivot()) = Bodenmitte -> model:PivotTo(Pad-Oberseite) stellt das Alien aufs Pad.
 --  * Das Gesicht zeigt in Blickrichtung des Pivots (LookVector / lokales -Z).
 --  * Alle Teile sind verankert, ohne Kollision. Nur "Body" (PrimaryPart) ist abfragbar (für Prompts).
@@ -16,6 +20,17 @@ local Aliens = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Al
 type AlienDef = Aliens.AlienDef
 type Entry = { Id: string, Alien: string?, Mut: string?, Lv: number? }
 
+-- Aussehen einer Mutation an "Main" (Körper) und "Shade" (Füße, Käfer-Kopf, Arme, Antennen).
+-- Die Farbe kommt aus Config.Mutations; ohne Eintrag hier wird nur umgefärbt.
+type MutStyle = {
+	Material: Enum.Material,
+	Transparency: number?, -- mindestens so durchsichtig
+	Reflectance: number?, -- Standard 0
+	ShadeMaterial: Enum.Material?, -- Standard: wie Material
+	ShadeTint: Color3?, -- Shade = Körperfarbe in Richtung dieser Farbe (Standard: dunkler)
+	ShadeAlpha: number?,
+}
+
 type Ctx = {
 	model: Model,
 	s: number, -- Gesamt-Skalierung (Seltenheit * Stufe * Modus * Level)
@@ -23,9 +38,10 @@ type Ctx = {
 	accent: Color3,
 	eyes: number,
 	antennas: number,
-	mutName: string,
-	mutColor: Color3?,
-	rainbow: boolean,
+	mutStyle: MutStyle?,
+	mutColor: Color3?, -- nil = eigene Farbe (Normal, Regenbogen)
+	rainbow: boolean, -- Körper + Leucht-Teile färben sich durch
+	rainbowShade: boolean, -- auch die Shade-Teile (Regenbogen-Mutation)
 	carry: boolean,
 	darkFace: boolean, -- sehr dunkles Gesicht -> leuchtende statt schwarze Knopfaugen
 	mainMaterial: Enum.Material,
@@ -55,7 +71,47 @@ local STALK = Color3.fromRGB(245, 235, 215)
 local METAL = Color3.fromRGB(70, 72, 82)
 local ROCK = Color3.fromRGB(70, 65, 75)
 local BLACK = Color3.new(0, 0, 0)
+local FROST_LIGHT = Color3.fromRGB(190, 235, 255)
+local LAVA_ORANGE = Color3.fromRGB(255, 110, 30)
+local LAVA_DARK = Color3.fromRGB(120, 20, 0)
 local FALLBACK_RARITY_COLORS: { [string]: Color3 } = { Admin = Color3.fromRGB(255, 40, 40) }
+
+-- Umriss (Highlight) nur für diese Kombination – Roblox zeigt höchstens ~31 Highlights gleichzeitig
+local HIGHLIGHT_TIER = "Ultra"
+local HIGHLIGHT_RARITY = "Admin"
+
+local SHADE_ALPHA = 0.35 -- Shade-Teile: so viel dunkler als der Körper
+
+local MUT_STYLES: { [string]: MutStyle } = {
+	Gold = { Material = Enum.Material.Foil },
+	Diamond = { Material = Enum.Material.Glass, Transparency = 0.15 },
+	Cosmic = { Material = Enum.Material.Neon },
+	-- Eis-Körper, Füße/Antennen wie aus Schnee (+ Schneeflocken, siehe addEffects)
+	Frost = {
+		Material = Enum.Material.Ice,
+		Reflectance = 0.05,
+		ShadeMaterial = Enum.Material.Snow,
+		ShadeTint = WHITE,
+		ShadeAlpha = 0.55,
+	},
+	-- glühender Körper, Füße/Antennen aus dunklem Vulkangestein (+ kleines Feuer, siehe addEffects)
+	Lava = {
+		Material = Enum.Material.Neon,
+		ShadeMaterial = Enum.Material.Basalt,
+		ShadeTint = BLACK,
+		ShadeAlpha = 0.7,
+	},
+}
+
+-- Symbol vor dem Mutationsnamen im Namensschild (Config.Mutations -> Icon hat Vorrang; das hier ist der Ersatz)
+local MUT_ICONS: { [string]: string } = {
+	Gold = "🪙",
+	Diamond = "💎",
+	Cosmic = "🌌",
+	Frost = "❄️",
+	Lava = "🔥",
+	Rainbow = "🌈",
+}
 
 local RAINBOW_SEQUENCE = ColorSequence.new({
 	ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 60, 60)),
@@ -122,16 +178,38 @@ local function levelScale(lv: number): number
 	return 1 + LEVEL_GROWTH * (lv - 1)
 end
 
--- Farbe der Fläche, auf der das Gesicht sitzt (für die Wahl der Augenfarbe)
-local function faceColorOf(look: Aliens.AlienLook, mut: any): Color3
+-- Symbol + Name einer Mutation fürs Schild, z.B. "🔥 Lava"
+local function mutationText(mut: any): string
+	local name = tostring(mut.Name)
+	local configIcon = if type(mut.Icon) == "string" and mut.Icon ~= "" then mut.Icon else nil
+	local icon = configIcon or MUT_ICONS[name] or (mut.Rainbow == true and MUT_ICONS.Rainbow) or nil
+	return icon and (icon .. " " .. name) or name
+end
+
+-- Farbe der Shade-Teile (Füße, Käfer-Kopf, Arme, Antennen) aus der Körperfarbe
+local function shadeColorOf(ctx: Ctx, base: Color3): Color3
+	local style = ctx.mutStyle
+	local tint = style and style.ShadeTint or BLACK
+	local alpha = style and style.ShadeAlpha or SHADE_ALPHA
+	return base:Lerp(tint, alpha)
+end
+
+-- Farbe der Fläche, auf der das Gesicht sitzt (für die Wahl der Augenfarbe).
+-- Regenbogen-Teile färbt der Client in hellen, satten Farben -> zählen als hell.
+local function faceColorOf(look: Aliens.AlienLook, ctx: Ctx): Color3
 	if look.Archetype == "Mushroom" then
 		return STALK
 	end
-	local base: Color3 = typeof(mut.Color) == "Color3" and mut.Name ~= "Normal" and mut.Color or look.Color
+	local base = ctx.mutColor or look.Color
 	if look.Archetype == "Bug" then
-		return base:Lerp(BLACK, 0.35)
+		-- Käfer: Gesicht sitzt am Kopf (Rolle "Shade")
+		return ctx.rainbowShade and WHITE or shadeColorOf(ctx, base)
 	end
-	return base
+	return ctx.rainbow and WHITE or base
+end
+
+local function luminance(color: Color3): number
+	return 0.299 * color.R + 0.587 * color.G + 0.114 * color.B
 end
 
 -- -------------------------------------------------------------------
@@ -190,23 +268,21 @@ local function styleRole(ctx: Ctx, part: Part, role: string)
 		material = ctx.mainMaterial
 		transparency = ctx.mainTransparency
 		reflectance = ctx.mainReflectance
-		local mutColor = ctx.mutColor
-		if ctx.mutName == "Gold" and mutColor then
-			material = Enum.Material.Foil
-			color = mutColor
-			reflectance = 0
-		elseif ctx.mutName == "Diamond" and mutColor then
-			material = Enum.Material.Glass
-			color = mutColor
-			transparency = math.max(transparency, 0.15)
-			reflectance = 0
-		elseif ctx.mutName == "Cosmic" and mutColor then
-			material = Enum.Material.Neon
-			color = mutColor
-			reflectance = 0
+		color = ctx.mutColor or ctx.color
+		local style = ctx.mutStyle
+		if style then
+			material = style.Material
+			transparency = math.max(transparency, style.Transparency or 0)
+			reflectance = style.Reflectance or 0
 		end
 		if role == "Shade" then
-			color = color:Lerp(BLACK, 0.35)
+			if style and style.ShadeMaterial then
+				material = style.ShadeMaterial
+			end
+			color = shadeColorOf(ctx, color)
+			if ctx.rainbowShade then
+				part:SetAttribute("Rainbow", true)
+			end
 		elseif ctx.rainbow then
 			part:SetAttribute("Rainbow", true)
 		end
@@ -810,15 +886,69 @@ end
 -- -------------------------------------------------------------------
 -- Effekte + Namensschild
 -- -------------------------------------------------------------------
+-- Glitzer-Partikel rund ums Alien (Aura der seltenen Aliens, Regenbogen-Mutation)
+local function addAura(body: Part, color: ColorSequence, s: number, rate: number)
+	local aura = Instance.new("ParticleEmitter")
+	aura.Name = "Aura"
+	aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	aura.Color = color
+	aura.LightEmission = 1
+	aura.LightInfluence = 0
+	aura.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35 * s),
+		NumberSequenceKeypoint.new(0.6, 0.25 * s),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	aura.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.2),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	aura.Lifetime = NumberRange.new(1, 1.8)
+	aura.Speed = NumberRange.new(0.4, 1.2)
+	aura.SpreadAngle = Vector2.new(180, 180)
+	aura.Acceleration = Vector3.new(0, 1.2 * s, 0)
+	aura.RotSpeed = NumberRange.new(-90, 90)
+	aura.Rate = rate
+	aura.Parent = body
+end
+
+-- Frost-Mutation: ein paar Schneeflocken rieseln vom Alien herab
+local function addSnow(body: Part, s: number, carry: boolean)
+	local snow = Instance.new("ParticleEmitter")
+	snow.Name = "FrostSnow"
+	snow.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	snow.Color = ColorSequence.new(WHITE, FROST_LIGHT)
+	snow.LightEmission = 0.5
+	snow.LightInfluence = 0.2
+	snow.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.22 * s),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	snow.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	snow.Lifetime = NumberRange.new(1.2, 2)
+	snow.Speed = NumberRange.new(0.2, 0.6)
+	snow.SpreadAngle = Vector2.new(180, 180)
+	snow.Acceleration = Vector3.new(0, -1.5 * s, 0)
+	snow.Drag = 1
+	snow.RotSpeed = NumberRange.new(-60, 60)
+	snow.Rate = carry and 2 or 4
+	snow.Parent = body
+end
+
 local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s: number, carry: boolean)
 	local fx = alien.Effects
 	local rank = rarityRank(alien.Rarity)
 	local color = rarityColor(alien.Rarity)
 	local accent = alien.Look.Accent
+	local rainbowMut = mut.Rainbow == true
+	local mutName = tostring(mut.Name)
 
-	-- Umriss: getragen keiner. Startet AUS – der Client schaltet nur die nächsten paar ein
-	-- (Roblox zeigt höchstens 31 Highlights gleichzeitig, jedes kostet einen Render-Durchgang).
-	if fx.Highlight and not carry then
+	-- Umriss: nur Ultra-Admin-Aliens, getragen keiner. Startet AUS – der Client schaltet nur die
+	-- nächsten paar ein (Roblox zeigt höchstens 31 Highlights gleichzeitig, jedes kostet einen Render-Durchgang).
+	if fx.Highlight and not carry and alien.Tier == HIGHLIGHT_TIER and alien.Rarity == HIGHLIGHT_RARITY then
 		local highlight = Instance.new("Highlight")
 		highlight.Name = "Glow"
 		highlight.Enabled = false
@@ -827,36 +957,19 @@ local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s
 		highlight.FillTransparency = 0.85
 		highlight.OutlineColor = accent
 		highlight.OutlineTransparency = 0.1
-		if fx.Rainbow then
+		if fx.Rainbow or rainbowMut then
 			highlight:SetAttribute("Rainbow", true)
 		end
 		highlight.Parent = model
 	end
 
 	if fx.Aura then
-		local aura = Instance.new("ParticleEmitter")
-		aura.Name = "Aura"
-		aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
-		aura.Color = fx.Rainbow and RAINBOW_SEQUENCE or ColorSequence.new(color, accent)
-		aura.LightEmission = 1
-		aura.LightInfluence = 0
-		aura.Size = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.35 * s),
-			NumberSequenceKeypoint.new(0.6, 0.25 * s),
-			NumberSequenceKeypoint.new(1, 0),
-		})
-		aura.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.2),
-			NumberSequenceKeypoint.new(1, 1),
-		})
-		aura.Lifetime = NumberRange.new(1, 1.8)
-		aura.Speed = NumberRange.new(0.4, 1.2)
-		aura.SpreadAngle = Vector2.new(180, 180)
-		aura.Acceleration = Vector3.new(0, 1.2 * s, 0)
-		aura.RotSpeed = NumberRange.new(-90, 90)
 		local rate = rank >= ADMIN_RANK and 18 or (rank >= 8 and 10 or 6)
-		aura.Rate = carry and math.ceil(rate / 2) or rate
-		aura.Parent = body
+		local auraColor = (fx.Rainbow or rainbowMut) and RAINBOW_SEQUENCE or ColorSequence.new(color, accent)
+		addAura(body, auraColor, s, carry and math.ceil(rate / 2) or rate)
+	elseif rainbowMut then
+		-- Regenbogen-Mutation: bunte Glitzer-Aura auch ohne eigene Aura
+		addAura(body, RAINBOW_SEQUENCE, s, carry and 3 or 6)
 	end
 
 	if fx.BigLight then
@@ -885,11 +998,28 @@ local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s
 		fire.Size = 3 * s
 		fire.Heat = 6
 		fire.Parent = body
+	elseif mutName == "Lava" then
+		-- Lava-Mutation: kleines Feuer (nur eins pro Alien)
+		local fire = Instance.new("Fire")
+		fire.Name = "LavaFire"
+		fire.Color = typeof(mut.Color) == "Color3" and mut.Color or LAVA_ORANGE
+		fire.SecondaryColor = LAVA_DARK
+		fire.Size = math.clamp(2.2 * s, 2, 6)
+		fire.Heat = 4
+		fire.Parent = body
 	end
 
-	if mut.Name == "Cosmic" then
+	if mutName == "Frost" then
+		addSnow(body, s, carry)
+	end
+
+	if mutName == "Cosmic" then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or color
+		sparkles.Parent = body
+	elseif rainbowMut and not carry then
+		local sparkles = Instance.new("Sparkles")
+		sparkles.SparkleColor = WHITE
 		sparkles.Parent = body
 	end
 end
@@ -940,7 +1070,7 @@ end
 -- ÖFFENTLICH
 -- -------------------------------------------------------------------
 
--- Schild aktualisieren: Name, "Stufe • Seltenheit [• Mutation]", "$X/s ⚡Lv n"
+-- Schild aktualisieren: Name, "Stufe • Seltenheit [• 🔥 Mutation]", "$X/s ⚡Lv n"
 function AlienFactory.UpdateLabel(model: Model, entry: Entry)
 	local body = getBody(model)
 	local gui = body and body:FindFirstChild("Info")
@@ -962,7 +1092,7 @@ function AlienFactory.UpdateLabel(model: Model, entry: Entry)
 	if rarityLabel then
 		local tag = alien.Tier .. " • " .. alien.Rarity
 		if mut.Name ~= "Normal" then
-			tag ..= " • " .. tostring(mut.Name)
+			tag ..= " • " .. mutationText(mut)
 		end
 		rarityLabel.Text = tag
 		rarityLabel.TextColor3 = mut.Color
@@ -995,9 +1125,14 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 	local model = Instance.new("Model")
 	model.Name = "Alien"
 
-	-- Wie hell ist die Fläche, auf der die Augen sitzen? (Pilz: heller Stiel, Käfer: dunklerer Kopf)
-	local faceColor: Color3 = faceColorOf(look, mut)
-	local luminance = 0.299 * faceColor.R + 0.587 * faceColor.G + 0.114 * faceColor.B
+	-- Mutation: Regenbogen färbt der Client durch (eigene Farbe bleibt als Grundfarbe),
+	-- alle anderen färben den Körper in der Mutationsfarbe (+ Material aus MUT_STYLES)
+	local mutName = tostring(mut.Name)
+	local rainbowMut = mut.Rainbow == true
+	local mutColor: Color3? = nil
+	if not rainbowMut and mutName ~= "Normal" and typeof(mut.Color) == "Color3" then
+		mutColor = mut.Color
+	end
 
 	local ctx: Ctx = {
 		model = model,
@@ -1006,11 +1141,12 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 		accent = look.Accent,
 		eyes = look.Eyes,
 		antennas = look.Antennas,
-		mutName = tostring(mut.Name),
-		mutColor = typeof(mut.Color) == "Color3" and mut.Color or nil,
-		rainbow = fx.Rainbow == true,
+		mutStyle = if rainbowMut then nil else MUT_STYLES[mutName],
+		mutColor = mutColor,
+		rainbow = fx.Rainbow == true or rainbowMut,
+		rainbowShade = rainbowMut,
 		carry = carry,
-		darkFace = luminance < 0.2,
+		darkFace = false,
 		mainMaterial = Enum.Material.SmoothPlastic,
 		mainTransparency = 0,
 		mainReflectance = look.Archetype == "Robot" and 0.12 or 0,
@@ -1018,6 +1154,9 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 		max = rank >= ADMIN_RANK and MAX_PARTS_ADMIN or MAX_PARTS,
 		top = 0,
 	}
+	-- Wie hell ist die Fläche, auf der die Augen sitzen? (Pilz: heller Stiel, Käfer: Kopf)
+	-- Sehr dunkel -> leuchtende statt schwarze Augen
+	ctx.darkFace = luminance(faceColorOf(look, ctx)) < 0.2
 
 	local builder = Builders[look.Archetype] or Builders.Blob
 	local body, bodyY = builder(ctx)
@@ -1036,7 +1175,7 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 	model:SetAttribute("MeteorId", entry.Id)
 	model:SetAttribute("Rarity", alien.Rarity)
 	model:SetAttribute("Tier", alien.Tier)
-	model:SetAttribute("Mutation", tostring(mut.Name))
+	model:SetAttribute("Mutation", mutName)
 	model:SetAttribute("Bob", not carry) -- getragene Aliens nicht wippen (würde den Spieler mitbewegen)
 	if ctx.rainbow then
 		model:SetAttribute("Rainbow", true)
@@ -1050,7 +1189,7 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Info"
-	gui.Size = UDim2.new(0, 220, 0, 70)
+	gui.Size = UDim2.new(0, 240, 0, 70)
 	gui.StudsOffsetWorldSpace = Vector3.new(0, (ctx.top - bodyY) * s + LABEL_GAP, 0)
 	gui.MaxDistance = carry and 60 or (70 + rank * 15)
 	gui.LightInfluence = 0
