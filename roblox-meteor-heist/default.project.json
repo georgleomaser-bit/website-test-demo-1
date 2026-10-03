@@ -23,6 +23,16 @@
       "$properties": {
         "CharacterAutoLoads": true
       }
+    },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future"
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
+      }
     }
   }
 }
