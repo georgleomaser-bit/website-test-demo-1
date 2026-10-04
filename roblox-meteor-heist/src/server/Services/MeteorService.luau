@@ -1,27 +1,33 @@
--- Meteore: das FÖRDERBAND in der Map-Mitte, die Gratis-Zone am Spawn-Platz, Eier am Boden,
+-- Meteore: die ALIEN-PARADE in der Map-Mitte, die Gratis-Zone am Spawn-Platz, Eier am Boden,
 -- Meteoritenschauer, EGG RUSH und Server-Glück.
 --
--- FÖRDERBAND: jeder Meteor hat ZWEI Knöpfe
---   E halten = KLAUEN (GrabPrompt): gratis, aber man muss ihn selbst nach Hause TRAGEN
+-- ALIEN-PARADE: kleine Aliens laufen vom UFO-Hangar zum Ziel-Tor und tragen 1-3 Eier auf dem Kopf.
+-- Jedes Ei hat ZWEI Knöpfe
+--   E halten = KLAUEN (GrabPrompt): gratis, aber man muss es selbst nach Hause TRAGEN
 --              (CarryService, Source = "Ground"). Klappt das nicht (Bonk, Tod, Falle, zu langsam),
---              fällt er als GRATIS-Ei auf den Boden und jeder kann ihn schnappen.
+--              fällt es als GRATIS-Ei auf den Boden und jeder kann es schnappen.
 --   F        = KAUFEN (BuyPrompt): kostet Cash, fliegt automatisch in die eigene Base.
+-- Seltene Eier (ab Config.Parade.BossFromRarity) trägt ein großer, langsamer BOSS mit Leibwächtern.
+-- Die Leibwächter schubsen alle PushInterval Sekunden jeden weg, der dem Boss zu nahe kommt –
+-- dazwischen klappt Klauen mit gutem Timing.
 -- EIER AM BODEN ("Drop"): fallen gelassen oder vom Egg Rush – nur E = Schnappen und Tragen.
 --
--- PERFORMANCE: Förderband-Meteore werden vom Server EINMAL am Bandstart erzeugt und NIE bewegt.
--- Jeder Client rechnet die Position selbst aus (Attribute BeltT0, BeltSpeed, BeltStart, BeltDir):
---   Position = BeltStart + BeltDir * BeltSpeed * (Serverzeit - BeltT0)
--- Der Server prüft beim Kaufen/Klauen mit genau dieser Formel.
--- METEORITENSCHAUER: Meteore fahren auf zwei Spuren (BeltStart seitlich versetzt), damit wirklich
--- viel mehr aufs Band passen. Jede Spur hat ihren eigenen Mindestabstand.
+-- PERFORMANCE: Parade-Eier werden vom Server EINMAL im Start-Hangar erzeugt und NIE bewegt.
+-- Die Träger-Aliens gibt es nur beim Client (lokal, gepoolt). Jeder Client rechnet die Position selbst
+-- aus (ParadePath + Attribute ParadeP0, ParadeSpeed, ParadeLane, ParadeOffset, Carrier, CarrierId):
+--   Strecke = (Parade-Uhr jetzt - ParadeP0) * ParadeSpeed
+-- Der Server prüft beim Kaufen/Klauen mit genau dieser Formel (ParadePath).
+-- METEORITENSCHAUER: Träger starten viel öfter und die Parade-Uhr läuft schneller (alle gleichzeitig).
 -- ANTI-CHEAT: Halten wird serverseitig geprüft (MeteorFactory.OnHeldTrigger), Klauen/Kaufen ist
 -- pro Spieler gebremst, Eingefrorene (Falle/Admin) können nichts nehmen.
 
+local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local ParadePath = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ParadePath"))
 local Remotes = require(script.Parent:WaitForChild("Remotes"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 
@@ -30,58 +36,73 @@ local Services
 
 local rng = Random.new()
 
--- Förderband-Meteore: { Kind = "Belt", Entry, Part, Price, T0, Start, Dir, Speed, Expires, Claimed, ClientReach }
-local beltRecords = {}
+-- Parade-Eier: { Kind = "Parade", Entry, Part, Price, T0, P0, Speed, Lane, Offset, Boss, Guards,
+--   CarrierId, NextPush, Claimed, ClientReach, HorizReach }
+local paradeRecords = {}
 -- Gratis-Zone/Showcase (Kaufen/Schnappen = fliegt automatisch in die Base):
 --   { Kind = "Ground", Entry, Part, Price, Position, Expires, Claimed, Landed, ClientReach }
 local groundRecords = {}
 -- Eier am Boden zum Schnappen + Tragen (fallen gelassen / Egg Rush):
 --   { Kind = "Drop", Entry, Part, Price = 0, Position, Expires, Claimed, Landed, ClientReach, EggRush }
 local dropRecords = {}
-local beltFolder: Folder
+local paradeFolder: Folder
 local groundFolder: Folder
 
--- Warteschlange für Förderband-Meteore (Admin-Regen etc.), damit sie sich nicht überlappen
-local beltQueue = {}
--- Letzter Meteor je Spur (für den Mindestabstand). Spur 0 = Bandmitte,
--- -1 / 1 = links / rechts davon (nur im Meteoritenschauer)
-local laneLast: { [number]: { T0: number, Radius: number } } = {}
-local nextSideLane = 1
-local pendingNatural = nil -- schon gewürfelter nächster Meteor, wartet auf Platz
+-- Warteschlange für Parade-Eier (Admin-Regen etc.)
+local paradeQueue = {}
+-- Letzter Träger je Spur (für den Mindestabstand): { P0, Speed, Back }
+local laneLast: { [number]: { P0: number, Speed: number, Back: number } } = {}
+local nextLane = 1
+local pendingNatural = nil -- schon gewürfelte nächste Gruppe (1-3 Eier), wartet auf Platz
+local spareEntry = nil -- beim Stapeln gewürfeltes großes Ei -> kommt als nächstes einzeln
 local nextNaturalAt = 0
+local carrierCounter = 0
 
-local BELT_GAP = 0.6 -- Mindestabstand (Studs) zwischen zwei Meteoren auf dem Band
-local LANE_MAX_RADIUS = 2.5 -- größere Meteore fahren auch im Schauer in der Bandmitte
--- Toleranz beim Kaufen/Klauen am Band: ENTLANG des Bands großzügig (Ping, der Meteor fährt weiter),
--- QUER zum Band nur wenig mehr als beim Client (sonst klaut man vom eigenen Base-Eingang aus)
-local BELT_PROMPT_REACH_EXTRA = 8
-local BELT_ACROSS_EXTRA = 4
+-- Parade-Uhr (siehe ParadePath): P(t) = clockP + (t - clockT) * clockRate
+local clockT, clockP, clockRate = 0, 0, 1
+
+local PARADE = Config.Parade
+local BOSS_FROM = Config.RarityIndex[PARADE.BossFromRarity] or 5
+local GUARDS_PLUS_FROM = Config.RarityIndex[PARADE.GuardsPlusFrom] or 6
+local STACK_MAX_RARITY = Config.RarityIndex[PARADE.StackMaxRarity] or 2
+local BOSS_FRONT = 4.5 -- Platz vor dem Boss-Mittelpunkt (Studs)
+local BOSS_BACK = 9 -- Platz dahinter (hinterer Leibwächter)
+local CARRIER_MIN_HALF = 1.3 -- halbe Tiefe eines kleinen Trägers
+-- Ausweichen beim Überholen eines Bosses (gleiche Werte wie der Client!)
+local DODGE_ZONE = 8
+local DODGE_FADE = 5
+local DODGE_OFFSET = 8.4
+-- Reichweite an der Parade: waagrecht gerechnet (Eier sitzen hoch auf dem Kopf)
+local PARADE_CLIENT_REACH = 15
+local PARADE_REACH_EXTRA = 4 -- Spielraum beim Server (Ping)
+local PARADE_REACH_SAMPLES = 6 -- Server prüft auch, wo das Ei bis zu 0,6 s vorher war (Ping)
+local PARADE_VERTICAL_EXTRA = 8
+local ROOT_HEIGHT = 2.5 -- Hüfte über dem Boden (für die 3D-Reichweite am Client)
+local PUSH_NOTIFY_GAP = 8 -- Hinweis "Leibwächter schubsen" höchstens alle 8 s pro Spieler
 -- Eier am Boden liegen still: Spielraum nur für die Bewegung des Spielers während der Ping-Zeit
 local STATIC_REACH_BASE = 2
 local STATIC_REACH_PER_SPEED = 0.1 -- pro Laufgeschwindigkeit
 local STATIC_REACH_MIN = 3
 local STATIC_REACH_MAX = 10
--- Reichweite am Förderband: wer am Geländer steht, ist ca. 10 Studs von der Bandmitte weg
-local BELT_CLIENT_REACH = 15
 local FALL_TIME = 0.9 -- so lange fliegt ein Meteor vom Himmel bzw. in die Base (Client-Effekt)
 -- Zwei Knöpfe am selben Meteor: Klauen oben, Kaufen darunter (Pixel), sonst liegen sie übereinander
 local GRAB_UI_OFFSET = Vector2.new(0, -40)
 local BUY_UI_OFFSET = Vector2.new(0, 40)
-local RARE_GRAB_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen sagen, wer gerade vom Band klaut
-local RARE_SPAWN_ANNOUNCE = Config.RarityIndex.Celestial or 7 -- ab Celestial: "fährt aufs Förderband"
-local ADMIN_SPAWN_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- vom Admin bestellte Meteore: schon ab Mythic
+local RARE_GRAB_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen sagen, wer gerade klaut
+local ADMIN_SPAWN_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- vom Admin bestellte Eier: schon ab Mythic
 -- ab Secret (auch Admin-Eier): Ansage IMMER (nicht gebremst) – so ein Ei will niemand verpassen
 local SECRET_SPAWN_ANNOUNCE = Config.RarityIndex.Secret or 9
 local RARE_ANNOUNCE_GAP = 4 -- solche Ansagen höchstens alle 4 Sekunden (sonst ist der Bildschirm voll)
 -- Kaufen/Klauen/Schnappen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
 local actionLimiter = Util.RateLimiter(6, 1)
+local pushNotifyAt: { [Player]: number } = {}
 
 -- Egg Rush: Eier fallen nacheinander (sieht nach Regen aus) aus dieser Höhe
 local EGG_RUSH_SKY = 120
 local EGG_RUSH_SPAWN_GAP = 0.08
 local EGG_SPOT_TRIES = 30 -- Versuche pro Ei, einen freien Wiesen-Platz zu finden
 local EGG_EDGE_MARGIN = 8 -- Abstand zum Map-Rand
-local EGG_BELT_CLEARANCE = 12 -- Abstand zur Bandmitte (Geländer, Rahmen)
+local EGG_ROAD_CLEARANCE = 4 -- Abstand zum Straßenrand der Parade
 local EGG_PLOT_MARGIN = 3 -- Abstand zu Basen
 local EGG_SPACING = 3 -- Abstand zwischen zwei Eiern
 local EGG_RUSH_SHOWER_GAP = 60 -- Egg Rush nicht direkt vor/nach dem Meteoritenschauer
@@ -248,42 +269,99 @@ local function makeEntry(opts)
 end
 
 -- -------------------------------------------------------------------
--- FÖRDERBAND – Grundlagen
+-- PARADE – Grundlagen (Pfad, Uhr, Positionen)
 -- -------------------------------------------------------------------
-local beltWarned = false
+local paradeWarned = false
+local cachedPath: ParadePath.Path? = nil
 
--- Förderband-Daten (von MapBuilder über PlotService, sonst aus den Attributen des Belt-Parts)
-local function getBelt()
-	local belt = Services.PlotService.Belt
-	if belt and belt.Start and belt.Dir and belt.Length then
-		return belt
+-- Parade-Pfad (von MapBuilder über PlotService, sonst aus Config)
+local function getPath(): ParadePath.Path?
+	if cachedPath then
+		return cachedPath
 	end
-	local map = Services.PlotService.MapFolder
-	local part = map and map:FindFirstChild("Belt")
-	if part and part:IsA("BasePart") then
-		local start = part:GetAttribute("BeltStart")
-		local dir = part:GetAttribute("BeltDir")
-		local length = part:GetAttribute("BeltLength")
-		if typeof(start) == "Vector3" and typeof(dir) == "Vector3" and type(length) == "number" then
-			belt = { Part = part, Start = start, Dir = dir.Unit, Length = length, Width = part.Size.X }
-			Services.PlotService.Belt = belt
-			return belt
-		end
+	local parade = Services.PlotService.Parade
+	local path = parade and parade.Path or ParadePath.FromConfig(Config)
+	if path then
+		cachedPath = path
+		return path
 	end
-	if not beltWarned then
-		beltWarned = true
-		warn("[MeteorService] Kein Förderband gefunden – Meteore können nicht spawnen!")
+	if not paradeWarned then
+		paradeWarned = true
+		warn("[MeteorService] Kein Parade-Pfad gefunden – Parade-Eier können nicht spawnen!")
 	end
 	return nil
 end
 
-function MeteorService.BeltPosition(record): Vector3
-	return record.Start + record.Dir * record.Speed * (now() - record.T0)
+local function paradeMapFolder(): Instance?
+	local parade = Services.PlotService.Parade
+	return parade and parade.Folder or nil
+end
+
+local function clockAt(t: number): number
+	return clockP + (t - clockT) * clockRate
+end
+
+-- Uhr an den Map-Ordner "Parade" schreiben (EIN Text-Attribut -> kommt immer komplett beim Client an)
+local function publishClock()
+	local folder = paradeMapFolder()
+	if folder then
+		folder:SetAttribute("ParadeClock", ParadePath.FormatClock(clockT, clockP, clockRate))
+	end
+end
+
+-- Tempo der ganzen Parade ändern (Position bleibt stetig, nur das Tempo springt)
+local function setClockRate(rate: number)
+	local t = now()
+	clockP = clockAt(t)
+	clockT = t
+	clockRate = rate
+	publishClock()
+end
+
+-- Strecke eines Parade-Eis zur Serverzeit t
+local function paradeDistance(record, t: number): number
+	return (clockAt(t) - record.P0) * record.Speed
+end
+
+-- Seitlicher Versatz (mit Ausweichen vor Bossen) zur Zeit t bei Strecke dist
+local function paradeLateral(record, dist: number, t: number): number
+	if record.Boss then
+		return record.Lane
+	end
+	local amount = 0
+	for _, other in ipairs(paradeRecords) do
+		if other.Boss and other.Part then
+			amount = math.max(
+				amount,
+				ParadePath.DodgeAmount(dist, paradeDistance(other, t), DODGE_ZONE, DODGE_FADE)
+			)
+		end
+	end
+	return ParadePath.Lateral(record.Lane, amount, DODGE_OFFSET)
+end
+
+-- Position des Eis zur Zeit t (nil = nicht auf der Strecke)
+local function paradeEggPosition(record, t: number): Vector3?
+	local path = getPath()
+	if not path then
+		return nil
+	end
+	local dist = paradeDistance(record, t)
+	if dist < 0 or dist > path.Length then
+		return nil
+	end
+	local pos, dir = ParadePath.Sample(path, dist)
+	local lateral = paradeLateral(record, dist, t)
+	return pos + ParadePath.Right(dir) * lateral + Vector3.new(0, record.Offset, 0)
+end
+
+function MeteorService.ParadePosition(record): Vector3?
+	return paradeEggPosition(record, now())
 end
 
 local function listFor(kind: string)
-	if kind == "Belt" then
-		return beltRecords
+	if kind == "Parade" then
+		return paradeRecords
 	elseif kind == "Drop" then
 		return dropRecords
 	end
@@ -306,8 +384,8 @@ local function currentPosition(record): Vector3?
 	if not record.Part then
 		return nil
 	end
-	if record.Kind == "Belt" then
-		return MeteorService.BeltPosition(record)
+	if record.Kind == "Parade" then
+		return paradeEggPosition(record, now())
 	end
 	return record.Position
 end
@@ -354,17 +432,29 @@ local function checkReach(player: Player, record, root: BasePart): Vector3?
 	end
 	-- Grundlage: gleiche Reichweite wie beim Client (ClientMaxDistance)
 	local clientReach = record.ClientReach or 10
-	local offset = root.Position - position
 	local tooFar
-	if record.Kind == "Belt" then
-		-- entlang des Bands großzügig (der Meteor fährt während der Ping-Zeit weiter),
-		-- quer zum Band nur wenig mehr als beim Client
-		local along = offset:Dot(record.Dir)
-		local across = (offset - record.Dir * along).Magnitude
-		tooFar = math.abs(along) > clientReach + BELT_PROMPT_REACH_EXTRA + record.Speed * 0.5
-			or across > clientReach + BELT_ACROSS_EXTRA
+	if record.Kind == "Parade" then
+		-- Das Ei läuft weiter, während der Klick unterwegs ist -> auch die Stellen der letzten 0,6 s
+		-- zählen. Gerechnet wird waagrecht (das Ei sitzt hoch auf dem Kopf), dazu eine Höhen-Grenze.
+		local t = now()
+		local rootPos = root.Position
+		local best = math.huge
+		local bestY = position.Y
+		for k = 0, PARADE_REACH_SAMPLES do
+			local sample = if k == 0 then position else paradeEggPosition(record, t - k * 0.1)
+			if sample then
+				local dx, dz = sample.X - rootPos.X, sample.Z - rootPos.Z
+				local d = math.sqrt(dx * dx + dz * dz)
+				if d < best then
+					best, bestY = d, sample.Y
+				end
+			end
+		end
+		tooFar = best > (record.HorizReach or clientReach) + PARADE_REACH_EXTRA
+			or math.abs(rootPos.Y - bestY) > clientReach + PARADE_VERTICAL_EXTRA
 	else
 		-- liegt still: nur Spielraum für die eigene Bewegung (schnelle Spieler etwas mehr)
+		local offset = root.Position - position
 		local character = root.Parent
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local walkSpeed = if humanoid then humanoid.WalkSpeed else Config.NormalWalkSpeed
@@ -385,7 +475,7 @@ local function checkReach(player: Player, record, root: BasePart): Vector3?
 	return position
 end
 
--- KAUFEN (Förderband, F) / Schnappen in der Gratis-Zone: fliegt AUTOMATISCH in einen freien Slot
+-- KAUFEN (Parade, F) / Schnappen in der Gratis-Zone: fliegt AUTOMATISCH in einen freien Slot
 local function tryClaim(player: Player, record)
 	if record.Claimed or not record.Part or record.Landed == false then
 		return
@@ -452,7 +542,7 @@ local function tryClaim(player: Player, record)
 	)
 end
 
--- KLAUEN vom Förderband (E) / Schnappen eines Eis am Boden: gratis, aber selbst nach Hause tragen
+-- KLAUEN aus der Parade (E) / Schnappen eines Eis am Boden: gratis, aber selbst nach Hause tragen
 local function tryGrab(player: Player, record)
 	if record.Claimed or not record.Part or record.Landed == false then
 		return
@@ -495,26 +585,17 @@ local function tryGrab(player: Player, record)
 	end
 	record.Claimed = true
 	local entry = record.Entry
-	local fromBelt = record.Kind == "Belt"
+	local fromParade = record.Kind == "Parade"
 	removeRecord(record)
 	Services.CarryService.StartCarry(player, entry, {
 		Source = "Ground",
-		From = fromBelt and "Belt" or "Drop",
+		From = fromParade and "Parade" or "Drop",
 		GrabPosition = position,
 	})
 	local def = Config.MeteorsById[entry.Id]
-	if fromBelt and def and Config.RarityIndex[def.Rarity] >= RARE_GRAB_ANNOUNCE then
+	if fromParade and def and Config.RarityIndex[def.Rarity] >= RARE_GRAB_ANNOUNCE then
 		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
-		rareAnnounce(
-			"😈 "
-				.. player.DisplayName
-				.. " klaut "
-				.. def.Rarity
-				.. " "
-				.. mut
-				.. def.Name
-				.. " vom Band – BONK IHN! 🔨"
-		)
+		rareAnnounce(player.DisplayName .. " klaut " .. def.Rarity .. " " .. mut .. def.Name .. "! Bonk ihn!")
 	end
 end
 
