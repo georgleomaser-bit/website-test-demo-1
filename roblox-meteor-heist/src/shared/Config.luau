@@ -164,11 +164,11 @@ Config.LockDurationVIP = 90
 
 Config.GrabHoldDuration = 0.25 -- E halten zum Schnappen in der Gratis-Zone
 Config.StealHoldDuration = 1.5 -- E halten zum Klauen aus einer fremden Base
--- FÖRDERBAND: jeder Meteor hat ZWEI Knöpfe
---   E halten = KLAUEN (gratis, aber du musst ihn selbst nach Hause TRAGEN)
+-- ALIEN-PARADE: jedes Ei auf dem Kopf eines Aliens hat ZWEI Knöpfe
+--   E halten = KLAUEN (gratis, aber du musst es selbst nach Hause TRAGEN)
 --   F        = KAUFEN (kostet Cash, fliegt automatisch in deine Base)
-Config.BeltGrabHold = 0.8 -- E halten zum Klauen vom Förderband
-Config.BeltBuyHold = 0.15 -- F halten zum Kaufen am Förderband
+Config.ParadeGrabHold = 0.8 -- E halten zum Klauen aus der Parade
+Config.ParadeBuyHold = 0.15 -- F halten zum Kaufen an der Parade
 Config.GroundGrabHold = 0.3 -- E halten zum Schnappen eines Eis am Boden (fallen gelassen / Egg Rush)
 Config.DroppedLifetime = 30 -- Sekunden, bis ein fallen gelassenes Ei verschwindet
 Config.MaxDroppedMeteors = 130 -- Sicherheitsgrenze für Eier am Boden (fallen gelassen + Egg Rush)
@@ -276,14 +276,47 @@ Config.IncomePerLevel = 0.1 -- +10% Einkommen pro Level
 -- INDEX: jedes neu entdeckte Alien gibt dauerhaft +1% Einkommen
 Config.IndexBonusPerAlien = 0.01
 
--- LAUFBAND (Förderband) in der Map-Mitte: Meteore fahren vorbei, E = klauen, F = kaufen
-Config.BeltSpawnInterval = 0.3 -- alle X Sekunden kommt ein neuer Meteor aufs Band
-Config.BeltSpeed = 9 -- Studs pro Sekunde
-Config.MaxBeltMeteors = 170 -- Sicherheitsgrenze (mehr liegen nie gleichzeitig auf dem Band)
--- Im Meteoritenschauer fahren die Meteore auf ZWEI Spuren (links/rechts der Bandmitte),
--- sonst passen gar nicht so viele aufs Band. Dafür darf das Band dann voller werden.
-Config.ShowerMaxBeltMeteors = 220
-Config.BeltLaneOffset = 3.5 -- Studs: Abstand der beiden Schauer-Spuren zur Bandmitte
+-- ALIEN-PARADE in der Map-Mitte: kleine Aliens marschieren über eine bunte Straße vom UFO-Hangar
+-- (am Spawn-Platz) zum Ziel-Tor und tragen je ein Ei auf dem Kopf. E halten = klauen, F = kaufen.
+-- Seltene Eier (ab Parade.BossFromRarity) trägt ein großer, langsamer BOSS mit Leibwächtern.
+Config.ParadeSpawnInterval = 0.33 -- alle X Sekunden startet ein neuer Träger (auf zwei Spuren)
+Config.ParadeSpeed = 8 -- Studs pro Sekunde (kleine Träger)
+Config.MaxParadeMeteors = 170 -- Sicherheitsgrenze (mehr Eier sind nie gleichzeitig unterwegs)
+Config.ShowerMaxParadeMeteors = 220 -- im Meteoritenschauer darf die Parade voller werden
+Config.Parade = {
+	Lanes = { -2.6, 2.6 }, -- zwei Spuren (seitlicher Abstand zur Straßenmitte), abwechselnd belegt
+	Gap = 0.8, -- Mindestabstand (Studs) zwischen zwei Eiern derselben Spur
+	-- BOSS: ab dieser Seltenheit trägt ein großer Boss das Ei, ab GuardsPlusFrom mit 3 statt 2 Leibwächtern
+	BossFromRarity = "Legendary",
+	GuardsPlusFrom = "Mythic",
+	BossSpeedFactor = 0.6, -- Boss läuft so viel langsamer (die anderen weichen beim Überholen aus)
+	BossScale = 2.2, -- so viel größer als ein kleiner Träger
+	BossGrabReach = 8, -- so nah (waagrecht) muss man an den Boss heran, um sein Ei zu klauen/kaufen
+	PushRadius = 11, -- Leibwächter schubsen alle weg, die dem Boss näher sind (Studs, waagrecht) ...
+	PushInterval = 1.5, -- ... alle X Sekunden (dazwischen klappt Klauen mit gutem Timing!)
+	PushForce = 55,
+	CarrierHeight = 5.4, -- Kopf-Oberkante eines kleinen Trägers über der Straße (Studs)
+	RoadWidth = 20,
+	RoadTop = 0.3,
+	-- Wegpunkte der Straße (X, Z). Start im UFO-Hangar, Ende im Ziel-Tor. Basen beginnen bei x = ±34,
+	-- deshalb bleibt die Straße (Mitte max. ±12, halbe Breite 10 + Bordstein) innerhalb von x = ±23.
+	Path = {
+		Vector3.new(0, 0, -214),
+		Vector3.new(0, 0, -192),
+		Vector3.new(12, 0, -162),
+		Vector3.new(12, 0, -124),
+		Vector3.new(-12, 0, -86),
+		Vector3.new(-12, 0, -48),
+		Vector3.new(12, 0, -10),
+		Vector3.new(12, 0, 28),
+		Vector3.new(-12, 0, 66),
+		Vector3.new(-12, 0, 104),
+		Vector3.new(12, 0, 142),
+		Vector3.new(12, 0, 166),
+		Vector3.new(0, 0, 192),
+		Vector3.new(0, 0, 214),
+	},
+}
 
 -- GRATIS-ZONE am Spawn-Platz: hier landen Gratis- und Admin-Meteore
 Config.FreeMeteorLifetime = 180 -- Sekunden, bis ein Gratis-Meteor verschwindet
@@ -292,7 +325,8 @@ Config.MaxFreeMeteors = 20
 -- METEORITENSCHAUER-EVENT: alle X Sekunden, Y Sekunden lang, mehr + bessere Meteore
 Config.ShowerInterval = 480
 Config.ShowerDuration = 60
-Config.ShowerBeltInterval = 0.15 -- im Schauer kommen die Meteore viel schneller (auf zwei Spuren, siehe oben)
+Config.ShowerParadeInterval = 0.15 -- im Schauer starten die Träger viel öfter ...
+Config.ShowerParadeSpeedMult = 1.3 -- ... und die ganze Parade läuft schneller
 Config.ShowerLuck = 3
 
 -- EGG RUSH-EVENT: alle X Sekunden regnen Y Gratis-Eier auf die Wiese der ganzen Map.
@@ -406,7 +440,7 @@ Config.VIPBonus = 0.25
 -- ---------------------------------------------------------------------
 -- 4) SELTENHEITEN – Weight = Spawnchance (relativ), Size = Größe des Meteors
 --    Kleine kommen oft, große & seltene kaum -> "erst kleine, dann immer bessere"
---    Jedes Ei am Förderband und im Egg Rush kann man GRATIS klauen (ca. 2 pro Sekunde!) –
+--    Jedes Ei in der Parade und im Egg Rush kann man GRATIS klauen (ca. 2 pro Sekunde!) –
 --    deshalb sind die seltenen Seltenheiten extra selten, sonst wären Preise und Rebirths egal.
 --    HatchTime = Sekunden bis das Alien schlüpft
 --    RequiredRebirths = so viele Rebirths braucht man, um diese Seltenheit zu KAUFEN
@@ -469,7 +503,7 @@ Config.Mutations = {
 
 -- ---------------------------------------------------------------------
 -- 5) METEORE – einfach Zeilen hinzufügen (Id muss einmalig sein!)
---    Spawnable = false -> kommt nicht von selbst aufs Laufband (nur Admin-Panel / Produkte)
+--    Spawnable = false -> kommt nicht von selbst in die Parade (nur Admin-Panel / Produkte)
 --    Für JEDEN Meteor müssen in Aliens.luau 3 Aliens stehen!
 --    Effects (optional): Rainbow = Regenbogen-Farben, Aura = Partikel, Highlight = Umriss,
 --    BigLight = starkes Licht
@@ -763,7 +797,7 @@ Config.MutationsByName = {}
 Config.GamePassesByKey = {}
 Config.ProductsById = {}
 Config.ProductsByKey = {}
-Config.MeteorsByRarity = {} -- nur Meteore, die von selbst aufs Laufband kommen
+Config.MeteorsByRarity = {} -- nur Meteore, die von selbst in die Parade kommen
 Config.MeteorsByRarityAll = {} -- alle Meteore (auch Admin / nicht spawnbare)
 Config.AdminMeteors = {} -- alle Meteore mit Rarity "Admin"
 Config.TreadmillsById = {}
@@ -872,7 +906,7 @@ function Config.MeteorIncome(entry): number
 	return def.Income * alienMult * mut.Mult * Config.LevelMult(entry.Lv or 1)
 end
 
--- Wert (Kaufpreis am Laufband, Verkaufswert = Wert * SellRatio)
+-- Wert (Kaufpreis an der Parade, Verkaufswert = Wert * SellRatio)
 function Config.MeteorValue(entry): number
 	local def = entry and Config.MeteorsById[entry.Id]
 	if not def then
