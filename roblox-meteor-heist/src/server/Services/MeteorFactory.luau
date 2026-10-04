@@ -348,8 +348,8 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		part.Material = Enum.Material.Glass
 		part.Transparency = 0.15
 		part.Color = mut.Color
-	elseif mut.Name == "Cosmic" or mut.Name == "Lava" then
-		-- Cosmic leuchtet lila, Lava glühend orange (+ kleines Feuer, unten bei den Effekten)
+	elseif mut.Name == "Galaxy" or mut.Name == "Lava" then
+		-- Galaxy leuchtet lila, Lava glühend orange (+ kleines Feuer, unten bei den Effekten)
 		part.Material = Enum.Material.Neon
 		part.Color = mut.Color
 	elseif mut.Name == "Frost" then
@@ -419,7 +419,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		snow.Rate = if mode == "Parade" then 3 else 6
 		snow.Parent = part
 	end
-	local specialMut = mut.Name == "Cosmic" or mut.Name == "Diamond" or mut.Rainbow == true
+	local specialMut = mut.Name == "Galaxy" or mut.Name == "Diamond" or mut.Rainbow == true
 	if (rarityIndex >= (SPARKLES_FROM[mode] or 99) or (specialMut and mode ~= "Carry")) and not isAdmin then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or rarity.Color

@@ -143,10 +143,17 @@ local function pityMult(): number
 	return math.min(PITY.Max, 1 + math.floor(pityCount / PITY.Step) * PITY.Bonus)
 end
 
+-- (nur bei Änderung schreiben: die Parade würfelt ~3 Eier pro Sekunde)
+local function setAttributeIfChanged(name: string, value: number)
+	if ReplicatedStorage:GetAttribute(name) ~= value then
+		ReplicatedStorage:SetAttribute(name, value)
+	end
+end
+
 local function publishPity()
-	ReplicatedStorage:SetAttribute("PityCount", pityCount)
-	ReplicatedStorage:SetAttribute("PityFull", PITY_FULL)
-	ReplicatedStorage:SetAttribute("PityMult", pityMult())
+	setAttributeIfChanged("PityCount", pityCount)
+	setAttributeIfChanged("PityFull", PITY_FULL)
+	setAttributeIfChanged("PityMult", pityMult())
 end
 
 -- Nacht / Blutmond (NightService fehlt -> immer Tag)

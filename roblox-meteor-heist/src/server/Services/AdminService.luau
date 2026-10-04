@@ -59,10 +59,17 @@ function AdminService.IsAdmin(player: Player): boolean
 	return cached
 end
 
--- "me", "all", "others" oder (Teil vom) Namen
+-- "me", "all", "others", UserId oder (Teil vom) Namen
 local function resolveTargets(admin: Player, text: any): { Player }
 	if type(text) ~= "string" or text == "" or text:lower() == "me" then
 		return { admin }
+	end
+	local userId = tonumber(text)
+	if userId then
+		local byId = Players:GetPlayerByUserId(userId)
+		if byId then
+			return { byId }
+		end
 	end
 	local lower = text:lower()
 	if lower == "all" then
@@ -341,24 +348,17 @@ local function nightStatus(): string?
 end
 
 -- mode = "Night" | "BloodMoon" | "End". true = das Nacht-System hat reagiert
--- (NightService direkt, sonst MeteorService/GraphicsService – je nachdem, was es gibt)
+-- (NightService direkt, sonst über MeteorService)
 local function runNight(mode: string): boolean
 	if mode == "End" then
-		return tryCall("NightService", "EndNight")
-			or tryCall("MeteorService", "EndNight")
-			or tryCall("GraphicsService", "EndNight")
+		return tryCall("NightService", "EndNight") or tryCall("MeteorService", "EndNight")
 	end
 	local blood = mode == "BloodMoon"
-	return tryCall("NightService", "StartNight", blood)
-		or tryCall("MeteorService", "StartNight", blood)
-		or tryCall("GraphicsService", "StartNight", blood)
+	return tryCall("NightService", "StartNight", blood) or tryCall("MeteorService", "StartNight", blood)
 end
 
 -- Boss-Parade: mehrere seltene Eier (ab Config.Parade.BossFromRarity) – die trägt je ein Boss mit Leibwächtern
 local function runBossParade(count: number): number
-	if tryCall("MeteorService", "StartBossParade", count) then
-		return count
-	end
 	local from = Config.RarityIndex[Config.Parade.BossFromRarity] or 5
 	local pool: { string } = {}
 	for i, rarity in ipairs(Config.Rarities) do
@@ -442,12 +442,12 @@ local PHOTO_LUCK = 8
 local ADMIN_METEOR_LIFETIME = 300 -- Sekunden in der Gratis-Zone
 -- Admin-Meteore haben Umriss, starkes Licht und Aura -> per "Spawnen" höchstens so viele auf einmal
 local MAX_ADMIN_METEOR_SPAWN = 5
--- Öfter Gold/Diamond/Cosmic als Normal – glänzt schöner auf dem Foto
+-- Öfter Gold/Diamond/Galaxy als Normal – glänzt schöner auf dem Foto
 local PHOTO_MUTATIONS = {
 	{ Name = "Normal", Weight = 12 },
 	{ Name = "Gold", Weight = 24 },
 	{ Name = "Diamond", Weight = 20 },
-	{ Name = "Cosmic", Weight = 16 },
+	{ Name = "Galaxy", Weight = 16 },
 	{ Name = "Frost", Weight = 10 },
 	{ Name = "Lava", Weight = 10 },
 	{ Name = "Rainbow", Weight = 8 },

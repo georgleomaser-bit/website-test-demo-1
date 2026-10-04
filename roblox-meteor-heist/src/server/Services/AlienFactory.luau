@@ -5,7 +5,7 @@
 --
 --  * Stufen: Normal = schlicht, Selten = ein Extra-Detail (je Form eins), Ultra = Flügel +
 --    Heiligenschein (King: Flügel + leuchtender Kronen-Edelstein). Admin: immer Flügel + Schein.
---  * Mutationen: Gold (Folie), Diamond (Glas), Cosmic (Neon + Funken), Frost (Eis-Körper,
+--  * Mutationen: Gold (Folie), Diamond (Glas), Galaxy (Neon + Funken), Frost (Eis-Körper,
 --    Schnee-Füße, Schneeflocken), Lava (glühender Körper, Vulkangestein, kleines Feuer),
 --    Rainbow (alle farbigen Teile mit Attribut "Rainbow" -> der Client färbt sie durch).
 --  * Umriss (Highlight) nur noch bei Tier "Ultra" + Rarity "Admin" (Roblox zeigt nur ~31 gleichzeitig).
@@ -110,7 +110,7 @@ local EYE_PARTS: { [string]: boolean } = { Eye = true, Pupil = true, Iris = true
 local MUT_STYLES: { [string]: MutStyle } = {
 	Gold = { Material = Enum.Material.Foil, Reflectance = 0.1 },
 	Diamond = { Material = Enum.Material.Glass, Transparency = 0.2, Reflectance = 0.15 },
-	Cosmic = { Material = Enum.Material.Neon },
+	Galaxy = { Material = Enum.Material.Neon },
 	-- Eis-Körper, Füße/Antennen wie aus Schnee (+ Schneeflocken, siehe addEffects)
 	Frost = {
 		Material = Enum.Material.Ice,
@@ -132,7 +132,7 @@ local MUT_STYLES: { [string]: MutStyle } = {
 local MUT_ICONS: { [string]: string } = {
 	Gold = "🪙",
 	Diamond = "💎",
-	Cosmic = "🌌",
+	Galaxy = "🌌",
 	Frost = "❄️",
 	Lava = "🔥",
 	Rainbow = "🌈",
@@ -1307,7 +1307,7 @@ local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s
 		addSnow(body, s, carry)
 	end
 
-	if mutName == "Cosmic" then
+	if mutName == "Galaxy" then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or color
 		sparkles.Parent = body

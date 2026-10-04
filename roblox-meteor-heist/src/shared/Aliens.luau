@@ -18,7 +18,7 @@
 --  Effekte (Aura, Licht) kommen automatisch nach Seltenheit + Stufe.
 --  Umriss (Highlight) gibt es nur noch bei Ultra-Aliens der Seltenheit "Admin"
 --  (Roblox zeigt nur ~31 Highlights gleichzeitig – sonst überall anders ignoriert).
---  Mutationen (Gold, Diamond, Cosmic, Frost, Lava, Rainbow) färben jedes Alien automatisch
+--  Mutationen (Gold, Diamond, Galaxy, Frost, Lava, Rainbow) färben jedes Alien automatisch
 --  um (AlienFactory) – dafür muss hier nichts eingetragen werden.
 --
 --  WICHTIG: Diese Datei darf Config NICHT laden (Config lädt diese Datei).

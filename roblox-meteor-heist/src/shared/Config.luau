@@ -626,7 +626,7 @@ Config.Mutations = {
 	{ Name = "Normal", Weight = 82.9, Mult = 1 },
 	{ Name = "Gold", Weight = 10, Mult = 2, Color = Color3.fromRGB(255, 205, 50), Icon = "🪙" },
 	{ Name = "Diamond", Weight = 1.8, Mult = 4, Color = Color3.fromRGB(120, 230, 255), Icon = "💎" },
-	{ Name = "Cosmic", Weight = 0.2, Mult = 10, Color = Color3.fromRGB(150, 70, 255), Icon = "🌌" },
+	{ Name = "Galaxy", Weight = 0.2, Mult = 10, Color = Color3.fromRGB(150, 70, 255), Icon = "🌌" },
 	{ Name = "Frost", Weight = 2.5, Mult = 3, Color = Color3.fromRGB(150, 220, 255), Icon = "❄️" },
 	{ Name = "Lava", Weight = 2.5, Mult = 3, Color = Color3.fromRGB(255, 110, 30), Icon = "🔥" },
 	{

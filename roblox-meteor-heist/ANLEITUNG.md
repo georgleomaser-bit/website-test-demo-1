@@ -32,7 +32,7 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 | **🎁 Geschenke** | Fürs Spielen: nach **2, 5, 10, 15, 20, 30, 45 und 60 Minuten** gibt es ein Geschenk (Geld, Schritte, Glücksrad-Drehs, ein Epic- und ein Legendary-Ei). Gezählt wird die **Spielzeit von heute**, über alle Besuche zusammen (sie wird gespeichert, neu beitreten setzt sie nicht zurück). Um Mitternacht (UTC) geht es von vorne los |
 | **🎡 Glücksrad** | Alle **4 Stunden 1 Gratis-Dreh**. 8 Felder: Geld (3 Größen), Schritte, 2 Drehs, Epic-, Legendary- und Mythic-Ei. Chancen: Cash S 26 %, Schritte 18 %, Cash M 18 %, Cash XL 10 %, Epic-Ei 10 %, 2 Drehs 8 %, Legendary-Ei 8 %, Mythic-Ei 2 %. Weitere Drehs gibt es als Geschenk, für Aufgaben oder für Robux. Ist bei einem Ei-Gewinn (Glücksrad oder Geschenk) die Base voll, gibt es den Verkaufswert als Geld |
 | **📜 Tagesaufgaben** | Jeden Tag **3 neue Aufgaben**, zum Beispiel „🥚 Klau 5 Eier aus der Parade“ oder „🐣 Lass 5 Aliens schlüpfen“. Belohnung: Geld + 1 Glücksrad-Dreh. Einmal am Tag darfst du eine Aufgabe mit **🔄 tauschen** (gut, wenn zum Bonken oder Klauen gerade niemand da ist). Die neue Aufgabe geht immer allein |
-| **✨ Mutationen** | Gold x2, Frost x3, Lava x3, Diamond x4, Cosmic x10 und ganz selten **Rainbow x15** (leuchtet in allen Farben). Tabelle unten |
+| **✨ Mutationen** | Gold x2, Frost x3, Lava x3, Diamond x4, Galaxy x10 und ganz selten **Rainbow x15** (leuchtet in allen Farben). Tabelle unten |
 | **⚡ Aufladen** | Aliens leveln von allein (Lv 1 bis 20, ca. 3 Stunden). Jedes Level gibt +10 % Geld |
 | **🏃 Speed Farm** | Auf dem Spawn-Platz stehen **7 Laufbänder** (Holz bis Regenbogen). Holz ist gratis, die anderen **kaufst du mit Geld** im Menü **🏃 Laufbänder**. Drauf laufen = **Schritte 👟** sammeln. Mehr Schritte = schneller rennen |
 | **📈 Fortschritt** | 61 Meteore in 12 Seltenheiten (Common bis Infinity, dazu Admin). Preise bis in die Billiarden |
@@ -124,10 +124,11 @@ Manche Meteore haben eine Mutation. Sie macht Wert **und** Geld pro Sekunde grö
 | ❄️ Frost | 2,5 % | x3 | weißlich-hellblaues Eis, Schneeflocken rieseln. Aliens: Eis-Körper, Füße aus Schnee, Schneeflocken |
 | 🔥 Lava | 2,5 % | x3 | glüht orange, kleines Feuer (in der Parade brennen nur die nächsten paar). Aliens: glühender Körper, Füße aus dunklem Vulkangestein |
 | 💎 Diamond | 1,8 % | x4 | türkises Glas, glitzert |
-| 🌌 Cosmic | 0,2 % | x10 | lila, funkelt |
+| 🌌 Galaxy | 0,2 % | x10 | lila, funkelt |
 | 🌈 Rainbow | 0,1 % | x15 | leuchtet in allen Farben, bunter Glitzer |
 
 Bei Glück-Events, im Schauer und im Egg Rush kommen Mutationen öfter.
+Die Mutation **Galaxy** hieß früher „Cosmic“ – alte Spielstände werden beim Laden automatisch umbenannt. „Cosmic“ ist jetzt nur noch eine **Seltenheit**.
 Das Symbol steht auch auf dem Schild über dem Meteor oder Alien und auf der großen Schlüpf-Karte.
 Einen leuchtenden **Umriss** haben nur noch die Ultra-Aliens der Admin-Meteore (Roblox kann nur ca. 31 Umrisse gleichzeitig zeigen).
 

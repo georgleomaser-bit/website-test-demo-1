@@ -177,7 +177,7 @@ Das geht in Studio ganz einfach, auch allein:
 
 **Weg B – Secret-Meteor:**
 1. Admin-Panel → **☄️ Meteor spawnen / geben** → **Big Bang Core** anklicken (oder einen anderen Secret).
-2. Mutation **Rainbow x15** anklicken (leuchtet in allen Farben) oder **Cosmic x10** (glitzert lila).
+2. Mutation **Rainbow x15** anklicken (leuchtet in allen Farben) oder **Galaxy x10** (glitzert lila).
 3. Auf **Vor mir** klicken.
 
 Dann: **H**, warten, Screenshot, **H**. Datei **`secret`** nennen.

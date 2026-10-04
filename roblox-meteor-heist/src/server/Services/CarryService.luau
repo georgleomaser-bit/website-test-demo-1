@@ -680,7 +680,6 @@ end
 -- Der Klick kommt vom Client – Reichweite, Abklingzeit, Blickrichtung, Umhang und Gott-Modus prüft der Server.
 -- -------------------------------------------------------------------
 local BAT_ATTRIBUTE = "Bat" -- Werkzeug-Attribut: Id des Schlägers (Config.Bats)
-local LEGACY_TOOL_NAMES = { "Bonk", "Super-Bonk" } -- alte Werkzeuge (vor den Schlägern) wegräumen
 local HIT_SOUND = "rbxasset://sounds/action_jump_land.mp3" -- hoch abgespielt = dumpfes "Bonk"
 local KNOCKBACK_TIME = 0.22 -- so lange schiebt der Rückstoß
 local STUN_IMMUNE_EXTRA = 0.4 -- nach dem Taumeln kurz kein neuer Rückstoß (kein Dauer-Wegschlagen)
@@ -785,6 +784,9 @@ local function swing(player: Player, tool: Tool)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not root or not humanoid or humanoid.Health <= 0 or tool.Parent ~= character or root.Anchored then
 		return -- nur mit dem Schläger in der Hand, lebendig und nicht eingefroren
+	end
+	if CarryService.MoveStatus(player) == "flagged" then
+		return -- gerade unmöglich schnell bewegt (Teleport-Exploit) -> Schlag zählt nicht
 	end
 	local gadgets = Services.GadgetService
 	local best, bestDist = nil, range
@@ -893,14 +895,6 @@ local function createBatTool(bat): Tool
 	return tool
 end
 
-local function findTool(container: Instance?, name: string): Tool?
-	local found = container and container:FindFirstChild(name)
-	if found and found:IsA("Tool") then
-		return found
-	end
-	return nil
-end
-
 -- Gibt den besten erlaubten Schläger – ohne Doppelte; ein schlechterer fliegt raus (war er in der
 -- Hand, kommt der neue gleich in die Hand). Beim Spawnen, bei neuem Index, nach dem Laden.
 function CarryService.GiveBat(player: Player)
@@ -931,13 +925,6 @@ function CarryService.GiveBat(player: Player)
 	local wasEquipped = false
 	for _, container in ipairs({ backpack, character }) do
 		if container then
-			for _, name in ipairs(LEGACY_TOOL_NAMES) do
-				local old = findTool(container, name)
-				if old and old:GetAttribute(BAT_ATTRIBUTE) == nil then
-					wasEquipped = wasEquipped or old.Parent == character
-					old:Destroy()
-				end
-			end
 			for _, child in ipairs(container:GetChildren()) do
 				if child:IsA("Tool") and child:GetAttribute(BAT_ATTRIBUTE) ~= nil then
 					if child:GetAttribute(BAT_ATTRIBUTE) == bat.Id and not have then
@@ -963,7 +950,6 @@ function CarryService.GiveBat(player: Player)
 		humanoid:EquipTool(tool)
 	end
 end
-CarryService.GiveBonk = CarryService.GiveBat -- alter Name (GadgetService)
 
 -- Index hat sich geändert -> passt der Schläger noch? (EconomyService.Discover)
 function CarryService.CheckBat(player: Player)

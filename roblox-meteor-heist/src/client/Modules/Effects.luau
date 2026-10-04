@@ -13,7 +13,7 @@
 --                    sonst bzw. beim Tragen kleine Karte oben rechts
 --   "Shake" (weich und dezent), "Confetti" (fliegt aus zwei Kanonen hoch, fällt mit Schwerkraft,
 --   dreht und flattert), "Alarm" wie bisher
---   "ParadeBoss" -> Boss-Parade startet: bunte Konfetti-Bursts + Druckwelle am Hangar, drei Trommelschläge
+--   "ParadeBoss" -> (lokal vom Modul Parade ausgelöst, nicht vom Server) Boss-Parade startet: bunte Konfetti-Bursts + Druckwelle am Hangar, drei Trommelschläge
 --   "Announce" -> große Admin-Ansage oben in der Mitte: Kopfbild, Name in Blau + Haken, Text in Weiß
 --                 (ohne Box, federt rein, ~8 s, blendet aus; mehrere nacheinander)
 --   "Warn"     -> großer roter Hinweis vom Admin in der Bildschirmmitte
@@ -1013,7 +1013,7 @@ local MAX_REVEAL_QUEUE = 4
 local MUTATION_ICONS: { [string]: string } = {
 	Gold = "🪙",
 	Diamond = "💎",
-	Cosmic = "🌌",
+	Galaxy = "🌌",
 	Frost = "❄️",
 	Lava = "🔥",
 	Rainbow = "🌈",

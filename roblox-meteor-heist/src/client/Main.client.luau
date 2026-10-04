@@ -182,9 +182,6 @@ task.spawn(function()
 	WorldFX.SetPreStep(Parade.Step)
 	WorldFX.Init(ctx, map)
 	treadmillMap = map
-	if ctx.State then
-		WorldFX.UpdateTreadmills(tonumber(ctx.State.Steps) or 0, ctx.State.BestTreadmill)
-	end
 	-- Laufband-Models kommen evtl. erst nach und nach an -> Schilder dann neu schreiben
 	local folder = map:WaitForChild("Treadmills", 60)
 	if folder then
@@ -206,7 +203,6 @@ local function refreshAll()
 	Hud.Refresh(state)
 	Windows.Refresh(state)
 	Prompts.OnState(state)
-	WorldFX.UpdateTreadmills(tonumber(state.Steps) or 0, state.BestTreadmill)
 	updateTreadmillSigns()
 end
 

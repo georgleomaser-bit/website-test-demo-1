@@ -129,7 +129,7 @@ local function tickPlayer(player: Player)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not data or not root or not humanoid or humanoid.Health <= 0 then
+	if not data or not root or not humanoid or humanoid.Health <= 0 or not Services.EconomyService.IsReady(player) then
 		return
 	end
 	-- nur wer läuft, sammelt Schritte

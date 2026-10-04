@@ -11,7 +11,6 @@
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
 --   • Lava-Feuer an Parade-Eiern (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
---   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
 --   • Krasse Eier (Attribut "RareFX", ab Legendary; 4 = Infinity, Ring doppelt so schnell): Ring dreht sich, Licht pulsiert, Partikel nur
 --     in Kameranähe, ab Mythic Blitze (nur die nächsten MAX_RINGS)
 --  Arbeit pro Frame ist begrenzt: höchstens MAX_ANIM Aliens in ANIM_RANGE Studs werden animiert
@@ -209,22 +208,10 @@ end
 type TreadmillInfo = { Model: Model, Id: string }
 local treadmills: { TreadmillInfo } = {}
 local treadmillSeen: { [Instance]: boolean } = {}
-local lastSteps = 0
-local lastBest: string? = nil
-local signKey = ""
-local updateSigns: () -> ()
 
 local function treadmillDef(id: string): any
-	local list = ctx.Config.Treadmills
-	if type(list) ~= "table" then
-		return nil
-	end
-	for _, def in ipairs(list) do
-		if def.Id == id then
-			return def
-		end
-	end
-	return nil
+	local byId = ctx.Config.TreadmillsById
+	return if type(byId) == "table" then byId[id] else nil
 end
 
 local function setupTreadmill(model: Instance)
@@ -261,64 +248,8 @@ local function setupTreadmill(model: Instance)
 		rainbow = id == "Regenbogen" or (def ~= nil and def.Rainbow == true),
 		accentEvery = 3,
 	})
-	signKey = "" -- Schilder beim nächsten Mal neu schreiben
-	updateSigns()
 end
-
-local function findSignLabel(model: Model, name: string): TextLabel?
-	local sign = model:FindFirstChild("Sign", true)
-	local frame = sign and sign:FindFirstChild("Frame")
-	local labelObj = frame and frame:FindFirstChild(name)
-	if labelObj and labelObj:IsA("TextLabel") then
-		return labelObj
-	end
-	return nil
-end
-
--- Schilder an den Laufbändern: freigeschaltet / gesperrt / dein bestes (nur bei Änderung)
-updateSigns = function()
-	if not ctx then
-		return
-	end
-	local best = lastBest
-	local unlocked = 0
-	for _, info in ipairs(treadmills) do
-		local def = treadmillDef(info.Id)
-		local required = def and tonumber(def.Required) or tonumber(info.Model:GetAttribute("Required")) or 0
-		if lastSteps >= required then
-			unlocked += 1
-		end
-	end
-	local key = unlocked .. "|" .. tostring(best) .. "|" .. #treadmills
-	if key == signKey then
-		return
-	end
-	signKey = key
-	local Util = ctx.Util
-	for _, info in ipairs(treadmills) do
-		local def = treadmillDef(info.Id)
-		local required = def and tonumber(def.Required) or tonumber(info.Model:GetAttribute("Required")) or 0
-		local lockLabel = findSignLabel(info.Model, "LockLabel")
-		if lockLabel then
-			if best == info.Id then
-				lockLabel.Text = "⭐ Dein bestes Laufband!"
-				lockLabel.TextColor3 = Color3.fromRGB(255, 220, 60)
-			elseif lastSteps >= required then
-				lockLabel.Text = "✅ Freigeschaltet"
-				lockLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
-			else
-				lockLabel.Text = "🔒 ab " .. Util.FormatNumber(required) .. " 👟"
-				lockLabel.TextColor3 = Color3.fromRGB(255, 130, 130)
-			end
-		end
-	end
-end
-
-function WorldFX.UpdateTreadmills(steps: number, best: string?)
-	lastSteps = tonumber(steps) or 0
-	lastBest = best
-	updateSigns()
-end
+-- (Laufband-Schilder – PriceLabel: Preis / "Gekauft" / "Dein bestes" – schreibt Main.client)
 
 -- ---------------------------------------------------------------------
 -- LEBENDIGE ALIENS (Idle-Animation, alles lokal)
@@ -1412,6 +1343,7 @@ type RareRecord = {
 local RARE_FX_RANGE = 130 -- Partikel nur so nah an der Kamera
 local RARE_RING_RANGE = 110
 local MAX_RINGS = 8 -- so viele Eier bekommen gleichzeitig Ring + Blitze (die nächsten)
+local MAX_RARE_FX = 16 -- so viele Eier haben gleichzeitig Partikel + Licht an (die nächsten)
 local RING_SEGMENTS = 10
 local RING_SPEED = 1.6 -- rad/s
 local RING_TILT = math.rad(18)
@@ -1527,7 +1459,17 @@ local function byRareDistance(a: RareRecord, b: RareRecord): boolean
 	return a.Dist < b.Dist
 end
 
--- Alle SCAN_INTERVAL s: Partikel nach Entfernung, Ringe nur für die nächsten MAX_RINGS
+-- Licht der krassen Eier an/aus (nur lokal; Enabled kommt vom Server immer als true)
+local function setRareLight(record: RareRecord, on: boolean)
+	local light = record.Light
+	if light and light.Enabled ~= on then
+		light.Enabled = on
+	end
+end
+
+-- Alle SCAN_INTERVAL s: nur die nächsten MAX_RARE_FX Eier in RARE_FX_RANGE bekommen Partikel und Licht,
+-- die nächsten MAX_RINGS (in RARE_RING_RANGE) dazu Ring + Blitze. Bei Glück-Events (Admin Abuse,
+-- Schauer, Blutmond) laufen sonst Dutzende Legendary+ Eier mit Licht + Partikeln gleichzeitig herum.
 local function scanRare(camPos: Vector3)
 	local count = 0
 	for i = #rareRecords, 1, -1 do
@@ -1540,12 +1482,15 @@ local function scanRare(camPos: Vector3)
 			rareRecords[#rareRecords] = nil
 		else
 			record.Dist = (part.Position - camPos).Magnitude
-			setEmitters(record, record.Dist < RARE_FX_RANGE)
-			if record.Dist < RARE_RING_RANGE then
+			if record.Dist < RARE_FX_RANGE then
 				count += 1
 				rareCandidates[count] = record
-			elseif #record.Ring > 0 then
-				removeRing(record)
+			else
+				setEmitters(record, false)
+				setRareLight(record, false)
+				if #record.Ring > 0 then
+					removeRing(record)
+				end
 			end
 		end
 	end
@@ -1557,7 +1502,10 @@ local function scanRare(camPos: Vector3)
 	end
 	for i = 1, count do
 		local record = rareCandidates[i]
-		if i <= MAX_RINGS then
+		local active = i <= MAX_RARE_FX
+		setEmitters(record, active)
+		setRareLight(record, active)
+		if i <= MAX_RINGS and record.Dist < RARE_RING_RANGE then
 			buildRing(record)
 		else
 			removeRing(record)

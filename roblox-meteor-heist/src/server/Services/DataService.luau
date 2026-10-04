@@ -92,8 +92,15 @@ end
 -- -------------------------------------------------------------------
 -- MIGRATION: alte Spielstände auf das neue Format bringen
 -- -------------------------------------------------------------------
--- Ein Slot-Eintrag reparieren (fehlende Felder, unbekannte Aliens)
+-- Umbenannte Mutationen (alter Name -> neuer Name). "Cosmic" ist jetzt eine SELTENHEIT,
+-- die Mutation heißt seitdem "Galaxy".
+local RENAMED_MUTATIONS: { [string]: string } = { Cosmic = "Galaxy" }
+
+-- Ein Slot-Eintrag reparieren (fehlende Felder, unbekannte Aliens, umbenannte Mutationen)
 local function migrateEntry(entry)
+	if type(entry.Mut) == "string" and RENAMED_MUTATIONS[entry.Mut] then
+		entry.Mut = RENAMED_MUTATIONS[entry.Mut]
+	end
 	local hatch = tonumber(entry.Hatch)
 	if entry.Alien ~= nil and not Aliens.ById[entry.Alien] then
 		-- Alien gibt es nicht mehr (Aliens.luau geändert) -> neu würfeln

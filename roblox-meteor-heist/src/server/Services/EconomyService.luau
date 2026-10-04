@@ -1009,14 +1009,24 @@ function EconomyService.Start()
 		end
 	end)
 
-	-- Gesammelte Änderungen max. 5x pro Sekunde an die Clients schicken
+	-- Gesammelte Änderungen max. 5x pro Sekunde an die Clients schicken.
+	-- Erst eine Liste machen: flush -> RewardService.FillState kann MarkDirty aufrufen (z.B. neue
+	-- Tagesaufgaben um Mitternacht) – neue Einträge während pairs(dirty) wären nicht erlaubt.
+	local flushList: { Player } = {}
 	task.spawn(function()
 		while true do
 			task.wait(0.2)
+			table.clear(flushList)
 			for player in pairs(dirty) do
-				dirty[player] = nil
+				table.insert(flushList, player)
+			end
+			table.clear(dirty)
+			for _, player in ipairs(flushList) do
 				if player.Parent then
-					flush(player)
+					local ok, err = pcall(flush, player)
+					if not ok then
+						warn("[EconomyService] State-Fehler bei " .. player.Name .. ": " .. tostring(err))
+					end
 				end
 			end
 		end

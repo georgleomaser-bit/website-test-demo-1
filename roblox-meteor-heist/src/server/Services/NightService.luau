@@ -111,6 +111,12 @@ local function openCrate(player: Player, crate: Crate)
 		Economy.Notify(player, "Zu weit weg!", "Error")
 		return
 	end
+	-- Position kommt vom Client: wer gerade unmöglich weit "gesprungen" ist (Teleport-Exploit), öffnet nichts
+	local carry = Services.CarryService
+	if carry and carry.MoveStatus(player) ~= "ok" then
+		Economy.Notify(player, "⏳ Kurz warten und nochmal versuchen!", "Error")
+		return
+	end
 	crate.Claimed = true
 	local position = crate.Box.Position
 	removeCrate(crate)
