@@ -411,7 +411,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
   würfelt der Server. Fallen prüft der Server zusätzlich selbst (nicht nur über die Berührung).
 - **Performance:** wenige einfache Parts, Updates gebündelt (max. 5x pro Sekunde pro Spieler), Map wird einmal gebaut.
   Der Server bewegt keine Meteore. Jeder Client rechnet die Position auf dem Laufband selbst aus.
-  Höchstens 110 Meteore liegen gleichzeitig auf dem Band (im Schauer 160). Weit entfernte oder gerade nicht sichtbare
+  Höchstens 170 Meteore liegen gleichzeitig auf dem Band (im Schauer 220). Weit entfernte oder gerade nicht sichtbare
   Meteore bewegt dein Gerät seltener, damit es auch auf Handys flüssig bleibt.
 
 ## 📁 Dateien

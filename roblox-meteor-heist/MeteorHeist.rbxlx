@@ -713,7 +713,7 @@ Config.BeltGrabHold = 0.8 -- E halten zum Klauen vom Förderband
 Config.BeltBuyHold = 0.15 -- F halten zum Kaufen am Förderband
 Config.GroundGrabHold = 0.3 -- E halten zum Schnappen eines Eis am Boden (fallen gelassen / Egg Rush)
 Config.DroppedLifetime = 30 -- Sekunden, bis ein fallen gelassenes Ei verschwindet
-Config.MaxDroppedMeteors = 90 -- Sicherheitsgrenze für Eier am Boden (fallen gelassen + Egg Rush)
+Config.MaxDroppedMeteors = 130 -- Sicherheitsgrenze für Eier am Boden (fallen gelassen + Egg Rush)
 Config.CarryTimeout = 60 -- Sekunden Zeit, um die Beute in die eigene Base zu bringen
 Config.NormalWalkSpeed = 16
 Config.CarrySpeedFactor = 0.7 -- beim Tragen: 70% vom eigenen Tempo (Gamepass "Volle Speed beim Tragen" = 100%)
@@ -819,12 +819,12 @@ Config.IncomePerLevel = 0.1 -- +10% Einkommen pro Level
 Config.IndexBonusPerAlien = 0.01
 
 -- LAUFBAND (Förderband) in der Map-Mitte: Meteore fahren vorbei, E = klauen, F = kaufen
-Config.BeltSpawnInterval = 0.5 -- alle X Sekunden kommt ein neuer Meteor aufs Band
+Config.BeltSpawnInterval = 0.3 -- alle X Sekunden kommt ein neuer Meteor aufs Band
 Config.BeltSpeed = 9 -- Studs pro Sekunde
-Config.MaxBeltMeteors = 110 -- Sicherheitsgrenze (mehr liegen nie gleichzeitig auf dem Band)
+Config.MaxBeltMeteors = 170 -- Sicherheitsgrenze (mehr liegen nie gleichzeitig auf dem Band)
 -- Im Meteoritenschauer fahren die Meteore auf ZWEI Spuren (links/rechts der Bandmitte),
 -- sonst passen gar nicht so viele aufs Band. Dafür darf das Band dann voller werden.
-Config.ShowerMaxBeltMeteors = 160
+Config.ShowerMaxBeltMeteors = 220
 Config.BeltLaneOffset = 3.5 -- Studs: Abstand der beiden Schauer-Spuren zur Bandmitte
 
 -- GRATIS-ZONE am Spawn-Platz: hier landen Gratis- und Admin-Meteore
@@ -834,14 +834,14 @@ Config.MaxFreeMeteors = 20
 -- METEORITENSCHAUER-EVENT: alle X Sekunden, Y Sekunden lang, mehr + bessere Meteore
 Config.ShowerInterval = 480
 Config.ShowerDuration = 60
-Config.ShowerBeltInterval = 0.2 -- im Schauer kommen die Meteore viel schneller (auf zwei Spuren, siehe oben)
+Config.ShowerBeltInterval = 0.15 -- im Schauer kommen die Meteore viel schneller (auf zwei Spuren, siehe oben)
 Config.ShowerLuck = 3
 
 -- EGG RUSH-EVENT: alle X Sekunden regnen Y Gratis-Eier auf die Wiese der ganzen Map.
 -- Wer zuerst da ist, schnappt sie (E) und trägt sie nach Hause. Nach "Duration" Sekunden sind sie weg.
-Config.EggRushInterval = 360
+Config.EggRushInterval = 240
 Config.EggRushDuration = 45
-Config.EggRushCount = 25
+Config.EggRushCount = 40
 Config.EggRushLuck = 3 -- Egg-Rush-Eier sind 3x so oft selten
 
 Config.OfflineIncomeRate = 0.25 -- 25% Einkommen während man offline ist
