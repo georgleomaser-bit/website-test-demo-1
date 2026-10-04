@@ -21,6 +21,8 @@
 --   "Warn"     -> großer roter Hinweis vom Admin in der Bildschirmmitte
 --   "Bonked"   -> vom Schläger getroffen: kurz taumeln (macht das Modul Bat)
 --  Dazu: Rebirth-Bildschirmblitz (Effects.RebirthFlash, vom HUD aufgerufen).
+--  Bausteine für andere Module: Effects.Burst / Ring / Puff / Shake / IsHidden (Base, NestField, Trade).
+--  ("FloorBuilt", "LookUpgrade" macht das Modul Base, "RaceStart"-Fanfare zusätzlich NestField.)
 --  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
 -- =====================================================================

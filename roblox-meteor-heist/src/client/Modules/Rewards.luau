@@ -394,7 +394,7 @@ local function buildOddsText(): string
 	end
 	return "🎲 Chancen: "
 		.. table.concat(parts, " • ")
-		.. "\n🥚 Ei = zufälliger Meteor dieser Seltenheit (fliegt in deine Base)"
+		.. "\n🥚 Ei = zufälliges Ei dieser Seltenheit (fliegt in deine Base)"
 end
 
 local function buildWheel()

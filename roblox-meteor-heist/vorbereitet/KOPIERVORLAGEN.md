@@ -25,7 +25,7 @@ Dann trage ich alle IDs für dich ein.
 |---|---|
 | **Robux** | Das Geld von Roblox. Spieler bezahlen damit. Du bekommst ca. 70 % davon, Roblox behält ca. 30 %. |
 | **Gamepass** | Wird **einmal** gekauft und gilt **für immer**. Beispiel: 2x Cash. |
-| **Developer Product** | Kann man **immer wieder** kaufen. Beispiel: ein Cash Paket. |
+| **Developer Product** | Kann man **immer wieder** kaufen. Beispiel: ein Cash-Paket. |
 | **ID** | Die Nummer, die Roblox jedem Pass und Produkt gibt. Das Spiel braucht sie. |
 | **Config-Key** | Der Name im Code. Daran weiß ich, wo die ID hingehört. Du musst ihn nirgends eintippen. |
 | **Icon** | Das kleine, quadratische Bild von deinem Spiel. |
@@ -51,7 +51,7 @@ Alle Bilder liegen im Ordner **`vorbereitet/bilder/`**.
 ```
 
 ```
-🌠 Meteor Heist: Steal & Bonk!
+🌠 Meteor Heist: Schnapp & Renn!
 ```
 
 **Wo eintragen?**
@@ -76,11 +76,12 @@ Schnapp dir Alien-Eier aus den Nestern und renn heim – bevor dich ein Monster 
 ⚡ Speed-Pads und 👟 Laufbänder machen dich schnell
 🏁 Ei-Rennen: Gold-Ei zuerst heimbringen!
 🐣 Aus jedem Ei schlüpft ein Alien
-😈 Klau aus fremden Basen, bonk Diebe weg
+😈 Klau aus fremden Basen, hau Diebe mit dem Schläger weg
+🏗️ Bau deine Base aus: Stockwerke und coole Looks
+🤝 Handel Aliens mit anderen Spielern
 🥚 Egg Rush, 🌠 Meteoritenschauer, 🌙 Nacht
 🎡 Glücksrad, 🎁 Geschenke, 📜 Aufgaben
 👽 183 Aliens, 12 Seltenheiten bis Infinity
-🔁 Rebirth und Index
 
 👍 Like und ⭐ favorisiere das Spiel!
 ```
@@ -99,11 +100,12 @@ Grab alien eggs from the nests and run home – before a monster or another play
 ⚡ Speed pads and 👟 treadmills make you fast
 🏁 Egg race: bring the golden egg home first!
 🐣 Every egg hatches an alien
-😈 Steal from other bases, bonk thieves away
+😈 Steal from other bases, hit thieves with your bat
+🏗️ Upgrade your base: floors and cool looks
+🤝 Trade aliens with other players
 🥚 Egg Rush, 🌠 meteor showers, 🌙 night
 🎡 Lucky wheel, 🎁 gifts, 📜 quests
 👽 183 aliens, 12 rarities up to Infinity
-🔁 Rebirth and index
 
 👍 Like and ⭐ favorite the game!
 ```
@@ -140,7 +142,7 @@ Grab alien eggs from the nests and run home – before a monster or another play
 | Icon | `spiel-icon.png` | 512 × 512 | `secret` |
 | Thumbnail 1 | `thumbnail-1.png` | 1920 × 1080 | `tragen` |
 | Thumbnail 2 | `thumbnail-2.png` | 1920 × 1080 | `secret` |
-| Thumbnail 3 | `thumbnail-3.png` | 1920 × 1080 | `krater` |
+| Thumbnail 3 | `thumbnail-3.png` | 1920 × 1080 | `nester` |
 | Thumbnail 4 | `thumbnail-4.png` | 1920 × 1080 | `base` |
 | Thumbnail 5 | `thumbnail-5.png` | 1920 × 1080 | `showcase` |
 
@@ -204,7 +206,7 @@ VIP
 Beschreibung:
 
 ```
-Für immer +25 % Geld-Bonus und ein goldenes VIP-Schild über deinem Kopf! Dein Lock-Pad sperrt deine Base 90 statt 60 Sekunden lang.
+Für immer +25 % Geld-Bonus und ein goldenes VIP-Schild über deinem Kopf! Dein Lock-Knopf sperrt deine Base 90 statt 60 Sekunden lang.
 ```
 
 - Preis: **249 Robux**
@@ -222,7 +224,7 @@ Name:
 Beschreibung:
 
 ```
-Du hast 18 statt 12 Plätze in deiner Base. Mehr Aliens bringen mehr Geld pro Sekunde!
+Du hast 18 statt 12 Plätze im Erdgeschoss deiner Base. Mehr Aliens bringen mehr Geld pro Sekunde!
 ```
 
 - Preis: **199 Robux**
@@ -240,7 +242,7 @@ Auto Collect
 Beschreibung:
 
 ```
-Dein Geld wird automatisch eingesammelt. Du musst nie mehr zum grünen Pad laufen!
+Dein Geld wird automatisch eingesammelt. Du musst nie mehr zum grünen Geld-Pad laufen!
 ```
 
 - Preis: **149 Robux**
@@ -258,7 +260,7 @@ Name:
 Beschreibung:
 
 ```
-Deine Meteore schlüpfen doppelt so schnell, und deine Aliens wachsen doppelt so schnell bis Level 20. Mehr Geld, viel früher!
+Deine Eier schlüpfen doppelt so schnell, und deine Aliens wachsen doppelt so schnell bis Level 20. Mehr Geld, viel früher!
 ```
 
 - Preis: **299 Robux**
@@ -333,12 +335,12 @@ Beim Tragen von Eiern und Aliens wirst du nicht mehr langsamer, für immer! Ohne
 
 > 💡 Steht die ID nicht im Menü? Dann schau in die Adresszeile vom Browser. Dort stehen zwei lange Zahlen. Die **zweite** ist die ID vom Produkt.
 
-### 💵 Cash Paket S
+### 💵 Cash-Paket S
 
 Name:
 
 ```
-Cash Paket S
+Cash-Paket S
 ```
 
 Beschreibung:
@@ -351,12 +353,12 @@ Du bekommst sofort so viel Geld, wie du in 10 Minuten verdienst. Mindestens $2.5
 - Bild: `produkt-cash-s.png`
 - Config-Key: `CashSmall`
 
-### 💰 Cash Paket M
+### 💰 Cash-Paket M
 
 Name:
 
 ```
-Cash Paket M
+Cash-Paket M
 ```
 
 Beschreibung:
@@ -369,12 +371,12 @@ Du bekommst sofort so viel Geld, wie du in 60 Minuten verdienst. Mindestens $20.
 - Bild: `produkt-cash-m.png`
 - Config-Key: `CashMedium`
 
-### 🏦 Cash Paket XL
+### 🏦 Cash-Paket XL
 
 Name:
 
 ```
-Cash Paket XL
+Cash-Paket XL
 ```
 
 Beschreibung:
@@ -398,7 +400,7 @@ Name:
 Beschreibung:
 
 ```
-15 Minuten lang 2x Glück für ALLE im Server! Seltene Meteore kommen öfter, und alle sehen, dass du es warst.
+15 Minuten lang 2x Glück für ALLE im Server! Seltene Eier kommen öfter, und alle sehen, dass du es warst.
 ```
 
 - Preis: **79 Robux**
@@ -434,43 +436,43 @@ Meteoritenschauer JETZT
 Beschreibung:
 
 ```
-Startet sofort einen Meteoritenschauer für alle im Server: 60 Sekunden lang fahren die Meteore auf zwei Spuren (fast doppelt so viele), dazu 3x Glück und keine Locks!
+Startet sofort einen Meteoritenschauer für alle im Server: 60 Sekunden lang füllen sich die Nester fast doppelt so schnell, mehr große Nester mit seltenen Eiern, dazu 3x Glück und keine Locks!
 ```
 
 - Preis: **49 Robux**
 - Bild: `produkt-meteoritenschauer.png`
 - Config-Key: `MeteorShower`
 
-### 🌟 Zufälliger Legendary Meteor
+### 🌟 Zufälliges Legendary-Ei
 
 Name:
 
 ```
-Zufälliger Legendary Meteor
+Zufälliges Legendary-Ei
 ```
 
 Beschreibung:
 
 ```
-Ein zufälliger Legendary-Meteor fliegt sofort in deine Base: Solar Flare, Aurora Crystal, Phoenix Ember, Titan Boulder oder Dragon Scale (jeder mit Chance 1 von 5). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
+Ein zufälliges Legendary-Ei fliegt sofort in deine Base: Solar Flare, Aurora Crystal, Phoenix Ember, Titan Boulder oder Dragon Scale (jeder mit Chance 1 von 5). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
 ```
 
 - Preis: **149 Robux**
 - Bild: `produkt-legendary-meteor.png`
 - Config-Key: `LegendaryMeteor`
 
-### 🔮 Zufälliger Mythic Meteor
+### 🔮 Zufälliges Mythic-Ei
 
 Name:
 
 ```
-Zufälliger Mythic Meteor
+Zufälliges Mythic-Ei
 ```
 
 Beschreibung:
 
 ```
-Ein zufälliger Mythic-Meteor fliegt sofort in deine Base: Nebula Heart, Vortex Core, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 4). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
+Ein zufälliges Mythic-Ei fliegt sofort in deine Base: Nebula Heart, Vortex Core, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 4). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
 ```
 
 - Preis: **449 Robux**
@@ -584,7 +586,7 @@ Egg Rush JETZT
 Beschreibung:
 
 ```
-Startet sofort einen EGG RUSH für alle im Server: 40 Gratis-Eier regnen auf die ganze Map, mit 3x Glück! 45 Sekunden lang kann jeder sie schnappen und nach Hause tragen. Alle sehen, dass du es warst.
+Startet sofort einen EGG RUSH für alle im Server: 40 Gratis-Eier regnen aufs Nester-Feld, mit 3x Glück! 45 Sekunden lang kann jeder sie schnappen und nach Hause tragen. Alle sehen, dass du es warst.
 ```
 
 - Preis: **69 Robux**
@@ -601,9 +603,9 @@ Roblox bestimmt damit, ab welchem Alter das Spiel passt.
 
 **Antworte immer ehrlich.** Das hilft dir bei Meteor Heist:
 
-- **Gewalt:** Es gibt nur einen blockigen **Spielzeug-Schläger** (verschiedene Farben/Stufen, das Gadget **Super-Bonk** macht ihn stärker). Er schubst andere Spieler weg, sie fallen kurz um und stehen sofort wieder auf. Die **Falle** friert Diebe 3 Sekunden ein. Es gibt **keinen Schaden**, **kein Blut** und **keine echten Waffen**.
+- **Gewalt:** Es gibt nur einen blockigen **Spielzeug-Schläger** (verschiedene Farben/Stufen, das Gadget **Super-Schlag** macht ihn stärker). Er schubst andere Spieler weg, sie fallen kurz um und stehen sofort wieder auf. Knuffige **Monster** im Nester-Feld schubsen auch nur. Die **Falle** friert Diebe 3 Sekunden ein. Es gibt **keinen Schaden**, **kein Blut** und **keine echten Waffen**.
 - **Paid Random Items** (heißt: Man bezahlt Robux und bekommt etwas Zufälliges): Hier musst du **JA** antworten. Gründe:
-  - „Zufälliger Legendary Meteor“ und „Zufälliger Mythic Meteor“ (und welches Alien daraus schlüpft)
+  - „Zufälliges Legendary-Ei“ und „Zufälliges Mythic-Ei“ (und welches Alien daraus schlüpft)
   - „1 Glücksrad-Dreh“ und „10+2 Glücksrad-Drehs“ (das Glücksrad ist Zufall)
   - „Starter-Paket“ (darin sind ein zufälliges Legendary-Ei und Glücksrad-Drehs)
 
@@ -625,14 +627,14 @@ Bei einer Frage bist du unsicher? Schick mir die Frage. Ich helfe dir.
 | Pass | 2x Schritte | 99 | `pass-speed-boots.png` | `SpeedBoots` |
 | Pass | 2x Glück | 349 | `pass-gluck.png` | `Lucky` |
 | Pass | Volle Speed beim Tragen | 299 | `pass-volle-speed.png` | `CarryFast` |
-| Produkt | Cash Paket S | 25 | `produkt-cash-s.png` | `CashSmall` |
-| Produkt | Cash Paket M | 99 | `produkt-cash-m.png` | `CashMedium` |
-| Produkt | Cash Paket XL | 399 | `produkt-cash-xl.png` | `CashLarge` |
+| Produkt | Cash-Paket S | 25 | `produkt-cash-s.png` | `CashSmall` |
+| Produkt | Cash-Paket M | 99 | `produkt-cash-m.png` | `CashMedium` |
+| Produkt | Cash-Paket XL | 399 | `produkt-cash-xl.png` | `CashLarge` |
 | Produkt | 2x Glück für den Server (15 Min) | 79 | `produkt-server-glueck.png` | `ServerLuck` |
 | Produkt | Schritte-Paket | 39 | `produkt-speed-10.png` | `Speed10` |
 | Produkt | Meteoritenschauer JETZT | 49 | `produkt-meteoritenschauer.png` | `MeteorShower` |
-| Produkt | Zufälliger Legendary Meteor | 149 | `produkt-legendary-meteor.png` | `LegendaryMeteor` |
-| Produkt | Zufälliger Mythic Meteor | 449 | `produkt-mythic-meteor.png` | `MythicMeteor` |
+| Produkt | Zufälliges Legendary-Ei | 149 | `produkt-legendary-meteor.png` | `LegendaryMeteor` |
+| Produkt | Zufälliges Mythic-Ei | 449 | `produkt-mythic-meteor.png` | `MythicMeteor` |
 | Produkt | Starter-Paket | 49 | `produkt-starter-paket.png` | `StarterPack` |
 | Produkt | 1 Glücksrad-Dreh | 25 | `produkt-dreh-1.png` | `Spin1` |
 | Produkt | 10+2 Glücksrad-Drehs | 199 | `produkt-dreh-12.png` | `Spin10` |

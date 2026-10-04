@@ -18,13 +18,13 @@ Das dauert ungefähr **15 Minuten**.
 
 | Dateiname | Was drauf sein soll | Wird zu |
 |---|---|---|
-| `base` | Deine Base voller Aliens, schräg von oben | Thumbnail 4 |
-| `krater` | Die Alien-Parade in der Mitte während eines **Meteoritenschauers** (viele Eier!) | Thumbnail 3 |
-| `tragen` | Du rennst mit einem geklauten Ei (Meteor) oder Alien über dem Kopf | Thumbnail 1 |
+| `base` | Deine Base voller Aliens, schräg von oben (gern mit Stockwerken) | Thumbnail 4 |
+| `nester` | Das Nester-Feld in der Mitte während eines **Meteoritenschauers** (viele Eier, große Nester mit Lichtsäule) | Thumbnail 3 |
+| `tragen` | Du rennst mit einem Ei oder Alien über dem Kopf | Thumbnail 1 |
 | `showcase` | Die Showcase-Reihe: ein Meteor von jeder Seltenheit nebeneinander | Thumbnail 5 |
 | `secret` | Ein Secret-Meteor oder Admin-Meteor ganz nah | Thumbnail 2 und das Icon |
 
-> 💡 Das Foto `krater` heißt so, weil es früher einen Krater gab. Jetzt zeigt es die Alien-Parade. Der Name bleibt trotzdem **krater**.
+> 💡 Du hast noch ein altes Foto namens `krater`? Das geht auch. Es wird wie `nester` benutzt.
 
 ---
 
@@ -91,15 +91,16 @@ Das dauert ungefähr **15 Minuten**.
 
 ## 🎬 Die 5 Fotos Schritt für Schritt
 
-Öffne für alles das **Admin-Panel** mit **P**. Das Panel ist lang. **Scroll runter**, um alle Bereiche zu sehen.
+Öffne für alles das **Admin-Panel** mit **P**. Oben hat es **5 Reiter**: **Spawnen**, **Events**, **Spieler**, **Kräfte**, **Server**.
+Ganz oben links steht das **Ziel-Feld** (`me` = du). Darunter zeigt eine Zeile, ob es geklappt hat.
 
 ### 1. `base` – deine Base voller Aliens
 
-1. Admin-Panel (**P**) → Bereich **👑 Admin-Meteore**.
-2. Bei einem Admin-Meteor auf **🏠 In meine Base** klicken. Mach das 1- bis 2-mal.
+1. Reiter **Spawnen** → Bereich **Admin-Meteore**.
+2. Bei einem Admin-Meteor auf **In meine Base** klicken. Mach das 1- bis 2-mal.
    Nach **5 Sekunden** schlüpft daraus ein krasses Admin-Alien.
-3. Scroll runter zum Bereich **📸 Foto-Modus** → **🏠 Foto-Base (Aliens)**.
-   Jetzt stehen auf allen freien Plätzen bunte Deko-Aliens.
+3. Reiter **Kräfte** → Bereich **Foto-Modus** → **Foto-Base**.
+   Jetzt stehen auf allen freien Plätzen bunte Deko-Aliens, und alle Stockwerke sind aufgebaut.
    Gefallen sie dir nicht? Nochmal drücken = neue Aliens.
 4. Panel zu (**P**). Drück **G** und flieg hoch (**Leertaste**).
 5. Schau **schräg von oben** auf deine Base. Die Base soll in der **Bildmitte** sein.
@@ -107,37 +108,37 @@ Das dauert ungefähr **15 Minuten**.
 7. Datei **`base`** nennen.
 
 > 💡 Erst die Admin-Meteore, dann die Foto-Base. Ist die Base voll, passt kein Admin-Meteor mehr rein.
-> Die Deko-Aliens werden **nicht gespeichert**. Sie sind nur fürs Foto.
+> Die Deko-Aliens und Foto-Stockwerke werden **nicht gespeichert**. Sie sind nur fürs Foto.
 
-### 2. `krater` – die Alien-Parade im Meteoritenschauer
+### 2. `nester` – das Nester-Feld im Meteoritenschauer
 
-1. Admin-Panel → Bereich **🎉 Events**.
+1. Reiter **Events** → Bereich **Nester & Eier**.
 2. Ins Feld **Minuten** zum Beispiel `3` schreiben. So lange dauert der Schauer.
-3. Auf **🌠 Meteoritenschauer** klicken. Jetzt wird die Parade richtig voll und schneller.
-4. Ein paar Bosse dazu? Bereich **🌧️ Meteorregen** → zum Beispiel **Legendary** oder **Mythic** klicken.
-   Diese Eier tragen große Boss-Aliens mit Leibwächtern.
-5. Panel zu. Drück **G** und flieg über die Parade-Straße in der Map-Mitte.
-6. Schau schräg von oben auf die Straße, sodass man viele Aliens mit Eiern sieht.
+3. Auf **Meteoritenschauer** klicken. Jetzt füllen sich die Nester richtig schnell.
+4. Noch ein paar seltene Eier dazu? Auf **Große Nester** klicken: In den großen Nestern erscheinen Legendary-Eier und besser, mit Lichtsäule.
+5. Panel zu. Drück **G** und flieg über das Nester-Feld in der Map-Mitte.
+6. Schau schräg von oben auf das Feld, sodass man viele Eier, die Lichtsäulen und am besten ein Monster sieht.
 7. **H**, warten, Screenshot, **H**.
-8. Datei **`krater`** nennen.
+8. Datei **`nester`** nennen.
 
 ### 3. `tragen` – du rennst mit Beute
 
-**Weg A – Ei aus der Parade klauen (am einfachsten, allein):**
+**Weg A – Ei aus einem Nest schnappen (am einfachsten, allein):**
 
-1. Für ein schönes, großes Ei: Admin-Panel → **☄️ Meteor spawnen** → einen großen Meteor anklicken
-   (zum Beispiel **Nebula Heart** oder **Big Bang Core**), Mutation zum Beispiel **Rainbow x15** → **Zur Parade**.
-2. Panel zu (**P**). Stell dich an den Rand der Parade-Straße.
-3. Kommt dein Ei vorbei: **Halte E** (knapp 1 Sekunde). Jetzt trägst du es über dem Kopf.
-   Große Eier trägt ein Boss: Warte auf den Schubser der Leibwächter, dann ganz nah ran und E halten.
-   Wichtig: **E**, nicht **F**. Mit **F** kaufst du ihn, dann fliegt er von allein in deine Base.
-4. Lauf los, weg von der Parade. Dreh die Kamera so, dass man dich **von vorne oder von der Seite** sieht, mit dem Ei über dem Kopf.
+1. Für ein schönes, großes Ei: Reiter **Spawnen** → einen großen Meteor anklicken
+   (zum Beispiel **Nebula Heart** oder **Big Bang Core**), Mutation zum Beispiel **Rainbow x15** → **Zum Nester-Feld**.
+   Seltene Eier landen in einem **großen Nest** (mit Lichtsäule).
+2. Panel zu (**P**). Lauf zum Nest mit deinem Ei.
+3. **Halte E** (eine halbe Sekunde). Jetzt trägst du das Ei über dem Kopf.
+   Wichtig: **E**, nicht **F**. Mit **F** kaufst du es, dann fliegt es von allein in deine Base.
+4. Lauf los. Dreh die Kamera so, dass man dich **von vorne oder von der Seite** sieht, mit dem Ei über dem Kopf.
+   Pass auf die Monster auf: Erwischen sie dich, fällt das Ei runter. Mit **E** schnappst du es wieder.
 5. **H**, warten, Screenshot, **H**.
 6. Datei **`tragen`** nennen.
 
-> 💡 Du hast **60 Sekunden** Zeit. Danach fällt das Ei auf den Boden. Nicht schlimm: mit **E** wieder schnappen.
+> 💡 Du hast mindestens **60 Sekunden** Zeit (bei weitem Weg mehr). Danach fällt das Ei auf den Boden. Nicht schlimm: mit **E** wieder schnappen.
 > Große, seltene Eier sind **schwer**: Mit ihnen läufst du langsamer. Fürs Foto ist das egal.
-> Klauen geht nur, wenn deine Base noch einen freien Platz hat.
+> Schnappen geht nur, wenn deine Base noch einen freien Platz hat.
 
 **Weg B – ein Alien aus einer fremden Base klauen (noch krasser):**
 
@@ -147,9 +148,9 @@ Das geht in Studio ganz einfach, auch allein:
 1. Stopp das Spiel (**Stop**-Knopf oben).
 2. Oben bei **Test** → im Bereich **Clients and Servers** → **2 Players** auswählen → **Start**.
 3. Jetzt gehen 2 Spielfenster auf: **Player1** und **Player2**. Du steuerst beide abwechselnd.
-4. Im Fenster **Player1**: Admin-Panel (**P**) → **👑 Admin-Meteore** → **🏠 In meine Base**. Nach 5 Sekunden schlüpft ein Admin-Alien. Player1 bleibt in seiner Base stehen.
+4. Im Fenster **Player1**: Admin-Panel (**P**) → Reiter **Spawnen** → **Admin-Meteore** → **In meine Base**. Nach 5 Sekunden schlüpft ein Admin-Alien. Player1 bleibt in seiner Base stehen.
 5. Wechsel zum Fenster **Player2**. Lauf in die Base von Player1.
-   Schneller geht es so: Admin-Panel → Ziel `Player1` eintragen → **➡️ TP zu Ziel**. Dann stehst du direkt neben Player1.
+   Schneller geht es so: Ziel-Feld `Player1` → Reiter **Spieler** → Bereich **Moderation** → **TP zu Ziel**. Dann stehst du direkt neben Player1.
 6. Stell dich ans Alien und **halte E**. Jetzt trägst du es über dem Kopf.
 7. Lauf los. Dreh die Kamera so, dass man dich **von vorne oder von der Seite** sieht, mit dem Alien über dem Kopf.
 8. Im Fenster Player2: **H**, warten, Screenshot, **H**.
@@ -157,12 +158,12 @@ Das geht in Studio ganz einfach, auch allein:
 
 > 💡 Auch hier hast du **60 Sekunden** Zeit. Danach fliegt das Alien zurück in die Base. Einfach nochmal klauen.
 > Beim Testen in Studio sind beide Spieler Admin. Deshalb klappt **H** auch im Fenster von Player2.
-> Hat Player1 eine **🪤 Falle** aufgestellt, nicht reintreten: Dann bist du 3 Sekunden eingefroren und das Alien ist weg.
+> Hat Player1 auf den **roten Lock-Knopf** gedrückt oder eine **🪤 Falle** aufgestellt, klappt das Klauen nicht. Kurz warten bzw. nicht in die Falle treten.
 
 ### 4. `showcase` – alle Seltenheiten nebeneinander
 
 1. Geh auf eine freie, ebene Fläche, zum Beispiel auf den großen **Spawn-Platz**.
-2. Admin-Panel → **📸 Foto-Modus** → **✨ Showcase-Reihe**.
+2. Reiter **Kräfte** → **Foto-Modus** → **Showcase-Reihe**.
 3. Vor dir erscheint eine Reihe: links Common, rechts der Admin-Meteor. Sie bleibt **5 Minuten**.
 4. Panel zu. Geh ein paar Schritte zurück oder flieg ein bisschen hoch (**G**), bis **alle** Meteore im Bild sind.
 5. **H**, warten, Screenshot, **H**.
@@ -171,14 +172,14 @@ Das geht in Studio ganz einfach, auch allein:
 ### 5. `secret` – ein riesiger Meteor ganz nah
 
 **Weg A – Admin-Meteor (am krassesten):**
-1. Admin-Panel → **👑 Admin-Meteore** → bei **Rainbow Overlord** oder **Chaos Core** auf **🎁 Gratis in die Mitte**.
+1. Reiter **Spawnen** → **Admin-Meteore** → bei **Rainbow Overlord** oder **Chaos Core** auf **In die Gratis-Zone**.
 2. Er landet mit großem Knall in der **Gratis-Zone** auf dem Spawn-Platz.
 3. Lauf hin und geh **ganz nah** ran. Der Meteor soll das Bild fast ausfüllen.
 
 **Weg B – Secret-Meteor:**
-1. Admin-Panel → **☄️ Meteor spawnen / geben** → **Big Bang Core** anklicken (oder einen anderen Secret).
+1. Reiter **Spawnen** → **Big Bang Core** anklicken (oder einen anderen Secret).
 2. Mutation **Rainbow x15** anklicken (leuchtet in allen Farben) oder **Galaxy x10** (glitzert lila).
-3. Auf **Vor mir** klicken.
+3. Auf **Ei vor mir** klicken.
 
 Dann: **H**, warten, Screenshot, **H**. Datei **`secret`** nennen.
 
@@ -186,10 +187,10 @@ Dann: **H**, warten, Screenshot, **H**. Datei **`secret`** nennen.
 
 ### Zum Schluss: aufräumen
 
-Admin-Panel → **📸 Foto-Modus** → **🧹 Foto aufräumen**.
-Die Deko-Aliens sind weg, Parade und Gratis-Zone sind leer.
-Liegen noch Eier auf dem Boden? **🛡️ Moderation** → **🧽 Boden leeren**.
-Die echten Admin-Aliens in deiner Base bleiben. Weg damit: Ziel `me` → **🛡️ Moderation** → **🧹 Base leeren**.
+Reiter **Kräfte** → **Foto-Modus** → **Foto aufräumen**.
+Die Deko-Aliens und Foto-Stockwerke sind weg, Nester und Gratis-Zone sind leer.
+Liegen noch Eier auf dem Boden? Reiter **Spieler** → **Moderation** → **Boden leeren**.
+Die echten Admin-Aliens in deiner Base bleiben. Weg damit: Ziel `me` → Reiter **Spieler** → **Moderation** → **Base leeren**.
 
 ---
 
@@ -199,7 +200,7 @@ Die Fotos müssen **genau so** heißen (kleine Buchstaben):
 
 ```
 base
-krater
+nester
 tragen
 showcase
 secret
@@ -249,5 +250,5 @@ Ich baue dann das Icon und die Thumbnails und lade sie ins GitHub-Repo hoch.
 - **Hochkant oder schief ist okay.** Ich schneide alles passend zu, nichts wird verzerrt.
 - **Lieber zu viele als zu wenige.** Du darfst mir auch mehrere Fotos pro Motiv schicken (z. B. `base-2`). Ich nehme das beste.
 - **Fehlt ein Foto?** Kein Problem. Für das Icon und die Thumbnails 1 bis 3 gibt es die gezeichneten Bilder als Ersatz.
-- **Extra-Foto für Social Media:** Admin-Panel → **🎉 Events** → **🥚 Egg Rush starten (dieser Server)**. Dann liegen überall auf der Wiese bunte Eier. Flieg hoch (**G**) und mach ein Foto von oben. Super für TikTok oder YouTube Shorts.
+- **Extra-Foto für Social Media:** Admin-Panel → Reiter **Events** → **Egg Rush**. Dann regnen überall auf dem Nester-Feld bunte Eier. Flieg hoch (**G**) und mach ein Foto von oben. Super für TikTok oder YouTube Shorts.
 - **Die Bilder für Gamepässe und Produkte brauchen keine Fotos.** Sie sind schon fertig gezeichnet (22 Stück in `bilder/`).

@@ -803,8 +803,8 @@ function Windows.RefreshTreadmills(state: any)
 	)
 	local nextSteps = nextSpeedSteps(steps)
 	treadmillSpeed.Text = if nextSteps
-		then ("Nächstes +1 Tempo bei %s 👟  •  Bonus x%s"):format(
-			Util.FormatNumber(nextSteps),
+		then ("Noch %s 👟 bis Tempo +1  •  Bonus x%s"):format(
+			Util.FormatNumber(math.max(0, nextSteps - steps)),
 			UI.FormatMult(mult)
 		)
 		else ("🚀 Maximales Tempo erreicht!  •  Bonus x%s"):format(UI.FormatMult(mult))

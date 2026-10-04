@@ -22,9 +22,11 @@ end
 return {
 	Notify = make("RemoteEvent", "Notify") :: RemoteEvent, -- Server -> Client: Toast-Nachricht
 	State = make("RemoteEvent", "State") :: RemoteEvent, -- Server -> Client: Cash, Einkommen, ...
-	-- Server -> Client: Effekte (name, strength, data) – z.B. "Shake", "Steps", "Deliver", "Hatch"
+	-- Server -> Client: Effekte (name, strength, data) – z.B. "Shake", "Steps", "Deliver", "Hatch",
+	-- "FloorBuilt"/"LookUpgrade" (Modul Base), "RaceStart" (Effects + NestField), "Run…" (MeteorRun), "NightCrate" (Night)
 	Effect = make("RemoteEvent", "Effect") :: RemoteEvent,
-	-- Client -> Server: "Rebirth", "Daily", "Collect", "Home", "Treadmills", "BuyTreadmill", "BuyGadget" ...
+	-- Client -> Server: "Rebirth", "Daily", "Collect", "Home", "Treadmills", "BuyTreadmill", "BuyGadget",
+	-- "BuyFloor", "BuyBaseLook", "GoRun", "ClaimGift", "Spin", "ClaimQuest", "RerollQuest"
 	Request = make("RemoteFunction", "Request") :: RemoteFunction,
 	Admin = make("RemoteFunction", "Admin") :: RemoteFunction, -- Client -> Server: Admin-Aktionen (geprüft!)
 	-- 🤝 Handel (TradeService): Client -> Server (Aktion, Wert) / Server -> Client (Art, Daten)
