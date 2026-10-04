@@ -155,12 +155,12 @@ Ein langer **Lauf-Parcours** (ca. 420 Studs) rechts neben dem Spawn-Platz, erhö
 Knopf **☄️ Run** rechts = Teleport zum Start-Tor (nicht mit Beute). Wer etwas trägt, kann nicht starten.
 
 1. Durchs **Start-Tor** gehen → „☄️ BEREIT“. Über die **Startlinie** → der Timer läuft (oben im Bild: ⏱️ Zeit, 🚩 Checkpoint, 🏆 Bestzeit).
-2. Fünf Abschnitte: **🔥 Lava-Felder**, **🦘 Sprünge über Lücken**, **🌀 rotierende Balken**, **☄️ Meteor-Einschläge** (roter Kreis = 1 Sekunde später schlägt es ein) und **🔥 Lava-Steine**.
+2. Fünf Abschnitte: **🔥 Lava-Felder**, **🦘 Sprünge über Lücken** (alle 4 Studs breit – auch mit Anfänger-Tempo zu schaffen), **🌀 rotierende Balken**, **☄️ Meteor-Einschläge** (roter Kreis = 1 Sekunde später schlägt es ein) und **🔥 Lava-Steine**.
 3. Dazwischen 4 **🚩 Checkpoints**. Lava, Runterfallen oder ein Einschlag = zurück zum letzten Checkpoint (niemand stirbt, der Timer läuft weiter). Zurück durchs Start-Tor = Neustart.
-4. Im **🏁 Ziel**: Cash (mind. $2.500, sonst 90 Sekunden Einkommen, bei neuer Bestzeit x1,5) und ein **Gratis-Ei** (meist Epic, oft Legendary, manchmal Mythic, selten Celestial, ab 3 Rebirths ganz selten Divine). Schnelle Zeiten, Rebirths und eine neue Bestzeit geben mehr Glück. **Das Ei musst du nach Hause tragen** – wie ein geklautes Ei (60 Sekunden, Bonk = Ei fällt runter). Base voll = Verkaufswert als Geld.
-5. Belohnung höchstens alle **3 Minuten** (die Zeit zählt trotzdem). Die **Bestzeit wird gespeichert**, das Schild am Start zeigt den Rekord des Servers.
+4. Im **🏁 Ziel**: Cash (mind. $2.500, sonst 90 Sekunden Einkommen, bei neuer Bestzeit x1,5) und ein **Gratis-Ei** (meist Epic, oft Legendary, manchmal Mythic, selten Celestial, ab 3 Rebirths ganz selten Divine). Schnelle Zeiten, Rebirths und eine neue Bestzeit geben mehr Glück. **Das Ei musst du nach Hause tragen** – wie ein geklautes Ei (Bonk = Ei fällt runter). Weil der Weg lang ist, gibt es **mehr Zeit, je weiter deine Base weg ist** (mindestens 60 Sekunden, bis ca. 90 Sekunden mit schwerem Ei und Grund-Tempo – die Zeit steht in der Meldung und am Pfeil unten). Base voll = Verkaufswert als Geld.
+5. Belohnung höchstens alle **3 Minuten** (die Zeit zählt trotzdem; gilt auch nach einem Server-Wechsel). Die **Bestzeit wird gespeichert**, das Schild am Start zeigt den Rekord des Servers.
 
-Schummeln geht nicht: Checkpoints zählen nur der Reihe nach, und zu schnelle Zeiten (schneller als Tempo 104 über die ganze Strecke) werden nicht gewertet.
+Schummeln geht nicht: Checkpoints zählen nur der Reihe nach und nur, wenn man wirklich hingelaufen ist (Teleport-Sprünge zählen nicht), zu schnelle Zeiten (schneller als Tempo 104 über die ganze Strecke) werden nicht gewertet, und wer über der Lava schwebt oder viel zu hoch fliegt, muss zurück zum Checkpoint.
 Einstellungen (Abklingzeit, Ei-Chancen, Cash) stehen oben in `src/server/Services/RunService.luau`.
 
 ---
@@ -385,7 +385,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | Kauf kam nicht an | Roblox wiederholt den Kauf automatisch, bis er verbucht ist. Nichts geht verloren |
 | „🏃 Zu weit weg – lauf näher ran!“ | Näher ans Geländer vom Laufband gehen. Der Meteor muss direkt vor dir sein |
 | Ich kann am Band nichts klauen | Du trägst schon etwas (erst heimbringen) oder deine Base ist voll. **F** zum Kaufen geht trotzdem |
-| Mein Ei vom Band ist weg | Du wurdest gebonkt, bist in eine Falle getreten oder die 60 Sekunden waren um. Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
+| Mein Ei vom Band ist weg | Du wurdest gebonkt, bist in eine Falle getreten oder die Zeit war um (60 Sekunden, beim Meteor-Run-Ei je nach Weg mehr). Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
 | „📦 Deine Base ist voll!“ | Ein Alien verkaufen (**F** halten in deiner Base) oder den Pass „+6 Plätze“ holen |
 | Ich kann mich 3 Sekunden nicht bewegen | Du bist in eine **🪤 Falle** getreten (oder ein Admin hat dich eingefroren). Das geht von allein weg |
 | Falle lässt sich nicht aufstellen | Nur in **deiner eigenen** Base, nicht direkt am Rand, und höchstens 2 gleichzeitig |

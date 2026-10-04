@@ -10,8 +10,10 @@
 --   4 ☄️ Meteor-Einschläge   5 🔥 Lava-Steine   -> 🏁 Ziel-Podest mit Belohnungs-Ei
 -- Checkpoints (Pads) speichern den Fortschritt im Run. Lava, Runterfallen und Einschläge = zurück
 -- zum letzten Checkpoint (niemand stirbt). Im Ziel: Cash + ein Gratis-Ei (Epic..Mythic, selten höher),
--- das man wie ein geklautes Ei nach Hause TRAGEN muss (CarryService, Source = "Ground").
--- Abklingzeit pro Spieler zwischen zwei Belohnungen, Bestzeit in data.RunBest.
+-- das man wie ein geklautes Ei nach Hause TRAGEN muss (CarryService, Source = "Ground", mit
+-- ScaleTimeout = mehr Trage-Zeit, je weiter die eigene Base vom Ziel weg ist).
+-- Abklingzeit pro Spieler zwischen zwei Belohnungen (auch im Spielstand: data.RunRewardAt),
+-- Bestzeit in data.RunBest.
 --
 -- PERFORMANCE: Der Server bewegt NICHTS. Die rotierenden Balken dreht jeder Client selbst
 -- (Attribute SpinPivot/SpinAxis/SpinSpeed/SpinT0, Winkel aus der Serverzeit -> alle sehen dasselbe).
@@ -20,7 +22,9 @@
 --
 -- ANTI-CHEAT: Checkpoints nur in der richtigen Reihenfolge, Ziel nur mit allen Checkpoints und
 -- frühestens nach Streckenlänge / (MaxWalkSpeed * 1.3). Teleport-/Speed-Verstoß (CarryService.MoveStatus)
--- bricht den Run ab. Wer etwas trägt, kann nicht starten.
+-- bricht den Run ab; Linien zählen nur bei einem zu Fuß möglichen Schritt (plausibleStep – auch in der
+-- Schonzeit nach einem Zurücksetzen). Schweben über Lava (zu lange in der Luft, nicht auf einem Stein)
+-- und Fliegen (viel zu hoch) = zurück zum Checkpoint. Wer etwas trägt, kann nicht starten.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -58,6 +62,17 @@ local FALL_DEPTH = 1 -- Hüfte tiefer als Lauffläche + FALL_DEPTH = runtergefal
 local FOOT = 0.4 -- Lava-Felder zählen so viel breiter (Füße ragen über die Hüfte hinaus)
 local NOTIFY_GAP = 1.5 -- Hinweise (Lava, Checkpoint fehlt ...) höchstens so oft pro Spieler
 local SPEED_TOLERANCE = 1.3 -- Mindestzeit = Streckenlänge / (MaxWalkSpeed * SPEED_TOLERANCE)
+-- Checkpoints/Ziel zählen nur, wenn der Schritt seit der letzten Messung zu Fuß möglich war
+-- (WalkSpeed * STEP_FACTOR + STEP_EXTRA) * dt + STEP_SLACK – sonst wäre ein Teleport in der Schonzeit
+-- nach einem Zurücksetzen (CarryService.MoveStatus = "wait") ein Abkürzungs-Trick
+local STEP_FACTOR = 1.5
+local STEP_EXTRA = 16
+local STEP_SLACK = 4
+local LAVA_AIR_MAX = 1.5 -- so lange darf man über Lava "in der Luft" sein (Sprung ~0,5 s) – länger = Schweben
+-- Nach einem Server-Teleport kurz nichts prüfen: bis der Client den Teleport kennt, kommen noch alte
+-- Positionen an (sonst: mehrfaches Zurücksetzen hintereinander bei hohem Ping)
+local TELEPORT_GRACE = 0.75
+local MAX_HEIGHT = 20 -- Hüfte höher als Lauffläche + das = Flug-Cheat -> zurück zum Checkpoint
 
 local IMPACT_WARN = 1 -- Sekunden Warnkreis vor dem Einschlag
 local IMPACT_RADIUS = 6
@@ -65,6 +80,7 @@ local IMPACT_INTERVAL = 0.7 -- so oft schlägt es ein, solange jemand im Einschl
 local IMPACT_MAX = 6 -- höchstens so viele Einschläge gleichzeitig angekündigt
 local IMPACT_AIM_CHANCE = 0.6 -- so oft wird auf einen Läufer gezielt (mit Vorhalt)
 local IMPACT_LEAD = 0.6 -- Vorhalt in Sekunden
+local IMPACT_HEIGHT = 12 -- so hoch über der Lauffläche trifft ein Einschlag noch (Hochspringen rettet nicht)
 
 -- Belohnung
 local PAR_TIME = 40 -- schneller als das = mehr Glück beim Ei
@@ -125,8 +141,12 @@ type RunState = { Phase: string, Start: number, CP: number }
 
 local runs: { [Player]: RunState } = {}
 local cooldownUntil: { [number]: number } = {} -- UserId -> Serverzeit (überlebt Neu-Beitreten auf dem Server)
+-- Zusätzlich im Spielstand: data.RunRewardAt = os.time(), ab dann gibt es wieder eine Belohnung
+-- (sonst: Server wechseln = Abklingzeit weg)
 local notifyAt: { [Player]: number } = {}
 local lastPos: { [Player]: Vector3 } = {} -- letzte gemessene Position (für Linien und Lava dazwischen)
+local lavaAir: { [Player]: number } = {} -- Sekunden ununterbrochen über Lava, ohne auf einem Stein zu stehen
+local graceUntil: { [Player]: number } = {} -- os.clock(): bis dann keine Lava-/Fall-/Einschlag-Prüfung
 local runFolder: Folder? = nil
 local recordLabel: TextLabel? = nil
 local serverRecord: { Name: string, Time: number }? = nil
@@ -146,6 +166,8 @@ local lineMinX, lineMaxX = 0, 0 -- so breit zählen Startlinie, Checkpoints, Zie
 local areaMinX, areaMaxX, areaMinZ, areaMaxZ = 0, 0, 0, 0 -- Strecke mit Rand
 local exitMinX = 0 -- Ziel-Rampe zählt auch noch zur Strecke (bis hier)
 local minRunTime = 0
+local stoneParams = RaycastParams.new() -- Strahl nach unten trifft nur die Lava-Steine
+stoneParams.FilterType = Enum.RaycastFilterType.Include
 
 -- -------------------------------------------------------------------
 -- KLEINE HELFER
@@ -666,13 +688,16 @@ local function build(map: Instance): Folder
 	lava(82, 87, -half, half)
 	lava(92, 96, -half, half)
 
-	-- 2) SPRÜNGE über Lücken (Plattformen werden schmaler)
+	-- 2) SPRÜNGE über Lücken: alle Lücken 4 Studs (mit Tempo 16 gut zu schaffen), Plattformen
+	-- werden schmaler und versetzt, überlappen sich aber immer um mindestens 4 Studs (gerade springen geht)
 	sectionSign(110, "2/5 🦘 SPRÜNGE", "Anlauf nehmen!", Color3.fromRGB(120, 255, 120))
 	deck(112, 124, 0, WIDTH, COLORS.DeckAlt)
-	deck(129, 137, 0, math.max(6, WIDTH * 0.6), COLORS.Deck)
-	deck(142, 150, half * 0.4, 6, COLORS.DeckAlt)
-	deck(156, 164, -half * 0.4, 6, COLORS.Deck)
-	deck(169, 284, 0, WIDTH, COLORS.DeckAlt)
+	deck(128, 138, 0, math.max(8, WIDTH * 0.7), COLORS.Deck)
+	local jumpWidth = math.max(6, WIDTH * 0.55)
+	local jumpShift = math.max(0, (jumpWidth - 4) / 2) -- Versatz: beide Plattformen überlappen um 4 Studs
+	deck(142, 151, jumpShift, jumpWidth, COLORS.DeckAlt)
+	deck(155, 164, -jumpShift, jumpWidth, COLORS.Deck)
+	deck(168, 284, 0, WIDTH, COLORS.DeckAlt)
 
 	-- 3) ROTIERENDE BALKEN (der Client dreht sie)
 	local t0 = now()
@@ -780,6 +805,7 @@ local function build(map: Instance): Folder
 	deck(372, END_D, 0, WIDTH, COLORS.DeckAlt)
 	sectionSign(374, "5/5 🔥 LAVA-STEINE", "Von Stein zu Stein!", COLORS.Lava)
 	lava(376, 428, -half, half)
+	local stoneFolder = folder("Stones", root)
 	for i, x in ipairs({ -0.4, 0.45, -0.3, 0.5, -0.5, 0.1, -0.35, 0.3 }) do
 		part({
 			Name = "Stone",
@@ -787,9 +813,10 @@ local function build(map: Instance): Folder
 			Position = world(374 + i * 6.5, half * x, TOP + 0.7),
 			Material = Enum.Material.Slate,
 			Color = COLORS.Stone,
-			Parent = decoFolder,
+			Parent = stoneFolder,
 		})
 	end
+	stoneParams.FilterDescendantsInstances = { stoneFolder }
 
 	-- CHECKPOINTS
 	respawnCF[1] = CFrame.lookAt(world(START_RESPAWN_D, 0, TOP + 3.5), world(START_RESPAWN_D + 10, 0, TOP + 3.5))
@@ -916,6 +943,12 @@ local function teleport(player: Player, cf: CFrame)
 	end
 	Services.CarryService.NoteTeleport(player, cf.Position)
 	lastPos[player] = cf.Position
+	lavaAir[player] = nil
+	graceUntil[player] = os.clock() + TELEPORT_GRACE
+end
+
+local function inGrace(player: Player): boolean
+	return os.clock() < (graceUntil[player] or 0)
 end
 
 local function cancelRun(player: Player, text: string?)
@@ -923,6 +956,7 @@ local function cancelRun(player: Player, text: string?)
 		return
 	end
 	runs[player] = nil
+	lavaAir[player] = nil
 	publish(player, nil)
 	if text then
 		Services.EconomyService.Notify(player, text, "Info")
@@ -945,6 +979,40 @@ local function touchedLava(a: Vector3, b: Vector3, stand: number): boolean
 		end
 	end
 	return false
+end
+
+-- Über einem Lava-Feld (waagrecht)?
+local function overLava(p: Vector3): boolean
+	for _, box in ipairs(lavaBoxes) do
+		if p.X >= box.MinX and p.X <= box.MaxX and p.Z >= box.MinZ and p.Z <= box.MaxZ then
+			return true
+		end
+	end
+	return false
+end
+
+-- Steht der Spieler auf einem Lava-Stein? (kurzer Strahl nach unten, trifft nur die Steine)
+local function onStone(p: Vector3, stand: number): boolean
+	return workspace:Raycast(p, Vector3.new(0, -(stand + 1.5), 0), stoneParams) ~= nil
+end
+
+-- Schwebt der Spieler über Lava? (zu lange "in der Luft" über einem Lava-Feld = Schwebe-/Flug-Cheat;
+-- wer tief über der Lava steht, fängt touchedLava, wer auf einem Stein steht, ist sicher)
+local function hoveringOverLava(player: Player, p: Vector3, stand: number, dt: number): boolean
+	if not overLava(p) or onStone(p, stand) then
+		lavaAir[player] = nil
+		return false
+	end
+	local air = (lavaAir[player] or 0) + dt
+	lavaAir[player] = air
+	return air > LAVA_AIR_MAX
+end
+
+-- War der Schritt a -> b in dt Sekunden zu Fuß möglich? (sonst zählen Linien nicht)
+local function plausibleStep(humanoid: Humanoid, a: Vector3, b: Vector3, dt: number): boolean
+	local dx, dz = b.X - a.X, b.Z - a.Z
+	local maxStep = (humanoid.WalkSpeed * STEP_FACTOR + STEP_EXTRA) * dt + STEP_SLACK
+	return dx * dx + dz * dz <= maxStep * maxStep
 end
 
 local function updateRecordSign()
@@ -1002,6 +1070,7 @@ local function giveReward(player: Player, data, elapsed: number, newBest: boolea
 			Source = "Ground",
 			From = "Run",
 			GrabPosition = root.Position,
+			ScaleTimeout = true, -- langer Heimweg: Trage-Zeit wächst mit der Entfernung zur eigenen Base
 		})
 		if (Config.RarityIndex[def.Rarity] or 0) >= ANNOUNCE_RARITY then
 			Economy.NotifyAll(
@@ -1013,7 +1082,8 @@ local function giveReward(player: Player, data, elapsed: number, newBest: boolea
 				"Event"
 			)
 		end
-		return text .. " 🥚 " .. label .. " – TRAG ES HEIM! 🏃"
+		local seconds = tonumber(player:GetAttribute("CarryTimeout")) or Config.CarryTimeout
+		return text .. " 🥚 " .. label .. " – TRAG ES HEIM (" .. seconds .. " s)! 🏃"
 	end
 	local value = math.floor(Config.MeteorValue(entry) * Config.SellRatio)
 	Economy.AddCash(player, value)
@@ -1073,14 +1143,15 @@ local function finishRun(player: Player, run: RunState)
 		return
 	end
 	cooldownUntil[player.UserId] = t + REWARD_COOLDOWN
+	data.RunRewardAt = os.time() + REWARD_COOLDOWN
 	player:SetAttribute("RunCooldownUntil", t + REWARD_COOLDOWN)
 	local rewardText = giveReward(player, data, elapsed, newBest)
 	Services.EconomyService.Notify(player, timeText .. rewardText, "Success")
 	Services.EconomyService.MarkDirty(player)
 end
 
--- Ein Prüf-Schritt für einen Spieler (alle TICK Sekunden)
-local function stepPlayer(player: Player)
+-- Ein Prüf-Schritt für einen Spieler (alle TICK Sekunden, dt = echte Zeit seit dem letzten Schritt)
+local function stepPlayer(player: Player, dt: number)
 	local root, humanoid = aliveRoot(player)
 	local run = runs[player]
 	if not root or not humanoid then
@@ -1114,6 +1185,7 @@ local function stepPlayer(player: Player)
 			end
 		elseif
 			not Services.CarryService.IsCarrying(player) -- mit Beute wird nie teleportiert
+			and not inGrace(player)
 			and touchedLava(last, pos, standHeight(humanoid, root))
 		then
 			teleport(player, startSpawnCF)
@@ -1130,7 +1202,8 @@ local function stepPlayer(player: Player)
 		cancelRun(player, "☄️ Meteor-Run abgebrochen.")
 		return
 	end
-	if Services.CarryService.MoveStatus(player) == "flagged" then
+	local move = Services.CarryService.MoveStatus(player)
+	if move == "flagged" then
 		cancelRun(player, "🚫 Unmöglich schnell – Run abgebrochen!")
 		return
 	end
@@ -1160,6 +1233,13 @@ local function stepPlayer(player: Player)
 		publish(player, run)
 		return
 	end
+	if inGrace(player) then
+		return -- gerade zurückgesetzt: alte Positionen vor dem Teleport nicht werten
+	end
+	if pos.Y > TOP + MAX_HEIGHT then
+		resetToCheckpoint(player, run, "fall") -- so hoch kommt man nicht (Flug-Cheat)
+		return
+	end
 	if pos.Y < TOP - FALL_DEPTH then
 		if pos.X < lineMinX and pos.Z >= exitMinZ and pos.Z <= exitMaxZ then
 			cancelRun(player, "☄️ Meteor-Run abgebrochen.") -- über die Ziel-Rampe runter (ohne alle Checkpoints)
@@ -1168,8 +1248,16 @@ local function stepPlayer(player: Player)
 		end
 		return
 	end
-	if touchedLava(last, pos, standHeight(humanoid, root)) then
+	local stand = standHeight(humanoid, root)
+	if touchedLava(last, pos, stand) or hoveringOverLava(player, pos, stand, dt) then
 		resetToCheckpoint(player, run, "lava")
+		return
+	end
+	local admin = Services.AdminService
+	local isAdmin = admin ~= nil and admin.IsAdmin(player) -- Admins dürfen zum Testen fliegen
+	if move ~= "ok" or not (isAdmin or plausibleStep(humanoid, last, pos, dt)) then
+		-- Schonzeit nach einem Teleport ("wait": Positionen werden noch nicht geprüft) oder ein
+		-- unmöglich weiter Schritt -> keine Linie zählt
 		return
 	end
 	local nextIndex = run.CP + 1
@@ -1210,12 +1298,16 @@ local function scheduleImpact(position: Vector3)
 		pendingImpacts -= 1
 		local hitRadius = IMPACT_RADIUS + 1
 		for player, run in pairs(runs) do
-			if run.Phase == "Running" then
+			if run.Phase == "Running" and not inGrace(player) then
 				local root = aliveRoot(player)
 				if root then
 					local p = root.Position
 					local dx, dz = p.X - position.X, p.Z - position.Z
-					if dx * dx + dz * dz <= hitRadius * hitRadius and p.Y > position.Y - 1 and p.Y < position.Y + 9 then
+					if
+						dx * dx + dz * dz <= hitRadius * hitRadius
+						and p.Y > position.Y - 1
+						and p.Y < position.Y + IMPACT_HEIGHT
+					then
 						resetToCheckpoint(player, run, "impact")
 					end
 				end
@@ -1318,6 +1410,18 @@ function RunService.Start()
 		else
 			data.RunBest = nil
 		end
+		-- Abklingzeit aus dem Spielstand (von einem anderen Server) übernehmen
+		local rewardAt = tonumber(data.RunRewardAt)
+		if rewardAt and rewardAt == rewardAt then
+			local left = math.min(rewardAt - os.time(), REWARD_COOLDOWN)
+			if left > 0 then
+				cooldownUntil[player.UserId] = math.max(cooldownUntil[player.UserId] or 0, now() + left)
+			else
+				data.RunRewardAt = nil
+			end
+		else
+			data.RunRewardAt = nil
+		end
 		local cooldown = cooldownUntil[player.UserId]
 		if cooldown then
 			player:SetAttribute("RunCooldownUntil", cooldown)
@@ -1338,6 +1442,8 @@ function RunService.Start()
 		runs[player] = nil
 		notifyAt[player] = nil
 		lastPos[player] = nil
+		lavaAir[player] = nil
+		graceUntil[player] = nil
 	end)
 
 	task.spawn(function()
@@ -1348,7 +1454,7 @@ function RunService.Start()
 			local dt = math.clamp(clock - last, 0, 1)
 			last = clock
 			for _, player in ipairs(Players:GetPlayers()) do
-				local ok, err = pcall(stepPlayer, player)
+				local ok, err = pcall(stepPlayer, player, dt)
 				if not ok then
 					warn("[RunService] Fehler bei " .. player.Name .. ": " .. tostring(err))
 				end

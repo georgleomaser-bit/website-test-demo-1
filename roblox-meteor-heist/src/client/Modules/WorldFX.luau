@@ -533,6 +533,7 @@ type AnimRecord = {
 	Moved: boolean,
 	Squash: boolean, -- darf gerade gestaucht werden (nur die nächsten MAX_SQUASH)
 	Resized: boolean, -- Body-Größe gerade lokal verändert
+	SetSize: Vector3?, -- zuletzt von uns gesetzte Body-Größe (anders = der Server hat sie geändert)
 	Yaw: number,
 	YawTarget: number,
 	HopAt: number,
@@ -591,6 +592,7 @@ local function addAnim(inst: Instance): AnimRecord?
 		Moved = false,
 		Squash = false,
 		Resized = false,
+		SetSize = nil,
 		Yaw = 0,
 		YawTarget = 0,
 		HopAt = 0,
@@ -604,16 +606,34 @@ local function addAnim(inst: Instance): AnimRecord?
 	return record
 end
 
--- Echte Body-Größe (der Server schreibt sie als Attribut "BaseSize", auch nach dem Wachsen)
+-- Stammt die aktuelle Body-Größe noch von uns (Stauchen)? Hat der Server sie inzwischen geändert
+-- (Level-Up: AlienFactory.Refresh skaliert das Model), gilt seine Größe – nie mit einer alten überschreiben.
+local function ownsBodySize(record: AnimRecord, primary: BasePart): boolean
+	local setSize = record.SetSize
+	return record.Resized and setSize ~= nil and (primary.Size - setSize).Magnitude < 1e-3
+end
+
+-- Echte Body-Größe: nicht gestaucht = die aktuelle (vom Server), gestaucht = die gemerkte bzw. das
+-- Attribut "BaseSize" vom Server
 local function realBodySize(record: AnimRecord, primary: BasePart): Vector3?
+	if not ownsBodySize(record, primary) then
+		return primary.Size
+	end
 	local size = primary:GetAttribute("BaseSize")
 	if typeof(size) == "Vector3" then
 		return size
 	end
-	if not record.Resized then
-		return primary.Size
-	end
 	return record.BodySize
+end
+
+-- Body zurück auf seine echte Größe (nur, wenn wir ihn gestaucht haben und der Server nichts geändert hat)
+local function restoreBodySize(record: AnimRecord)
+	local primary, bodySize = record.Primary, record.BodySize
+	if primary and bodySize and primary.Parent and ownsBodySize(record, primary) then
+		primary.Size = bodySize
+	end
+	record.Resized = false
+	record.SetSize = nil
 end
 
 -- Ruhe-Lage neu merken (erstes Mal, oder der Server hat das Alien verschoben/vergrößert)
@@ -625,10 +645,11 @@ local function rebaseAnim(record: AnimRecord): boolean
 	end
 	-- Body zuerst auf seine echte Größe (falls wir ihn gerade gestaucht hatten)
 	local bodySize = realBodySize(record, primary)
-	if bodySize and record.Resized and primary.Size ~= bodySize then
+	if bodySize and ownsBodySize(record, primary) then
 		primary.Size = bodySize
 	end
 	record.Resized = false
+	record.SetSize = nil
 	record.BodySize = bodySize
 	local base = model:GetPivot()
 	local inverse = base:Inverse()
@@ -740,10 +761,7 @@ end
 local function resetAnim(record: AnimRecord)
 	local base = record.Base
 	local primary = record.Primary
-	if record.Resized and primary and record.BodySize and primary.Parent then
-		primary.Size = record.BodySize
-	end
-	record.Resized = false
+	restoreBodySize(record)
 	if base and primary and record.Moved and primary:IsDescendantOf(workspace) and not popping[record.Model] then
 		table.clear(resetParts)
 		table.clear(resetCFrames)
@@ -830,9 +848,8 @@ local function scanAnim(camPos: Vector3)
 		local record = animCandidates[i]
 		activeAnims[i] = record
 		local squash = i <= MAX_SQUASH and record.Dist <= SQUASH_RANGE
-		if not squash and record.Resized and record.Primary and record.BodySize then
-			record.Primary.Size = record.BodySize
-			record.Resized = false
+		if not squash and record.Resized then
+			restoreBodySize(record)
 		end
 		record.Squash = squash
 		local base = record.Base
@@ -908,8 +925,10 @@ local function animateRecord(record: AnimRecord, base: CFrame, now: number, coun
 	local bodySize = record.BodySize
 	if squash and primary and bodySize then
 		local sx = 1 / math.sqrt(sy)
-		primary.Size = Vector3.new(bodySize.X * sx, bodySize.Y * sy, bodySize.Z * sx)
+		local size = Vector3.new(bodySize.X * sx, bodySize.Y * sy, bodySize.Z * sx)
+		primary.Size = size
 		record.Resized = true
+		record.SetSize = primary.Size -- so, wie Roblox den Wert speichert (für den Vergleich)
 	end
 	record.Moved = true
 	return poseAnim(record, base, record.Yaw, lift, sy, blink, animParts, animCFrames, count)
@@ -937,6 +956,7 @@ local function stepAnim(now: number, stride: number): number
 					or not last
 					or (primary.Position - last.Position).Magnitude > 0.02
 					or model:GetAttribute("Rev") ~= record.Rev
+					or (record.Resized and not ownsBodySize(record, primary)) -- Server hat die Größe geändert
 				then
 					ready = rebaseAnim(record)
 					local newBase = record.Base

@@ -707,7 +707,8 @@ local function stepNav(dt: number)
 	local left = 0
 	local key
 	if home then
-		local timeout = tonumber(ctx.Config.CarryTimeout) or 60
+		-- echte Trage-Zeit vom Server (lange Heimwege, z.B. Meteor-Run-Ei, bekommen mehr Zeit)
+		local timeout = tonumber(player:GetAttribute("CarryTimeout")) or tonumber(ctx.Config.CarryTimeout) or 60
 		left = math.clamp(math.ceil(timeout - (os.clock() - carryStartedAt)), 0, 999)
 		key = distance * 1000 + left
 	else

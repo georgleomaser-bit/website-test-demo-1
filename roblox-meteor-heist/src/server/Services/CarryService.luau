@@ -36,6 +36,12 @@ local MIN_CARRY_SPEED_FACTOR = 1.5
 -- Förderband und Laufbänder schieben mit (wer mit Beute auf dem Band mitfährt, ist schneller)
 local CONVEYOR_EXTRA_SPEED = math.max(Config.BeltSpeed, 14)
 local SUPER_BONK_NAME = "Super-Bonk" -- Werkzeug-Name im Rucksack (normaler Schläger: "Bonk")
+-- Lange Heimwege (info.ScaleTimeout, z.B. das Ei vom Meteor-Run): Trage-Zeit = Weg / Trage-Tempo * TRIP_SLACK
+-- + TRIP_EXTRA, mindestens Config.CarryTimeout. Der Weg wird großzügig gerechnet (|dx| + |dz| bis zum
+-- Eingang der eigenen Base – Umwege um Basen und Förderband sind darin enthalten).
+local TRIP_SLACK = 1.3
+local TRIP_EXTRA = 10
+local TRIP_MAX = 240
 
 -- Fortschritt für die Tagesaufgaben (RewardService) – ein Fehler dort darf das Klauen nie stören
 local function trackReward(player: Player, kind: string, amount: number)
@@ -215,6 +221,32 @@ local function minCarryDistance(victimPlot, ownPlot, from: Vector3): number
 	return toExit + between
 end
 
+-- Trage-Tempo OHNE Speed Coil (die kann man unterwegs weglegen) – gleiche Regeln wie EconomyService
+local function slowCarrySpeed(player: Player, entry): number
+	local factor = 1
+	if not Services.MonetizationService.HasPass(player, "CarryFast") then
+		factor = Config.CarrySpeedFactor
+		local heavy = Config.HeavyFactor(entry)
+		if heavy then
+			factor = math.min(factor, heavy)
+		end
+	end
+	return math.max(8, Services.EconomyService.GetSpeed(player) * factor)
+end
+
+-- Trage-Zeit für einen langen Heimweg (info.ScaleTimeout): proportional zur Entfernung zur eigenen Base
+local function tripTimeout(player: Player, entry, from: Vector3?): number
+	local plot = Services.PlotService.GetPlot(player)
+	if not plot or not from then
+		return Config.CarryTimeout
+	end
+	local half = plot.HalfSize or 36
+	local entrance = plot.CFrame:PointToWorldSpace(Vector3.new(0, 0, -half))
+	local route = math.abs(from.X - entrance.X) + math.abs(from.Z - entrance.Z)
+	local seconds = route / slowCarrySpeed(player, entry) * TRIP_SLACK + TRIP_EXTRA
+	return math.clamp(math.ceil(seconds), Config.CarryTimeout, TRIP_MAX)
+end
+
 -- Mindest-Tragezeit für ein Ei vom Band/Boden: Luftlinie bis zum Eingang der eigenen Base
 local function minGroundCarryTime(player: Player, from: Vector3?): number
 	local plot = Services.PlotService.GetPlot(player)
@@ -238,6 +270,7 @@ end
 
 local function cleanup(player: Player, info)
 	carrying[player] = nil
+	player:SetAttribute("CarryTimeout", nil)
 	if info.Visual then
 		info.Visual:Destroy()
 		info.Visual = nil
@@ -316,8 +349,9 @@ local function createVisual(player: Player, entry): Instance?
 end
 
 -- info (Plot):   { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef, MinTime? }
--- info (Ground): { Source = "Ground", From = "Belt"|"Drop"?, GrabPosition?, MinTime? }
--- Dazu kommen hier: Entry, Started, Character, StartPos, LastPos (laufend), Visual
+-- info (Ground): { Source = "Ground", From = "Belt"|"Drop"|"Run"?, GrabPosition?, MinTime?, ScaleTimeout? }
+--   ScaleTimeout = true: Trage-Zeit wächst mit der Entfernung zur eigenen Base (tripTimeout)
+-- Dazu kommen hier: Entry, Started, Character, StartPos, LastPos (laufend), Visual, Timeout
 function CarryService.StartCarry(player: Player, entry, info)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -329,6 +363,11 @@ function CarryService.StartCarry(player: Player, entry, info)
 	if info.MinTime == nil then
 		info.MinTime = info.Source == "Ground" and minGroundCarryTime(player, info.StartPos) or 0
 	end
+	info.Timeout = if info.ScaleTimeout
+		then tripTimeout(player, entry, info.StartPos)
+		else tonumber(info.Timeout) or Config.CarryTimeout
+	-- Client (HUD-Countdown) kennt so die echte Trage-Zeit
+	player:SetAttribute("CarryTimeout", info.Timeout)
 	-- Wer klaut, wird sichtbar: sonst wäre jeder Diebstahl mit Umhang unbonkbar
 	local gadgets = Services.GadgetService
 	local uncloaked = false
@@ -868,7 +907,7 @@ function CarryService.Start()
 				if not root or not humanoid or humanoid.Health <= 0 or not info.Visual or not info.Visual.Parent then
 					-- (Visual weg = Charakter neu gespawnt oder Beute zerstört)
 					CarryService.Fail(player, "died")
-				elseif elapsed > Config.CarryTimeout then
+				elseif elapsed > (info.Timeout or Config.CarryTimeout) then
 					CarryService.Fail(player, "timeout")
 				elseif plot and Services.PlotService.IsInside(plot, root.Position) then
 					local admin = Services.AdminService
