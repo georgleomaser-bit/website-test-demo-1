@@ -364,6 +364,7 @@ Alles steht kommentiert in `ReplicatedStorage → Shared → Config`:
 - **Glücks-Zähler**: `Config.Pity` (alle `Step` Eier ohne Legendary+ gibt es `Bonus` mehr Glück, höchstens `Max`).
 - **Nacht**: `Config.Night` (Tag- und Nachtlänge, Blutmond-Chance und -Glück, Sternschnuppen, Kisten).
   Nacht-Eier sind normale Zeilen in `Config.Meteors` mit `NightOnly = true` (nur im Blutmond: `BloodMoonOnly = true`).
+  Eier aus Robux-Käufen, Glücksrad und Starter-Paket sind nie Nacht-Eier – so stimmen die im Shop angezeigten Chancen immer.
 - **Mutationen**: `Config.Mutations` (Weight = Chance, Mult = Geld-Faktor).
 - **Laufbänder (Speed Farm)**: `Config.Treadmills` (Name, Preis, Schritte pro Tick, Farbe; `LegacySteps` nur für alte Spielstände).
 - **Schläger**: `Config.Bats` (Name, ab wie vielen Aliens im Index, Reichweite, Wucht, Abklingzeit, Farben).

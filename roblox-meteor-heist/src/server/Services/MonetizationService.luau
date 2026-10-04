@@ -171,8 +171,11 @@ local function grantStarterPack(player: Player): boolean
 	if not restricted then
 		table.insert(parts, 2, "🎡 " .. STARTER_SPINS .. " Drehs")
 	end
-	local _, eggText =
-		Services.RewardService.GiveEgg(player, STARTER_EGG_RARITY, { Fixed = restricted, FullValue = true })
+	local _, eggText = Services.RewardService.GiveEgg(
+		player,
+		STARTER_EGG_RARITY,
+		{ Fixed = restricted, FullValue = true, DayOnly = true }
+	)
 	data.StarterBought = true
 
 	Economy.Notify(player, "⭐ STARTER-PAKET: " .. table.concat(parts, ", ") .. " – danke!", "Success")
@@ -248,7 +251,8 @@ local function grantProduct(player: Player, product): boolean
 		return true
 	elseif product.Type == "Meteor" then
 		-- Base voll -> voller Wert als Cash, damit der Kauf nie verloren geht (macht GiveEgg)
-		local ok, text = Services.RewardService.GiveEgg(player, product.Rarity, { FullValue = true })
+		-- DayOnly: keine Nacht-Eier -> die im Shop angegebenen Chancen stimmen immer
+		local ok, text = Services.RewardService.GiveEgg(player, product.Rarity, { FullValue = true, DayOnly = true })
 		if not ok then
 			return false
 		end

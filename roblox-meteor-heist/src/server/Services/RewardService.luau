@@ -214,20 +214,23 @@ end
 --   es sich, die Base absichtlich voll zu lassen. opts.FullValue (Robux-Käufe): der volle Wert.
 -- opts.Fixed = immer der günstigste Meteor der Seltenheit (z.B. Länder ohne Zufalls-Käufe)
 -- opts.RandomMutation = Mutation würfeln (Gold, Frost ...), sonst "Normal"
+-- opts.DayOnly = nie Nacht-Eier (Robux-Käufe: die angegebenen Chancen gelten immer, auch nachts)
 -- Gibt (true, Text) zurück – false nur, wenn es die Seltenheit nicht gibt.
 function RewardService.GiveEgg(
 	player: Player,
 	rarityName: string,
-	opts: { Fixed: boolean?, RandomMutation: boolean?, FullValue: boolean? }?
+	opts: { Fixed: boolean?, RandomMutation: boolean?, FullValue: boolean?, DayOnly: boolean? }?
 ): (boolean, string)
 	local Meteor = Services.MeteorService
 	local def = nil
-	if opts and opts.Fixed then
+	if opts and (opts.Fixed or opts.DayOnly) then
 		local list = Config.MeteorsByRarity[rarityName]
 		if not list or #list == 0 then
 			list = Config.MeteorsByRarityAll[rarityName]
 		end
-		def = list and list[1]
+		if list and #list > 0 then
+			def = if opts.Fixed then list[1] else list[rng:NextInteger(1, #list)]
+		end
 	else
 		def = Meteor.RandomOfRarity(rarityName, true)
 	end
@@ -268,7 +271,9 @@ local function grantPrize(player: Player, data, prize, effects: boolean): string
 		RewardService.AddSpins(player, amount)
 		return "+" .. spinsWord(amount) .. " 🎡"
 	elseif kind == "Egg" then
-		local ok, text = RewardService.GiveEgg(player, tostring(prize.Rarity), { RandomMutation = true })
+		-- DayOnly: Glücksrad-Drehs kann man kaufen -> gleiche Eier-Auswahl wie im Shop angezeigt (ohne Nacht-Eier)
+		local ok, text =
+			RewardService.GiveEgg(player, tostring(prize.Rarity), { RandomMutation = true, DayOnly = true })
 		if ok then
 			return text
 		end

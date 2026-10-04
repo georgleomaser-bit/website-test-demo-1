@@ -10,6 +10,7 @@
 --   • Regenbogen-Teile färben sich durch
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
 --   • Lava-Feuer an Parade-Eiern (Attribut "LavaFire"): nur die nächsten paar brennen
+--   • Lichter der Aliens und der krassen Eier: nur die nächsten paar leuchten (volle Basen, Glück-Events)
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Krasse Eier (Attribut "RareFX", ab Legendary; 4 = Infinity, Ring doppelt so schnell): Ring dreht sich, Licht pulsiert, Partikel nur
 --     in Kameranähe, ab Mythic Blitze (nur die nächsten MAX_RINGS)
@@ -39,6 +40,8 @@ local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die näch
 local HIGHLIGHT_RANGE = 150
 local MAX_LAVA_FIRES = 6 -- so viele Lava-Feuer in der Parade brennen höchstens gleichzeitig (die nächsten)
 local LAVA_FIRE_RANGE = 60
+local MAX_ALIEN_LIGHTS = 16 -- so viele Alien-Lichter (Seltene/Ultra in den Basen) leuchten höchstens (die nächsten)
+local ALIEN_LIGHT_RANGE = 150
 local HATCH_INTERVAL = 0.2 -- Schlüpf-Countdown 5x pro Sekunde
 local HATCH_RANGE = 170
 local RAINBOW_RANGE = 400
@@ -205,8 +208,6 @@ end
 -- ---------------------------------------------------------------------
 -- TREADMILLS (Laufbänder auf dem Spawn-Platz)
 -- ---------------------------------------------------------------------
-type TreadmillInfo = { Model: Model, Id: string }
-local treadmills: { TreadmillInfo } = {}
 local treadmillSeen: { [Instance]: boolean } = {}
 
 local function treadmillDef(id: string): any
@@ -224,7 +225,6 @@ local function setupTreadmill(model: Instance)
 		return
 	end
 	treadmillSeen[model] = true
-	table.insert(treadmills, { Model = model, Id = id })
 
 	local def = treadmillDef(id)
 	local color: Color3 = if def and typeof(def.Color) == "Color3" then def.Color else Color3.new(1, 1, 1)
@@ -883,8 +883,9 @@ end
 
 local highlightSet = newNearestSet(MAX_HIGHLIGHTS, HIGHLIGHT_RANGE)
 local lavaSet = newNearestSet(MAX_LAVA_FIRES, LAVA_FIRE_RANGE)
+local alienLightSet = newNearestSet(MAX_ALIEN_LIGHTS, ALIEN_LIGHT_RANGE)
 
--- Highlight oder Fire (beide haben "Enabled")
+-- Highlight, Fire oder PointLight (alle haben "Enabled")
 local function setOn(inst: Instance, on: boolean)
 	local item = inst :: any
 	if item.Enabled ~= on then
@@ -905,6 +906,13 @@ local function addHighlight(inst: Instance)
 		nearestAdd(highlightSet, inst)
 	elseif inst:IsA("Fire") and inst:GetAttribute("LavaFire") == true then
 		nearestAdd(lavaSet, inst)
+	elseif inst:IsA("PointLight") and (inst.Name == "BigLight" or inst.Name == "Light") then
+		-- Lichter der Aliens (AlienFactory: am Body) – volle Basen mit Godly+ hätten sonst Dutzende
+		local body = inst.Parent
+		local model = body and body.Parent
+		if body and body.Name == "Body" and model and model:GetAttribute("AlienId") ~= nil then
+			nearestAdd(alienLightSet, inst)
+		end
 	end
 end
 
@@ -958,6 +966,7 @@ end
 local function scanHighlights(camPos: Vector3)
 	scanNearest(highlightSet, camPos)
 	scanNearest(lavaSet, camPos)
+	scanNearest(alienLightSet, camPos)
 end
 
 -- ---------------------------------------------------------------------

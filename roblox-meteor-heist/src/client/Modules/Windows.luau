@@ -45,15 +45,11 @@ local function percentText(value: number): string
 	return string.format("%.1f", value)
 end
 
--- Alle kaufbaren (spawnbaren) Meteore einer Seltenheit
+-- Alle Meteore einer Seltenheit, die ein Robux-Ei geben kann (spawnbar, ohne Nacht-Eier –
+-- gleiche Liste wie der Server: Config.MeteorsByRarity, RewardService.GiveEgg mit DayOnly)
 local function meteorsOfRarity(rarityName: string): { any }
-	local result = {}
-	for _, def in ipairs(ctx.Config.Meteors) do
-		if def.Rarity == rarityName and def.Spawnable ~= false then
-			table.insert(result, def)
-		end
-	end
-	return result
+	local defs = ctx.Config.MeteorsByRarity and ctx.Config.MeteorsByRarity[rarityName]
+	return if type(defs) == "table" then defs else {}
 end
 
 -- Gehört dir das Laufband? (State.Treadmills = Liste gekaufter Ids, gratis = immer)

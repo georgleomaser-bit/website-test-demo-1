@@ -553,6 +553,8 @@ local function onEffect(name: any, strength: any, data: any)
 				.. (if time then "  ⏱️ " .. formatRunTime(time) else ""),
 			"Success"
 		)
+	elseif name == "RunReady" then
+		ping(1) -- im Start-Tor: gleich geht's los (Timer startet an der Linie)
 	elseif name == "RunStart" then
 		ping(1.5)
 		UI.Pulse(hudScale, 0.15)

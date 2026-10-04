@@ -460,7 +460,7 @@ Zufälliger Legendary Meteor
 Beschreibung:
 
 ```
-Ein zufälliger Legendary-Meteor fliegt sofort in deine Base: Solar Flare, Aurora Crystal oder Titan Boulder (jeder mit Chance 1 von 3). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
+Ein zufälliger Legendary-Meteor fliegt sofort in deine Base: Solar Flare, Aurora Crystal, Phoenix Ember, Titan Boulder oder Dragon Scale (jeder mit Chance 1 von 5). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
 ```
 
 - Preis: **149 Robux**
@@ -478,7 +478,7 @@ Zufälliger Mythic Meteor
 Beschreibung:
 
 ```
-Ein zufälliger Mythic-Meteor fliegt sofort in deine Base: Nebula Heart, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 3). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
+Ein zufälliger Mythic-Meteor fliegt sofort in deine Base: Nebula Heart, Vortex Core, Black Hole Fragment oder Pulsar Gem (jeder mit Chance 1 von 4). Daraus schlüpft ein Alien: Normal 75 %, Selten 22 %, Ultra 3 %. Ist deine Base voll, bekommst du seinen Wert als Geld.
 ```
 
 - Preis: **449 Robux**
@@ -496,7 +496,7 @@ Starter-Paket
 Beschreibung:
 
 ```
-Das Super-Angebot für den Start, nur EINMAL kaufbar! Du bekommst: Geld (15 Minuten Einkommen, mindestens $100.000), 3 Glücksrad-Drehs, ein zufälliges Legendary-Ei (Solar Flare, Aurora Crystal oder Titan Boulder, jedes mit Chance 1 von 3) und das Gadget Speed Coil (+30 % Tempo). Hast du die Speed Coil schon, bekommst du ihren Preis als Geld. Ist deine Base voll, bekommst du den Wert vom Ei als Geld.
+Das Super-Angebot für den Start, nur EINMAL kaufbar! Du bekommst: Geld (15 Minuten Einkommen, mindestens $100.000), 3 Glücksrad-Drehs, ein zufälliges Legendary-Ei (Solar Flare, Aurora Crystal, Phoenix Ember, Titan Boulder oder Dragon Scale, jedes mit Chance 1 von 5) und das Gadget Speed Coil (+30 % Tempo). Hast du die Speed Coil schon, bekommst du ihren Preis als Geld. Ist deine Base voll, bekommst du den Wert vom Ei als Geld.
 ```
 
 - Preis: **49 Robux** (Super-Angebot! Es soll sich wie ein Schnäppchen anfühlen.)
@@ -592,7 +592,7 @@ Egg Rush JETZT
 Beschreibung:
 
 ```
-Startet sofort einen EGG RUSH für alle im Server: 25 Gratis-Eier regnen auf die ganze Map, mit 3x Glück! 45 Sekunden lang kann jeder sie schnappen und nach Hause tragen. Alle sehen, dass du es warst.
+Startet sofort einen EGG RUSH für alle im Server: 40 Gratis-Eier regnen auf die ganze Map, mit 3x Glück! 45 Sekunden lang kann jeder sie schnappen und nach Hause tragen. Alle sehen, dass du es warst.
 ```
 
 - Preis: **69 Robux**
