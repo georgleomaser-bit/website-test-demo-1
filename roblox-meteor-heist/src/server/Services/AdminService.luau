@@ -431,7 +431,13 @@ local photoRng = Random.new()
 local SHOWCASE_DISTANCE = 14 -- Studs vor dem Admin
 local SHOWCASE_GAP = 2.5 -- Lücke zwischen zwei Meteoren
 local SHOWCASE_LIFETIME = 300 -- Sekunden
-local PHOTO_RARITIES = { "Legendary", "Mythic", "Celestial", "Divine", "Secret" }
+-- (nur Seltenheiten, die es in Config.Rarities gibt – siehe Filter unten)
+local PHOTO_RARITIES = { "Legendary", "Mythic", "Celestial", "Divine", "Secret", "Godly", "Cosmic", "Infinity" }
+for i = #PHOTO_RARITIES, 1, -1 do
+	if not Config.RaritiesByName[PHOTO_RARITIES[i]] then
+		table.remove(PHOTO_RARITIES, i)
+	end
+end
 local PHOTO_LUCK = 8
 local ADMIN_METEOR_LIFETIME = 300 -- Sekunden in der Gratis-Zone
 -- Admin-Meteore haben Umriss, starkes Licht und Aura -> per "Spawnen" höchstens so viele auf einmal
