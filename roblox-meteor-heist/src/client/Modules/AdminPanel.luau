@@ -526,12 +526,12 @@ function AdminPanel.Build(ctx: any)
 			end,
 		},
 		{
-			"Ei zur Parade",
+			"Zum Nester-Feld",
 			Theme.Orange,
 			function()
 				admin(
 					"SpawnMeteor",
-					{ MeteorId = selectedMeteor, Mutation = selectedMutation, Count = countBox.Text, Where = "Parade" }
+					{ MeteorId = selectedMeteor, Mutation = selectedMutation, Count = countBox.Text, Where = "Nest" }
 				)
 			end,
 		},
@@ -629,8 +629,8 @@ function AdminPanel.Build(ctx: any)
 		admin("AdminRain", { Count = count })
 	end)
 
-	-- Eierregen in der Parade
-	UI.Section(spawnPage, "Eierregen in der Parade", 60)
+	-- Eierregen in den Nestern
+	UI.Section(spawnPage, "Eierregen in den Nestern", 60)
 	local rainGrid = UI.Grid(spawnPage, 61, 100, 38)
 	UI.Button({ Text = "Zufall", Color = Theme.Gray, LayoutOrder = 0, MaxText = 15, Parent = rainGrid }, function()
 		admin("MeteorRain", { Count = if countBox.Text ~= "1" then countBox.Text else 15 })
@@ -693,7 +693,7 @@ function AdminPanel.Build(ctx: any)
 			end,
 		},
 	})
-	UI.Section(eventPage, "Parade & Eier", 20)
+	UI.Section(eventPage, "Nester & Eier", 20)
 	local eventRow = UI.Row(eventPage, 21, 38)
 	local multBox = UI.TextBox({
 		Size = UDim2.new(0.33, -4, 1, 0),
@@ -709,10 +709,10 @@ function AdminPanel.Build(ctx: any)
 		LayoutOrder = 2,
 		Parent = eventRow,
 	})
-	local bossBox = UI.TextBox({
+	local rareBox = UI.TextBox({
 		Size = UDim2.new(0.33, -4, 1, 0),
-		PlaceholderText = "Bosse (1-10)",
-		Text = tostring(powers.BossParadeCount or 4),
+		PlaceholderText = "Seltene Eier (1-10)",
+		Text = tostring(powers.RareNestCount or 4),
 		LayoutOrder = 3,
 		Parent = eventRow,
 	})
@@ -739,10 +739,17 @@ function AdminPanel.Build(ctx: any)
 			end,
 		},
 		{
-			"Boss-Parade",
+			"Große Nester",
 			Theme.Pink,
 			function()
-				admin("BossParade", { Count = bossBox.Text, Global = globalToggle })
+				admin("RareNests", { Count = rareBox.Text, Global = globalToggle })
+			end,
+		},
+		{
+			"Ei-Rennen",
+			Color3.fromRGB(255, 190, 30),
+			function()
+				admin("RaceEvent", { Global = globalToggle })
 			end,
 		},
 	})

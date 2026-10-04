@@ -1,7 +1,7 @@
 -- =====================================================================
 --  FOTO-MODUS (Taste H, nur Admins) – für schöne Thumbnail-Screenshots.
 --  Rein clientseitig: blendet die eigene UI, die Roblox-Oberfläche, fliegende Zahlen,
---  Admin-Ansagen, das "!" der Parade-Aliens und alle Prompts aus. Nochmal H = alles wieder an.
+--  Admin-Ansagen, das "!" der Kreaturen und alle Prompts aus. Nochmal H = alles wieder an.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -40,8 +40,8 @@ local function startPhotoMode()
 	ctx.Gui.Enabled = false
 	ctx.Prompts.SetPhotoMode(true)
 	ctx.Effects.SetHidden(true)
-	if ctx.Parade then
-		ctx.Parade.SetHidden(true) -- "!" über erschrockenen Parade-Aliens aus
+	if ctx.NestField then
+		ctx.NestField.SetHidden(true) -- "!" über jagenden Kreaturen aus
 	end
 	-- Roblox-Oberfläche (Chat, Spielerliste, Rucksack ...) merken und ausblenden
 	savedCoreGui = {}
@@ -76,8 +76,8 @@ local function stopPhotoMode()
 	photoConnections = {}
 	ctx.Gui.Enabled = true
 	ctx.Effects.SetHidden(false)
-	if ctx.Parade then
-		ctx.Parade.SetHidden(false)
+	if ctx.NestField then
+		ctx.NestField.SetHidden(false)
 	end
 	for item, enabled in pairs(savedCoreGui) do
 		pcall(StarterGui.SetCoreGuiEnabled, StarterGui, item, enabled)

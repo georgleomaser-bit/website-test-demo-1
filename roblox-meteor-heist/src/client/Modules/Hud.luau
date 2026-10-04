@@ -4,9 +4,9 @@
 --   rechts:       Icon-Knöpfe in 2 Spalten: 🎁 Geschenke, 🎡 Glücksrad, 📜 Aufgaben (mit Badges),
 --                 👽 Index, 🏃 Laufbänder, 🏠 Home, (🛠️ Admin)
 --   unten links:  👟 Schritte (gelb), 💵 Geld (grün), +$/s
---   oben:         Banner (Meteoritenschauer/Glück, 🥚 Egg Rush) bzw. Countdowns bis zum nächsten
---   unten Mitte:  Wegweiser (🏠 Base beim Tragen / 🥚 nächstes Ei im Egg Rush), Trage-Hinweis,
---                 Prompt-Hinweis an der Parade (E = Klauen gratis, F = Kaufen)
+--   oben:         Banner (Meteoritenschauer/Glück, 🥚 Egg Rush, 🏁 Ei-Rennen) bzw. Countdowns bis zum nächsten
+--   unten Mitte:  Wegweiser (🏠 Base beim Tragen / 🏁 Gold-Ei im Rennen / 🥚 nächstes Ei im Egg Rush),
+--                 Trage-Hinweis, Prompt-Hinweis an den Nestern (E = Schnappen gratis, F = Kaufen)
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -71,6 +71,7 @@ local eventPill: Pill
 local eggPill: Pill
 local showerNextPill: Pill
 local eggNextPill: Pill
+local racePill: Pill
 
 local function makePill(name: string, width: number, height: number, color: Color3?, order: number): Pill
 	local banner = color ~= nil
@@ -412,6 +413,7 @@ local function buildTop()
 	eggPill = makePill("EggRushBanner", 400, 42, Color3.fromRGB(255, 200, 40), 2)
 	showerNextPill = makePill("NextShower", 250, 30, nil, 3)
 	eggNextPill = makePill("NextEggRush", 250, 30, nil, 4)
+	racePill = makePill("RaceBanner", 400, 42, Color3.fromRGB(255, 190, 30), 2)
 
 	showerTint = UI.Create("ColorCorrectionEffect", {
 		Name = "ShowerTint",
@@ -507,7 +509,7 @@ local function buildBottom()
 	})
 	carryScale.Parent = carryLabel
 
-	-- Prompt-Hinweis an der Parade / an Eiern am Boden
+	-- Prompt-Hinweis an den Nestern / an Eiern am Boden
 	hintFrame = UI.Create("Frame", {
 		Name = "PromptHint",
 		Size = UDim2.fromOffset(680, 40),
@@ -560,11 +562,11 @@ local function hintText(kind: string, state: any): string
 	if full then
 		return "📦 Deine Base ist voll – verkauf erst etwas!"
 	end
-	if kind == "Parade" then
+	if kind == "Nest" then
 		if carrying then
-			return "🏃 Erst heimbringen!   💵 " .. buyKey .. " = KAUFEN geht trotzdem"
+			return "🏃 Erst heimbringen!   💵 " .. buyKey .. " = KAUFEN geht"
 		end
-		return "🦹 " .. grabKey .. " = KLAUEN (gratis, selbst heimtragen!)   💵 " .. buyKey .. " = KAUFEN"
+		return "🥚 " .. grabKey .. " = SCHNAPPEN (gratis, heimtragen!)   💵 " .. buyKey .. " = KAUFEN"
 	elseif kind == "Ground" then
 		if carrying then
 			return "🏃 Du trägst schon etwas – erst heimbringen!"
@@ -590,7 +592,7 @@ local function updateHint()
 	end
 end
 
--- kind: "Parade" (Alien-Parade), "Ground" (Ei am Boden), "Free" (Gratis-Zone) oder nil
+-- kind: "Nest" (Ei im Nest), "Ground" (Ei am Boden), "Free" (Gratis-Zone) oder nil
 function Hud.SetPromptHint(kind: string?)
 	if kind ~= promptHintKind then
 		promptHintKind = kind
@@ -619,6 +621,11 @@ local function findMyPlot(): Model?
 		end
 	end
 	return nil
+end
+
+local function raceActive(): boolean
+	local untilTime = tonumber(ReplicatedStorage:GetAttribute("RaceUntil")) or 0
+	return untilTime > workspace:GetServerTimeNow()
 end
 
 local function eggRushActive(): boolean
@@ -675,6 +682,7 @@ local function stepNav(dt: number)
 	local rootPos = root.Position
 	local target: Vector3? = nil
 	local home = false
+	local race = false
 	if carrying then
 		-- Basen bewegen sich nicht: Position nur ab und zu neu holen (kein CFrame pro Frame)
 		if homeClock >= HOME_SCAN_INTERVAL then
@@ -684,6 +692,13 @@ local function stepNav(dt: number)
 		end
 		target = homePos
 		home = true
+	elseif raceActive() then
+		-- Gold-Ei (im Nest, am Boden oder beim Träger – der Server schreibt die Stelle jede Sekunde)
+		local racePos = ReplicatedStorage:GetAttribute("RaceTarget")
+		if typeof(racePos) == "Vector3" then
+			target = racePos
+			race = true
+		end
 	elseif eggRushActive() then
 		if eggClock >= EGG_SCAN_INTERVAL then
 			eggClock = 0
@@ -711,6 +726,8 @@ local function stepNav(dt: number)
 		local timeout = tonumber(player:GetAttribute("CarryTimeout")) or tonumber(ctx.Config.CarryTimeout) or 60
 		left = math.clamp(math.ceil(timeout - (os.clock() - carryStartedAt)), 0, 999)
 		key = distance * 1000 + left
+	elseif race then
+		key = -100000 - distance
 	else
 		key = -1 - distance
 	end
@@ -719,6 +736,9 @@ local function stepNav(dt: number)
 		if home then
 			navLabel.Text = ("🏠 Base: %d m   ⏱️ %d s"):format(distance, left)
 			navLabel.TextColor3 = if left <= CARRY_WARN then Color3.fromRGB(255, 120, 120) else WHITE
+		elseif race then
+			navLabel.Text = ("🏁 Gold-Ei: %d m"):format(distance)
+			navLabel.TextColor3 = Color3.fromRGB(255, 215, 60)
 		else
 			navLabel.Text = ("🥚 Nächstes Ei: %d m – schnell!"):format(distance)
 			navLabel.TextColor3 = Theme.Yellow
@@ -916,6 +936,15 @@ function Hud.Tick()
 		setPillText(eggNextPill, "🥚 Egg Rush in " .. Util.FormatTime(nextRush - now))
 	end
 	showPill(eggNextPill, showRushNext)
+	local raceUntil = tonumber(ReplicatedStorage:GetAttribute("RaceUntil")) or 0
+	local nextRace = tonumber(ReplicatedStorage:GetAttribute("NextRaceAt")) or 0
+	local raceOn = raceUntil > now
+	if raceOn then
+		setPillText(racePill, "🏁 EI-RENNEN " .. Util.FormatTime(raceUntil - now) .. " • Gold-Ei heimbringen!")
+	elseif nextRace > now and nextRace - now <= 60 then
+		setPillText(racePill, "🏁 Rennen in " .. Util.FormatTime(nextRace - now))
+	end
+	showPill(racePill, raceOn or (nextRace > now and nextRace - now <= 60))
 	showerTint.Enabled = showerUntil > now
 
 	-- 👻 Umhang aktiv?

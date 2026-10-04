@@ -1012,7 +1012,7 @@ local indexSignature = ""
 local SPECIAL_TITLE = "👑 Admin & Spezial (Bonus)"
 
 -- Aliens, die normale Spieler nie selbst ausbrüten können: aus Admin-Meteoren oder aus Meteoren,
--- die nie in die Parade kommen (z.B. Omega). Zählen als Bonus, nicht zum "X/Y"-Ziel.
+-- die nie von selbst in die Nester kommen (z.B. Omega). Zählen als Bonus, nicht zum "X/Y"-Ziel.
 local function isSpecialAlien(def: any): boolean
 	local Config = ctx.Config
 	local rarity = Config.RaritiesByName and Config.RaritiesByName[def.Rarity]

@@ -1,7 +1,6 @@
 -- =====================================================================
 --  WELT-ANIMATIONEN (alles lokal auf deinem Gerät -> butterweich, kein Server-Lag)
---   • Alien-Parade (Eier + lokale Träger-Aliens): eigenes Modul "Parade", wird hier über
---     WorldFX.SetPreStep jedes Frame VOR den krassen Eiern aufgerufen (Ringe folgen dem Ei)
+--   • (Optional) WorldFX.SetPreStep: ein anderes Modul kann jedes Frame VOR den krassen Eiern rechnen
 --   • Streifen auf den Treadmills laufen gleichmäßig durch und tauchen an den
 --     Enden unter die Lauffläche (kein Aufploppen)
 --   • Aliens leben: Atmen mit Squash & Stretch, kleine Hüpfer, Blinzeln, drehen sich zu Spielern
@@ -9,7 +8,7 @@
 --     Aliens ploppen mit Overshoot herein
 --   • Regenbogen-Teile färben sich durch
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
---   • Lava-Feuer an Parade-Eiern (Attribut "LavaFire"): nur die nächsten paar brennen
+--   • Lava-Feuer an Nest-Eiern (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Lichter der Aliens und der krassen Eier: nur die nächsten paar leuchten (volle Basen, Glück-Events)
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Krasse Eier (Attribut "RareFX", ab Legendary; 4 = Infinity, Ring doppelt so schnell): Ring dreht sich, Licht pulsiert, Partikel nur
@@ -30,7 +29,7 @@ local fxFolder: Folder? = nil
 
 local BEHIND_FRAME_SKIP = 8 -- außerhalb des Sichtfelds (nicht zu sehen): nur jedes 8. Frame
 local CLOSE_DISTANCE = 40 -- so nah immer jedes Frame (auch knapp hinter/neben der Kamera sichtbar)
-local VIEW_MARGIN = math.rad(12) -- Sichtfeld etwas größer rechnen (große Eier/Träger am Bildrand)
+local VIEW_MARGIN = math.rad(12) -- Sichtfeld etwas größer rechnen (große Eier am Bildrand)
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
 local STRIPE_SINK = 0.14 -- so tief tauchen die Streifen an den Enden unter die Lauffläche
 local SLOW_INTERVAL = 1 / 30 -- Alien-Animation + Regenbogen höchstens 30x pro Sekunde
@@ -38,7 +37,7 @@ local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens leben / wel
 local CLEANUP_INTERVAL = 1 -- so oft fliegen zerstörte Objekte aus den Listen
 local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die nächsten)
 local HIGHLIGHT_RANGE = 150
-local MAX_LAVA_FIRES = 6 -- so viele Lava-Feuer in der Parade brennen höchstens gleichzeitig (die nächsten)
+local MAX_LAVA_FIRES = 6 -- so viele Lava-Feuer in den Nestern brennen höchstens gleichzeitig (die nächsten)
 local LAVA_FIRE_RANGE = 60
 local MAX_ALIEN_LIGHTS = 16 -- so viele Alien-Lichter (Seltene/Ultra in den Basen) leuchten höchstens (die nächsten)
 local ALIEN_LIGHT_RANGE = 150
@@ -79,7 +78,7 @@ local moveParts: { BasePart } = {}
 local moveCFrames: { CFrame } = {}
 local frameNumber = 0
 
--- Parade (eigenes Modul): wird jedes Frame vor den krassen Eiern aufgerufen
+-- Optionaler Schritt eines anderen Moduls: wird jedes Frame vor den krassen Eiern aufgerufen
 type PreStep = (now: number, dt: number, camPos: Vector3, look: Vector3, cosLimit: number, frame: number) -> ()
 local preStep: PreStep? = nil
 
@@ -857,7 +856,7 @@ end
 
 -- ---------------------------------------------------------------------
 -- NUR DIE NÄCHSTEN EINSCHALTEN: Umrisse (Highlights, Roblox zeigt max. 31) und Lava-Feuer an
--- Parade-Eiern (sonst brennen bei Glück-Events Dutzende gleichzeitig).
+-- Nest-Eiern (sonst brennen bei Glück-Events Dutzende gleichzeitig).
 -- Der Server legt beide ausgeschaltet an; hier werden alle SCAN_INTERVAL Sekunden die nächsten
 -- "Max" in Reichweite eingeschaltet, alle anderen aus.
 -- ---------------------------------------------------------------------
@@ -1610,7 +1609,7 @@ local function stepRare(now: number)
 			if light then
 				light.Brightness = record.LightBase * (1.1 + 0.6 * math.sin(t * 3.4))
 			end
-			-- Säule zeigt immer senkrecht nach oben (das Ei wackelt auf dem Kopf des Trägers)
+			-- Säule zeigt immer senkrecht nach oben (auch wenn das Ei schief liegt oder wackelt)
 			local top = record.Top
 			if top then
 				top.Position = part.CFrame:VectorToObjectSpace(Vector3.new(0, record.TopHeight, 0))
@@ -1675,7 +1674,7 @@ function WorldFX.Init(context: any, map: Instance)
 		addAnim(inst)
 		addRare(inst)
 		local parent = inst.Parent
-		if parent and parent.Name ~= "ParadeMeteors" and parent.Name ~= "GroundMeteors" then
+		if parent and parent.Name ~= "NestMeteors" and parent.Name ~= "GroundMeteors" then
 			addHatchCandidate(inst)
 		end
 	end
@@ -1686,8 +1685,8 @@ function WorldFX.Init(context: any, map: Instance)
 		end
 		addRare(inst)
 		local parent = inst.Parent
-		-- Eier in der Parade / am Boden schlüpfen nie -> gar nicht erst beobachten
-		if parent and parent.Name ~= "ParadeMeteors" and parent.Name ~= "GroundMeteors" then
+		-- Eier in Nestern / am Boden schlüpfen nie -> gar nicht erst beobachten
+		if parent and parent.Name ~= "NestMeteors" and parent.Name ~= "GroundMeteors" then
 			addHatchCandidate(inst)
 		end
 	end)
@@ -1738,7 +1737,7 @@ function WorldFX.Init(context: any, map: Instance)
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end
-		-- Parade (Eier + Träger) VOR den krassen Eiern (Ringe folgen der aktuellen Position)
+		-- optionaler Schritt eines anderen Moduls VOR den krassen Eiern
 		local step = preStep
 		if step then
 			step(now, dt, camPos, look, cosLimit, frameNumber)

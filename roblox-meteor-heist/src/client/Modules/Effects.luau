@@ -2,7 +2,7 @@
 --  EFFEKTE vom Server (Remote "Effect": name, strength, data)
 --   "Steps"    -> fliegende "+X 👟"-Zahl über deinem Charakter (federt, Farbverlauf, kippelt)
 --   "Collect"  -> großes "+$X" in der Bildschirmmitte + Münzen fliegen von dir zum Geld-Zähler
---   "Deliver"  -> Geister-Meteor fliegt im Bogen von der Parade in die Base, mit Funkenschweif
+--   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Nest in die Base, mit Funkenschweif
 --                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter),
 --                 beim Aufprall: Staub-Puff + Druckwelle
 --   "Hatch"    -> Funken-Explosion + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
@@ -13,7 +13,9 @@
 --                    sonst bzw. beim Tragen kleine Karte oben rechts
 --   "Shake" (weich und dezent), "Confetti" (fliegt aus zwei Kanonen hoch, fällt mit Schwerkraft,
 --   dreht und flattert), "Alarm" wie bisher
---   "ParadeBoss" -> (lokal vom Modul Parade ausgelöst, nicht vom Server) Boss-Parade startet: bunte Konfetti-Bursts + Druckwelle am Hangar, drei Trommelschläge
+--   "BigNest"  -> Legendary+ im großen Nest: bunte Konfetti-Bursts + Druckwelle am Nest
+--   "RaceStart" -> Ei-Rennen startet: Konfetti am Renn-Nest + drei Trommelschläge
+--   "NestPop"  -> (lokal vom Modul NestField) neues Ei im Nest: kleines Aufleuchten
 --   "Announce" -> große Admin-Ansage oben in der Mitte: Kopfbild, Name in Blau + Haken, Text in Weiß
 --                 (ohne Box, federt rein, ~8 s, blendet aus; mehrere nacheinander)
 --   "Warn"     -> großer roter Hinweis vom Admin in der Bildschirmmitte
@@ -659,7 +661,7 @@ local function stepShake(dt: number)
 end
 
 -- ---------------------------------------------------------------------
--- LIEFERFLUG: Geister-Meteor fliegt im Bogen von der Parade in den Slot
+-- LIEFERFLUG: Geister-Meteor fliegt im Bogen vom Nest in den Slot
 -- ---------------------------------------------------------------------
 type Flight = {
 	Part: BasePart,
@@ -1576,11 +1578,11 @@ function Effects.RebirthFlash()
 end
 
 -- ---------------------------------------------------------------------
--- BOSS-PARADE: Konfetti am Hangar + Trommel (lokal, nur in der Nähe)
+-- GROSSES NEST / RENNEN: Konfetti am Nest (+ Trommel beim Rennen), lokal, nur in der Nähe
 -- ---------------------------------------------------------------------
 local DRUM_SOUND = "rbxasset://sounds/action_jump_land.mp3" -- tiefer abgespielt = dumpfe Trommel
-local BOSS_FX_RANGE = 260
-local BOSS_COLORS = {
+local NEST_FX_RANGE = 260
+local NEST_COLORS = {
 	Color3.fromRGB(255, 205, 40),
 	Color3.fromRGB(255, 80, 120),
 	Color3.fromRGB(80, 200, 255),
@@ -1588,22 +1590,22 @@ local BOSS_COLORS = {
 }
 local drumSound: Sound? = nil
 
-local function paradeBoss(data: any)
+local function nestBurst(data: any, drums: boolean)
 	if type(data) ~= "table" or typeof(data.Position) ~= "Vector3" then
 		return
 	end
 	local position: Vector3 = data.Position
 	local camera = workspace.CurrentCamera
-	if not camera or (camera.CFrame.Position - position).Magnitude > BOSS_FX_RANGE then
+	if not camera or (camera.CFrame.Position - position).Magnitude > NEST_FX_RANGE then
 		return
 	end
-	for i, color in ipairs(BOSS_COLORS) do
+	for i, color in ipairs(NEST_COLORS) do
 		local offset = Vector3.new((i - 2.5) * 4, 2 + (i % 2) * 2, 0)
 		burst(position + offset, color, 18, i == 1)
 	end
-	ring(position - Vector3.new(0, 3.5, 0), BOSS_COLORS[1], 30, 0.7)
+	ring(position - Vector3.new(0, 1.5, 0), NEST_COLORS[1], 30, 0.7)
 	local sound = drumSound
-	if sound and not hidden then
+	if drums and sound and not hidden then
 		task.spawn(function()
 			for beat = 1, 3 do
 				sound.PlaybackSpeed = if beat == 3 then 0.45 else 0.6
@@ -1618,6 +1620,17 @@ local function paradeBoss(data: any)
 	if root and root:IsA("BasePart") and (root.Position - position).Magnitude < 60 then
 		shake(0.3)
 	end
+end
+
+-- Neues Ei im Nest: kleines Aufleuchten in Seltenheitsfarbe
+local function nestPop(data: any)
+	if type(data) ~= "table" or typeof(data.Position) ~= "Vector3" or hidden then
+		return
+	end
+	local rarities = ctx.Config.RaritiesByName
+	local rarity = type(data.Rarity) == "string" and rarities[data.Rarity] or nil
+	local color: Color3 = if rarity then rarity.Color else Color3.new(1, 1, 1)
+	burst(data.Position, color, 6, false)
 end
 
 -- ---------------------------------------------------------------------
@@ -1964,8 +1977,12 @@ function Effects.Play(name: any, strength: any, data: any)
 		confetti(amount)
 	elseif name == "Alarm" then
 		task.spawn(alarm)
-	elseif name == "ParadeBoss" then
-		paradeBoss(data)
+	elseif name == "BigNest" then
+		nestBurst(data, false)
+	elseif name == "RaceStart" then
+		nestBurst(data, true)
+	elseif name == "NestPop" then
+		nestPop(data)
 	elseif name == "Announce" then
 		announce(data)
 	elseif name == "Warn" then
@@ -2016,8 +2033,8 @@ function Effects.Init(context: any)
 	buildFrozen()
 	buildCoins()
 	buildShards()
-	-- Trommel für die Boss-Parade (Sound direkt im Ordner = überall gleich laut)
-	drumSound = UI.Create("Sound", { Name = "ParadeDrum", SoundId = DRUM_SOUND, Volume = 0.8, Parent = fxFolder })
+	-- Trommel für das Ei-Rennen (Sound direkt im Ordner = überall gleich laut)
+	drumSound = UI.Create("Sound", { Name = "RaceDrum", SoundId = DRUM_SOUND, Volume = 0.8, Parent = fxFolder })
 	RunService.RenderStepped:Connect(function(dt: number)
 		stepFlyNumbers(dt)
 		if #flights > 0 then

@@ -1180,7 +1180,8 @@ function Actions.RareNests(_admin, args)
 		return true, "Große Nester auf ALLEN Servern"
 	end
 	local queued = runRareNests(count)
-	return queued > 0, if queued > 0 then (queued .. " seltene Eier kommen in die Nester") else "Keine seltenen Eier gefunden"
+	return queued > 0,
+		if queued > 0 then (queued .. " seltene Eier kommen in die Nester") else "Keine seltenen Eier gefunden"
 end
 
 -- 🏁 Ei-Rennen sofort starten (Gold-Ei im entferntesten großen Nest)

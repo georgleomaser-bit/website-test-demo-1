@@ -3,12 +3,12 @@
 --  Dieses Skript startet nur die Module im Ordner "Modules" und verbindet sie mit dem Server:
 --    UI         Baukasten (Knöpfe, Fenster, Toasts, zählende Zahlen)
 --    Hud        Knöpfe links/rechts (mit Badges), Schritte + Geld, Banner (Schauer, Egg Rush),
---               Wegweiser (Base beim Tragen, nächstes Ei), Prompt-Hinweis an der Parade
+--               Wegweiser (Base beim Tragen, nächstes Ei, Gold-Ei im Rennen), Prompt-Hinweis an den Nestern
 --    Windows    Shop (Gamepässe / Boosts / Gadgets), Laufbänder, Rebirth, Tagesbonus, Alien-Index
 --    Rewards    🎁 Geschenke, 🎡 Glücksrad, 📜 Tagesaufgaben
 --    Effects    fliegende Zahlen, Lieferflug, Schlüpf-Explosion, Hatch-Karte, Wackeln, Konfetti
 --    WorldFX    Treadmill-Streifen, wippende Aliens, Regenbogen, Schlüpf-Countdown, krasse Eier
---    Parade     Alien-Parade: lokale Träger-Aliens (gepoolt) laufen mit den Eiern über die Straße
+--    NestField  Ei-Rennen: wilde Kreaturen (lokal gebaut, weich bewegt), Ei-Pop, Speed-Pad-Gefühl
 --    Prompts    Klauen/Kaufen/Verkaufen-Prompts passend ein-/ausblenden
 --    Bat        Schläger: Ausholen/Zuschlagen (lokal), kurzes Taumeln nach einem Treffer
 --    Night      Nacht/Blutmond-Banner, Glücks-Zähler-Leiste, Sternschnuppen + leuchtende Kisten
@@ -33,7 +33,7 @@ local Windows = require(Modules:WaitForChild("Windows"))
 local Rewards = require(Modules:WaitForChild("Rewards"))
 local Effects = require(Modules:WaitForChild("Effects"))
 local WorldFX = require(Modules:WaitForChild("WorldFX"))
-local Parade = require(Modules:WaitForChild("Parade"))
+local NestField = require(Modules:WaitForChild("NestField"))
 local Prompts = require(Modules:WaitForChild("Prompts"))
 local Fly = require(Modules:WaitForChild("Fly"))
 local PhotoMode = require(Modules:WaitForChild("PhotoMode"))
@@ -86,7 +86,7 @@ local ctx = {
 	Prompts = Prompts,
 	Fly = Fly,
 	PhotoMode = PhotoMode,
-	Parade = Parade,
+	NestField = NestField,
 	Bat = Bat,
 }
 
@@ -189,8 +189,7 @@ task.spawn(function()
 	end
 	Hud.SetMap(map)
 	Prompts.Init(map, ctx)
-	Parade.Init(ctx, map) -- Alien-Parade: Träger-Aliens + Eier (bewegt von WorldFX, siehe SetPreStep)
-	WorldFX.SetPreStep(Parade.Step)
+	NestField.Init(ctx, map) -- Ei-Rennen: Kreaturen, Ei-Pop, Speed-Pads
 	WorldFX.Init(ctx, map)
 	treadmillMap = map
 	-- Laufband-Models kommen evtl. erst nach und nach an -> Schilder dann neu schreiben
@@ -286,15 +285,11 @@ local inputStyle = Hud.InputStyle()
 local grabKey = if inputStyle == "Touch" then "halten" elseif inputStyle == "Gamepad" then "[X] halten" else "[E] halten"
 local buyKey = if inputStyle == "Touch" then "tippen" elseif inputStyle == "Gamepad" then "[Y]" else "[F]"
 UI.Toast(
-	"☄️ Willkommen bei "
-		.. tostring(Config.GameName)
-		.. "! Klau Eier aus der Alien-Parade ("
-		.. grabKey
-		.. ") – gratis!",
+	"🥚 Willkommen bei " .. tostring(Config.GameName) .. "! Schnapp dir Eier aus den Nestern (" .. grabKey .. ")!",
 	"Event"
 )
 task.delay(4, function()
-	UI.Toast("🏃 Schnell heimtragen – oder kaufen (" .. buyKey .. "), dann werden sie geliefert!", "Info")
+	UI.Toast("🏃 Schnell heim – Achtung, Monster! Oder kaufen (" .. buyKey .. ") = Lieferung.", "Info")
 end)
 task.delay(8, function()
 	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld!", "Info")

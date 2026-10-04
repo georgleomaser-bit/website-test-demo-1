@@ -2,11 +2,11 @@
 
 Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit eigenem Thema:
 
-> **Meteore sind Alien-Eier. Kleine Aliens tragen sie in einer Parade durch die Map → du KLAUST sie gratis (E halten) und rennst sie
+> **Meteore sind Alien-Eier. In der Map-Mitte liegen sie in Nestern → du SCHNAPPST sie gratis (E halten) und rennst sie
 > nach Hause, oder du kaufst sie (F), dann fliegen sie von allein in deine Base → ein Alien schlüpft → es bringt
 > Geld → du klaust bei anderen → die anderen bonken dich → Rebirth → immer bessere Meteore und Aliens.**
 >
-> **Wer schneller ist, klaut mehr.** Klauen ist gratis, Kaufen kostet Geld.
+> **Wer schneller ist, schnappt mehr.** Schnappen ist gratis, Kaufen kostet Geld.
 
 ---
 
@@ -14,24 +14,27 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 
 | Bereich | Inhalt |
 |---|---|
-| **🦹 Klauen aus der Parade** | Durch die Map-Mitte läuft eine **Alien-Parade**: Kleine Aliens kommen aus dem UFO-Hangar am Spawn-Platz, laufen über eine bunte Straße bis zum Ziel-Tor und tragen **1 bis 3 Eier auf dem Kopf**. Es sind immer sehr viele Eier unterwegs (bis 170, im Schauer 220). **E halten** (knapp 1 Sekunde) = **gratis klauen**. Du trägst das Ei über dem Kopf und musst es **selbst in deine Base** bringen (60 Sekunden Zeit). Wirst du unterwegs gebonkt, fällt das Ei auf den Boden. Dann kann **jeder** es schnappen |
-| **👑 Boss-Parade** | Ab **Legendary** trägt ein **großer Boss** mit Krone das Ei. Er läuft langsamer und hat **2 Leibwächter** (ab Mythic 3). Alle 1,5 Sekunden schubsen sie jeden weg, der dem Boss zu nahe kommt. Zum Klauen musst du nah ran: Lauf direkt nach einem Schubser rein und halte E. Alle bekommen eine Ansage |
-| **🛒 Kaufen** | **F** an der Parade = kaufen. Der Meteor fliegt **von allein** in einen freien Platz deiner Base. Celestial, Divine, Secret, Godly, Cosmic und Infinity kannst du erst nach Rebirths kaufen. Klauen geht immer |
+| **🥚 Ei-Rennen (Map-Mitte)** | Zwischen den Basen liegt ein großes **Nester-Feld**: viele **kleine Nester** nah an den Basen, wenige **große Nester** in der Mitte und ganz hinten. Alle paar Sekunden erscheint in einem freien Nest ein Ei (es ploppt kurz auf), liegt eine Weile da (klein 30 s, groß 45 s) und verschwindet dann. Meist liegen 50–60 Eier gleichzeitig herum. **Wer zuerst da ist, bekommt es.** **E halten** (½ Sekunde) = **gratis schnappen**. Du trägst das Ei über dem Kopf und musst es **selbst in deine Base** bringen. Wirst du unterwegs gebonkt oder von einem Monster erwischt, fällt das Ei auf den Boden. Dann kann **jeder** es schnappen |
+| **🪺 Große Nester** | Seltener ein Ei, aber immer mindestens **Epic** und viel öfter **Legendary+**. Ein Ei im großen Nest hat eine **Lichtsäule**. Ab Legendary gibt es eine kurze Ansage und Konfetti |
+| **👾 Monster** | Im Feld laufen **wilde Kreaturen** herum (tags 6, nachts 10 und schneller). Kommst du näher als ~25 Studs, jagen sie dich (Tempo 21, nachts 25). Treffer = **Schubs**, dein Ei fällt runter. Niemand stirbt. Wer schnell ist (Laufbänder!), entkommt. Die Monster verlassen das Feld nie |
+| **⚡ Speed-Pads** | Blaue Platten im Feld und vor jeder Base: drüberlaufen = **3 Sekunden +50 % Tempo** |
+| **🏁 Rennen** | Etwa alle **7 Minuten**: ein **Gold-Ei** erscheint im Renn-Nest ganz hinten (Zielflagge). Ein Pfeil zeigt hin. Wer es **zuerst nach Hause** bringt, bekommt das Ei (mindestens Legendary, Gold-Mutation) und **5 Minuten Einkommen** als Bonus |
+| **🛒 Kaufen** | **F** am Nest = kaufen. Der Meteor fliegt **von allein** in einen freien Platz deiner Base. Celestial, Divine, Secret, Godly, Cosmic und Infinity kannst du erst nach Rebirths kaufen. Schnappen geht immer |
 | **🏃 Tempo zählt** | Beim Tragen hast du nur **70 % Tempo**. **Seltene Beute ist schwer:** ab Legendary 60 %, ab Mythic 50 %, ab Celestial 45 % (mindestens Tempo 8). Mit dem Pass **„🏃 Volle Speed beim Tragen“** sind es immer 100 %. Schritte von den Laufbändern und das Gadget **🌀 Speed Coil** machen dich schneller |
-| **✨ Krasse Eier** | Ab **Legendary** haben Eier in der Parade, am Boden und in der Base eine **Lichtsäule**, Glitzern und einen drehenden Ring. Ab **Mythic** dazu Funkenregen und Blitze, ab **Secret** (und Admin) eine Regenbogen-Aura, **Infinity** zusätzlich kreisende Sterne, eine breitere Säule und einen doppelt so schnellen Ring – und alle bekommen eine Ansage, wenn ein Boss so ein Ei bringt. Seltene Aliens schlüpfen mit einer großen Explosion |
+| **✨ Krasse Eier** | Ab **Legendary** haben Eier im Nest, am Boden und in der Base eine **Lichtsäule**, Glitzern und einen drehenden Ring. Ab **Mythic** dazu Funkenregen und Blitze, ab **Secret** (und Admin) eine Regenbogen-Aura, **Infinity** zusätzlich kreisende Sterne, eine breitere Säule und einen doppelt so schnellen Ring – und alle bekommen eine Ansage, wenn so ein Ei im Nest liegt. Seltene Aliens schlüpfen mit einer großen Explosion |
 | **🐣 Schlüpfen** | In der Base zählt der Meteor runter („🐣 Schlüpft in …“). Dann schlüpft ein **Alien**. Erst das Alien verdient Geld. Besondere Aliens (Ultra oder ab Epic) schlüpfen mit einer großen Karte in der Bildschirmmitte, andere seltene mit einer kleinen Karte oben rechts (beim Tragen immer klein) |
 | **💰 Einsammeln** | Das Geld sammelt sich an. Lauf über das **grüne Pad**, über die kleinen **Geld-Felder** vor deinen Aliens (zeigen, was jedes Alien pro Sekunde bringt) oder **durch deine Aliens** |
 | **😈 Klauen aus Basen** | Bei fremden Basen **E halten**. Du trägst den Meteor oder das Alien. Renn damit in deine Base |
-| **🔨 Verteidigen** | Mit dem **Schläger** (Klick) verlieren Diebe ihre Beute und fliegen ein Stück weg. Bessere Schläger kommen mit dem **Index** (siehe „Die Schläger“). Aus einer Base Geklautes fliegt zurück, aus der Parade Geklautes fällt auf den Boden. Der große rote **Lock-Knopf** sperrt deine Base 60 Sekunden lang (Laser fahren am Eingang zu, oben läuft der Countdown). Das **🛡️ Base-Schild** (Robux) sperrt sie 10 Minuten, sogar im Meteoritenschauer (blaue Sperre am Eingang). Nochmal kaufen = noch länger. Ein Ei, das in einer gesperrten Base am Boden liegt, darf nur der Besitzer nehmen |
-| **🥚 Egg Rush** | Ungefähr alle **4 Minuten**, 45 Sekunden lang: **40 Gratis-Eier** mit 3x Glück regnen auf die Wiese der ganzen Map. Wer zuerst da ist, schnappt sie (**E**) und trägt sie nach Hause. Oben zeigt ein Banner die Zeit, unten zeigt ein Pfeil zum nächsten Ei. Der erste Egg Rush kommt 2 Minuten nach dem Serverstart |
-| **🌙 Nacht** | Nach **10 Minuten Tag** kommen **3 Minuten Nacht**. Die Sonne geht langsam unter, Mond und Sterne kommen raus, die Laternen der Basen leuchten. Nachts gibt es **Nacht-Eier** in der Parade (Moonstone, Shadow Orb, Lunar Core, Starfall Shard, Eclipse Heart), **Sternschnuppen-Eier** fallen gratis auf die Wiese (wie im Egg Rush: schnappen und heimtragen) und **leuchtende Kisten** liegen herum (**E halten** = Geld oder 1 Glücksrad-Dreh). Godly, Cosmic und vor allem Infinity kommen nachts viel öfter. Oben zeigt ein Banner die Restzeit, kurz vorher „🌙 Nacht in …“ |
+| **🔨 Verteidigen** | Mit dem **Schläger** (Klick) verlieren Diebe ihre Beute und fliegen ein Stück weg. Bessere Schläger kommen mit dem **Index** (siehe „Die Schläger“). Aus einer Base Geklautes fliegt zurück, ein Ei aus dem Nest fällt auf den Boden. Der große rote **Lock-Knopf** sperrt deine Base 60 Sekunden lang (Laser fahren am Eingang zu, oben läuft der Countdown). Das **🛡️ Base-Schild** (Robux) sperrt sie 10 Minuten, sogar im Meteoritenschauer (blaue Sperre am Eingang). Nochmal kaufen = noch länger. Ein Ei, das in einer gesperrten Base am Boden liegt, darf nur der Besitzer nehmen |
+| **🥚 Egg Rush** | Ungefähr alle **4 Minuten**, 45 Sekunden lang: **40 Gratis-Eier** mit 3x Glück regnen aufs Nester-Feld. Wer zuerst da ist, schnappt sie (**E**) und trägt sie nach Hause. Oben zeigt ein Banner die Zeit, unten zeigt ein Pfeil zum nächsten Ei. Der erste Egg Rush kommt 2 Minuten nach dem Serverstart |
+| **🌙 Nacht** | Nach **10 Minuten Tag** kommen **3 Minuten Nacht**. Die Sonne geht langsam unter, Mond und Sterne kommen raus, die Laternen der Basen leuchten. Nachts gibt es **Nacht-Eier** in den Nestern (Moonstone, Shadow Orb, Lunar Core, Starfall Shard, Eclipse Heart), **Sternschnuppen-Eier** fallen gratis aufs Nester-Feld, es gibt **mehr und schnellere Monster** (wie im Egg Rush: schnappen und heimtragen) und **leuchtende Kisten** liegen herum (**E halten** = Geld oder 1 Glücksrad-Dreh). Godly, Cosmic und vor allem Infinity kommen nachts viel öfter. Oben zeigt ein Banner die Restzeit, kurz vorher „🌙 Nacht in …“ |
 | **🔴 Blutmond** | Ungefähr **jede 5. Nacht**: roter Himmel, **2x Glück** bis zum Morgen und dazu das **Blood Moon Gem** (Divine), das es nur im Blutmond gibt |
-| **🍀 Glücks-Zähler** | Kommt lange kein Legendary+ Ei in die Parade, steigt das Glück für Legendary+ alle 20 Eier um 0,25 (bis 3x). Kommt eins, geht es von vorne los. Die grüne Leiste über deinem Geld zeigt den Stand (gilt für den ganzen Server) |
-| **🌠 Meteoritenschauer** | Ungefähr alle **8 Minuten**, 60 Sekunden lang: **keine Locks**, 3x Glück, und die Parade wird **voller und schneller** (doppelt so oft ein neuer Träger, alle laufen 30 % schneller, bis zu 220 Eier). Nur das **🛡️ Base-Schild** hält dann noch. Von selbst kommen Schauer und Egg Rush nie gleichzeitig |
+| **🍀 Glücks-Zähler** | Kommt lange kein Legendary+ Ei in die Nester, steigt das Glück für Legendary+ alle 20 Eier um 0,25 (bis 3x). Kommt eins, geht es von vorne los. Die grüne Leiste über deinem Geld zeigt den Stand (gilt für den ganzen Server) |
+| **🌠 Meteoritenschauer** | Ungefähr alle **8 Minuten**, 60 Sekunden lang: **keine Locks**, 3x Glück, und die Nester werden **voller** (fast doppelt so oft ein Ei, bis zu 75 in kleinen Nestern, bis zu 6 große Nester gleichzeitig). Nur das **🛡️ Base-Schild** hält dann noch. Von selbst kommen Schauer, Egg Rush und Rennen nie gleichzeitig |
 | **🛠️ Gadgets** | Im **🛒 Shop** (Reiter **🛠️ Gadgets**) mit Geld kaufen. Sie gehören dir für immer, auch nach einem Rebirth: **🌀 Speed Coil**, **🔨 Super-Bonk**, **🪤 Falle**, **👻 Unsichtbarkeits-Umhang** (Tabelle unten) |
 | **🎁 Geschenke** | Fürs Spielen: nach **2, 5, 10, 15, 20, 30, 45 und 60 Minuten** gibt es ein Geschenk (Geld, Schritte, Glücksrad-Drehs, ein Epic- und ein Legendary-Ei). Gezählt wird die **Spielzeit von heute**, über alle Besuche zusammen (sie wird gespeichert, neu beitreten setzt sie nicht zurück). Um Mitternacht (UTC) geht es von vorne los |
 | **🎡 Glücksrad** | Alle **4 Stunden 1 Gratis-Dreh**. 8 Felder: Geld (3 Größen), Schritte, 2 Drehs, Epic-, Legendary- und Mythic-Ei. Chancen: Cash S 26 %, Schritte 18 %, Cash M 18 %, Cash XL 10 %, Epic-Ei 10 %, 2 Drehs 8 %, Legendary-Ei 8 %, Mythic-Ei 2 %. Weitere Drehs gibt es als Geschenk, für Aufgaben oder für Robux. Ist bei einem Ei-Gewinn (Glücksrad oder Geschenk) die Base voll, gibt es den Verkaufswert als Geld |
-| **📜 Tagesaufgaben** | Jeden Tag **3 neue Aufgaben**, zum Beispiel „🥚 Klau 5 Eier aus der Parade“ oder „🐣 Lass 5 Aliens schlüpfen“. Belohnung: Geld + 1 Glücksrad-Dreh. Einmal am Tag darfst du eine Aufgabe mit **🔄 tauschen** (gut, wenn zum Bonken oder Klauen gerade niemand da ist). Die neue Aufgabe geht immer allein |
+| **📜 Tagesaufgaben** | Jeden Tag **3 neue Aufgaben**, zum Beispiel „🥚 Schnapp dir 5 Eier aus den Nestern“ oder „🐣 Lass 5 Aliens schlüpfen“. Belohnung: Geld + 1 Glücksrad-Dreh. Einmal am Tag darfst du eine Aufgabe mit **🔄 tauschen** (gut, wenn zum Bonken oder Klauen gerade niemand da ist). Die neue Aufgabe geht immer allein |
 | **✨ Mutationen** | Gold x2, Frost x3, Lava x3, Diamond x4, Galaxy x10 und ganz selten **Rainbow x15** (leuchtet in allen Farben). Tabelle unten |
 | **⚡ Aufladen** | Aliens leveln von allein (Lv 1 bis 20, ca. 3 Stunden). Jedes Level gibt +10 % Geld |
 | **🏃 Speed Farm** | Auf dem Spawn-Platz stehen **7 Laufbänder** (Holz bis Regenbogen). Holz ist gratis, die anderen **kaufst du mit Geld** im Menü **🏃 Laufbänder**. Drauf laufen = **Schritte 👟** sammeln. Mehr Schritte = schneller rennen |
@@ -42,9 +45,9 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 | **🎁 Tagesbonus** | Jeden Tag abholen. Mit Streak bis Tag 7 |
 | **😴 Offline** | Du bekommst 25 % Geld für bis zu 3 Stunden. Meteore schlüpfen auch, wenn du weg bist |
 | **💎 Robux** | 8 Gamepasses, 14 Developer Products (mit **⭐ Starter-Paket**) und Premium-Bonus |
-| **🛠️ Admin-Panel** | Nur für dich. 5 Reiter: Spawnen (auch fertige Aliens), Events (Nacht, Blutmond, Egg Rush, Boss-Parade …), Spieler (Liste, Geschenke, Moderation), Kräfte (Gott-Modus, Noclip, Tempo, Sprung, Zuschauen), Server (Info, sperren, Banns). Siehe unten |
+| **🛠️ Admin-Panel** | Nur für dich. 5 Reiter: Spawnen (auch fertige Aliens), Events (Nacht, Blutmond, Egg Rush, Große Nester, Ei-Rennen …), Spieler (Liste, Geschenke, Moderation), Kräfte (Gott-Modus, Noclip, Tempo, Sprung, Zuschauen), Server (Info, sperren, Banns). Siehe unten |
 | **✨ Grafik** | Helles Sonnenlicht („Future“-Licht), Atmosphäre, Wolken, leichtes Leuchten, weicher Tag-Nacht-Wechsel. Knallgrüner Roblox-Rasterboden wie in Simulator-Spielen |
-| **🧈 Flüssig** | Die Parade-Aliens gibt es nur auf deinem Gerät, und jeder Spieler bewegt die Eier selbst. Deshalb ruckelt nichts, auch wenn sehr viele Eier unterwegs sind. Fenster, Knöpfe, Zahlen und das Glücksrad sind animiert |
+| **🧈 Flüssig** | Die Eier in den Nestern liegen still. Die Monster rechnet der Server nur 5x pro Sekunde, gezeichnet und weich bewegt werden sie auf deinem Gerät. Deshalb ruckelt nichts. Fenster, Knöpfe, Zahlen und das Glücksrad sind animiert |
 | **🔒 Technik** | Sicheres Speichern (keine Duplikate, kein Datenverlust). Käufe doppelt abgesichert. Der Server prüft alles (auch, ob du E wirklich lange genug gehalten hast), Schummeln geht nicht. Globale Top-10-Bestenliste |
 
 Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts zusammenbauen.
@@ -53,17 +56,16 @@ Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts 
 
 ## 🎮 So läuft das Spiel
 
-1. Du spawnst in deiner **Base**. Es gibt 8 Basen, 4 auf jeder Seite der Parade-Straße.
+1. Du spawnst in deiner **Base**. Es gibt 8 Basen, 4 auf jeder Seite des Nester-Felds.
    Die Basen sind **groß und offen** (80 x 90 Studs, bunter Noppenboden, nur ein niedriger weißer Rand).
    Es gibt **keine sichtbaren Plätze**: Eier und Aliens stehen locker verteilt (unten bis zu 18, mit Stockwerken bis zu 30).
    Vorne: links das **grüne Geld-Pad**, rechts der große **rote Lock-Knopf**. Ist die Base gesperrt, fahren am Eingang
    Laser zu, und jeder Fremde in der Base (auch wer über den Rand springt, auch oben) wird rausgeworfen.
    Über dem Eingang hängt ein großes Schild mit deinem Avatar und Namen.
-2. Lauf zur **Alien-Parade** in der Mitte. Stell dich an den Straßenrand.
-3. Ein Alien läuft mit einem Ei auf dem Kopf vorbei. **Halte E**: Du klaust das Ei gratis und trägst es über dem Kopf.
-   Das Alien erschrickt (**!**) und rennt weg, wenn es nichts mehr trägt.
-   Renn damit **in deine Base**. Ein Pfeil unten zeigt dir den Weg.
-   Lieber sicher? Drück **F**. Dann kaufst du ihn, und er fliegt von allein in deine Base.
+2. Lauf ins **Nester-Feld** in der Mitte. Such dir ein Ei in einem Nest.
+3. **Halte E**: Du schnappst das Ei gratis und trägst es über dem Kopf.
+   Renn damit **in deine Base**. Ein Pfeil unten zeigt dir den Weg. Pass auf die **Monster** auf und nimm **⚡ Speed-Pads** mit.
+   Lieber sicher? Drück **F**. Dann kaufst du es, und es fliegt von allein in deine Base.
 4. In der Base steht „🐣 Schlüpft in …“. Warte, bis die Zeit um ist.
 5. Der Meteor bricht auf. Ein **Alien** schlüpft. Jetzt verdienst du Geld pro Sekunde.
 6. Lauf über das **grüne Pad** oder durch deine Aliens. Das Geld landet auf deinem Konto.
@@ -76,7 +78,7 @@ Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts 
 
 ### 🐣 Wie lange dauert das Schlüpfen?
 
-| Seltenheit | Schlüpfzeit | Kaufbar ab | In der Parade (ca.) |
+| Seltenheit | Schlüpfzeit | Kaufbar ab | In den Nestern (ca.) |
 |---|---|---|---|
 | Common | 8 Sekunden | sofort | jedes 2. Ei |
 | Uncommon | 15 Sekunden | sofort | jedes 4. Ei |
@@ -92,10 +94,10 @@ Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts 
 | Infinity | 13 Minuten | 15 Rebirths | fast nur nachts, etwa 1 pro Stunde Spielzeit |
 | 👑 Admin | 5 Sekunden | nur Admin-Panel | nie von selbst |
 
-**Zusammen gerechnet** (Simulation, pro Server, ohne Events): irgendein **Legendary oder besser** alle ~18 Sekunden,
+**Zusammen gerechnet** (Simulation, pro Server, ohne Events): irgendein **Legendary oder besser** alle ~20 Sekunden,
 **Mythic oder besser** etwa jede Minute, **Secret oder besser** alle ~13 Minuten. Mit Schauer, Nacht und Blutmond öfter.
 
-**Klauen** kannst du jede Seltenheit, auch ohne Rebirth. Weil jedes Ei in der Parade gratis zu klauen ist,
+**Klauen** kannst du jede Seltenheit, auch ohne Rebirth. Weil jedes Ei im Nest gratis zu schnappen ist,
 sind die seltenen extra selten. Im Meteoritenschauer und bei Glück-Events kommen sie viel öfter.
 Mit dem Pass **„⚡ 2x Schlüpfen & Wachsen“** geht alles doppelt so schnell.
 Mit dem Produkt **„🐣 Alle Eier sofort schlüpfen“** schlüpfen alle Eier in deiner Base auf einmal.
@@ -123,7 +125,7 @@ Manche Meteore haben eine Mutation. Sie macht Wert **und** Geld pro Sekunde grö
 | Normal | 82,9 % | x1 | normal |
 | 🪙 Gold | 10 % | x2 | golden |
 | ❄️ Frost | 2,5 % | x3 | weißlich-hellblaues Eis, Schneeflocken rieseln. Aliens: Eis-Körper, Füße aus Schnee, Schneeflocken |
-| 🔥 Lava | 2,5 % | x3 | glüht orange, kleines Feuer (in der Parade brennen nur die nächsten paar). Aliens: glühender Körper, Füße aus dunklem Vulkangestein |
+| 🔥 Lava | 2,5 % | x3 | glüht orange, kleines Feuer (in den Nestern brennen nur die nächsten paar). Aliens: glühender Körper, Füße aus dunklem Vulkangestein |
 | 💎 Diamond | 1,8 % | x4 | türkises Glas, glitzert |
 | 🌌 Galaxy | 0,2 % | x10 | lila, funkelt |
 | 🌈 Rainbow | 0,1 % | x15 | leuchtet in allen Farben, bunter Glitzer |
@@ -256,7 +258,7 @@ Aktion. Auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 ## ▶️ SCHRITT 3 – Testen
 
 1. Oben auf **Play** (F5) klicken.
-2. Du spawnst in deiner Base. Lauf zur **Alien-Parade** in der Mitte und **halte E** an einem Ei.
+2. Du spawnst in deiner Base. Lauf ins **Nester-Feld** in der Mitte und **halte E** an einem Ei.
    Trag es in deine Base. Oder drück **F**, dann kaufst du es und es fliegt von allein hin.
    Nach ein paar Sekunden schlüpft ein **Alien**.
 3. Lauf über das **grüne Pad** (oder über die Geld-Felder), um Geld einzusammeln. Der **rote Knopf** sperrt deine Base.
@@ -269,8 +271,8 @@ Aktion. Auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 
 | Taste | Was passiert |
 |---|---|
-| **E** (halten) | an der Parade: **klauen** (gratis) • am Boden: Ei **schnappen** • in fremden Basen: **klauen** |
-| **F** | an der Parade: **kaufen** • in deiner Base (halten): **verkaufen** |
+| **E** (halten) | am Nest: **schnappen** (gratis) • am Boden: Ei **schnappen** • in fremden Basen: **klauen** |
+| **F** | am Nest: **kaufen** • in deiner Base (halten): **verkaufen** |
 | **Klick** | mit Werkzeug in der Hand: zuschlagen (Schläger), Falle aufstellen, Umhang anziehen |
 | **P** | Admin-Panel |
 | **G** | Fliegen (nur Admin) |
@@ -280,11 +282,11 @@ Aktion. Auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 **Knöpfe im Spiel:** links **⭐ STARTER-PAKET** (bis du es gekauft hast), **🛒 Shop**, das blaue Angebot **👟 2x Schritte**, **🔥 Rebirth**, **🎁 Daily**.
 Rechts (2 Spalten) **🎁 Geschenke**, **🎡 Glücksrad**, **📜 Aufgaben**, **👽 Index**, **🏃 Laufbänder**, **🏠 Home**, ganz unten **🛠️ Admin** (nur du).
 Unten links stehen deine **👟 Schritte** (gelb) und dein **💵 Geld** (grün).
-Oben zeigen Banner den **🌠 Meteoritenschauer**, den **🥚 Egg Rush** und die **🌙 Nacht** (bzw. den **🔴 Blutmond**) mit Countdown.
+Oben zeigen Banner den **🌠 Meteoritenschauer**, den **🥚 Egg Rush**, das **🏁 Ei-Rennen** und die **🌙 Nacht** (bzw. den **🔴 Blutmond**) mit Countdown.
 Über deinem Geld zeigt die grüne Leiste den **🍀 Glücks-Zähler**.
-Unten in der Mitte: beim Tragen ein **Pfeil zu deiner Base** mit Restzeit, im Egg Rush ein Pfeil zum nächsten Ei,
-und an der Parade der Hinweis **„🦹 [E] halten = KLAUEN … 💵 [F] = KAUFEN“** (am Handy/Controller mit den passenden Tasten:
-„Halten“/„Tippen“ bzw. [X]/[Y]; auch die Begrüßung und das Schild über dem Parade-Hangar passen sich daran an).
+Unten in der Mitte: beim Tragen ein **Pfeil zu deiner Base** mit Restzeit, im Rennen ein Pfeil zum Gold-Ei, im Egg Rush ein Pfeil zum nächsten Ei,
+und an den Nestern der Hinweis **„🥚 [E] halten = SCHNAPPEN … 💵 [F] = KAUFEN“** (am Handy/Controller mit den passenden Tasten:
+„Halten“/„Tippen“ bzw. [X]/[Y]; auch die Begrüßung passt sich daran an).
 
 ## 🌍 SCHRITT 4 – Veröffentlichen
 
@@ -382,8 +384,8 @@ Der Server prüft jede Aktion und bremst zu viele Klicks.
 
 | Reiter | Knöpfe und was sie tun |
 |---|---|
-| Spawnen | Meteor anklicken, darunter die **Alien-Variante** (Normal / Selten / Ultra), Mutation, Anzahl und Level. **Alien in Ziel-Base (geschlüpft)** = fertiges Alien fliegt in die Base. **Alien als Ei vor mir** = Ei am Boden (30 s), wer es heimträgt, bekommt genau dieses Alien. Dazu wie früher: **Ei in Ziel-Base**, **Ei zur Parade**, **Ei vor mir**, **Gratis-Ei in Gratis-Zone**. Darunter die **Admin-Meteore** (Gratis in die Mitte / In meine Base, Admin-Meteor-Regen) und der **Eierregen** in der Parade (Zufall oder Seltenheit) |
-| Events | Ganz oben umschalten: **Nur dieser Server** oder **ALLE Server**. **Nacht starten**, **Blutmond starten**, **Nacht beenden**. **Glück starten** (Faktor + Minuten), **Meteoritenschauer** (so viele Minuten wie im Feld), **Egg Rush**, **Boss-Parade** (1-10 Bosse mit seltenen Eiern). **Ansage** an alle (groß oben mit deinem Kopfbild). Spaß: **Alle Eier sofort schlüpfen**, **Konfetti-Regen für alle**, **Alle zur Mitte**, **ADMIN ABUSE**, **Mond-Schwerkraft** / **Normale Schwerkraft** |
+| Spawnen | Meteor anklicken, darunter die **Alien-Variante** (Normal / Selten / Ultra), Mutation, Anzahl und Level. **Alien in Ziel-Base (geschlüpft)** = fertiges Alien fliegt in die Base. **Alien als Ei vor mir** = Ei am Boden (30 s), wer es heimträgt, bekommt genau dieses Alien. Dazu wie früher: **Ei in Ziel-Base**, **Zum Nester-Feld**, **Ei vor mir**, **Gratis-Ei in Gratis-Zone**. Darunter die **Admin-Meteore** (Gratis in die Mitte / In meine Base, Admin-Meteor-Regen) und der **Eierregen** in den Nestern (Zufall oder Seltenheit) |
+| Events | Ganz oben umschalten: **Nur dieser Server** oder **ALLE Server**. **Nacht starten**, **Blutmond starten**, **Nacht beenden**. **Glück starten** (Faktor + Minuten), **Meteoritenschauer** (so viele Minuten wie im Feld), **Egg Rush**, **Große Nester** (1-10 seltene Eier ab Legendary), **Ei-Rennen** (Gold-Ei sofort). **Ansage** an alle (groß oben mit deinem Kopfbild). Spaß: **Alle Eier sofort schlüpfen**, **Konfetti-Regen für alle**, **Alle zur Mitte**, **ADMIN ABUSE**, **Mond-Schwerkraft** / **Normale Schwerkraft** |
 | Spieler | **Spielerliste** mit Geld, Rebirths, Index, Spielzeit und Ping. **Ziel** = ins Ziel-Feld übernehmen, **Zusehen** = Kamera folgt dem Spieler. **Geld & Werte**: + Cash, Cash setzen, Rebirths setzen, Schritte setzen. **Geschenke**: Empfänger Ziel oder ALLE umschalten, dann Drehs, Cash, ein Ei einer Seltenheit, ein Gadget (für immer) oder einen Gamepass (bis Server-Wechsel). **Moderation**: Grund/Text und Tage eintippen, dann **Warnung zeigen** (großer roter Hinweis beim Ziel), Kick, Bann (fürs ganze Spiel), Entbannen (UserId), Base leeren, Daten Reset, TP zu Ziel, Ziel holen, Boden leeren. **Spaß mit dem Ziel**: einfrieren/auftauen, riesig/mini/normal, unsichtbar/sichtbar |
 | Kräfte | Nur für dich: **Fliegen (G)**, **Gott-Modus** (dich kann niemand schlagen, aus deiner Base kann niemand klauen, Fallen wirken nicht), **Noclip** (durch Wände laufen), **Tempo**- und **Sprung**-Regler (ziehen und loslassen, „normal“ setzt zurück). **Zuschauen beenden** (oder Taste **X**). **Foto-Modus**: UI aus/an (H), Showcase-Reihe, Foto-Base, Foto aufräumen (siehe **`vorbereitet/FOTOS-MACHEN.md`**) |
 | Server | **Server-Info**: Spieler, Laufzeit, laufende Events, durchschnittlicher Ping. **Server sperren** (neue Spieler werden mit einer Meldung gekickt, Admins nicht) / entsperren. **Alle kicken** (außer Admins). **Banns dieser Sitzung** (mit Entbannen-Knopf) und **Bann-Verlauf vom Ziel** (fragt Roblox nach dem Verlauf einer UserId) |
@@ -405,17 +407,16 @@ Alles steht kommentiert in `ReplicatedStorage → Shared → Config`:
 - **Schläger**: `Config.Bats` (Name, ab wie vielen Aliens im Index, Reichweite, Wucht, Abklingzeit, Farben).
   Super-Bonk-Boost: `Config.SuperBonkRangeMult`, `Config.SuperBonkForceMult`, `Config.SuperBonkCooldownMult`.
 - **Basen**: `Config.BaseFloors` (Preis, Plätze, `RequiredRebirths`), `Config.BaseLooks` (Stufen 1-5, nur Optik).
-- **Admin-Kräfte**: `Config.AdminPowers` (Grenzen für Tempo- und Sprung-Regler, Bosse bei der Boss-Parade).
-- **Alien-Parade in der Mitte**: `Config.ParadeSpawnInterval` (wie oft ein Träger startet), `Config.ParadeSpeed` (Tempo),
-  `Config.MaxParadeMeteors` / `Config.ShowerMaxParadeMeteors` (so viele Eier höchstens gleichzeitig).
-  In `Config.Parade`: Spuren, Stapel (wie oft 2 oder 3 Eier), Boss (ab welcher Seltenheit, Tempo, Größe,
-  Reichweite), Leibwächter (Schubs-Radius, alle wie viele Sekunden, Wucht) und die **Wegpunkte der Straße** (`Path`).
-- **Klauen und Tragen**: `Config.ParadeGrabHold` (wie lange E halten an der Parade), `Config.CarrySpeedFactor` (Tempo beim Tragen),
+- **Admin-Kräfte**: `Config.AdminPowers` (Grenzen für Tempo- und Sprung-Regler, Anzahl bei „Große Nester“).
+- **Ei-Rennen in der Mitte**: `Config.Nests` (wie oft ein Ei kommt, wie viele höchstens, wie lange sie liegen,
+  große Nester: Abstand, Glück, Mindest-Seltenheit, Werte im Schauer). Lage der Nester und Pads: oben in `MapBuilder.luau`.
+- **Monster**: `Config.Creatures` (Anzahl Tag/Nacht, Tempo, Jagd-Abstand, Schubs). **Speed-Pads**: `Config.SpeedPads`.
+- **Rennen**: `Config.Race` (wie oft, wie lange, Mindest-Seltenheit, Cash-Bonus).
+- **Klauen und Tragen**: `Config.NestGrabHold` (wie lange E halten am Nest), `Config.CarrySpeedFactor` (Tempo beim Tragen),
   `Config.HeavyCarry` (schwere Beute: ab welcher Seltenheit wie langsam),
   `Config.CarryTimeout` (Zeit bis nach Hause), `Config.DroppedLifetime` (wie lange fallen gelassene Eier liegen).
 - **Egg Rush**: `Config.EggRushInterval` (wie oft), `Config.EggRushDuration` (wie lange), `Config.EggRushCount` (wie viele Eier).
-- **Meteoritenschauer**: `Config.ShowerInterval`, `Config.ShowerDuration`, `Config.ShowerParadeInterval`,
-  `Config.ShowerParadeSpeedMult` (so viel schneller läuft die Parade), `Config.ShowerLuck`.
+- **Meteoritenschauer**: `Config.ShowerInterval`, `Config.ShowerDuration`, `Config.ShowerLuck` (mehr Eier: `Config.Nests`).
 - **Gadgets**: `Config.Gadgets` (Name, Preis, Text) und die Werte darunter (Speed-Bonus, Fallen pro Base, Umhang-Zeit …).
 - **Geschenke**: `Config.PlaytimeGifts` (nach wie vielen Minuten Spielzeit heute, was es gibt).
 - **Glücksrad**: `Config.WheelPrizes` (genau 8 Felder, Weight = Chance in Prozent), `Config.FreeSpinHours` (Gratis-Dreh alle X Stunden).
@@ -470,10 +471,10 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | „Server voll – keine Base frei“ | Max Players auf 8 stellen (Schritt 4.3) |
 | Rote Fehler im **Output**-Fenster | Text kopieren und mir hier schicken, ich fixe es |
 | Kauf kam nicht an | Roblox wiederholt den Kauf automatisch, bis er verbucht ist. Nichts geht verloren |
-| „🏃 Zu weit weg – lauf näher ran!“ | Näher an die Parade gehen. Das Ei muss direkt vor dir sein. Beim Boss musst du ganz nah ran |
-| Ich werde an der Parade weggeschubst | Das sind die Leibwächter eines Bosses. Warte auf den Schubser, dann sofort rein und E halten |
-| Ich kann an der Parade nichts klauen | Du trägst schon etwas (erst heimbringen) oder deine Base ist voll. **F** zum Kaufen geht trotzdem |
-| Mein Ei aus der Parade ist weg | Du wurdest gebonkt, bist in eine Falle getreten oder die Zeit war um (60 Sekunden, beim Meteor-Run-Ei je nach Weg mehr). Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
+| „🏃 Zu weit weg – lauf näher ran!“ | Näher ans Nest gehen. Das Ei muss direkt vor dir sein |
+| Ich werde im Feld weggeschubst | Das sind die Monster. Lauf schneller (Laufbänder, Speed-Pads) oder um sie herum |
+| Ich kann am Nest nichts schnappen | Du trägst schon etwas (erst heimbringen) oder deine Base ist voll. **F** zum Kaufen geht trotzdem |
+| Mein Ei aus dem Nest ist weg | Du wurdest gebonkt, ein Monster hat dich erwischt, du bist in eine Falle getreten oder die Zeit war um (60 Sekunden, beim Meteor-Run-Ei je nach Weg mehr). Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
 | „📦 Deine Base ist voll!“ | Ein Alien verkaufen (**F** halten in deiner Base), ein **Stockwerk** kaufen (🏗️ Base) oder den Pass „+6 Plätze“ holen |
 | Ich kann mich 3 Sekunden nicht bewegen | Du bist in eine **🪤 Falle** getreten (oder ein Admin hat dich eingefroren). Das geht von allein weg |
 | Falle lässt sich nicht aufstellen | Nur in **deiner eigenen** Base, direkt auf einem Boden (auch oben, nicht auf Treppe/Baum/Laterne), nicht direkt am Rand, und höchstens 2 gleichzeitig |
@@ -498,10 +499,9 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
   prüft alles der Server (Abstand, Halte-Dauer, Geld, Besitz, Lock, Spam-Bremse). Auch wo das Glücksrad stehen bleibt,
   würfelt der Server. Fallen prüft der Server zusätzlich selbst (nicht nur über die Berührung).
 - **Performance:** wenige einfache Parts, Updates gebündelt (max. 5x pro Sekunde pro Spieler), Map wird einmal gebaut.
-  Der Server bewegt keine Eier. Jeder Client rechnet die Position in der Parade selbst aus (gemeinsame Parade-Uhr).
-  Die Träger-Aliens gibt es nur auf deinem Gerät: höchstens 80 kleine (die nächsten) und 8 Bosse, immer wiederverwendet.
-  Höchstens 170 Eier sind gleichzeitig unterwegs (im Schauer 220). Weit entfernte oder gerade nicht sichtbare
-  Träger bewegt dein Gerät seltener, damit es auch auf Handys flüssig bleibt.
+  Der Server bewegt keine Eier: Nest-Eier liegen still (höchstens ~60, im Schauer ~80). Die Monster rechnet der Server
+  nur 5x pro Sekunde (gerade Linien, kein Pathfinding) und schickt pro Monster einen kurzen Text. Gebaut und weich bewegt
+  werden sie auf deinem Gerät (9 Teile pro Monster), weit entfernte seltener.
 
 ## 📁 Dateien
 
@@ -519,14 +519,13 @@ roblox-meteor-heist/
     ├── shared/   (ReplicatedStorage.Shared)
     │   ├── Config.luau        ← ALLE Einstellungen
     │   ├── Aliens.luau        ← alle 183 Aliens (3 pro Meteor)
-    │   ├── ParadePath.luau    ← Weg der Alien-Parade (Server und Client rechnen gleich)
     │   └── Util.luau
     ├── server/   (ServerScriptService.Server)
     │   ├── Main.server.luau
-    │   └── Services/          Data, Graphics, Plot + MapBuilder + BaseBuilder, Meteor, Carry, Economy, Treadmill,
+    │   └── Services/          Data, Graphics, Plot + MapBuilder + BaseBuilder, Meteor, Field (👾 Monster, ⚡ Pads), Carry, Economy, Treadmill,
     │                          Reward (Geschenke, Glücksrad, Aufgaben), Gadget, Monetization, Admin,
     │                          Run (☄️ Meteor-Run), Night (🌙 Tag/Nacht), Trade (🤝 Handel), Leaderboard, MeteorFactory, AlienFactory …
     └── client/   (StarterPlayerScripts.Client)
         ├── Main.client.luau   ← startet die Oberfläche
-        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, Parade, Prompts, MeteorRun, Night, Bat, Trade, Fly, PhotoMode, AdminPanel, Base
+        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, NestField, Prompts, MeteorRun, Night, Bat, Trade, Fly, PhotoMode, AdminPanel, Base
 ```

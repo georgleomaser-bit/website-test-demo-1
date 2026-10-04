@@ -569,8 +569,8 @@ Config.VIPBonus = 0.25
 -- 4) SELTENHEITEN – Weight = Spawnchance (relativ), Size = Größe des Meteors
 --    Kleine kommen oft, große & seltene kaum -> "erst kleine, dann immer bessere"
 --    Jedes Ei in den Nestern und im Egg Rush kann man GRATIS schnappen.
---    Ungefähre Raten pro Server (Simulation, ohne Events): Legendary+ alle ~25 s,
---    Mythic+ alle ~1,5 Min, Secret+ alle ~15 Min, Godly ~1 in 2 Stunden, Infinity fast nur nachts.
+--    Ungefähre Raten pro Server (Simulation, ohne Events): Legendary+ alle ~20 s,
+--    Mythic+ jede Minute, Secret+ alle ~13 Min, Godly ~1 pro Stunde, Infinity fast nur nachts.
 --    HatchTime = Sekunden bis das Alien schlüpft
 --    RequiredRebirths = so viele Rebirths braucht man, um diese Seltenheit zu KAUFEN
 --    (klauen geht immer!)

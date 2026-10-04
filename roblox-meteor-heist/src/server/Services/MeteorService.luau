@@ -724,15 +724,8 @@ local function attachNestPrompts(record)
 	local reach = math.max(NEST_REACH, part.Size.X / 2 + 6)
 	record.ClientReach = reach
 
-	local grab = MeteorFactory.AddPrompt(
-		part,
-		"GrabPrompt",
-		"Schnappen",
-		def.Name,
-		Config.NestGrabHold,
-		Enum.KeyCode.E,
-		reach
-	)
+	local grab =
+		MeteorFactory.AddPrompt(part, "GrabPrompt", "Schnappen", def.Name, Config.NestGrabHold, Enum.KeyCode.E, reach)
 	grab.GamepadKeyCode = Enum.KeyCode.ButtonX
 	grab:SetAttribute("ClientMaxDistance", reach)
 	-- gratis -> der Server prüft, ob wirklich so lange gehalten wurde
@@ -892,7 +885,10 @@ local function spawnNestEgg(nest: Nest, entry, opts)
 	if pillar then
 		local def = Config.MeteorsById[entry.Id]
 		local rarity = def and Config.RaritiesByName[def.Rarity]
-		local color: Color3 = if opts.Race then Color3.fromRGB(255, 215, 60) elseif rarity then rarity.Color else Color3.new(1, 1, 1)
+		local color: Color3 = if opts.Race
+			then Color3.fromRGB(255, 215, 60)
+			elseif rarity then rarity.Color
+			else Color3.new(1, 1, 1)
 		pillar.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.5))
 		pillar.Enabled = true
 	end
@@ -1092,7 +1088,6 @@ local function spawnDrop(entry, groundPos: Vector3, opts)
 	return record
 end
 
-
 -- Getragenes Ei fällt zu Boden (gebonkt, Kreatur, gestorben, Falle, zu langsam ...). Es liegt dann GRATIS da
 -- und JEDER kann es schnappen. position = ungefähre Stelle (der Boden darunter wird gesucht),
 -- from = optional: von hier fällt es sichtbar herunter (z.B. über dem Kopf des Trägers).
@@ -1200,7 +1195,6 @@ local function findEggSpot(radius: number, groundPart: BasePart, params: Raycast
 	end
 	return nil
 end
-
 
 -- Boden des Nester-Felds (nil = nicht gefunden)
 local function fieldFloor(): BasePart?
@@ -1458,7 +1452,6 @@ function MeteorService.SpawnStatic(opts)
 	end)
 	return record
 end
-
 
 -- Allgemeiner Spawn (Admin-Panel): opts.Where = "Nest" (Standard), "Free" (Gratis-Zone) oder Position
 function MeteorService.SpawnMeteor(opts)
@@ -1760,4 +1753,3 @@ function MeteorService.Start()
 end
 
 return MeteorService
-
