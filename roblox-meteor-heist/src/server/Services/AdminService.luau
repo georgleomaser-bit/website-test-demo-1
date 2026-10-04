@@ -194,7 +194,7 @@ local function groundBelow(position: Vector3): Vector3
 	end
 	local map = Services.PlotService.MapFolder
 	if map then
-		for _, name in ipairs({ "ParadeMeteors", "GroundMeteors" }) do
+		for _, name in ipairs({ "NestMeteors", "GroundMeteors" }) do
 			local folder = map:FindFirstChild(name)
 			if folder then
 				table.insert(ignore, folder)
@@ -357,9 +357,9 @@ local function runNight(mode: string): boolean
 	return tryCall("NightService", "StartNight", blood) or tryCall("MeteorService", "StartNight", blood)
 end
 
--- Boss-Parade: mehrere seltene Eier (ab Config.Parade.BossFromRarity) – die trägt je ein Boss mit Leibwächtern
-local function runBossParade(count: number): number
-	local from = Config.RarityIndex[Config.Parade.BossFromRarity] or 5
+-- Große Nester: mehrere seltene Eier (ab Legendary) erscheinen in den großen Nestern
+local function runRareNests(count: number): number
+	local from = Config.RarityIndex.Legendary or 5
 	local pool: { string } = {}
 	for i, rarity in ipairs(Config.Rarities) do
 		local list = Config.MeteorsByRarity[rarity.Name]
@@ -371,11 +371,11 @@ local function runBossParade(count: number): number
 		return 0
 	end
 	for i = 1, count do
-		-- meist die kleinste Boss-Seltenheit, ab und zu eine höhere
+		-- meist die kleinste Seltenheit ab Legendary, ab und zu eine höhere
 		local pick = math.min(#pool, 1 + math.floor(math.random() ^ 2 * #pool))
-		Services.MeteorService.QueueParade({ Rarity = pool[pick], Announce = i == 1 })
+		Services.MeteorService.QueueNest({ Rarity = pool[pick], Announce = i == 1 })
 	end
-	Services.EconomyService.NotifyAll("BOSS-PARADE! Große Bosse tragen seltene Eier – schnapp sie dir!", "Event")
+	Services.EconomyService.NotifyAll("🥚 Seltene Eier in den großen Nestern!", "Event")
 	return count
 end
 
@@ -410,8 +410,10 @@ local function handleGlobal(message)
 		runNight(tostring(message.Mode))
 	elseif message.Type == "EggRush" then
 		Services.MeteorService.StartEggRush()
-	elseif message.Type == "BossParade" then
-		runBossParade(num(message.Count, 4, 1, 10))
+	elseif message.Type == "RareNests" then
+		runRareNests(num(message.Count, 4, 1, 10))
+	elseif message.Type == "RaceEvent" then
+		Services.MeteorService.StartRace()
 	end
 end
 
@@ -542,7 +544,7 @@ function Actions.GetPlayers(_admin)
 	return true, #list .. " Spieler geladen", list
 end
 
--- Where: "Parade" (Standard, alter Name "Belt"), "Free" (Gratis-Zone) oder "Me" (vor dem Admin)
+-- Where: "Nest" (Standard: ins Nester-Feld), "Free" (Gratis-Zone) oder "Me" (vor dem Admin)
 function Actions.SpawnMeteor(admin, args)
 	local id = args.MeteorId
 	if type(id) ~= "string" or not Config.MeteorsById[id] then
@@ -583,10 +585,10 @@ function Actions.SpawnMeteor(admin, args)
 		elseif where == "Free" then
 			Services.MeteorService.SpawnStatic(opts)
 		else
-			Services.MeteorService.QueueParade(opts)
+			Services.MeteorService.QueueNest(opts)
 		end
 	end
-	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "zur Parade")
+	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "ins Nester-Feld")
 	return true, count .. "x " .. Config.MeteorsById[id].Name .. " " .. target
 end
 
@@ -594,13 +596,13 @@ function Actions.MeteorRain(_admin, args)
 	local rarity = Config.RaritiesByName[args.Rarity] and args.Rarity or nil
 	local count = math.floor(num(args.Count, 10, 1, 40))
 	for _ = 1, count do
-		Services.MeteorService.QueueParade({ Rarity = rarity, Announce = false })
+		Services.MeteorService.QueueNest({ Rarity = rarity, Announce = false })
 	end
 	Services.EconomyService.NotifyAll(
-		"☄️ Admin-Eierregen in der Parade" .. (rarity and (" (" .. rarity .. ")") or "") .. "!",
+		"☄️ Admin-Eierregen in den Nestern" .. (rarity and (" (" .. rarity .. ")") or "") .. "!",
 		"Event"
 	)
-	return true, count .. " Eier kommen in die Parade"
+	return true, count .. " Eier kommen in die Nester"
 end
 
 function Actions.GiveMeteor(admin, args)
@@ -928,7 +930,7 @@ end
 
 function Actions.ClearGround(_admin)
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Parade, Gratis-Zone & Eier am Boden geleert"
+	return true, "🧹 Nester, Gratis-Zone & Eier am Boden geleert"
 end
 
 -- 🥚 Egg Rush sofort starten (läuft schon einer: wird verlängert, mehr Eier)
@@ -939,7 +941,7 @@ function Actions.EggRush(_admin, args)
 	end
 	local count = Services.MeteorService.StartEggRush()
 	if count <= 0 then
-		return false, "Egg Rush fehlgeschlagen (kein Wiesenboden gefunden)"
+		return false, "Egg Rush fehlgeschlagen (kein Boden gefunden)"
 	end
 	return true, "🥚 Egg Rush gestartet: " .. count .. " Eier!"
 end
@@ -1098,7 +1100,7 @@ function Actions.PhotoBase(admin)
 	return true, count > 0 and ("🏠 Foto-Base: " .. count .. " Deko-Aliens") or "🏠 Base ist schon voll"
 end
 
--- Foto-Modus: Deko weg, Slot-Farben zurück, Parade + Gratis-Zone leer
+-- Foto-Modus: Deko weg, Slot-Farben zurück, Nester + Gratis-Zone leer
 function Actions.PhotoClear(admin)
 	local plot = Services.PlotService.GetPlot(admin)
 	if plot then
@@ -1106,7 +1108,7 @@ function Actions.PhotoClear(admin)
 		Services.PlotService.UpdateSlotColors(plot)
 	end
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Foto-Deko entfernt, Parade, Gratis-Zone & Eier geleert"
+	return true, "🧹 Foto-Deko entfernt, Nester, Gratis-Zone & Eier geleert"
 end
 
 -- -------------------------------------------------------------------
@@ -1171,14 +1173,23 @@ function Actions.Night(_admin, args)
 	return true, label .. (if mode == "End" then "" else " gestartet")
 end
 
-function Actions.BossParade(_admin, args)
-	local count = math.floor(num(args.Count, Config.AdminPowers.BossParadeCount or 4, 1, 10))
+function Actions.RareNests(_admin, args)
+	local count = math.floor(num(args.Count, Config.AdminPowers.RareNestCount or 4, 1, 10))
 	if args.Global then
-		publishGlobal({ Type = "BossParade", Count = count })
-		return true, "Boss-Parade auf ALLEN Servern"
+		publishGlobal({ Type = "RareNests", Count = count })
+		return true, "Große Nester auf ALLEN Servern"
 	end
-	local queued = runBossParade(count)
-	return queued > 0, if queued > 0 then (queued .. " Bosse kommen in die Parade") else "Keine Boss-Eier gefunden"
+	local queued = runRareNests(count)
+	return queued > 0, if queued > 0 then (queued .. " seltene Eier kommen in die Nester") else "Keine seltenen Eier gefunden"
+end
+
+-- 🏁 Ei-Rennen sofort starten (Gold-Ei im entferntesten großen Nest)
+function Actions.RaceEvent(_admin, args)
+	if args.Global then
+		publishGlobal({ Type = "RaceEvent" })
+		return true, "Ei-Rennen auf ALLEN Servern"
+	end
+	return Services.MeteorService.StartRace()
 end
 
 -- 🥚 Ei einer Seltenheit schenken (Base voll -> voller Wert als Cash)
@@ -1419,6 +1430,9 @@ function Actions.ServerInfo(_admin)
 	end
 	if meteors.IsEggRushActive() then
 		table.insert(events, "Egg Rush")
+	end
+	if meteors.IsRaceActive() then
+		table.insert(events, "Ei-Rennen")
 	end
 	local luck = meteors.GetLuck()
 	if luck > 1 then

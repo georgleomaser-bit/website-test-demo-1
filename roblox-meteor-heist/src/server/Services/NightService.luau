@@ -1,8 +1,8 @@
 -- NACHT: Tag-Nacht-Zyklus (Config.Night) mit Blutmond, Sternschnuppen-Eiern und leuchtenden Kisten.
 --   • Nach Config.Night.DayLength Sekunden Tag kommt Config.Night.NightLength Sekunden Nacht.
 --   • Licht/Himmel blendet GraphicsService.SetNight weich um.
---   • Nachts: Nacht-Eier in der Parade (MeteorService.RandomOfRarity), Sternschnuppen-Eier fallen
---     auf die Wiese (MeteorService.SpawnSkyEgg) und leuchtende Kisten liegen herum.
+--   • Nachts: Nacht-Eier in den Nestern (MeteorService.RandomOfRarity), Sternschnuppen-Eier fallen
+--     aufs Nester-Feld (MeteorService.SpawnSkyEgg), mehr Kreaturen (FieldService), leuchtende Kisten.
 --   • Kiste öffnen (E halten, serverseitig geprüft): Geld oder 1 Glücksrad-Dreh.
 --   • BLUTMOND (Chance Config.Night.BloodMoonChance): roter Himmel, Glück x BloodMoonLuck
 --     (MeteorService.GetLuck), dazu das Blutmond-Ei (BloodMoonOnly).
@@ -232,7 +232,7 @@ function NightService.StartNight(blood: boolean?, seconds: number?)
 	if bloodMoon and not wasBlood then
 		Economy.NotifyAll("🔴 BLUTMOND! " .. multText(NIGHT.BloodMoonLuck) .. "x Glück bis zum Morgen.", "Event")
 	elseif not wasNight then
-		Economy.NotifyAll("🌙 Die Nacht beginnt: Sternschnuppen und leuchtende Kisten!", "Event")
+		Economy.NotifyAll("🌙 Nacht: Sternschnuppen, Kisten – und mehr Monster!", "Event")
 	end
 end
 

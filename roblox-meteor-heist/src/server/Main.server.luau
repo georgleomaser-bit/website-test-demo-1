@@ -11,8 +11,9 @@ local order = {
 	"MonetizationService",
 	"GraphicsService", -- Licht & Himmel (vor der Map)
 	"PlotService", -- baut die Map (MapBuilder) + Basen
-	"MeteorService", -- Alien-Parade mit Eiern, Gratis-Zone, Eier am Boden, Schauer, Egg Rush
+	"MeteorService", -- Ei-Rennen: Eier in Nestern, Gratis-Zone, Eier am Boden, Schauer, Egg Rush, Rennen
 	"NightService", -- Tag-Nacht-Zyklus: Blutmond, Sternschnuppen-Eier, leuchtende Kisten
+	"FieldService", -- Nester-Feld: wilde Kreaturen + Speed-Pads
 	"CarryService", -- Klauen & Tragen, Bonk
 	"GadgetService", -- Speed Coil, Falle, Super-Bonk, Umhang
 	"EconomyService",

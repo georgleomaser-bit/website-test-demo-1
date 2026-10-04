@@ -1,7 +1,7 @@
 -- GADGETS: mit Cash im Shop kaufen (Config.Gadgets). Sie gehören einem für immer (data.Gadgets,
 -- bleibt bei Rebirth) und liegen nach jedem Spawn als Werkzeug im Rucksack:
 --   🌀 Speed Coil – solange in der Hand: +30% Tempo (EconomyService.ApplySpeed fragt SpeedBonus)
---   🪤 Falle      – Klick in der EIGENEN Base: Falle am Boden (max. Config.MaxTrapsPerBase).
+--   🪤 Falle      – Klick in der EIGENEN Base: Falle am Boden, auch auf Stockwerken (max. Config.MaxTrapsPerBase).
 --                   Fremde frieren Config.TrapFreezeTime Sekunden ein, getragene Beute ist weg.
 --   🔨 Super-Bonk – kein eigenes Werkzeug: Boost für den Schläger (mehr Reichweite + Wucht, schneller;
 --                   Schlag-Logik in CarryService)
@@ -139,7 +139,7 @@ local function trapList(player: Player): { BasePart }
 end
 
 -- Boden unter den Füßen (nur begehbare Teile, Spieler ignorieren)
-local function floorBelow(position: Vector3): Vector3?
+local function floorBelow(position: Vector3): (Vector3?, BasePart?)
 	local ignore: { Instance } = {}
 	for _, p in ipairs(Players:GetPlayers()) do
 		if p.Character then
@@ -151,7 +151,11 @@ local function floorBelow(position: Vector3): Vector3?
 	params.FilterDescendantsInstances = ignore
 	params.RespectCanCollide = true
 	local result = workspace:Raycast(position, Vector3.new(0, -12, 0), params)
-	return result and result.Position or nil
+	if not result then
+		return nil, nil
+	end
+	local hit = result.Instance
+	return result.Position, if hit:IsA("BasePart") then hit else nil
 end
 
 -- Kurzer Eisblock um den Eingefrorenen (nur Optik)
@@ -331,26 +335,28 @@ local function placeTrap(player: Player)
 		)
 		return
 	end
-	local floor = floorBelow(root.Position)
+	local floor, floorPart = floorBelow(root.Position)
 	if not floor or not Services.PlotService.IsInside(plot, floor) then
 		return
 	end
-	-- Die ganze Falle muss in der Base liegen (am Rand würde sie vor den Eingang ragen)
-	local localFloor = plot.CFrame:PointToObjectSpace(floor)
-	local hx, hz = Services.PlotService.HalfExtents(plot)
-	-- (Rand innen: FENCE 1 Stud dick -> mit TRAP_EDGE_MARGIN steht die Falle nie im Rand)
+	-- Nur direkt auf einen Boden der eigenen Base (Erdgeschoss oder Stockwerk, Attribut "BaseFloor"),
+	-- nicht auf Baumstamm, Laterne, Treppe oder Rand
+	if
+		not floorPart
+		or floorPart:GetAttribute("BaseFloor") ~= true
+		or not floorPart:IsDescendantOf(plot.Model)
+		or math.abs(floor.Y - (floorPart.Position.Y + floorPart.Size.Y / 2)) > 0.5
+	then
+		Services.EconomyService.Notify(player, "🪤 Stell die Falle auf den Boden deiner Base!", "Error")
+		return
+	end
+	-- Die ganze Falle muss auf diesem Boden liegen (am Rand würde sie vor den Eingang / übers Stockwerk ragen)
+	-- (Rand innen: 1 Stud dick -> mit TRAP_EDGE_MARGIN steht die Falle nie im Rand)
+	local localFloor = floorPart.CFrame:PointToObjectSpace(floor)
+	local hx, hz = floorPart.Size.X / 2, floorPart.Size.Z / 2
 	if math.abs(localFloor.X) > hx - TRAP_EDGE_MARGIN or math.abs(localFloor.Z) > hz - TRAP_EDGE_MARGIN then
 		Services.EconomyService.Notify(player, "🪤 Zu nah am Rand – stell die Falle weiter innen auf!", "Error")
 		return
-	end
-	-- Nur direkt auf den Base-Boden (nicht auf Baumstamm, Laterne oder Rand)
-	local floorPart = plot.Model.PrimaryPart
-	if floorPart then
-		local floorTop = floorPart.Position.Y + floorPart.Size.Y / 2
-		if math.abs(floor.Y - floorTop) > 0.5 then
-			Services.EconomyService.Notify(player, "🪤 Stell die Falle auf den Boden deiner Base!", "Error")
-			return
-		end
 	end
 	trapPlacedAt[player] = t
 	local folder = plot.Model:FindFirstChild("Traps")

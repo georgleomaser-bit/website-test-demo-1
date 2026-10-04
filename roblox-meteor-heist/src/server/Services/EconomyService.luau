@@ -179,12 +179,27 @@ local function carryFactor(player: Player): number
 	return factor
 end
 
--- Echte Laufgeschwindigkeit: Schritte-Tempo x Speed Coil (Deckel MaxWalkSpeed * 1.3), beim Tragen langsamer
+-- Speed-Pad im Nester-Feld (FieldService setzt das Attribut "SpeedPadUntil" = Serverzeit): Faktor 1 .. 1.5
+local function padSpeedBonus(player: Player): number
+	local untilTime = tonumber(player:GetAttribute("SpeedPadUntil")) or 0
+	if untilTime <= workspace:GetServerTimeNow() then
+		return 1
+	end
+	return 1 + math.clamp(tonumber(Config.SpeedPads and Config.SpeedPads.Boost) or 0, 0, 1)
+end
+
+-- Echte Laufgeschwindigkeit: Schritte-Tempo x Speed Coil (Deckel MaxWalkSpeed * 1.3)
+-- x Speed-Pad (Deckel Config.SpeedPads.MaxSpeed), beim Tragen langsamer
 function EconomyService.GetWalkSpeed(player: Player, carrying: boolean): number
 	local speed = EconomyService.GetSpeed(player)
 	local bonus = gadgetSpeedBonus(player)
 	if bonus > 1 then
 		speed = math.min(speed * bonus, Config.MaxWalkSpeed * MAX_COIL_BONUS)
+	end
+	local pad = padSpeedBonus(player)
+	if pad > 1 then
+		local cap = tonumber(Config.SpeedPads and Config.SpeedPads.MaxSpeed) or 120
+		speed = math.max(speed, math.min(speed * pad, cap))
 	end
 	if carrying then
 		speed = math.max(8, speed * carryFactor(player))
@@ -623,6 +638,8 @@ local function buildState(player: Player)
 		TotalEarned = data.TotalEarned,
 		Gadgets = ownedGadgets(data),
 		StarterBought = data.StarterBought == true,
+		BaseFloors = tonumber(data.BaseFloors) or 1, -- 🏠 gekaufte Stockwerke
+		BaseLook = tonumber(data.BaseLook) or 1, -- 🏠 Base-Look-Stufe
 	}
 	-- Selten geänderte Teile nur bei Änderung (oder alle FULL_STATE_INTERVAL Sekunden alles)
 	local clock = os.clock()
@@ -923,6 +940,10 @@ function EconomyService.Start()
 			else
 				ok, message = false, "Laufbänder kommen bald!"
 			end
+		elseif action == "BuyFloor" then
+			ok, message = Services.PlotService.BuyFloor(player)
+		elseif action == "BuyBaseLook" then
+			ok, message = Services.PlotService.BuyBaseLook(player)
 		elseif action == "Rebirth" then
 			ok, message = EconomyService.Rebirth(player)
 		elseif action == "Daily" then

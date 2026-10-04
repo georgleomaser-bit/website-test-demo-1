@@ -1,36 +1,33 @@
--- Meteore: die ALIEN-PARADE in der Map-Mitte, die Gratis-Zone am Spawn-Platz, Eier am Boden,
--- Meteoritenschauer, EGG RUSH, Server-Glück und der GLÜCKS-ZÄHLER (Config.Pity).
--- NACHT (NightService): Nacht-Eier in der Parade, Sternschnuppen-Eier (SpawnSkyEgg), Blutmond-Glück.
+-- Meteore: das EI-RENNEN (Nester-Feld in der Map-Mitte), die Gratis-Zone am Spawn-Platz, Eier am Boden,
+-- Meteoritenschauer, EGG RUSH, RENNEN-EVENT (Gold-Ei), Server-Glück und der GLÜCKS-ZÄHLER (Config.Pity).
+-- NACHT (NightService): Nacht-Eier in den Nestern, Sternschnuppen-Eier (SpawnSkyEgg), Blutmond-Glück.
 -- Öffentliche Nacht-API (auch fürs Admin-Panel): MeteorService.StartNight(bloodMoon?, seconds?),
 -- MeteorService.EndNight(), MeteorService.IsNight(), MeteorService.IsBloodMoon().
 --
--- ALIEN-PARADE: kleine Aliens laufen vom UFO-Hangar zum Ziel-Tor und tragen 1-3 Eier auf dem Kopf.
--- Jedes Ei hat ZWEI Knöpfe
---   E halten = KLAUEN (GrabPrompt): gratis, aber man muss es selbst nach Hause TRAGEN
---              (CarryService, Source = "Ground"). Klappt das nicht (Bonk, Tod, Falle, zu langsam),
+-- NESTER (MapBuilder baut sie, Ordner "NestField"): alle paar Sekunden erscheint in einem zufälligen
+-- freien Nest ein Ei, liegt eine Weile und verschwindet wieder (Config.Nests).
+--   kleine Nester: oft, normale Seltenheiten
+--   große Nester:  seltener, mindestens Config.Nests.BigMinRarity, viel öfter Legendary+ (Lichtsäule + Ansage)
+-- Jedes Ei hat ZWEI Knöpfe – wer zuerst kommt, bekommt es:
+--   E halten = SCHNAPPEN (GrabPrompt): gratis, aber man muss es selbst nach Hause TRAGEN
+--              (CarryService, Source = "Ground"). Klappt das nicht (Bonk, Kreatur, Tod, Falle, zu langsam),
 --              fällt es als GRATIS-Ei auf den Boden und jeder kann es schnappen.
 --   F        = KAUFEN (BuyPrompt): kostet Cash, fliegt automatisch in die eigene Base.
--- Seltene Eier (ab Config.Parade.BossFromRarity) trägt ein großer, langsamer BOSS mit Leibwächtern.
--- Die Leibwächter schubsen alle PushInterval Sekunden jeden weg, der dem Boss zu nahe kommt –
--- dazwischen klappt Klauen mit gutem Timing.
--- EIER AM BODEN ("Drop"): fallen gelassen oder vom Egg Rush – nur E = Schnappen und Tragen.
+-- EIER AM BODEN ("Drop"): fallen gelassen, Egg Rush, Sternschnuppen – nur E = Schnappen und Tragen.
+-- RENNEN (Config.Race): Gold-Ei im entferntesten großen Nest. Wer es zuerst heimbringt, bekommt das Ei
+-- (mindestens Legendary) + Cash (CarryService meldet die Ankunft über MeteorService.FinishRace).
 --
--- PERFORMANCE: Parade-Eier werden vom Server EINMAL im Start-Hangar erzeugt und NIE bewegt.
--- Die Träger-Aliens gibt es nur beim Client (lokal, gepoolt). Jeder Client rechnet die Position selbst
--- aus (ParadePath + Attribute ParadeP0, ParadeSpeed, ParadeLane, ParadeOffset, Carrier, CarrierId):
---   Strecke = (Parade-Uhr jetzt - ParadeP0) * ParadeSpeed
--- Der Server prüft beim Kaufen/Klauen mit genau dieser Formel (ParadePath).
--- METEORITENSCHAUER: Träger starten viel öfter und die Parade-Uhr läuft schneller (alle gleichzeitig).
--- ANTI-CHEAT: Halten wird serverseitig geprüft (MeteorFactory.OnHeldTrigger), Klauen/Kaufen ist
+-- PERFORMANCE: Nest-Eier liegen still (verankert, keine Bewegung). Höchstens Config.Nests.MaxEggs
+-- (+ große Nester) gleichzeitig. Das "Pop" beim Erscheinen macht der Client lokal.
+-- METEORITENSCHAUER: Eier kommen viel öfter, mehr große Nester gleichzeitig.
+-- ANTI-CHEAT: Halten wird serverseitig geprüft (MeteorFactory.OnHeldTrigger), Schnappen/Kaufen ist
 -- pro Spieler gebremst, Eingefrorene (Falle/Admin) können nichts nehmen.
 
-local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
-local ParadePath = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ParadePath"))
 local Remotes = require(script.Parent:WaitForChild("Remotes"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 
@@ -39,82 +36,86 @@ local Services
 
 local rng = Random.new()
 
--- Parade-Eier: { Kind = "Parade", Entry, Part, Price, T0, P0, Speed, Lane, Offset, Boss, Guards,
---   CarrierId, NextPush, Claimed, ClientReach, HorizReach }
-local paradeRecords = {}
+-- Ein Nest aus der Map (Teil "Nest" im Ordner NestField/Nests)
+type Nest = {
+	Part: BasePart,
+	EggPoint: Vector3, -- Unterkante des Eis (Mitte der Mulde)
+	Big: boolean,
+	Race: boolean, -- Renn-Nest (dort erscheint das Gold-Ei)
+	Pillar: Beam?, -- Lichtsäule großer Nester (an, solange ein Ei drin liegt)
+	Record: any, -- Ei, das gerade drin liegt (nil = frei)
+}
+
+-- Eier in Nestern: { Kind = "Nest", Entry, Part, Price, Position, Expires, Claimed, Landed, ClientReach, Nest, Race? }
+local nestRecords = {}
 -- Gratis-Zone/Showcase (Kaufen/Schnappen = fliegt automatisch in die Base):
 --   { Kind = "Ground", Entry, Part, Price, Position, Expires, Claimed, Landed, ClientReach }
 local groundRecords = {}
--- Eier am Boden zum Schnappen + Tragen (fallen gelassen / Egg Rush):
+-- Eier am Boden zum Schnappen + Tragen (fallen gelassen / Egg Rush / Sternschnuppe):
 --   { Kind = "Drop", Entry, Part, Price = 0, Position, Expires, Claimed, Landed, ClientReach, EggRush }
 local dropRecords = {}
-local paradeFolder: Folder
+local nestFolder: Folder
 local groundFolder: Folder
+local fieldFolder: Instance? = nil
 
--- Warteschlange für Parade-Eier (Admin-Regen etc.)
-local paradeQueue = {}
--- Letzter Träger je Spur (für den Mindestabstand): { P0, Speed, Back }
-local laneLast: { [number]: { P0: number, Speed: number, Back: number } } = {}
-local nextLane = 1
-local pendingNatural = nil -- schon gewürfelte nächste Gruppe (1-3 Eier), wartet auf Platz
-local spareEntry = nil -- beim Stapeln gewürfeltes großes Ei -> kommt als nächstes einzeln
-local nextNaturalAt = 0
-local carrierCounter = 0
+local smallNests: { Nest } = {}
+local bigNests: { Nest } = {}
+local raceNest: Nest? = nil
+-- Warteschlange vom Admin (Eierregen, Ei ins Nester-Feld): ein Ei pro Schritt
+local nestQueue = {}
+local nextSmallAt = 0 -- os.clock()
+local nextBigAt = 0
 
--- Parade-Uhr (siehe ParadePath): P(t) = clockP + (t - clockT) * clockRate
-local clockT, clockP, clockRate = 0, 0, 1
+local NESTS = Config.Nests
+local BIG_MIN = Config.RarityIndex[NESTS.BigMinRarity] or 4
+local NEST_REACH = tonumber(NESTS.Reach) or 9
+local NEST_DROP_CLEAR = 4 -- kein neues Ei in ein Nest, auf dem ein fallen gelassenes Ei liegt
+local NEST_RANDOM_TRIES = 8
+local BIG_ANNOUNCE = Config.RarityIndex.Legendary or 5 -- ab hier: Ansage + Effekt am großen Nest
+local QUEUE_BIG_FROM = Config.RarityIndex.Legendary or 5 -- Admin-Eier ab hier in große Nester
 
-local PARADE = Config.Parade
-local BOSS_FROM = Config.RarityIndex[PARADE.BossFromRarity] or 5
-local GUARDS_PLUS_FROM = Config.RarityIndex[PARADE.GuardsPlusFrom] or 6
-local STACK_MAX_RARITY = Config.RarityIndex[PARADE.StackMaxRarity] or 2
-local BOSS_FRONT = 4.5 -- Platz vor dem Boss-Mittelpunkt (Studs)
-local BOSS_BACK = 9 -- Platz dahinter (hinterer Leibwächter)
-local CARRIER_MIN_HALF = 1.3 -- halbe Tiefe eines kleinen Trägers
--- Ausweichen beim Überholen eines Bosses (gleiche Werte wie der Client!)
-local DODGE_ZONE = 8
-local DODGE_FADE = 5
-local DODGE_OFFSET = 8.4
--- Reichweite an der Parade: waagrecht gerechnet (Eier sitzen hoch auf dem Kopf)
--- (12: vom Bordstein erreicht man beide Spuren, aber nicht vom eigenen Base-Eingang aus)
-local PARADE_CLIENT_REACH = 12
-local PARADE_REACH_EXTRA = 4 -- Spielraum beim Server (Ping)
--- am Boss weniger Spielraum: BossGrabReach + das bleibt INNERHALB der Schubs-Zone (PushRadius)
-local BOSS_REACH_EXTRA = 2
-local PARADE_REACH_SAMPLES = 6 -- Server prüft auch, wo das Ei bis zu 0,6 s vorher war (Ping)
-local PARADE_VERTICAL_EXTRA = 8
-local ROOT_HEIGHT = 2.5 -- Hüfte über dem Boden (für die 3D-Reichweite am Client)
-local PUSH_NOTIFY_GAP = 8 -- Hinweis "Leibwächter schubsen" höchstens alle 8 s pro Spieler
 -- Eier am Boden liegen still: Spielraum nur für die Bewegung des Spielers während der Ping-Zeit
 local STATIC_REACH_BASE = 2
 local STATIC_REACH_PER_SPEED = 0.1 -- pro Laufgeschwindigkeit
 local STATIC_REACH_MIN = 3
 local STATIC_REACH_MAX = 10
 local FALL_TIME = 0.9 -- so lange fliegt ein Meteor vom Himmel bzw. in die Base (Client-Effekt)
--- Zwei Knöpfe am selben Meteor: Klauen oben, Kaufen darunter (Pixel), sonst liegen sie übereinander
+-- Zwei Knöpfe am selben Ei: Schnappen oben, Kaufen darunter (Pixel), sonst liegen sie übereinander
 local GRAB_UI_OFFSET = Vector2.new(0, -40)
 local BUY_UI_OFFSET = Vector2.new(0, 40)
-local RARE_GRAB_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen sagen, wer gerade klaut
+local RARE_GRAB_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen sagen, wer gerade schnappt
 local ADMIN_SPAWN_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- vom Admin bestellte Eier: schon ab Mythic
 -- ab Secret (auch Admin-Eier): Ansage IMMER (nicht gebremst) – so ein Ei will niemand verpassen
 local SECRET_SPAWN_ANNOUNCE = Config.RarityIndex.Secret or 9
 local RARE_ANNOUNCE_GAP = 4 -- solche Ansagen höchstens alle 4 Sekunden (sonst ist der Bildschirm voll)
--- Kaufen/Klauen/Schnappen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
+-- Schnappen/Kaufen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
 local actionLimiter = Util.RateLimiter(6, 1)
-local pushNotifyAt: { [Player]: number } = {}
 
--- Egg Rush: Eier fallen nacheinander (sieht nach Regen aus) aus dieser Höhe
+-- Egg Rush: Eier fallen nacheinander (sieht nach Regen aus) aus dieser Höhe aufs Nester-Feld
 local EGG_RUSH_SKY = 120
 local EGG_RUSH_SPAWN_GAP = 0.08
-local EGG_SPOT_TRIES = 30 -- Versuche pro Ei, einen freien Wiesen-Platz zu finden
+local EGG_SPOT_TRIES = 30 -- Versuche pro Ei, einen freien Platz zu finden
 local EGG_EDGE_MARGIN = 8 -- Abstand zum Map-Rand
-local EGG_ROAD_CLEARANCE = 4 -- Abstand zum Straßenrand der Parade
+local EGG_FIELD_MARGIN = 2 -- Abstand zum Rand des Nester-Felds
 local EGG_PLOT_MARGIN = 3 -- Abstand zu Basen
 local EGG_SPACING = 3 -- Abstand zwischen zwei Eiern
 local EGG_RUSH_SHOWER_GAP = 60 -- Egg Rush nicht direkt vor/nach dem Meteoritenschauer
-local SHOWER_AFTER_RUSH = 20 -- Schauer wartet, bis der Egg Rush vorbei ist (+ so viele Sekunden)
+local SHOWER_AFTER_RUSH = 20 -- Schauer wartet, bis der Egg Rush (oder das Rennen) vorbei ist (+ so viele Sekunden)
 -- Ersatz-Grenzen, falls die Map keine "Boundary"-Wände hat
 local FALLBACK_AREA = { MinX = -168, MaxX = 168, MinZ = -406, MaxZ = 256 }
+
+-- RENNEN (Config.Race)
+local RACE = Config.Race
+local RACE_MIN = Config.RarityIndex[RACE.MinRarity] or 5
+local RACE_BUSY_GAP = 60 -- Rennen nicht kurz vor Egg Rush / Schauer
+local RACE_NIGHT_GAP = 30 -- ... und nicht kurz vor dem Nacht-Beginn
+local RACE_RETRY = 45 -- war gerade etwas los: so viele Sekunden später nochmal versuchen
+local RACE_LOST_CHECKS = 3 -- Gold-Ei so oft hintereinander nicht gefunden -> Rennen vorbei
+local raceActive = false
+local raceId = 0
+local raceUntil = 0
+local nextRaceAt = 0
+local raceLost = 0
 
 local serverLuckMult = 1
 local serverLuckUntil = 0
@@ -124,7 +125,7 @@ local eggRushUntil = 0
 local nextEggRushAt = 0
 local lastRareAnnounce = -math.huge
 
--- GLÜCKS-ZÄHLER (pro Server): Parade-Eier seit dem letzten Legendary+ (siehe Config.Pity)
+-- GLÜCKS-ZÄHLER (pro Server): Nest-Eier seit dem letzten Legendary+ (siehe Config.Pity)
 local PITY = Config.Pity or { Step = 20, Bonus = 0.25, Max = 3, FromRarity = "Legendary" }
 local PITY_FROM = Config.RarityIndex[PITY.FromRarity] or 5
 local PITY_FULL = math.ceil((PITY.Max - 1) / PITY.Bonus) * PITY.Step -- ab so vielen Eiern ist das Glück voll
@@ -143,7 +144,7 @@ local function pityMult(): number
 	return math.min(PITY.Max, 1 + math.floor(pityCount / PITY.Step) * PITY.Bonus)
 end
 
--- (nur bei Änderung schreiben: die Parade würfelt ~3 Eier pro Sekunde)
+-- (nur bei Änderung schreiben: die Nester würfeln ~2 Eier pro Sekunde)
 local function setAttributeIfChanged(name: string, value: number)
 	if ReplicatedStorage:GetAttribute(name) ~= value then
 		ReplicatedStorage:SetAttribute(name, value)
@@ -172,9 +173,11 @@ local function publishAttributes()
 	ReplicatedStorage:SetAttribute("NextShowerAt", nextShowerAt)
 	ReplicatedStorage:SetAttribute("EggRushUntil", eggRushUntil)
 	ReplicatedStorage:SetAttribute("NextEggRushAt", nextEggRushAt)
+	ReplicatedStorage:SetAttribute("RaceUntil", if raceActive then raceUntil else 0)
+	ReplicatedStorage:SetAttribute("NextRaceAt", nextRaceAt)
 end
 
--- Ansage an alle für seltene Eier (Parade, Klauen) – höchstens alle RARE_ANNOUNCE_GAP Sekunden,
+-- Ansage an alle für seltene Eier (Nester, Schnappen) – höchstens alle RARE_ANNOUNCE_GAP Sekunden,
 -- überzählige fallen weg (sonst verdrängen sie wichtige eigene Meldungen wie den Diebstahl-Alarm)
 local function rareAnnounce(text: string)
 	local t = os.clock()
@@ -263,6 +266,7 @@ function MeteorService.StartShower(duration: number?)
 	local t = now()
 	showerUntil = math.max(showerUntil, t) + (duration or Config.ShowerDuration)
 	nextShowerAt = showerUntil + Config.ShowerInterval
+	nextBigAt = 0 -- große Nester sofort füllen
 	publishAttributes()
 	-- Im Schauer gibt es keine Locks! (Ein gekauftes Base-Schild bleibt aber an.)
 	for _, plot in ipairs(Services.PlotService.Plots) do
@@ -271,7 +275,7 @@ function MeteorService.StartShower(duration: number?)
 		end
 	end
 	Services.EconomyService.NotifyAll(
-		"🌠 METEORITENSCHAUER! Volle Parade, keine Locks, " .. Config.ShowerLuck .. "x Glück!",
+		"🌠 METEORITENSCHAUER! Volle Nester, keine Locks, " .. Config.ShowerLuck .. "x Glück!",
 		"Event"
 	)
 end
@@ -280,7 +284,8 @@ end
 -- ZUFALL
 -- -------------------------------------------------------------------
 -- luck: ab Rare mal Glück. pity: nur Legendary+ mal Glücks-Zähler. Nachts: Godly+ mal NightMult.
-function MeteorService.RollRarity(luck: number, pity: number?)
+-- minIndex (optional): nur Seltenheiten ab diesem Index (große Nester, Gold-Ei)
+function MeteorService.RollRarity(luck: number, pity: number?, minIndex: number?)
 	local night = nightState()
 	local pityBonus = pity or 1
 	return Util.WeightedPick(Config.Rarities, function(rarity)
@@ -288,6 +293,9 @@ function MeteorService.RollRarity(luck: number, pity: number?)
 			return 0
 		end
 		local index = Config.RarityIndex[rarity.Name]
+		if minIndex and index < minIndex then
+			return 0
+		end
 		local weight = index >= 3 and rarity.Weight * luck or rarity.Weight
 		if index >= PITY_FROM then
 			weight *= pityBonus
@@ -306,7 +314,7 @@ function MeteorService.RollMutation(luck: number): string
 	return mut.Name
 end
 
--- Zufälliger Meteor einer Seltenheit (nur Meteore, die von selbst in die Parade kommen; includeAll = auch Admin/nicht spawnbare)
+-- Zufälliger Meteor einer Seltenheit (nur Meteore, die von selbst in die Nester kommen; includeAll = auch Admin/nicht spawnbare)
 -- Nachts kommen die Nacht-Eier dazu (je Config.Night.NightEggWeight so oft wie ein normales Ei).
 function MeteorService.RandomOfRarity(rarityName: string, includeAll: boolean?)
 	local list = Config.MeteorsByRarity[rarityName]
@@ -343,17 +351,19 @@ function MeteorService.RandomAdminMeteor()
 end
 
 -- Neuer (noch nicht gekaufter) Eintrag – Hatch/Alien kommen erst in der Base dazu
--- pity = Glücks-Bonus für Legendary+ (nur natürliche Parade-Eier, siehe rollNatural)
-function MeteorService.RollEntry(luck: number?, pity: number?)
+-- pity = Glücks-Bonus für Legendary+ (nur natürliche Nest-Eier, siehe rollNestEntry), minIndex siehe RollRarity
+function MeteorService.RollEntry(luck: number?, pity: number?, minIndex: number?)
 	local l = luck or MeteorService.GetLuck()
-	local rarity = MeteorService.RollRarity(l, pity)
+	local rarity = MeteorService.RollRarity(l, pity, minIndex)
 	local def = MeteorService.RandomOfRarity(rarity.Name) or Config.Meteors[1]
 	return { Id = def.Id, Mut = MeteorService.RollMutation(l), Lv = 1, Xp = 0 }
 end
 
--- Natürliches Parade-Ei: mit Glücks-Zähler. Legendary+ setzt ihn zurück, sonst +1.
-local function rollNatural()
-	local entry = MeteorService.RollEntry(nil, pityMult())
+-- Natürliches Nest-Ei: mit Glücks-Zähler. Legendary+ setzt ihn zurück, sonst +1.
+-- big = großes Nest (mehr Glück, mindestens Config.Nests.BigMinRarity)
+local function rollNestEntry(big: boolean)
+	local luck = MeteorService.GetLuck() * (if big then tonumber(NESTS.BigLuck) or 1 else 1)
+	local entry = MeteorService.RollEntry(luck, pityMult(), if big then BIG_MIN else nil)
 	local def = Config.MeteorsById[entry.Id]
 	if def and (Config.RarityIndex[def.Rarity] or 1) >= PITY_FROM then
 		pityCount = 0
@@ -386,100 +396,25 @@ local function makeEntry(opts)
 end
 
 -- -------------------------------------------------------------------
--- PARADE – Grundlagen (Pfad, Uhr, Positionen)
+-- EINTRÄGE (Nest, Gratis-Zone, Boden)
 -- -------------------------------------------------------------------
-local paradeWarned = false
-local cachedPath: ParadePath.Path? = nil
-
--- Parade-Pfad (von MapBuilder über PlotService, sonst aus Config)
-local function getPath(): ParadePath.Path?
-	if cachedPath then
-		return cachedPath
-	end
-	local parade = Services.PlotService.Parade
-	local path = parade and parade.Path or ParadePath.FromConfig(Config)
-	if path then
-		cachedPath = path
-		return path
-	end
-	if not paradeWarned then
-		paradeWarned = true
-		warn("[MeteorService] Kein Parade-Pfad gefunden – Parade-Eier können nicht spawnen!")
-	end
-	return nil
-end
-
-local function paradeMapFolder(): Instance?
-	local parade = Services.PlotService.Parade
-	return parade and parade.Folder or nil
-end
-
-local function clockAt(t: number): number
-	return clockP + (t - clockT) * clockRate
-end
-
--- Uhr an den Map-Ordner "Parade" schreiben (EIN Text-Attribut -> kommt immer komplett beim Client an)
-local function publishClock()
-	local folder = paradeMapFolder()
-	if folder then
-		folder:SetAttribute("ParadeClock", ParadePath.FormatClock(clockT, clockP, clockRate))
-	end
-end
-
--- Tempo der ganzen Parade ändern (Position bleibt stetig, nur das Tempo springt)
-local function setClockRate(rate: number)
-	local t = now()
-	clockP = clockAt(t)
-	clockT = t
-	clockRate = rate
-	publishClock()
-end
-
--- Strecke eines Parade-Eis zur Serverzeit t
-local function paradeDistance(record, t: number): number
-	return (clockAt(t) - record.P0) * record.Speed
-end
-
--- Seitlicher Versatz (mit Ausweichen vor Bossen) zur Zeit t bei Strecke dist
-local function paradeLateral(record, dist: number, t: number): number
-	if record.Boss then
-		return record.Lane
-	end
-	local amount = 0
-	for _, other in ipairs(paradeRecords) do
-		if other.Boss and other.Part then
-			amount = math.max(amount, ParadePath.DodgeAmount(dist, paradeDistance(other, t), DODGE_ZONE, DODGE_FADE))
-		end
-	end
-	return ParadePath.Lateral(record.Lane, amount, DODGE_OFFSET)
-end
-
--- Position des Eis zur Zeit t (nil = nicht auf der Strecke)
-local function paradeEggPosition(record, t: number): Vector3?
-	local path = getPath()
-	if not path then
-		return nil
-	end
-	local dist = paradeDistance(record, t)
-	if dist < 0 or dist > path.Length then
-		return nil
-	end
-	local pos, dir = ParadePath.Sample(path, dist)
-	local lateral = paradeLateral(record, dist, t)
-	return pos + ParadePath.Right(dir) * lateral + Vector3.new(0, record.Offset, 0)
-end
-
-function MeteorService.ParadePosition(record): Vector3?
-	return paradeEggPosition(record, now())
-end
-
 local function listFor(kind: string)
-	if kind == "Parade" then
-		return paradeRecords
+	if kind == "Nest" then
+		return nestRecords
 	elseif kind == "Drop" then
 		return dropRecords
 	end
 	return groundRecords
+end
+
+-- Nest wieder frei: Lichtsäule aus
+local function freeNest(nest: Nest?, record)
+	if nest and nest.Record == record then
+		nest.Record = nil
+		if nest.Pillar then
+			nest.Pillar.Enabled = false
+		end
+	end
 end
 
 local function removeRecord(record)
@@ -488,6 +423,7 @@ local function removeRecord(record)
 	if index then
 		table.remove(list, index)
 	end
+	freeNest(record.Nest, record)
 	if record.Part then
 		record.Part:Destroy()
 		record.Part = nil
@@ -498,10 +434,36 @@ local function currentPosition(record): Vector3?
 	if not record.Part then
 		return nil
 	end
-	if record.Kind == "Parade" then
-		return paradeEggPosition(record, now())
-	end
 	return record.Position
+end
+
+local function rarityIndexOf(entry): number
+	local def = Config.MeteorsById[entry.Id]
+	return def and Config.RarityIndex[def.Rarity] or 1
+end
+
+-- Schild "🏁 GOLD-EI" über dem Renn-Ei (immer sichtbar, auch durch Wände)
+local function addRaceMarker(part: BasePart)
+	part:SetAttribute("RaceEgg", true)
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "RaceMarker"
+	gui.Size = UDim2.fromOffset(170, 46)
+	gui.StudsOffset = Vector3.new(0, part.Size.Y / 2 + 6, 0)
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 1000
+	gui.LightInfluence = 0
+	gui.Parent = part
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.Text = "🏁 GOLD-EI"
+	label.TextColor3 = Color3.fromRGB(255, 215, 60)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 3
+	stroke.Parent = label
+	label.Parent = gui
 end
 
 -- -------------------------------------------------------------------
@@ -544,39 +506,14 @@ local function checkReach(player: Player, record, root: BasePart): Vector3?
 	if not position then
 		return nil
 	end
-	-- Grundlage: gleiche Reichweite wie beim Client (ClientMaxDistance)
+	-- liegt still: nur Spielraum für die eigene Bewegung (schnelle Spieler etwas mehr)
 	local clientReach = record.ClientReach or 10
-	local tooFar
-	if record.Kind == "Parade" then
-		-- Das Ei läuft weiter, während der Klick unterwegs ist -> auch die Stellen der letzten 0,6 s
-		-- zählen. Gerechnet wird waagrecht (das Ei sitzt hoch auf dem Kopf), dazu eine Höhen-Grenze.
-		local t = now()
-		local rootPos = root.Position
-		local best = math.huge
-		local bestY = position.Y
-		for k = 0, PARADE_REACH_SAMPLES do
-			local sample = if k == 0 then position else paradeEggPosition(record, t - k * 0.1)
-			if sample then
-				local dx, dz = sample.X - rootPos.X, sample.Z - rootPos.Z
-				local d = math.sqrt(dx * dx + dz * dz)
-				if d < best then
-					best, bestY = d, sample.Y
-				end
-			end
-		end
-		local extra = if record.Boss then BOSS_REACH_EXTRA else PARADE_REACH_EXTRA
-		tooFar = best > (record.HorizReach or clientReach) + extra
-			or math.abs(rootPos.Y - bestY) > clientReach + PARADE_VERTICAL_EXTRA
-	else
-		-- liegt still: nur Spielraum für die eigene Bewegung (schnelle Spieler etwas mehr)
-		local offset = root.Position - position
-		local character = root.Parent
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		local walkSpeed = if humanoid then humanoid.WalkSpeed else Config.NormalWalkSpeed
-		local extra =
-			math.clamp(STATIC_REACH_BASE + walkSpeed * STATIC_REACH_PER_SPEED, STATIC_REACH_MIN, STATIC_REACH_MAX)
-		tooFar = offset.Magnitude > clientReach + extra
-	end
+	local offset = root.Position - position
+	local character = root.Parent
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local walkSpeed = if humanoid then humanoid.WalkSpeed else Config.NormalWalkSpeed
+	local extra = math.clamp(STATIC_REACH_BASE + walkSpeed * STATIC_REACH_PER_SPEED, STATIC_REACH_MIN, STATIC_REACH_MAX)
+	local tooFar = offset.Magnitude > clientReach + extra
 	if tooFar then
 		Services.EconomyService.Notify(player, "🏃 Zu weit weg – lauf näher ran!", "Error")
 		return nil
@@ -590,9 +527,9 @@ local function checkReach(player: Player, record, root: BasePart): Vector3?
 	return position
 end
 
--- KAUFEN (Parade, F) / Schnappen in der Gratis-Zone: fliegt AUTOMATISCH in einen freien Slot
+-- KAUFEN (Nest, F) / Schnappen in der Gratis-Zone: fliegt AUTOMATISCH in einen freien Slot
 local function tryClaim(player: Player, record)
-	if record.Claimed or not record.Part or record.Landed == false then
+	if record.Claimed or not record.Part or record.Landed == false or record.Race then
 		return
 	end
 	if not actionLimiter.Check(player) then
@@ -628,7 +565,7 @@ local function tryClaim(player: Player, record)
 		if data.Rebirths < required then
 			Services.EconomyService.Notify(
 				player,
-				"🔥 " .. def.Rarity .. " braucht " .. required .. " Rebirth(s) zum Kaufen – aber klauen geht! 😈",
+				"🔥 " .. def.Rarity .. " braucht " .. required .. " Rebirth(s) zum Kaufen – schnappen geht! 😈",
 				"Error"
 			)
 			return
@@ -636,9 +573,7 @@ local function tryClaim(player: Player, record)
 		if data.Cash < record.Price then
 			Services.EconomyService.Notify(
 				player,
-				"💸 Nicht genug Cash! Du brauchst "
-					.. Util.FormatCash(record.Price)
-					.. " – oder klau ihn gratis! 😈",
+				"💸 Nicht genug Cash! Du brauchst " .. Util.FormatCash(record.Price) .. " – oder schnapp es gratis!",
 				"Error"
 			)
 			return
@@ -657,7 +592,7 @@ local function tryClaim(player: Player, record)
 	)
 end
 
--- KLAUEN aus der Parade (E) / Schnappen eines Eis am Boden: gratis, aber selbst nach Hause tragen
+-- SCHNAPPEN aus einem Nest (E) / eines Eis am Boden: gratis, aber selbst nach Hause tragen
 local function tryGrab(player: Player, record)
 	if record.Claimed or not record.Part or record.Landed == false then
 		return
@@ -700,71 +635,22 @@ local function tryGrab(player: Player, record)
 	end
 	record.Claimed = true
 	local entry = record.Entry
-	local fromParade = record.Kind == "Parade"
+	local fromNest = record.Kind == "Nest"
+	local isRace = entry.Race ~= nil and entry.Race == raceId and raceActive
 	removeRecord(record)
 	Services.CarryService.StartCarry(player, entry, {
 		Source = "Ground",
-		From = fromParade and "Parade" or "Drop",
+		From = if isRace then "Race" elseif fromNest then "Nest" else "Drop",
 		GrabPosition = position,
+		ScaleTimeout = fromNest or isRace, -- weite Wege übers Feld: mehr Zeit
 	})
 	local def = Config.MeteorsById[entry.Id]
-	if fromParade and def and Config.RarityIndex[def.Rarity] >= RARE_GRAB_ANNOUNCE then
+	if isRace then
+		rareAnnounce("🏁 " .. player.DisplayName .. " hat das Gold-Ei! Bonk ihn!")
+	elseif fromNest and def and Config.RarityIndex[def.Rarity] >= RARE_GRAB_ANNOUNCE then
 		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
-		rareAnnounce(player.DisplayName .. " klaut " .. def.Rarity .. " " .. mut .. def.Name .. "! Bonk ihn!")
+		rareAnnounce(player.DisplayName .. " schnappt " .. def.Rarity .. " " .. mut .. def.Name .. "! Bonk ihn!")
 	end
-end
-
--- -------------------------------------------------------------------
--- PROMPTS
--- -------------------------------------------------------------------
--- Parade: E = Klauen (gratis, tragen), F = Kaufen (automatische Lieferung)
-local function attachParadePrompts(record, serverReach: number)
-	local part: BasePart = record.Part
-	local def = Config.MeteorsById[record.Entry.Id]
-	local radius = part.Size.X / 2
-	-- waagrechte Reichweite: am Boss absichtlich klein (man muss in die Schubs-Zone der Leibwächter)
-	local horiz = if record.Boss then PARADE.BossGrabReach else math.max(PARADE_CLIENT_REACH, radius + 10)
-	record.HorizReach = horiz
-	-- Der Client misst in 3D (zum Ei hoch auf dem Kopf) -> Höhe einrechnen
-	local dy = math.max(0, PARADE.RoadTop + record.Offset - ROOT_HEIGHT)
-	local clientReach = math.sqrt(horiz * horiz + dy * dy)
-	record.ClientReach = clientReach
-
-	local grab = MeteorFactory.AddPrompt(
-		part,
-		"GrabPrompt",
-		"Klauen",
-		def.Name,
-		Config.ParadeGrabHold,
-		Enum.KeyCode.E,
-		serverReach
-	)
-	grab.GamepadKeyCode = Enum.KeyCode.ButtonX
-	grab.UIOffset = GRAB_UI_OFFSET
-	-- Der Client stellt die echte Reichweite lokal ein (die Server-Reichweite ist absichtlich riesig,
-	-- weil das Ei auf dem Server im Start-Hangar bleibt).
-	grab:SetAttribute("ClientMaxDistance", clientReach)
-	-- gratis -> der Server prüft, ob wirklich so lange gehalten wurde
-	MeteorFactory.OnHeldTrigger(grab, function(player)
-		tryGrab(player, record)
-	end)
-
-	local action = record.Price > 0 and ("Kaufen " .. Util.FormatCash(record.Price)) or "Gratis holen"
-	local buy = MeteorFactory.AddPrompt(
-		part,
-		"BuyPrompt",
-		action,
-		def.Name .. " (" .. def.Rarity .. ")",
-		Config.ParadeBuyHold,
-		Enum.KeyCode.F,
-		serverReach
-	)
-	buy.GamepadKeyCode = Enum.KeyCode.ButtonY
-	buy.UIOffset = BUY_UI_OFFSET
-	buy:SetAttribute("ClientMaxDistance", clientReach)
-	buy.Triggered:Connect(function(player)
-		tryClaim(player, record)
-	end)
 end
 
 -- Gratis-Zone / Showcase: E = Kaufen bzw. Schnappen (automatische Lieferung)
@@ -831,310 +717,282 @@ local function announce(entry, text: string)
 	Services.EconomyService.NotifyAll(text:format(def.Rarity .. " " .. mut .. def.Name), "Event")
 end
 
--- -------------------------------------------------------------------
--- PARADE – Spawnen
--- -------------------------------------------------------------------
-local BOSS_ANNOUNCE_GAP = 6 -- normale Boss-Ansagen höchstens alle 6 s
-local lastBossAnnounce = -math.huge
-local serverReachCache: number? = nil
+-- Nest-Ei: E = Schnappen (gratis, tragen), F = Kaufen (automatische Lieferung; nicht beim Gold-Ei)
+local function attachNestPrompts(record)
+	local part: BasePart = record.Part
+	local def = Config.MeteorsById[record.Entry.Id]
+	local reach = math.max(NEST_REACH, part.Size.X / 2 + 6)
+	record.ClientReach = reach
 
-local function rarityIndexOf(entry): number
-	local def = Config.MeteorsById[entry.Id]
-	return def and Config.RarityIndex[def.Rarity] or 1
-end
-
-local function isBossEntry(entry): boolean
-	return rarityIndexOf(entry) >= BOSS_FROM
-end
-
--- Gruppe = Eier auf EINEM Träger (1-3 gestapelt) oder ein einzelnes Boss-Ei
-local function groupIsBoss(group: { any }): boolean
-	return #group == 1 and isBossEntry(group[1])
-end
-
--- Platz, den die Gruppe vor sich braucht (halbe Tiefe des Trägers bzw. des größten Eis)
-local function groupFront(group: { any }): number
-	if groupIsBoss(group) then
-		return BOSS_FRONT
-	end
-	local front = CARRIER_MIN_HALF
-	for _, entry in ipairs(group) do
-		front = math.max(front, MeteorFactory.GetSize(entry) / 2)
-	end
-	return front
-end
-
--- Startet einen Träger mit seinen Eiern im Start-Hangar (ohne Platzprüfung – dafür sorgt die Schleife).
--- free = gratis, lane = Spur (Boss: egal, läuft in der Mitte)
--- shouldAnnounce: nil = natürlich (Boss-Ansage gebremst), true = vom Admin bestellt, false = still
-local function spawnCarrier(group: { any }, free: boolean, lane: number, shouldAnnounce: boolean?)
-	local path = getPath()
-	if not path or #group == 0 then
+	local grab = MeteorFactory.AddPrompt(
+		part,
+		"GrabPrompt",
+		"Schnappen",
+		def.Name,
+		Config.NestGrabHold,
+		Enum.KeyCode.E,
+		reach
+	)
+	grab.GamepadKeyCode = Enum.KeyCode.ButtonX
+	grab:SetAttribute("ClientMaxDistance", reach)
+	-- gratis -> der Server prüft, ob wirklich so lange gehalten wurde
+	MeteorFactory.OnHeldTrigger(grab, function(player)
+		tryGrab(player, record)
+	end)
+	if record.Race then
 		return
 	end
-	local t = now()
-	local p0 = clockAt(t)
-	local boss = groupIsBoss(group)
-	local speed = Config.ParadeSpeed * (if boss then PARADE.BossSpeedFactor else 1)
-	local laneOffset = if boss then 0 else lane
-	local index = rarityIndexOf(group[1])
-	local guards = if not boss then 0 elseif index >= GUARDS_PLUS_FROM then 3 else 2
-	carrierCounter += 1
-	local startPos, startDir = ParadePath.Sample(path, 0)
-	local side = ParadePath.Right(startDir)
-	local serverReach = serverReachCache
-	if not serverReach then
-		-- Server-Reichweite = ganze Strecke (das Ei bleibt auf dem Server im Hangar), echte Prüfung in checkReach
-		serverReach = ParadePath.MaxDistanceFrom(path, startPos) + 60
-		serverReachCache = serverReach
-	end
-	local height = PARADE.CarrierHeight * (if boss then PARADE.BossScale else 1)
-	for stack, entry in ipairs(group) do
-		local size = MeteorFactory.GetSize(entry)
-		local offset = height + size / 2 + 0.05 -- Ei-Mitte über der Straße (gestapelt: übereinander)
-		height += size
-		local price = if free then 0 else math.floor(Config.MeteorValue(entry))
-		local part = MeteorFactory.Create(entry, "Parade", price)
-		part.CFrame = CFrame.new(startPos + side * laneOffset + Vector3.new(0, offset, 0))
-		-- Attribute VOR dem Parenten setzen -> kommen gleichzeitig beim Client an
-		part:SetAttribute("ParadeT0", t)
-		part:SetAttribute("ParadeP0", p0)
-		part:SetAttribute("ParadeSpeed", speed)
-		part:SetAttribute("ParadeLane", laneOffset)
-		part:SetAttribute("ParadeOffset", offset)
-		part:SetAttribute("ParadeStack", stack)
-		part:SetAttribute("Carrier", if boss then "Boss" else "Small")
-		part:SetAttribute("CarrierId", carrierCounter)
-		if boss then
-			part:SetAttribute("ParadeGuards", guards)
-		end
-		local record = {
-			Kind = "Parade",
-			Entry = entry,
-			Part = part,
-			Price = price,
-			T0 = t,
-			P0 = p0,
-			Speed = speed,
-			Lane = laneOffset,
-			Offset = offset,
-			Boss = boss,
-			Guards = guards,
-			CarrierId = carrierCounter,
-			NextPush = t + PARADE.PushInterval,
-			Claimed = false,
-		}
-		table.insert(paradeRecords, record)
-		attachParadePrompts(record, serverReach)
-		part.Parent = paradeFolder
-	end
+	grab.UIOffset = GRAB_UI_OFFSET
 
-	-- Abstand merken: ein Boss sperrt alle Spuren (er läuft in der Mitte, Leibwächter daneben)
-	local info = { P0 = p0, Speed = speed, Back = if boss then BOSS_BACK else groupFront(group) }
-	if boss then
-		for _, l in ipairs(PARADE.Lanes) do
-			laneLast[l] = info
-		end
-	else
-		laneLast[lane] = info
-	end
-
-	if boss then
-		local entry = group[1]
-		if shouldAnnounce == true and index >= ADMIN_SPAWN_ANNOUNCE then
-			announce(entry, "👑 Ein Boss bringt %s zur Parade!")
-		elseif shouldAnnounce == nil and index >= SECRET_SPAWN_ANNOUNCE then
-			announce(entry, "👑 WAHNSINN! Ein Boss bringt %s zur Parade!")
-		elseif shouldAnnounce == nil and os.clock() - lastBossAnnounce >= BOSS_ANNOUNCE_GAP then
-			lastBossAnnounce = os.clock()
-			announce(entry, "👑 Boss-Parade: %s – mit Leibwächtern!")
-		end
-	end
+	local action = record.Price > 0 and ("Kaufen " .. Util.FormatCash(record.Price)) or "Gratis holen"
+	local buy = MeteorFactory.AddPrompt(
+		part,
+		"BuyPrompt",
+		action,
+		def.Name .. " (" .. def.Rarity .. ")",
+		Config.NestBuyHold,
+		Enum.KeyCode.F,
+		reach
+	)
+	buy.GamepadKeyCode = Enum.KeyCode.ButtonY
+	buy.UIOffset = BUY_UI_OFFSET
+	buy:SetAttribute("ClientMaxDistance", reach)
+	buy.Triggered:Connect(function(player)
+		tryClaim(player, record)
+	end)
 end
 
--- Hat die Spur am Start genug Platz für eine Gruppe mit diesem vorderen Platzbedarf?
-local function laneHasRoom(lane: number, front: number, t: number): boolean
-	local last = laneLast[lane]
-	if not last then
-		return true
+-- -------------------------------------------------------------------
+-- NESTER – Eier erscheinen in zufälligen freien Nestern
+-- -------------------------------------------------------------------
+-- Nester aus der Map lesen (MapBuilder: NestField/Nests, Teile "Nest" mit NestSize + EggPoint)
+local function loadNests()
+	table.clear(smallNests)
+	table.clear(bigNests)
+	raceNest = nil
+	local map = Services.PlotService.MapFolder
+	local field = map and map:FindFirstChild("NestField")
+	local folder = field and field:FindFirstChild("Nests")
+	fieldFolder = field
+	if not folder then
+		warn("[MeteorService] Kein Nester-Feld (NestField/Nests) gefunden – keine Nest-Eier!")
+		return
 	end
-	local traveled = (clockAt(t) - last.P0) * last.Speed
-	return traveled >= last.Back + front + PARADE.Gap
-end
-
--- Freie Spur (nil = gerade kein Platz, kurz warten). Kleine Träger abwechselnd, Boss braucht alle Spuren.
-local function pickLane(group: { any }): number?
-	local t = now()
-	local front = groupFront(group)
-	local lanes = PARADE.Lanes
-	if groupIsBoss(group) then
-		for _, lane in ipairs(lanes) do
-			if not laneHasRoom(lane, front, t) then
-				return nil
+	for _, child in ipairs(folder:GetChildren()) do
+		local point = child:GetAttribute("EggPoint")
+		if child:IsA("BasePart") and child.Name == "Nest" and typeof(point) == "Vector3" then
+			local pillar = child:FindFirstChild("NestPillar")
+			local nest: Nest = {
+				Part = child,
+				EggPoint = point,
+				Big = child:GetAttribute("NestSize") == "Big",
+				Race = child:GetAttribute("RaceNest") == true,
+				Pillar = if pillar and pillar:IsA("Beam") then pillar else nil,
+				Record = nil,
+			}
+			table.insert(if nest.Big then bigNests else smallNests, nest)
+			if nest.Race then
+				raceNest = nest
 			end
 		end
-		return 0
 	end
-	for _ = 1, #lanes do
-		local lane = lanes[nextLane] or 0
-		nextLane = nextLane % #lanes + 1
-		if laneHasRoom(lane, front, t) then
-			return lane
+	-- kein markiertes Renn-Nest: das große Nest am weitesten hinten (größtes Z)
+	if not raceNest then
+		for _, nest in ipairs(bigNests) do
+			if not raceNest or nest.EggPoint.Z > raceNest.EggPoint.Z then
+				raceNest = nest
+			end
+		end
+		if raceNest then
+			raceNest.Race = true
+		end
+	end
+end
+
+local function nestIsFree(nest: Nest): boolean
+	if nest.Record then
+		return false
+	end
+	local point = nest.EggPoint
+	for _, record in ipairs(dropRecords) do
+		local dx, dz = record.Position.X - point.X, record.Position.Z - point.Z
+		if dx * dx + dz * dz < NEST_DROP_CLEAR * NEST_DROP_CLEAR then
+			return false
+		end
+	end
+	return true
+end
+
+-- Zufälliges freies Nest (das Renn-Nest bleibt während des Rennens frei)
+local function pickFreeNest(list: { Nest }): Nest?
+	local count = #list
+	if count == 0 then
+		return nil
+	end
+	local function usable(nest: Nest): boolean
+		return nestIsFree(nest) and not (nest.Race and raceActive)
+	end
+	for _ = 1, NEST_RANDOM_TRIES do
+		local nest = list[rng:NextInteger(1, count)]
+		if usable(nest) then
+			return nest
+		end
+	end
+	local start = rng:NextInteger(1, count)
+	for k = 0, count - 1 do
+		local nest = list[(start + k - 1) % count + 1]
+		if usable(nest) then
+			return nest
 		end
 	end
 	return nil
 end
 
--- Nächste natürliche Gruppe: kleine Eier werden oft gestapelt (1-3 auf einem Träger)
-local function rollGroup(): { any }
-	local first = spareEntry or rollNatural()
-	spareEntry = nil
-	local group = { first }
-	if rarityIndexOf(first) <= STACK_MAX_RARITY then
-		local chances = PARADE.StackChances
-		local r = rng:NextNumber()
-		local count = 1
-		local sum = 0
-		for i, chance in ipairs(chances) do
-			sum += chance
-			if r < sum then
-				count = i
-				break
-			end
-			count = i
-		end
-		for _ = 2, count do
-			local extra = rollNatural()
-			if rarityIndexOf(extra) <= STACK_MAX_RARITY then
-				table.insert(group, extra)
-			else
-				spareEntry = extra -- großes Ei: kommt als nächstes einzeln
-				break
-			end
+local function countNestEggs(): (number, number)
+	local small, big = 0, 0
+	for _, record in ipairs(nestRecords) do
+		if record.Nest and record.Nest.Big then
+			big += 1
+		else
+			small += 1
 		end
 	end
-	return group
+	return small, big
 end
 
--- Leibwächter schubsen alle weg, die dem Boss zu nahe kommen (wie ein Bonk, nur ohne Beute-Verlust)
-local function pushAround(record, t: number)
-	local path = getPath()
-	if not path then
+-- Legt ein Ei in ein Nest. opts: { Free?, Lifetime?, Race? }
+local function spawnNestEgg(nest: Nest, entry, opts)
+	local size = MeteorFactory.GetSize(entry)
+	local price = if opts.Free or opts.Race then 0 else math.floor(Config.MeteorValue(entry))
+	local position = nest.EggPoint + Vector3.new(0, size / 2, 0)
+	local part = MeteorFactory.Create(entry, "Nest", price)
+	part.CFrame = CFrame.new(position)
+	part:SetAttribute("NestSize", if nest.Big then "Big" else "Small")
+	local lifetime = tonumber(opts.Lifetime)
+		or (if nest.Big then tonumber(NESTS.BigLifetime) or 45 else tonumber(NESTS.Lifetime) or 30)
+	local record = {
+		Kind = "Nest",
+		Entry = entry,
+		Part = part,
+		Price = price,
+		Position = position,
+		Expires = os.clock() + lifetime,
+		Claimed = false,
+		Landed = true,
+		Nest = nest,
+		Race = opts.Race,
+	}
+	nest.Record = record
+	table.insert(nestRecords, record)
+	attachNestPrompts(record)
+	if opts.Race then
+		addRaceMarker(part)
+	end
+	local pillar = nest.Pillar
+	if pillar then
+		local def = Config.MeteorsById[entry.Id]
+		local rarity = def and Config.RaritiesByName[def.Rarity]
+		local color: Color3 = if opts.Race then Color3.fromRGB(255, 215, 60) elseif rarity then rarity.Color else Color3.new(1, 1, 1)
+		pillar.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.5))
+		pillar.Enabled = true
+	end
+	part.Parent = nestFolder
+	return record
+end
+
+-- Ansage + Effekt für ein neues Nest-Ei. admin = vom Admin bestellt (schon ab Mythic ansagen)
+local function announceNestEgg(record, admin: boolean)
+	local entry = record.Entry
+	local index = rarityIndexOf(entry)
+	local big = record.Nest ~= nil and record.Nest.Big
+	if index >= SECRET_SPAWN_ANNOUNCE then
+		announce(entry, "🥚 WAHNSINN! %s im Nest!")
+	elseif admin and index >= ADMIN_SPAWN_ANNOUNCE then
+		announce(entry, "🥚 %s im Nest!")
+	elseif big and index >= BIG_ANNOUNCE then
+		local def = Config.MeteorsById[entry.Id]
+		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
+		rareAnnounce("🥚 Großes Nest: " .. def.Rarity .. " " .. mut .. def.Name .. "!")
+	end
+	if big and index >= BIG_ANNOUNCE then
+		local def = Config.MeteorsById[entry.Id]
+		Remotes.Effect:FireAllClients("BigNest", 0, { Position = record.Position, Rarity = def.Rarity })
+	end
+end
+
+-- Ei vom Admin (Warteschlange): Legendary+ in ein großes Nest, sonst klein; alles voll -> ältestes weg
+local function spawnQueued(opts)
+	local entry = makeEntry(opts)
+	if not entry then
 		return
 	end
-	local dist = paradeDistance(record, t)
-	if dist < 6 or dist > path.Length - 6 then
-		return -- noch im Hangar / schon im Ziel-Tor
+	local big = rarityIndexOf(entry) >= QUEUE_BIG_FROM
+	local first, second = smallNests, bigNests
+	if big then
+		first, second = bigNests, smallNests
 	end
-	local pos, dir = ParadePath.Sample(path, dist)
-	local radius = PARADE.PushRadius
-	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-		if root and humanoid and humanoid.Health > 0 and not root.Anchored then
-			local rootPos = root.Position
-			local dx, dz = rootPos.X - pos.X, rootPos.Z - pos.Z
-			local d = math.sqrt(dx * dx + dz * dz)
-			if d < radius and rootPos.Y < pos.Y + 30 then
-				local away = if d > 0.5 then Vector3.new(dx / d, 0, dz / d) else ParadePath.Right(dir)
-				-- Rückstoß (läuft beim Spieler, weil der seine Physik besitzt)
-				local attachment = Instance.new("Attachment")
-				attachment.Parent = root
-				local velocity = Instance.new("LinearVelocity")
-				velocity.Attachment0 = attachment
-				velocity.MaxForce = 1e6
-				velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-				velocity.VectorVelocity = away * PARADE.PushForce + Vector3.new(0, 25, 0)
-				velocity.Parent = root
-				Debris:AddItem(velocity, 0.18)
-				Debris:AddItem(attachment, 0.18)
-				Services.EconomyService.Effect(player, "Shake", 0.4)
-				local clock = os.clock()
-				if clock - (pushNotifyAt[player] or -math.huge) >= PUSH_NOTIFY_GAP then
-					pushNotifyAt[player] = clock
-					Services.EconomyService.Notify(
-						player,
-						"Die Leibwächter schubsen! Greif zwischen den Schubsern zu.",
-						"Info"
-					)
-				end
+	local nest = pickFreeNest(first) or pickFreeNest(second)
+	if not nest then
+		for _, record in ipairs(nestRecords) do
+			if not record.Race and not record.Claimed and record.Nest and record.Nest.Big == big then
+				nest = record.Nest
+				removeRecord(record)
+				break
 			end
 		end
 	end
+	if not nest then
+		return
+	end
+	local record = spawnNestEgg(nest, entry, { Free = opts.Free == true })
+	if opts.Announce == true then
+		announceNestEgg(record, true)
+	end
 end
 
--- opts: { Id?, Mut?, Rarity?, Free?, Announce? } -> kommt so bald wie möglich in die Parade
+-- opts: { Id?, Mut?, Rarity?, Free?, Announce? } -> kommt so bald wie möglich in ein Nest
 -- (Announce = true: allen ansagen, ab Mythic)
-function MeteorService.QueueParade(opts)
-	table.insert(paradeQueue, opts or {})
+function MeteorService.QueueNest(opts)
+	table.insert(nestQueue, opts or {})
 end
 
--- Ein Schritt der Parade-Schleife: Uhr-Tempo, Abmelden, Schubsen, Warteschlange, natürliche Träger
-local function paradeStep()
-	local t = now()
-	local shower = MeteorService.IsShowerActive()
-	local wantedRate = if shower then tonumber(Config.ShowerParadeSpeedMult) or 1 else 1
-	if clockRate ~= wantedRate then
-		setClockRate(wantedRate)
-	end
-	local path = getPath()
-	if not path then
-		return
-	end
-	-- Eier hinter dem Ziel-Tor abmelden, Bosse schubsen (verschiedene Tempos -> alle prüfen)
-	local length = path.Length
-	local interval = PARADE.PushInterval
-	for i = #paradeRecords, 1, -1 do
-		local record = paradeRecords[i]
-		if paradeDistance(record, t) > length then
+-- Ein Schritt: abgelaufene Eier weg, Admin-Warteschlange, neue Eier (kleine + große Nester)
+local function nestStep()
+	local clock = os.clock()
+	for i = #nestRecords, 1, -1 do
+		local record = nestRecords[i]
+		if record and not record.Claimed and not record.Race and clock > record.Expires then
 			removeRecord(record)
-		elseif record.Boss and t >= record.NextPush then
-			record.NextPush += interval
-			if record.NextPush <= t then
-				record.NextPush = t + interval
-			end
-			pushAround(record, t)
 		end
 	end
-	local cap = if shower
-		then math.max(Config.MaxParadeMeteors, Config.ShowerMaxParadeMeteors)
-		else Config.MaxParadeMeteors
-	local queued = paradeQueue[1]
+	local queued = table.remove(nestQueue, 1)
 	if queued then
-		if #paradeRecords >= cap then
-			return
-		end
-		if not queued.Entry then
-			queued.Entry = makeEntry(queued)
-			if not queued.Entry then
-				table.remove(paradeQueue, 1)
-				return
-			end
-		end
-		local group = { queued.Entry }
-		local lane = pickLane(group)
-		if lane then
-			table.remove(paradeQueue, 1)
-			-- vom Admin bestellt: Announce true/false, sonst (z.B. Meteorregen) keine Ansage
-			spawnCarrier(group, queued.Free == true, lane, queued.Announce == true)
-		end
-		return
+		spawnQueued(queued)
 	end
 	if #Players:GetPlayers() == 0 then
 		return
 	end
-	if not pendingNatural and t >= nextNaturalAt then
-		pendingNatural = rollGroup()
-		local spawnInterval = if shower then Config.ShowerParadeInterval else Config.ParadeSpawnInterval
-		nextNaturalAt = t + spawnInterval
+	local shower = MeteorService.IsShowerActive()
+	local small, big = countNestEggs()
+	if clock >= nextSmallAt then
+		nextSmallAt = clock + (tonumber(if shower then NESTS.ShowerSpawnInterval else NESTS.SpawnInterval) or 0.5)
+		local maxEggs = tonumber(if shower then NESTS.ShowerMaxEggs else NESTS.MaxEggs) or 50
+		if small < maxEggs then
+			local nest = pickFreeNest(smallNests)
+			if nest then
+				announceNestEgg(spawnNestEgg(nest, rollNestEntry(false), {}), false)
+			end
+		end
 	end
-	local group = pendingNatural
-	if group and #paradeRecords + #group <= cap then
-		local lane = pickLane(group)
-		if lane then
-			pendingNatural = nil
-			spawnCarrier(group, false, lane, nil)
+	if clock >= nextBigAt then
+		local range = (if shower then NESTS.ShowerBigInterval else NESTS.BigInterval) or { 10, 16 }
+		nextBigAt = clock + rng:NextNumber(tonumber(range[1]) or 10, tonumber(range[2]) or 16)
+		local maxBig = tonumber(if shower then NESTS.ShowerMaxBigEggs else NESTS.MaxBigEggs) or 3
+		if big < maxBig then
+			local nest = pickFreeNest(bigNests)
+			if nest then
+				announceNestEgg(spawnNestEgg(nest, rollNestEntry(true), {}), false)
+			end
 		end
 	end
 end
@@ -1150,8 +1008,8 @@ local function rayParams(respectCanCollide: boolean): RaycastParams
 			table.insert(ignore, player.Character)
 		end
 	end
-	if paradeFolder then
-		table.insert(ignore, paradeFolder)
+	if nestFolder then
+		table.insert(ignore, nestFolder)
 	end
 	if groundFolder then
 		table.insert(ignore, groundFolder)
@@ -1173,7 +1031,7 @@ local function groundBelow(position: Vector3): Vector3
 end
 
 -- -------------------------------------------------------------------
--- EIER AM BODEN (fallen gelassen / Egg Rush)
+-- EIER AM BODEN (fallen gelassen / Egg Rush / Sternschnuppe)
 -- -------------------------------------------------------------------
 -- Legt ein Ei auf den Boden. groundPos = Punkt AUF dem Boden.
 -- opts: { From: Vector3?, SkyHeight: number?, Lifetime: number?, EggRush: boolean?, ShootingStar: boolean? }
@@ -1189,6 +1047,9 @@ local function spawnDrop(entry, groundPos: Vector3, opts)
 	part.CFrame = CFrame.new(position)
 	if opts.ShootingStar then
 		part:SetAttribute("ShootingStar", true)
+	end
+	if entry.Race ~= nil then
+		addRaceMarker(part)
 	end
 
 	local record = {
@@ -1231,40 +1092,26 @@ local function spawnDrop(entry, groundPos: Vector3, opts)
 	return record
 end
 
--- Stelle auf der Parade-Straße? -> seitlich daneben auf die Wiese schieben.
--- Sonst läge das Ei still auf der Straße, während die Träger hindurchlaufen.
-local DROP_ROAD_MARGIN = 2 -- so weit neben der Straße zählt noch als "auf der Straße"
-local DROP_ROAD_GAP = 4 -- so weit neben der Straße landet das Ei (plus sein Radius)
-local function offParade(position: Vector3, radius: number): Vector3
-	local path = getPath()
-	if not path then
-		return position
-	end
-	local halfWidth = (tonumber(PARADE.RoadWidth) or 20) / 2
-	local point, along, side, outward = ParadePath.Nearest(path, position)
-	if along <= 0.01 or along >= path.Length - 0.01 or side >= halfWidth + DROP_ROAD_MARGIN then
-		return position -- neben der Straße (oder vor/hinter Hangar und Tor)
-	end
-	local target = point + outward * (halfWidth + DROP_ROAD_GAP + radius)
-	return Vector3.new(target.X, position.Y, target.Z)
-end
 
--- Getragenes Ei fällt zu Boden (gebonkt, gestorben, Falle, zu langsam ...). Es liegt dann GRATIS da
+-- Getragenes Ei fällt zu Boden (gebonkt, Kreatur, gestorben, Falle, zu langsam ...). Es liegt dann GRATIS da
 -- und JEDER kann es schnappen. position = ungefähre Stelle (der Boden darunter wird gesucht),
 -- from = optional: von hier fällt es sichtbar herunter (z.B. über dem Kopf des Trägers).
+-- Das Gold-Ei des laufenden Rennens bleibt dabei das Gold-Ei (liegt bis zum Ende des Rennens).
 function MeteorService.DropMeteor(entry, position: Vector3, from: Vector3?)
 	if type(entry) ~= "table" or not Config.MeteorsById[entry.Id] or typeof(position) ~= "Vector3" then
 		return nil
 	end
+	local isRace = raceActive and entry.Race ~= nil and entry.Race == raceId
 	local clean = {
 		Id = entry.Id,
 		Mut = Config.MutationsByName[entry.Mut] and entry.Mut or "Normal",
 		Lv = math.clamp(math.floor(tonumber(entry.Lv) or 1), 1, Config.MaxLevel),
 		Xp = 0,
 		Alien = entry.Alien,
+		Race = if isRace then raceId else nil,
 	}
-	local spot = offParade(position, MeteorFactory.GetSize(clean) / 2)
-	return spawnDrop(clean, groundBelow(spot), { From = from, Lifetime = Config.DroppedLifetime })
+	local lifetime = if isRace then math.max(5, raceUntil - now()) else Config.DroppedLifetime
+	return spawnDrop(clean, groundBelow(position), { From = from, Lifetime = lifetime })
 end
 
 -- Spielfläche aus den unsichtbaren Randwänden der Map (sonst Ersatz-Grenzen).
@@ -1308,7 +1155,7 @@ local function mapArea()
 	return area
 end
 
--- Freier Platz auf der Wiese: innerhalb der Map, nicht in/an Basen, nicht an der Parade-Straße,
+-- Freier Platz auf der Wiese: innerhalb der Map, nicht in/an Basen, nicht auf dem Nester-Feld,
 -- nicht auf dem Spawn-Platz/Bäumen (der Strahl muss genau den Wiesenboden "Ground" treffen).
 local function findEggSpot(radius: number, groundPart: BasePart, params: RaycastParams): Vector3?
 	local area = mapArea()
@@ -1316,20 +1163,12 @@ local function findEggSpot(radius: number, groundPart: BasePart, params: Raycast
 	if area.MaxX - area.MinX <= margin * 2 or area.MaxZ - area.MinZ <= margin * 2 then
 		return nil
 	end
-	local path = getPath()
-	local roadClear = (tonumber(PARADE.RoadWidth) or 20) / 2 + EGG_ROAD_CLEARANCE + radius
 	for _ = 1, EGG_SPOT_TRIES do
 		local x = rng:NextNumber(area.MinX + margin, area.MaxX - margin)
 		local z = rng:NextNumber(area.MinZ + margin, area.MaxZ - margin)
 		local flatPos = Vector3.new(x, 0, z)
 		local ok = true
-		if path then
-			local _, _, side = ParadePath.Nearest(path, flatPos)
-			if side < roadClear then
-				ok = false
-			end
-		end
-		if ok then
+		do
 			for _, plot in ipairs(Services.PlotService.Plots) do
 				local hx, hz = Services.PlotService.HalfExtents(plot)
 				local plotMargin = radius + EGG_PLOT_MARGIN
@@ -1362,15 +1201,79 @@ local function findEggSpot(radius: number, groundPart: BasePart, params: Raycast
 	return nil
 end
 
--- 🥚 EGG RUSH: Config.EggRushCount Gratis-Eier (3x Glück) regnen auf die ganze Wiese.
+
+-- Boden des Nester-Felds (nil = nicht gefunden)
+local function fieldFloor(): BasePart?
+	local floor = fieldFolder and fieldFolder:FindFirstChild("Floor")
+	if floor and floor:IsA("BasePart") then
+		return floor
+	end
+	return nil
+end
+
+-- Freier Platz auf dem Nester-Feld (nicht auf Nestern/Pads, nicht zu nah an anderen Eiern).
+-- Der Strahl muss genau den Feld-Boden treffen. Gibt den Punkt AUF dem Boden zurück oder nil.
+local function findFieldSpot(radius: number, floor: BasePart, params: RaycastParams): Vector3?
+	local half = floor.Size / 2
+	local center = floor.Position
+	local margin = EGG_FIELD_MARGIN + radius
+	if half.X <= margin or half.Z <= margin then
+		return nil
+	end
+	for _ = 1, EGG_SPOT_TRIES do
+		local x = rng:NextNumber(center.X - half.X + margin, center.X + half.X - margin)
+		local z = rng:NextNumber(center.Z - half.Z + margin, center.Z + half.Z - margin)
+		local ok = true
+		for _, record in ipairs(dropRecords) do
+			local other = record.Position
+			local otherRadius = record.Part and record.Part.Size.X / 2 or 2
+			local dx, dz = other.X - x, other.Z - z
+			local minDist = radius + otherRadius + EGG_SPACING
+			if dx * dx + dz * dz < minDist * minDist then
+				ok = false
+				break
+			end
+		end
+		if ok then
+			local result = workspace:Raycast(Vector3.new(x, 60, z), Vector3.new(0, -100, 0), params)
+			if result and result.Instance == floor then
+				return result.Position
+			end
+		end
+	end
+	return nil
+end
+
+-- Wiesenboden "Ground" der Map (nil = nicht gefunden)
+local function meadowGround(): BasePart?
+	local map = Services.PlotService.MapFolder
+	local groundPart = map and map:FindFirstChild("Ground")
+	if groundPart and groundPart:IsA("BasePart") then
+		return groundPart
+	end
+	return nil
+end
+
+-- Platz für ein Gratis-Ei: aufs Nester-Feld (fehlt es, auf die Wiese)
+local function freeEggSpot(radius: number, params: RaycastParams): Vector3?
+	local floor = fieldFloor()
+	if floor then
+		return findFieldSpot(radius, floor, params)
+	end
+	local groundPart = meadowGround()
+	if not groundPart then
+		return nil
+	end
+	return findEggSpot(radius, groundPart, params)
+end
+
+-- 🥚 EGG RUSH: Config.EggRushCount Gratis-Eier (3x Glück) regnen aufs Nester-Feld.
 -- Läuft schon einer, wird er verlängert und es kommen noch mehr Eier dazu.
 -- duration/count optional (Standard aus Config). Gibt die Anzahl der geplanten Eier zurück.
 function MeteorService.StartEggRush(duration: number?, count: number?): number
 	local t = now()
-	local map = Services.PlotService.MapFolder
-	local groundPart = map and map:FindFirstChild("Ground")
-	if not groundPart or not groundPart:IsA("BasePart") then
-		warn("[MeteorService] Egg Rush: Wiesenboden 'Ground' nicht gefunden – keine Eier")
+	if not fieldFloor() and not meadowGround() then
+		warn("[MeteorService] Egg Rush: kein Boden gefunden – keine Eier")
 		nextEggRushAt = t + Config.EggRushInterval
 		publishAttributes()
 		return 0
@@ -1387,10 +1290,10 @@ function MeteorService.StartEggRush(duration: number?, count: number?): number
 			record.Expires = math.max(record.Expires, clock + (eggRushUntil - t))
 		end
 	end
-	Services.EconomyService.NotifyAll("🥚 EGG RUSH! Überall liegen Eier – der Schnellste gewinnt!", "Event")
+	Services.EconomyService.NotifyAll("🥚 EGG RUSH! Eier regnen aufs Feld – schnell!", "Event")
 
 	task.spawn(function()
-		-- Bäume/Büsche sollen auch treffen (dann ist dort kein Platz) -> CanCollide nicht beachten
+		-- Nester/Pads sollen auch treffen (dann ist dort kein Platz) -> CanCollide nicht beachten
 		local params = rayParams(false)
 		for _ = 1, amount do
 			local remaining = eggRushUntil - now()
@@ -1398,7 +1301,7 @@ function MeteorService.StartEggRush(duration: number?, count: number?): number
 				break
 			end
 			local entry = MeteorService.RollEntry(MeteorService.GetLuck() * Config.EggRushLuck)
-			local spot = findEggSpot(MeteorFactory.GetSize(entry) / 2, groundPart, params)
+			local spot = freeEggSpot(MeteorFactory.GetSize(entry) / 2, params)
 			if spot then
 				spawnDrop(entry, spot, { SkyHeight = EGG_RUSH_SKY, Lifetime = remaining, EggRush = true })
 			end
@@ -1408,17 +1311,7 @@ function MeteorService.StartEggRush(duration: number?, count: number?): number
 	return amount
 end
 
--- Wiesenboden "Ground" der Map (nil = nicht gefunden)
-local function meadowGround(): BasePart?
-	local map = Services.PlotService.MapFolder
-	local groundPart = map and map:FindFirstChild("Ground")
-	if groundPart and groundPart:IsA("BasePart") then
-		return groundPart
-	end
-	return nil
-end
-
--- Freier Platz auf der Wiese (wie beim Egg Rush) – z.B. für die leuchtenden Kisten der Nacht.
+-- Freier Platz auf der Wiese (nicht auf dem Nester-Feld) – z.B. für die leuchtenden Kisten der Nacht.
 -- Gibt den Punkt AUF dem Boden zurück oder nil.
 function MeteorService.FindMeadowSpot(radius: number): Vector3?
 	local groundPart = meadowGround()
@@ -1428,17 +1321,13 @@ function MeteorService.FindMeadowSpot(radius: number): Vector3?
 	return findEggSpot(math.max(0.5, radius), groundPart, rayParams(false))
 end
 
--- 🌠 STERNSCHNUPPE: ein Gratis-Ei fällt schräg vom Himmel auf die Wiese (wie Egg-Rush-Eier:
+-- 🌠 STERNSCHNUPPE: ein Gratis-Ei fällt schräg vom Himmel aufs Nester-Feld (wie Egg-Rush-Eier:
 -- schnappen und heimtragen). opts: { Luck: number?, Lifetime: number? } -> Eintrag am Boden oder nil
 function MeteorService.SpawnSkyEgg(opts)
 	opts = opts or {}
-	local groundPart = meadowGround()
-	if not groundPart then
-		return nil
-	end
 	local luck = MeteorService.GetLuck() * (tonumber(opts.Luck) or 1)
 	local entry = MeteorService.RollEntry(luck)
-	local spot = findEggSpot(MeteorFactory.GetSize(entry) / 2, groundPart, rayParams(false))
+	local spot = freeEggSpot(MeteorFactory.GetSize(entry) / 2, rayParams(false))
 	if not spot then
 		return nil
 	end
@@ -1452,7 +1341,7 @@ function MeteorService.SpawnSkyEgg(opts)
 	})
 	local def = Config.MeteorsById[entry.Id]
 	if def and (Config.RarityIndex[def.Rarity] or 1) >= RARE_GRAB_ANNOUNCE then
-		announce(entry, "🌠 Eine Sternschnuppe bringt %s auf die Wiese!")
+		announce(entry, "🌠 Sternschnuppe: %s auf dem Feld!")
 	end
 	return record
 end
@@ -1570,52 +1459,203 @@ function MeteorService.SpawnStatic(opts)
 	return record
 end
 
--- Allgemeiner Spawn (Admin-Panel): opts.Where = "Parade" (Standard), "Free" (Gratis-Zone) oder Position
+
+-- Allgemeiner Spawn (Admin-Panel): opts.Where = "Nest" (Standard), "Free" (Gratis-Zone) oder Position
 function MeteorService.SpawnMeteor(opts)
 	opts = opts or {}
 	if opts.Position or opts.Where == "Free" then
 		return MeteorService.SpawnStatic(opts)
 	end
-	MeteorService.QueueParade(opts)
+	MeteorService.QueueNest(opts)
 	return nil
 end
 
--- Parade, Gratis-Zone und alle Eier am Boden leeren
+-- Nester, Gratis-Zone und alle Eier am Boden leeren (ein laufendes Rennen bleibt, das Gold-Ei auch)
 function MeteorService.ClearGround()
 	for i = #groundRecords, 1, -1 do
 		removeRecord(groundRecords[i])
 	end
 	for i = #dropRecords, 1, -1 do
-		removeRecord(dropRecords[i])
+		local record = dropRecords[i]
+		if not (raceActive and record.Entry.Race == raceId) then
+			removeRecord(record)
+		end
 	end
-	for i = #paradeRecords, 1, -1 do
-		removeRecord(paradeRecords[i])
+	for i = #nestRecords, 1, -1 do
+		local record = nestRecords[i]
+		if not record.Race then
+			removeRecord(record)
+		end
 	end
-	table.clear(paradeQueue)
-	table.clear(laneLast)
-	pendingNatural = nil
-	spareEntry = nil
+	table.clear(nestQueue)
 end
 
 -- -------------------------------------------------------------------
--- EVENT-TIMER (Schauer + Egg Rush, zeitlich versetzt)
+-- RENNEN-EVENT: Gold-Ei im entferntesten großen Nest – wer es zuerst heimbringt, gewinnt
+-- -------------------------------------------------------------------
+function MeteorService.IsRaceActive(): boolean
+	return raceActive
+end
+
+-- Wo ist das Gold-Ei gerade? (im Nest, am Boden oder beim Träger) -> für den Pfeil der Spieler
+local function raceTarget(): Vector3?
+	for _, record in ipairs(nestRecords) do
+		if record.Race == raceId then
+			return record.Position
+		end
+	end
+	for _, record in ipairs(dropRecords) do
+		if record.Entry.Race == raceId then
+			return record.Position
+		end
+	end
+	for _, player in ipairs(Players:GetPlayers()) do
+		local entry = Services.CarryService.CarriedEntry(player)
+		if type(entry) == "table" and entry.Race == raceId then
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and root:IsA("BasePart") then
+				return root.Position
+			end
+		end
+	end
+	return nil
+end
+
+local function endRace(winner: Player?)
+	if not raceActive then
+		return
+	end
+	raceActive = false
+	nextRaceAt = now() + (tonumber(RACE.Interval) or 420)
+	-- übrig gebliebenes Gold-Ei weg (wer es gerade trägt, behält es als normales Ei)
+	for i = #nestRecords, 1, -1 do
+		if nestRecords[i].Race == raceId then
+			removeRecord(nestRecords[i])
+		end
+	end
+	for i = #dropRecords, 1, -1 do
+		if dropRecords[i].Entry.Race == raceId then
+			removeRecord(dropRecords[i])
+		end
+	end
+	ReplicatedStorage:SetAttribute("RaceTarget", nil)
+	publishAttributes()
+	if not winner then
+		Services.EconomyService.NotifyAll("🏁 Rennen vorbei – niemand hat das Gold-Ei heimgebracht.", "Info")
+	end
+end
+
+-- Rennen sofort starten (Admin oder Timer). Gibt (Erfolg, Text) zurück.
+function MeteorService.StartRace(): (boolean, string)
+	if raceActive then
+		return false, "Das Rennen läuft schon"
+	end
+	local nest = raceNest
+	if not nest then
+		return false, "Kein Renn-Nest gefunden"
+	end
+	if nest.Record then
+		removeRecord(nest.Record)
+	end
+	local rarity = MeteorService.RollRarity(MeteorService.GetLuck(), nil, RACE_MIN)
+	local def = MeteorService.RandomOfRarity(rarity.Name, true)
+	if not def then
+		return false, "Kein Ei für das Rennen gefunden"
+	end
+	raceId += 1
+	raceActive = true
+	raceLost = 0
+	local duration = tonumber(RACE.Duration) or 150
+	raceUntil = now() + duration
+	local entry = {
+		Id = def.Id,
+		Mut = if Config.MutationsByName.Gold then "Gold" else "Normal",
+		Lv = 1,
+		Xp = 0,
+		Race = raceId,
+	}
+	local record = spawnNestEgg(nest, entry, { Race = raceId, Lifetime = duration + 5 })
+	ReplicatedStorage:SetAttribute("RaceTarget", record.Position)
+	publishAttributes()
+	Services.EconomyService.NotifyAll("🏁 EI-RENNEN! Hol das Gold-Ei am Ende des Felds!", "Event")
+	Remotes.Effect:FireAllClients("RaceStart", 0, { Position = record.Position })
+	return true, "🏁 Rennen gestartet: " .. def.Rarity .. " " .. def.Name
+end
+
+-- CarryService: ein Ei ist zu Hause angekommen. Ist es das Gold-Ei -> Sieg!
+function MeteorService.FinishRace(player: Player, entry)
+	if not raceActive or type(entry) ~= "table" or entry.Race ~= raceId then
+		return
+	end
+	local Economy = Services.EconomyService
+	local seconds = tonumber(RACE.CashSeconds) or 300
+	local amount = math.floor(math.max(tonumber(RACE.CashMin) or 25000, Economy.GetIncome(player) * seconds))
+	Economy.AddCash(player, amount)
+	Economy.Effect(player, "Collect", amount)
+	Economy.Effect(player, "Confetti", 2)
+	endRace(player)
+	Economy.NotifyAll("🏁 " .. player.DisplayName .. " gewinnt das Ei-Rennen! +" .. Util.FormatCash(amount), "Event")
+end
+
+local function raceStep()
+	if not raceActive then
+		return
+	end
+	if now() >= raceUntil then
+		endRace(nil)
+		return
+	end
+	local target = raceTarget()
+	if target then
+		raceLost = 0
+		ReplicatedStorage:SetAttribute("RaceTarget", target)
+	else
+		-- Gold-Ei verschwunden (Admin aufgeräumt, Träger hat das Spiel verlassen ...)
+		raceLost += 1
+		if raceLost >= RACE_LOST_CHECKS then
+			endRace(nil)
+		end
+	end
+end
+
+-- Ist gerade (oder gleich) ein anderes Event? Dann wartet das Rennen.
+local function raceBlocked(t: number): boolean
+	if MeteorService.IsShowerActive() or MeteorService.IsEggRushActive() then
+		return true
+	end
+	if nextShowerAt - t < RACE_BUSY_GAP or nextEggRushAt - t < RACE_BUSY_GAP then
+		return true
+	end
+	local night = nightState()
+	local nextNight = tonumber(ReplicatedStorage:GetAttribute("NextNightAt")) or 0
+	return not night and nextNight > t and nextNight - t < RACE_NIGHT_GAP
+end
+
+-- -------------------------------------------------------------------
+-- EVENT-TIMER (Schauer, Egg Rush, Rennen – zeitlich versetzt)
 -- -------------------------------------------------------------------
 local function eventStep()
 	local t = now()
-	-- Meteoritenschauer: wartet, bis ein laufender Egg Rush vorbei ist
+	-- Meteoritenschauer: wartet, bis ein laufender Egg Rush / ein Rennen vorbei ist
 	if not MeteorService.IsShowerActive() and t >= nextShowerAt then
 		if MeteorService.IsEggRushActive() then
 			nextShowerAt = eggRushUntil + SHOWER_AFTER_RUSH
+			publishAttributes()
+		elseif raceActive then
+			nextShowerAt = raceUntil + SHOWER_AFTER_RUSH
 			publishAttributes()
 		else
 			MeteorService.StartShower()
 		end
 	end
-	-- Egg Rush: nicht im Schauer und nicht kurz davor (sonst gehen beide Events unter)
+	-- Egg Rush: nicht im Schauer/Rennen und nicht kurz davor (sonst gehen beide Events unter)
 	if not MeteorService.IsEggRushActive() and t >= nextEggRushAt then
 		local showerSoon = nextShowerAt - t < Config.EggRushDuration + SHOWER_AFTER_RUSH
 		if #Players:GetPlayers() == 0 then
 			nextEggRushAt = t + 30
+			publishAttributes()
+		elseif raceActive then
+			nextEggRushAt = raceUntil + SHOWER_AFTER_RUSH
 			publishAttributes()
 		elseif MeteorService.IsShowerActive() or showerSoon then
 			local showerEnd = MeteorService.IsShowerActive() and showerUntil or (nextShowerAt + Config.ShowerDuration)
@@ -1625,6 +1665,19 @@ local function eventStep()
 			MeteorService.StartEggRush()
 		end
 	end
+	-- Rennen
+	if not raceActive and t >= nextRaceAt then
+		if #Players:GetPlayers() == 0 then
+			nextRaceAt = t + 30
+			publishAttributes()
+		elseif raceBlocked(t) then
+			nextRaceAt = t + RACE_RETRY
+			publishAttributes()
+		else
+			MeteorService.StartRace()
+		end
+	end
+	raceStep()
 end
 
 function MeteorService.Init(services)
@@ -1641,32 +1694,29 @@ function MeteorService.Init(services)
 		created.Parent = map
 		return created
 	end
-	paradeFolder = getFolder("ParadeMeteors") -- Name wird vom Client gesucht!
+	nestFolder = getFolder("NestMeteors") -- Name wird vom Client gesucht!
 	groundFolder = getFolder("GroundMeteors")
-	-- Parade-Uhr starten (der Client braucht sie, um die Träger zu bewegen)
-	clockT, clockP, clockRate = now(), 0, 1
-	publishClock()
+	loadNests()
 end
 
 function MeteorService.Start()
 	local t = now()
 	nextShowerAt = t + Config.ShowerInterval
 	nextEggRushAt = t + Config.EggRushInterval / 2 -- versetzt: erster Egg Rush lange vor dem ersten Schauer
+	nextRaceAt = t + (tonumber(RACE.Interval) or 420) / 2 -- erstes Rennen zwischen Egg Rush und Schauer
 	publishAttributes()
 	publishPity()
 	Players.PlayerRemoving:Connect(function(player)
 		actionLimiter.Clear(player)
-		pushNotifyAt[player] = nil
 	end)
 
-	-- Parade-Schleife (nur Rechnen + gelegentlich ein neues Part – kein Bewegen!)
+	-- Nester-Schleife (nur Rechnen + gelegentlich ein neues Ei – nichts bewegt sich)
 	task.spawn(function()
 		while true do
-			task.wait(0.05)
-			local ok, err = pcall(paradeStep)
+			task.wait(0.1)
+			local ok, err = pcall(nestStep)
 			if not ok then
-				warn("[MeteorService] Parade-Fehler: " .. tostring(err))
-				pendingNatural = nil
+				warn("[MeteorService] Nester-Fehler: " .. tostring(err))
 				task.wait(1)
 			end
 		end
@@ -1710,3 +1760,4 @@ function MeteorService.Start()
 end
 
 return MeteorService
+

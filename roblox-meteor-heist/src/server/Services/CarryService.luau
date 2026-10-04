@@ -3,11 +3,12 @@
 --    und muss sie dann in die eigene Base tragen (Source = "Plot").
 --    Wer gebonkt wird, stirbt, in eine Falle tritt, zu langsam ist oder das Spiel verlässt,
 --    verliert die Beute: sie fliegt zurück zum Besitzer.
---  * Eier aus der ALIEN-PARADE (E = Klauen) und Eier am Boden (fallen gelassen / Egg Rush) sind gratis,
+--  * Eier aus den NESTERN (E = Schnappen) und Eier am Boden (fallen gelassen / Egg Rush) sind gratis,
 --    müssen aber auch nach Hause getragen werden (Source = "Ground"). Klappt das nicht,
 --    fällt das Ei an Ort und Stelle auf den Boden – und JEDER kann es schnappen.
 --  * Gekaufte Meteore (F) muss man NICHT tragen – sie fliegen automatisch in die Base.
 --  * Schläger zum Verteidigen (Stufe nach Index, Config.Bats; Super-Bonk-Gadget = Boost).
+--  * Wilde Kreaturen im Nester-Feld (FieldService) schubsen wie ein Bonk: CarryService.CreatureHit.
 --  * Seltene Beute ist schwer (Config.HeavyCarry, Tempo rechnet EconomyService), wer klaut, verliert
 --    den Umhang (sonst wäre jeder Diebstahl unbonkbar), Eingefrorene können nicht klauen.
 
@@ -40,7 +41,7 @@ local CONVEYOR_EXTRA_SPEED = 14
 local BAT_REST_GRIP = CFrame.new(0, -0.4, 0) * CFrame.Angles(math.rad(-15), 0, 0)
 -- Lange Heimwege (info.ScaleTimeout, z.B. das Ei vom Meteor-Run): Trage-Zeit = Weg / Trage-Tempo * TRIP_SLACK
 -- + TRIP_EXTRA, mindestens Config.CarryTimeout. Der Weg wird großzügig gerechnet (|dx| + |dz| bis zum
--- Eingang der eigenen Base – Umwege um Basen und Parade sind darin enthalten).
+-- Eingang der eigenen Base – Umwege um Basen und Nester sind darin enthalten).
 local TRIP_SLACK = 1.3
 local TRIP_EXTRA = 10
 local TRIP_MAX = 240
@@ -62,13 +63,15 @@ local function ownsGadget(player: Player, id: string): boolean
 end
 
 -- Höchstes mögliches Trage-Tempo (für die Mindest-Tragezeit): Schritte-Tempo * Trage-Faktor
--- (Gamepass "Volle Speed beim Tragen" = kein Abzug), Speed Coil obendrauf, plus Laufband-Schub
+-- (Gamepass "Volle Speed beim Tragen" = kein Abzug), Speed Coil + Speed-Pad obendrauf
+-- (ein Pad kann man unterwegs jederzeit mitnehmen), plus Laufband-Schub
 local function maxCarrySpeed(player: Player): number
 	local factor = Services.MonetizationService.HasPass(player, "CarryFast") and 1 or Config.CarrySpeedFactor
 	local speed = math.max(8, Services.EconomyService.GetSpeed(player) * factor)
 	if ownsGadget(player, "SpeedCoil") then
 		speed *= 1 + Config.SpeedCoilBonus
 	end
+	speed *= 1 + (tonumber(Config.SpeedPads and Config.SpeedPads.Boost) or 0)
 	return speed + CONVEYOR_EXTRA_SPEED
 end
 
@@ -262,7 +265,7 @@ local function tripTimeout(player: Player, entry, from: Vector3?): number
 	return math.clamp(math.ceil(seconds), Config.CarryTimeout, TRIP_MAX)
 end
 
--- Mindest-Tragezeit für ein Ei aus der Parade/vom Boden: Luftlinie bis zum Eingang der eigenen Base
+-- Mindest-Tragezeit für ein Ei aus einem Nest/vom Boden: Luftlinie bis zum Eingang der eigenen Base
 local function minGroundCarryTime(player: Player, from: Vector3?): number
 	local plot = Services.PlotService.GetPlot(player)
 	if not plot or not from or Services.PlotService.IsInside(plot, from) then
@@ -363,7 +366,7 @@ local function createVisual(player: Player, entry): Instance?
 end
 
 -- info (Plot):   { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef, MinTime? }
--- info (Ground): { Source = "Ground", From = "Parade"|"Drop"|"Run"?, GrabPosition?, MinTime?, ScaleTimeout? }
+-- info (Ground): { Source = "Ground", From = "Nest"|"Drop"|"Race"|"Run"?, GrabPosition?, MinTime?, ScaleTimeout? }
 --   ScaleTimeout = true: Trage-Zeit wächst mit der Entfernung zur eigenen Base (tripTimeout)
 -- Dazu kommen hier: Entry, Started, Character, StartPos, LastPos (laufend), Visual, Timeout
 function CarryService.StartCarry(player: Player, entry, info)
@@ -429,7 +432,8 @@ local function visualPosition(info): Vector3?
 	return nil
 end
 
--- Ei aus der Parade/vom Boden sicher zu Hause -> in einen freien Slot, Schlüpf-Countdown startet
+-- Ei aus einem Nest/vom Boden sicher zu Hause -> in einen freien Slot, Schlüpf-Countdown startet
+-- (das Gold-Ei des Rennens meldet hier den Sieg: MeteorService.FinishRace)
 local function succeedGround(player: Player, info)
 	local data = Services.DataService.Get(player)
 	local plot = Services.PlotService.GetPlot(player)
@@ -459,6 +463,12 @@ local function succeedGround(player: Player, info)
 		"Success"
 	)
 	Services.EconomyService.Effect(player, "Confetti", 1)
+	if info.Entry.Race ~= nil and Services.MeteorService.FinishRace then
+		local ok, err = pcall(Services.MeteorService.FinishRace, player, info.Entry)
+		if not ok then
+			warn("[CarryService] FinishRace fehlgeschlagen: " .. tostring(err))
+		end
+	end
 end
 
 local function succeed(player: Player)
@@ -504,7 +514,7 @@ local function succeed(player: Player)
 	Services.EconomyService.Effect(player, "Confetti", 1)
 end
 
--- Hinweise beim Verlieren: Beute aus einer Base fliegt zurück, ein Ei aus der Parade fällt herunter
+-- Hinweise beim Verlieren: Beute aus einer Base fliegt zurück, ein Ei aus einem Nest fällt herunter
 local PLOT_FAIL_TEXT = {
 	bonked = "💥 Gebonkt! Die Beute fliegt zurück.",
 	timeout = "⏰ Zu langsam! Die Beute fliegt zurück.",
@@ -512,6 +522,7 @@ local PLOT_FAIL_TEXT = {
 	teleport = "🚫 Mit Beute kann man nicht teleportieren!",
 	locked = "🔒 Die Base wurde gesperrt – deine Beute fliegt zurück!",
 	trap = "🪤 FALLE! Die Beute fliegt zurück.",
+	creature = "👾 Erwischt! Die Beute fliegt zurück.",
 }
 local GROUND_FAIL_TEXT = {
 	bonked = "💥 Gebonkt! Das Ei ist runtergefallen – schnapp es dir zurück!",
@@ -521,9 +532,10 @@ local GROUND_FAIL_TEXT = {
 	locked = "🔒 Gesperrte Base – das Ei ist runtergefallen!",
 	trap = "🪤 FALLE! Das Ei ist runtergefallen.",
 	died = "💀 Das Ei ist runtergefallen – jemand anderes kann es jetzt schnappen!",
+	creature = "👾 Erwischt! Das Ei ist runtergefallen.",
 }
 
--- Ei aus der Parade/vom Boden verloren -> fällt als GRATIS-Ei auf den Boden (jeder darf es schnappen)
+-- Ei aus einem Nest/vom Boden verloren -> fällt als GRATIS-Ei auf den Boden (jeder darf es schnappen)
 local function dropGroundLoot(player: Player, info, reason: string, from: Vector3?)
 	local spot: Vector3? = nil
 	if reason == "teleport" or reason == "invalid" then
@@ -753,6 +765,29 @@ local function knockback(target: Player, targetRoot: BasePart, direction: Vector
 	Debris:AddItem(velocity, KNOCKBACK_TIME)
 	Debris:AddItem(attachment, KNOCKBACK_TIME)
 	Services.EconomyService.Effect(target, "Bonked", 1, { Dir = direction, Time = Config.BonkStunTime })
+end
+
+-- Wilde Kreatur im Nester-Feld trifft (FieldService): Schubs wie ein Bonk (niemand stirbt),
+-- getragene Beute geht verloren. true = getroffen (false: taumelt noch, eingefroren, Gott-Modus ...)
+function CarryService.CreatureHit(player: Player, direction: Vector3, force: number): boolean
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or root.Anchored then
+		return false
+	end
+	if player:GetAttribute("AdminGod") == true or os.clock() < (stunnedUntil[player] or 0) then
+		return false
+	end
+	local flat = Vector3.new(direction.X, 0, direction.Z)
+	flat = if flat.Magnitude > 0.01 then flat.Unit else root.CFrame.LookVector * -1
+	playHitSound(root)
+	knockback(player, root, flat, force, false)
+	Services.EconomyService.Effect(player, "Shake", 0.6)
+	if carrying[player] then
+		CarryService.Fail(player, "creature")
+	end
+	return true
 end
 
 local function swing(player: Player, tool: Tool)

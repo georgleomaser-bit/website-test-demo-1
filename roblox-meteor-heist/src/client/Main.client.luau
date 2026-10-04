@@ -42,6 +42,7 @@ local MeteorRun = require(Modules:WaitForChild("MeteorRun"))
 local Night = require(Modules:WaitForChild("Night"))
 local Bat = require(Modules:WaitForChild("Bat"))
 local Trade = require(Modules:WaitForChild("Trade"))
+local Base = require(Modules:WaitForChild("Base"))
 
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local Remotes = {
@@ -134,6 +135,13 @@ MeteorRun.Start(ctx) -- ☄️ Meteor-Run: HUD, Balken, Einschläge, Knopf "☄�
 Night.Init(ctx) -- 🌙 Nacht-Banner, Glücks-Zähler, Sternschnuppen + Kisten
 task.spawn(Bat.Init, ctx) -- Schläger-Schwung + Taumeln (wartet kurz auf den Rucksack)
 Trade.Init(ctx) -- 🤝 Handel: Fenster, Anfrage-Popup, Prompt "Handeln" an anderen Spielern
+Base.Init(ctx) -- 🏠 Base-Fenster (Stockwerke, Look) + Knopf rechts
+task.spawn(function()
+	local map = workspace:WaitForChild("MeteorHeistMap", 120)
+	if map then
+		Base.SetMap(map) -- Laser-Sperren an den Basen (fahren beim Sperren zu)
+	end
+end)
 
 -- Schilder an den Laufbändern: Preis, "Gekauft" oder "Dein bestes" (nur bei Änderung neu schreiben)
 local treadmillMap: Instance? = nil
@@ -206,6 +214,7 @@ local function refreshAll()
 	Hud.Refresh(state)
 	Windows.Refresh(state)
 	Prompts.OnState(state)
+	Base.OnState(state)
 	updateTreadmillSigns()
 end
 

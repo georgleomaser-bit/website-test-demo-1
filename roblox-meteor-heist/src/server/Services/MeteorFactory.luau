@@ -3,7 +3,7 @@
 -- Lichter und Feuer gibt es bewusst sparsam (viele Meteore gleichzeitig = sonst Lag).
 -- Dazu: Prompts anlegen (AddPrompt) und serverseitig prüfen, ob lange genug gehalten wurde (OnHeldTrigger).
 --
--- KRASSE EIER (ab Legendary, in der Parade / am Boden / in der Base – nicht beim Tragen):
+-- KRASSE EIER (ab Legendary, im Nest / am Boden / in der Base – nicht beim Tragen):
 --   • Lichtsäule (Beam zwischen zwei Attachments, nach oben verblassend)
 --   • Glitzer-Partikel "RareSparkle" in Seltenheitsfarbe
 --   • Mythic+: Funkenregen "RareSparks" (+ Blitze, die der Client lokal zeichnet)
@@ -21,10 +21,10 @@ local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util
 local MeteorFactory = {}
 
 -- Ab welcher Seltenheit (Index in Config.Rarities) gibt es welchen Effekt?
--- Parade: es sind sehr viele Eier gleichzeitig unterwegs -> noch sparsamer.
-local LIGHT_FROM = { Base = 5, Ground = 5, Parade = 5, Carry = 7 }
-local FIRE_FROM = { Base = 7, Ground = 7, Parade = 99, Carry = 99 }
-local SPARKLES_FROM = { Base = 6, Ground = 6, Parade = 7, Carry = 99 }
+-- Nest: es liegen sehr viele Eier gleichzeitig im Feld -> noch sparsamer.
+local LIGHT_FROM = { Base = 5, Ground = 5, Nest = 5, Carry = 7 }
+local FIRE_FROM = { Base = 7, Ground = 7, Nest = 99, Carry = 99 }
+local SPARKLES_FROM = { Base = 6, Ground = 6, Nest = 7, Carry = 99 }
 local SHADOW_MIN_SIZE = 3.5 -- nur große Meteore werfen Schatten
 local FROST_WHITEN = 0.4 -- Frost-Meteore etwas weißer als die Mutationsfarbe (sonst fast wie Diamond)
 
@@ -33,7 +33,7 @@ local RARE_FROM = Config.RarityIndex.Legendary or 5
 local RARE_MYTHIC = Config.RarityIndex.Mythic or 6
 local RARE_SECRET = Config.RarityIndex.Secret or 9
 local RARE_INFINITY = Config.RarityIndex.Infinity or 12
-local RARE_MODES: { [string]: boolean } = { Parade = true, Ground = true, Base = true }
+local RARE_MODES: { [string]: boolean } = { Nest = true, Ground = true, Base = true }
 local PILLAR_HEIGHT = 28
 
 local GREEN = Color3.fromRGB(120, 255, 120)
@@ -64,7 +64,7 @@ local function makeLabel(parent: Instance, name: string, order: number, textSize
 	return label
 end
 
--- mode: "Ground"/"Parade" (zeigt Preis), "Base" (Schlüpf-Countdown bzw. Einkommen + Level),
+-- mode: "Ground"/"Nest" (zeigt Preis), "Base" (Schlüpf-Countdown bzw. Einkommen + Level),
 --       "Carry" (getragen: Schlüpfen pausiert)
 function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: number?)
 	local gui = part:FindFirstChild("Info")
@@ -94,7 +94,7 @@ function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: n
 	end
 	rarityLabel.Text = tag
 	rarityLabel.TextColor3 = mut.Color or rarity.Color
-	if mode == "Ground" or mode == "Parade" then
+	if mode == "Ground" or mode == "Nest" then
 		if price and price <= 0 then
 			valueLabel.Text = "🎁 GRATIS!"
 			valueLabel.TextColor3 = GREEN
@@ -106,7 +106,7 @@ function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: n
 		-- Noch nicht geschlüpft: der Client zählt über das Attribut "HatchAt" live herunter
 		local hatch = math.max(0, tonumber(entry.Hatch) or 0)
 		if mode == "Carry" and entry.Hatch == nil then
-			-- frisch aus der Parade/vom Boden geklaut: Countdown startet erst in der Base
+			-- frisch aus dem Nest/vom Boden geschnappt: Countdown startet erst in der Base
 			valueLabel.Text = "🏠 Heimbringen! 🐣 " .. Util.FormatTime(Config.HatchTime(entry.Id))
 		elseif mode == "Carry" then
 			valueLabel.Text = "🐣 ⏸ " .. Util.FormatTime(hatch)
@@ -166,7 +166,7 @@ local function addSpecialEffects(part: BasePart, def, color: Color3, size: numbe
 		emitter.Lifetime = NumberRange.new(0.8, 1.6)
 		emitter.Speed = NumberRange.new(size * 0.4, size * 0.9)
 		emitter.SpreadAngle = Vector2.new(180, 180)
-		emitter.Rate = mode == "Parade" and 12 or 25
+		emitter.Rate = mode == "Nest" and 12 or 25
 		emitter.Parent = part
 		if fx.Rainbow then
 			emitter:SetAttribute("Rainbow", true)
@@ -218,7 +218,6 @@ local function addRareEffects(part: BasePart, rarityIndex: number, color: Color3
 	part:SetAttribute("RareFX", tier)
 
 	-- Lichtsäule: Beam von der Ei-Mitte senkrecht nach oben, unten kräftig, oben unsichtbar.
-	-- (Das obere Attachment richtet der Client senkrecht aus, wenn das Ei auf dem Kopf eines Trägers wackelt.)
 	local bottom = Instance.new("Attachment")
 	bottom.Name = "PillarBottom"
 	bottom.Parent = part
@@ -317,7 +316,7 @@ local function addRareEffects(part: BasePart, rarityIndex: number, color: Color3
 	end
 end
 
--- mode: "Parade" (auf dem Kopf eines Parade-Aliens), "Ground" (Gratis-Zone/Showcase), "Base" (in der Base), "Carry" (getragen)
+-- mode: "Nest" (in einem Nest im Ei-Rennen), "Ground" (Gratis-Zone/Showcase), "Base" (in der Base), "Carry" (getragen)
 function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	local def = Config.MeteorsById[entry.Id]
 	assert(def, "Unbekannter Meteor: " .. tostring(entry.Id))
@@ -334,7 +333,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	part.Anchored = true
 	part.CanCollide = false
 	part.CanTouch = false
-	part.CastShadow = size >= SHADOW_MIN_SIZE and mode ~= "Parade"
+	part.CastShadow = size >= SHADOW_MIN_SIZE and mode ~= "Nest"
 	part.Material = isAdmin and Enum.Material.Neon or Enum.Material.Slate
 	part.Color = def.Color
 	part.TopSurface = Enum.SurfaceType.Smooth
@@ -388,14 +387,14 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		fire.Parent = part
 	end
 	if mut.Name == "Lava" and not part:FindFirstChildOfClass("Fire") then
-		-- Lava-Mutation: kleines Feuer. In der Parade startet es AUS (mit Glück-Events sind dort
+		-- Lava-Mutation: kleines Feuer. Im Nest startet es AUS (mit Glück-Events sind dort
 		-- viele Lava-Meteore): der Client schaltet nur die nächsten paar ein (Attribut "LavaFire", WorldFX).
 		local fire = Instance.new("Fire")
 		fire.Color = mut.Color
 		fire.SecondaryColor = Color3.fromRGB(120, 20, 0)
 		fire.Size = math.max(1.5, size * 0.45)
 		fire.Heat = 3
-		if mode == "Parade" then
+		if mode == "Nest" then
 			fire.Enabled = false
 			fire:SetAttribute("LavaFire", true)
 		end
@@ -416,7 +415,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		snow.Speed = NumberRange.new(0.5, 1.5)
 		snow.SpreadAngle = Vector2.new(180, 180)
 		snow.Acceleration = Vector3.new(0, -4, 0)
-		snow.Rate = if mode == "Parade" then 3 else 6
+		snow.Rate = if mode == "Nest" then 3 else 6
 		snow.Parent = part
 	end
 	local specialMut = mut.Name == "Galaxy" or mut.Name == "Diamond" or mut.Rainbow == true
@@ -434,8 +433,8 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	gui.Name = "Info"
 	gui.Size = UDim2.new(0, 220, 0, 70)
 	gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
-	if mode == "Parade" then
-		gui.MaxDistance = 45 + rarityIndex * 8 -- viele Schilder in der Parade: nur in der Nähe zeigen
+	if mode == "Nest" then
+		gui.MaxDistance = 45 + rarityIndex * 8 -- viele Schilder im Nester-Feld: nur in der Nähe zeigen
 	elseif mode == "Carry" then
 		gui.MaxDistance = 60
 	else
@@ -490,7 +489,7 @@ function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 end
 
 -- distance = optionale Aktivierungs-Reichweite (sonst aus der Größe des Teils)
--- Hinweis: Zwei Prompts am selben Teil (z.B. Klauen + Kaufen an der Parade) bekommen über
+-- Hinweis: Zwei Prompts am selben Teil (z.B. Schnappen + Kaufen am Nest) bekommen über
 -- prompt.UIOffset (Pixel) verschiedene Plätze, sonst liegen sie übereinander.
 function MeteorFactory.AddPrompt(
 	part: BasePart,

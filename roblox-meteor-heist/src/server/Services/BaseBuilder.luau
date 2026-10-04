@@ -237,7 +237,13 @@ local function addStroke(label: GuiObject, thickness: number)
 end
 
 -- Schild in Studs-Größe (wächst mit der Entfernung mit wie ein echtes Schild)
-local function bigLabel(parent: Instance, width: number, height: number, offset: Vector3, maxDistance: number): TextLabel
+local function bigLabel(
+	parent: Instance,
+	width: number,
+	height: number,
+	offset: Vector3,
+	maxDistance: number
+): TextLabel
 	local gui = Instance.new("BillboardGui")
 	gui.Size = UDim2.fromScale(width, height)
 	gui.StudsOffset = offset
@@ -291,8 +297,9 @@ local function blockTree(parent: Instance, cf: CFrame, scale: number, color: Col
 	crown.TopSurface = Enum.SurfaceType.Studs
 end
 
--- Laterne: Pfosten + leuchtender Würfel (kein PointLight -> spart Leistung)
-local function lantern(parent: Instance, cf: CFrame, postColor: Color3, lampColor: Color3)
+-- Laterne: Pfosten + leuchtender Würfel. Nur Würfel namens "LanternLamp" bekommen nachts ein Licht
+-- (GraphicsService) – die Extra-Laternen heißen "LanternGlow" (Lichter-Budget).
+local function lantern(parent: Instance, cf: CFrame, postColor: Color3, lampColor: Color3, lampName: string)
 	local height = 6
 	part({
 		Name = "LanternPost",
@@ -303,7 +310,7 @@ local function lantern(parent: Instance, cf: CFrame, postColor: Color3, lampColo
 		Parent = parent,
 	})
 	part({
-		Name = "LanternLamp",
+		Name = lampName,
 		Size = Vector3.new(1.6, 1.6, 1.6),
 		CFrame = cf * CFrame.new(0, height + 0.8, 0),
 		Material = Enum.Material.Neon,
@@ -820,7 +827,8 @@ function BaseBuilder.SetLook(plot, level: number)
 	}
 	for i = 1, math.min(#spots, math.ceil(style.Lanterns / 2)) do
 		for _, s in ipairs({ -1, 1 }) do
-			lantern(look, cf * CFrame.new(s * spots[i].X, top, spots[i].Y), postColor, style.Lamp)
+			local lampName = if i == 1 then "LanternLamp" else "LanternGlow"
+			lantern(look, cf * CFrame.new(s * spots[i].X, top, spots[i].Y), postColor, style.Lamp, lampName)
 		end
 	end
 

@@ -30,7 +30,7 @@ local DEFAULT_DATA = {
 	Steps = 0, -- 👟 Schritte von den Laufbändern (bleiben bei Rebirth)
 	TotalEarned = 0,
 	Index = {}, -- ["PebbleBlob"] = true -> Alien schon entdeckt (bleibt bei Rebirth)
-	Stats = { Stolen = 0, Robbed = 0, Bought = 0, RobuxSpent = 0, Grabbed = 0 }, -- Grabbed = Eier aus der Parade/vom Boden
+	Stats = { Stolen = 0, Robbed = 0, Bought = 0, RobuxSpent = 0, Grabbed = 0 }, -- Grabbed = Eier aus den Nestern/vom Boden
 	Daily = { Last = 0, Streak = 0 },
 	Receipts = {}, -- zuletzt verarbeitete Käufe (gegen doppelte Gutschrift)
 	LastOnline = 0,

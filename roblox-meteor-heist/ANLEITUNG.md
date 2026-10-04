@@ -20,9 +20,9 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 | **🏃 Tempo zählt** | Beim Tragen hast du nur **70 % Tempo**. **Seltene Beute ist schwer:** ab Legendary 60 %, ab Mythic 50 %, ab Celestial 45 % (mindestens Tempo 8). Mit dem Pass **„🏃 Volle Speed beim Tragen“** sind es immer 100 %. Schritte von den Laufbändern und das Gadget **🌀 Speed Coil** machen dich schneller |
 | **✨ Krasse Eier** | Ab **Legendary** haben Eier in der Parade, am Boden und in der Base eine **Lichtsäule**, Glitzern und einen drehenden Ring. Ab **Mythic** dazu Funkenregen und Blitze, ab **Secret** (und Admin) eine Regenbogen-Aura, **Infinity** zusätzlich kreisende Sterne, eine breitere Säule und einen doppelt so schnellen Ring – und alle bekommen eine Ansage, wenn ein Boss so ein Ei bringt. Seltene Aliens schlüpfen mit einer großen Explosion |
 | **🐣 Schlüpfen** | In der Base zählt der Meteor runter („🐣 Schlüpft in …“). Dann schlüpft ein **Alien**. Erst das Alien verdient Geld. Besondere Aliens (Ultra oder ab Epic) schlüpfen mit einer großen Karte in der Bildschirmmitte, andere seltene mit einer kleinen Karte oben rechts (beim Tragen immer klein) |
-| **💰 Einsammeln** | Das Geld sammelt sich an. Lauf über das **grüne Pad** oder einfach **durch deine Eier/Aliens** (die Plätze sind unsichtbar) |
+| **💰 Einsammeln** | Das Geld sammelt sich an. Lauf über das **grüne Pad**, über die kleinen **Geld-Felder** vor deinen Aliens (zeigen, was jedes Alien pro Sekunde bringt) oder **durch deine Aliens** |
 | **😈 Klauen aus Basen** | Bei fremden Basen **E halten**. Du trägst den Meteor oder das Alien. Renn damit in deine Base |
-| **🔨 Verteidigen** | Mit dem **Schläger** (Klick) verlieren Diebe ihre Beute und fliegen ein Stück weg. Bessere Schläger kommen mit dem **Index** (siehe „Die Schläger“). Aus einer Base Geklautes fliegt zurück, aus der Parade Geklautes fällt auf den Boden. Das rote **Lock-Pad** sperrt deine Base 60 Sekunden lang. Das **🛡️ Base-Schild** (Robux) sperrt sie 10 Minuten, sogar im Meteoritenschauer (blaue Sperre am Eingang). Nochmal kaufen = noch länger. Ein Ei, das in einer gesperrten Base am Boden liegt, darf nur der Besitzer nehmen |
+| **🔨 Verteidigen** | Mit dem **Schläger** (Klick) verlieren Diebe ihre Beute und fliegen ein Stück weg. Bessere Schläger kommen mit dem **Index** (siehe „Die Schläger“). Aus einer Base Geklautes fliegt zurück, aus der Parade Geklautes fällt auf den Boden. Der große rote **Lock-Knopf** sperrt deine Base 60 Sekunden lang (Laser fahren am Eingang zu, oben läuft der Countdown). Das **🛡️ Base-Schild** (Robux) sperrt sie 10 Minuten, sogar im Meteoritenschauer (blaue Sperre am Eingang). Nochmal kaufen = noch länger. Ein Ei, das in einer gesperrten Base am Boden liegt, darf nur der Besitzer nehmen |
 | **🥚 Egg Rush** | Ungefähr alle **4 Minuten**, 45 Sekunden lang: **40 Gratis-Eier** mit 3x Glück regnen auf die Wiese der ganzen Map. Wer zuerst da ist, schnappt sie (**E**) und trägt sie nach Hause. Oben zeigt ein Banner die Zeit, unten zeigt ein Pfeil zum nächsten Ei. Der erste Egg Rush kommt 2 Minuten nach dem Serverstart |
 | **🌙 Nacht** | Nach **10 Minuten Tag** kommen **3 Minuten Nacht**. Die Sonne geht langsam unter, Mond und Sterne kommen raus, die Laternen der Basen leuchten. Nachts gibt es **Nacht-Eier** in der Parade (Moonstone, Shadow Orb, Lunar Core, Starfall Shard, Eclipse Heart), **Sternschnuppen-Eier** fallen gratis auf die Wiese (wie im Egg Rush: schnappen und heimtragen) und **leuchtende Kisten** liegen herum (**E halten** = Geld oder 1 Glücksrad-Dreh). Godly, Cosmic und vor allem Infinity kommen nachts viel öfter. Oben zeigt ein Banner die Restzeit, kurz vorher „🌙 Nacht in …“ |
 | **🔴 Blutmond** | Ungefähr **jede 5. Nacht**: roter Himmel, **2x Glück** bis zum Morgen und dazu das **Blood Moon Gem** (Divine), das es nur im Blutmond gibt |
@@ -55,9 +55,10 @@ Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts 
 
 1. Du spawnst in deiner **Base**. Es gibt 8 Basen, 4 auf jeder Seite der Parade-Straße.
    Die Basen sind **groß und offen** (80 x 90 Studs, bunter Noppenboden, nur ein niedriger weißer Rand).
-   Es gibt **keine sichtbaren Plätze** mehr: Eier und Aliens stehen locker verteilt (bis zu 18).
-   Vorne: links das **grüne Geld-Pad**, rechts das **rote Lock-Pad**. Ist die Base gesperrt, leuchtet vorne die Laser-Sperre
-   und jeder Fremde in der Base (auch wer über den Rand springt) wird rausgeworfen.
+   Es gibt **keine sichtbaren Plätze**: Eier und Aliens stehen locker verteilt (unten bis zu 18, mit Stockwerken bis zu 30).
+   Vorne: links das **grüne Geld-Pad**, rechts der große **rote Lock-Knopf**. Ist die Base gesperrt, fahren am Eingang
+   Laser zu, und jeder Fremde in der Base (auch wer über den Rand springt, auch oben) wird rausgeworfen.
+   Über dem Eingang hängt ein großes Schild mit deinem Avatar und Namen.
 2. Lauf zur **Alien-Parade** in der Mitte. Stell dich an den Straßenrand.
 3. Ein Alien läuft mit einem Ei auf dem Kopf vorbei. **Halte E**: Du klaust das Ei gratis und trägst es über dem Kopf.
    Das Alien erschrickt (**!**) und rennt weg, wenn es nichts mehr trägt.
@@ -204,6 +205,20 @@ Knopf **☄️ Run** rechts = Teleport zum Start-Tor (nicht mit Beute). Wer etwa
 Schummeln geht nicht: Checkpoints zählen nur der Reihe nach und nur, wenn man wirklich hingelaufen ist (Teleport-Sprünge zählen nicht), zu schnelle Zeiten (schneller als Tempo 104 über die ganze Strecke) werden nicht gewertet, und wer über der Lava schwebt oder viel zu hoch fliegt, muss zurück zum Checkpoint.
 Einstellungen (Abklingzeit, Ei-Chancen, Cash) stehen oben in `src/server/Services/RunService.luau`.
 
+### 🏠 Base ausbauen
+
+Knopf **🏗️ Base** rechts. Alles mit Cash, bleibt nach Rebirth.
+
+| | Preis | Was |
+|---|---|---|
+| Stockwerk 2 | $500K | Plattform über dem hinteren Teil, Treppe links. **+6 Plätze** |
+| Stockwerk 3 | $25 Mio. | Noch eine Etage, Treppe rechts. **+6 Plätze**, ab 1 Rebirth |
+| Look Holz → Gold | $250K – $2,5 Mrd. | Nur Optik: Zaun, Laternen, Torbogen, Fahnen, Bodenrand |
+
+Die Plätze werden der Reihe nach gefüllt: erst unten, dann oben. Diebe können über die Treppe hoch.
+Ist die Base gesperrt, fliegen sie von jeder Etage raus. Einstellen: `Config.BaseFloors`, `Config.BaseLooks`.
+Gebaut wird in `src/server/Services/BaseBuilder.luau`.
+
 ### 🤝 Handeln
 
 Spieler können Aliens, Eier und Cash tauschen – wie in Steal-Spielen.
@@ -244,7 +259,7 @@ Aktion. Auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 2. Du spawnst in deiner Base. Lauf zur **Alien-Parade** in der Mitte und **halte E** an einem Ei.
    Trag es in deine Base. Oder drück **F**, dann kaufst du es und es fliegt von allein hin.
    Nach ein paar Sekunden schlüpft ein **Alien**.
-3. Lauf über das **grüne Pad** (oder durch deine Aliens), um Geld einzusammeln. Das **rote Pad** sperrt deine Base.
+3. Lauf über das **grüne Pad** (oder über die Geld-Felder), um Geld einzusammeln. Der **rote Knopf** sperrt deine Base.
 4. Rechts auf **🏃 Laufbänder** → **🏃 Zu den Laufbändern!** → auf dem Holz-Laufband laufen = Schritte sammeln.
 5. Rechts auf **🎡 Glücksrad** → **🎡 DREHEN!**. Zum Start hast du schon Drehs.
 6. Admin-Panel: Taste **P** oder Knopf **🛠️ Admin** rechts. Dort kannst du sofort einen **🥚 Egg Rush** starten.
@@ -389,6 +404,7 @@ Alles steht kommentiert in `ReplicatedStorage → Shared → Config`:
 - **Laufbänder (Speed Farm)**: `Config.Treadmills` (Name, Preis, Schritte pro Tick, Farbe; `LegacySteps` nur für alte Spielstände). Band-Schub: `Config.TreadmillPush` (Standard 6, höchstens 7 – sonst kommt man beim Tragen nicht mehr gegen das Band an).
 - **Schläger**: `Config.Bats` (Name, ab wie vielen Aliens im Index, Reichweite, Wucht, Abklingzeit, Farben).
   Super-Bonk-Boost: `Config.SuperBonkRangeMult`, `Config.SuperBonkForceMult`, `Config.SuperBonkCooldownMult`.
+- **Basen**: `Config.BaseFloors` (Preis, Plätze, `RequiredRebirths`), `Config.BaseLooks` (Stufen 1-5, nur Optik).
 - **Admin-Kräfte**: `Config.AdminPowers` (Grenzen für Tempo- und Sprung-Regler, Bosse bei der Boss-Parade).
 - **Alien-Parade in der Mitte**: `Config.ParadeSpawnInterval` (wie oft ein Träger startet), `Config.ParadeSpeed` (Tempo),
   `Config.MaxParadeMeteors` / `Config.ShowerMaxParadeMeteors` (so viele Eier höchstens gleichzeitig).
@@ -458,9 +474,9 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | Ich werde an der Parade weggeschubst | Das sind die Leibwächter eines Bosses. Warte auf den Schubser, dann sofort rein und E halten |
 | Ich kann an der Parade nichts klauen | Du trägst schon etwas (erst heimbringen) oder deine Base ist voll. **F** zum Kaufen geht trotzdem |
 | Mein Ei aus der Parade ist weg | Du wurdest gebonkt, bist in eine Falle getreten oder die Zeit war um (60 Sekunden, beim Meteor-Run-Ei je nach Weg mehr). Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
-| „📦 Deine Base ist voll!“ | Ein Alien verkaufen (**F** halten in deiner Base) oder den Pass „+6 Plätze“ holen |
+| „📦 Deine Base ist voll!“ | Ein Alien verkaufen (**F** halten in deiner Base), ein **Stockwerk** kaufen (🏗️ Base) oder den Pass „+6 Plätze“ holen |
 | Ich kann mich 3 Sekunden nicht bewegen | Du bist in eine **🪤 Falle** getreten (oder ein Admin hat dich eingefroren). Das geht von allein weg |
-| Falle lässt sich nicht aufstellen | Nur in **deiner eigenen** Base, direkt auf dem Boden (nicht auf Baum/Laterne), nicht direkt am Rand, und höchstens 2 gleichzeitig |
+| Falle lässt sich nicht aufstellen | Nur in **deiner eigenen** Base, direkt auf einem Boden (auch oben, nicht auf Treppe/Baum/Laterne), nicht direkt am Rand, und höchstens 2 gleichzeitig |
 | „🧊 Du bist eingefroren!“ | Eingefroren (Falle oder Admin) kannst du nichts klauen oder kaufen und nicht teleportieren. Kurz warten |
 | „🔒 Das Ei liegt in einer gesperrten Base!“ | Das Ei ist in einer gesperrten Base heruntergefallen. Nur der Besitzer darf es nehmen, bis das Lock vorbei ist |
 | Der Umhang geht nicht | Nach dem Sichtbarwerden braucht er 60 Sekunden Pause. Mit Beute geht er nicht an |
@@ -507,10 +523,10 @@ roblox-meteor-heist/
     │   └── Util.luau
     ├── server/   (ServerScriptService.Server)
     │   ├── Main.server.luau
-    │   └── Services/          Data, Graphics, Plot + MapBuilder, Meteor, Carry, Economy, Treadmill,
+    │   └── Services/          Data, Graphics, Plot + MapBuilder + BaseBuilder, Meteor, Carry, Economy, Treadmill,
     │                          Reward (Geschenke, Glücksrad, Aufgaben), Gadget, Monetization, Admin,
     │                          Run (☄️ Meteor-Run), Night (🌙 Tag/Nacht), Trade (🤝 Handel), Leaderboard, MeteorFactory, AlienFactory …
     └── client/   (StarterPlayerScripts.Client)
         ├── Main.client.luau   ← startet die Oberfläche
-        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, Parade, Prompts, MeteorRun, Night, Bat, Trade, Fly, PhotoMode, AdminPanel
+        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, Parade, Prompts, MeteorRun, Night, Bat, Trade, Fly, PhotoMode, AdminPanel, Base
 ```

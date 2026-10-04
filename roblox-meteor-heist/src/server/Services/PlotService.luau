@@ -1,20 +1,23 @@
--- Lässt die Map bauen (MapBuilder) und verwaltet die Basen:
--- Zuweisung, Meteore/Aliens anzeigen, Collect-Pad + Slot-Anker, Lock-Pad, Schutz gegen Eindringlinge.
--- Basen sind OFFEN (niedriger Rand): Slots sind unsichtbare Anker-Teile (plot.Slots, 18 Stück in
--- Slot-Reihenfolge), Basen können rechteckig sein (plot.HalfSizeX = halbe Breite, plot.HalfSizeZ =
--- halbe Tiefe, lokal; Eingang = lokales -Z).
+-- Lässt die Map bauen (MapBuilder -> BaseBuilder) und verwaltet die Basen:
+-- Zuweisung, Meteore/Aliens anzeigen, Geld-Pad + Geld-Felder + Slot-Anker, Lock-Knopf, Schutz gegen Eindringlinge,
+-- Stockwerke + Base-Look kaufen (BuyFloor / BuyBaseLook).
+-- Basen sind OFFEN (niedriger Rand): Slots sind unsichtbare Anker-Teile (plot.Slots in Slot-Reihenfolge:
+-- 1-18 Erdgeschoss, danach Stockwerk 2 und 3 = plot.FloorSlots), Basen können rechteckig sein
+-- (plot.HalfSizeX = halbe Breite, plot.HalfSizeZ = halbe Tiefe, lokal; Eingang = lokales -Z).
 -- BASE-SCHILD (Produkt): plot.ShieldUntil (Serverzeit) sperrt die Base zusätzlich zum Lock –
 -- auch während des Meteoritenschauers. Setzen über PlotService.AddShield/SetShield
 -- (wer plot.ShieldUntil direkt ändert: wird innerhalb von 0,25 s übernommen).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 local AlienFactory = require(script.Parent:WaitForChild("AlienFactory"))
 local MapBuilder = require(script.Parent:WaitForChild("MapBuilder"))
+local BaseBuilder = require(script.Parent:WaitForChild("BaseBuilder"))
 
 local PlotService = {}
 PlotService.Plots = {} :: { any } -- Liste aller Basen (Felder siehe MapBuilder)
@@ -31,9 +34,13 @@ PlotService.MaxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
 
 local Services
 
-local LOCK_NOTIFY_COOLDOWN = 2 -- Lock-Pad im Schauer: Hinweis höchstens alle 2 s (Touched feuert sehr oft)
+local LOCK_NOTIFY_COOLDOWN = 2 -- Lock-Knopf im Schauer: Hinweis höchstens alle 2 s (Touched feuert sehr oft)
+local BUTTON_DEPTH = 0.9 -- so tief drückt sich der Lock-Knopf ein
+local PRESS_DOWN = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local PRESS_UP = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local lockNotifyAt: { [Player]: number } = {}
+local collectDebounce: { [Player]: number } = {}
 
 -- -------------------------------------------------------------------
 -- ABFRAGEN
@@ -68,7 +75,9 @@ end
 function PlotService.IsInside(plot, position: Vector3): boolean
 	local hx, hz = PlotService.HalfExtents(plot)
 	local localPos = plot.CFrame:PointToObjectSpace(position)
-	return math.abs(localPos.X) <= hx and math.abs(localPos.Z) <= hz and localPos.Y > -6 and localPos.Y < 40
+	-- Höhe: bis über das oberste gebaute Stockwerk (plot.TopY, setzt BaseBuilder.SetFloors)
+	local topY = tonumber(plot.TopY) or 40
+	return math.abs(localPos.X) <= hx and math.abs(localPos.Z) <= hz and localPos.Y > -6 and localPos.Y < topY
 end
 
 -- Gesperrt = Lock (Lock-Pad) ODER Base-Schild aktiv
@@ -82,9 +91,44 @@ function PlotService.IsShielded(plot): boolean
 	return (tonumber(plot.ShieldUntil) or 0) > workspace:GetServerTimeNow()
 end
 
-function PlotService.SlotCount(player: Player): number
+-- Gekaufte Stockwerke (1 = nur Erdgeschoss) und Base-Look-Stufe aus dem Spielstand
+local function floorsOf(data): number
+	return math.clamp(math.floor(tonumber(data and data.BaseFloors) or 1), 1, BaseBuilder.MaxFloors())
+end
+
+local function lookOf(data): number
+	local looks = (Config :: any).BaseLooks
+	local max = type(looks) == "table" and math.max(1, #looks) or 1
+	return math.clamp(math.floor(tonumber(data and data.BaseLook) or 1), 1, max)
+end
+
+-- Alle Slot-Nummern, die der Spieler benutzen darf (Reihenfolge = Füll-Reihenfolge):
+-- Erdgeschoss (Config.BaseSlots, mit Pass + Config.ExtraSlotsAmount), dann die gekauften Stockwerke.
+-- Slot-Nummern sind fest: 1-18 Erdgeschoss, danach Stockwerk 2, dann 3.
+function PlotService.UsableSlots(player: Player): { number }
+	local plot = PlotService.ByPlayer[player]
+	local data = Services.DataService.Get(player)
 	local extra = Services.MonetizationService.HasPass(player, "ExtraSlots") and Config.ExtraSlotsAmount or 0
-	return math.min(Config.BaseSlots + extra, PlotService.MaxSlots)
+	local groundMax = plot and tonumber(plot.GroundSlots) or (Config.BaseSlots + Config.ExtraSlotsAmount)
+	local list = {}
+	for slot = 1, math.min(Config.BaseSlots + extra, groundMax, PlotService.MaxSlots) do
+		table.insert(list, slot)
+	end
+	local floorSlots = plot and plot.FloorSlots
+	if floorSlots then
+		for floor = 2, floorsOf(data) do
+			for _, slot in ipairs(floorSlots[floor] or {}) do
+				if slot <= PlotService.MaxSlots then
+					table.insert(list, slot)
+				end
+			end
+		end
+	end
+	return list
+end
+
+function PlotService.SlotCount(player: Player): number
+	return #PlotService.UsableSlots(player)
 end
 
 function PlotService.FreeSlot(player: Player): number?
@@ -92,7 +136,7 @@ function PlotService.FreeSlot(player: Player): number?
 	if not data then
 		return nil
 	end
-	for slot = 1, PlotService.SlotCount(player) do
+	for _, slot in ipairs(PlotService.UsableSlots(player)) do
 		if data.Meteors[tostring(slot)] == nil then
 			return slot
 		end
@@ -207,12 +251,76 @@ local function sellText(entry): string
 	return "Verkaufen " .. Util.FormatCash(Config.MeteorValue(entry) * Config.SellRatio)
 end
 
+local function setText(label: TextLabel?, text: string)
+	if label and label.Text ~= text then
+		label.Text = text
+	end
+end
+
+-- -------------------------------------------------------------------
+-- GELD-FELDER: vor jedem besetzten Slot ein kleines Feld (zeigt Einkommen/s, durchlaufen = einsammeln)
+-- -------------------------------------------------------------------
+local function onCollectTouch(plot, hit: BasePart)
+	local player = Players:GetPlayerFromCharacter(hit.Parent)
+	if player and player == plot.Owner and os.clock() - (collectDebounce[player] or 0) > 0.5 then
+		collectDebounce[player] = os.clock()
+		Services.EconomyService.Collect(player)
+	end
+end
+
+local function removeCashPad(plot, slot: number)
+	local pad = plot.CashPads[slot]
+	if pad then
+		pad:Destroy()
+		plot.CashPads[slot] = nil
+		plot.CashLabels[slot] = nil
+	end
+end
+
+local function cashPadText(entry, mult: number): string
+	if entry.Alien == nil then
+		return "🥚"
+	end
+	return "+" .. Util.FormatCash(Config.MeteorIncome(entry) * mult) .. "/s"
+end
+
+-- Beträge auf allen Geld-Feldern einer Base neu schreiben (nur bei Änderung)
+function PlotService.UpdateCashPads(plot)
+	local owner = plot.Owner
+	local data = owner and Services.DataService.Get(owner)
+	if not data or next(plot.CashPads) == nil then
+		return
+	end
+	local mult = Services.EconomyService.GetMultiplier(owner)
+	for slot, label in pairs(plot.CashLabels) do
+		local entry = data.Meteors[tostring(slot)]
+		if entry then
+			setText(label, cashPadText(entry, mult))
+		end
+	end
+end
+
+local function addCashPad(plot, slot: number, entry)
+	removeCashPad(plot, slot)
+	local pad, label = BaseBuilder.MakeCashPad(plot, slot)
+	if not pad or not label then
+		return
+	end
+	pad.Touched:Connect(function(hit)
+		onCollectTouch(plot, hit)
+	end)
+	plot.CashPads[slot] = pad
+	plot.CashLabels[slot] = label
+	setText(label, cashPadText(entry, Services.EconomyService.GetMultiplier(plot.Owner)))
+end
+
 function PlotService.RenderSlot(plot, slot: number)
 	local existing = plot.MeteorParts[slot]
 	if existing then
 		existing:Destroy()
 		plot.MeteorParts[slot] = nil
 	end
+	removeCashPad(plot, slot)
 	if not plot.Owner or not plot.Slots[slot] then
 		return
 	end
@@ -254,6 +362,7 @@ function PlotService.RenderSlot(plot, slot: number)
 	end)
 	object.Parent = plot.MeteorFolder
 	plot.MeteorParts[slot] = object
+	addCashPad(plot, slot, entry)
 end
 
 -- Nach Level-Up nur Größe/Schild anpassen statt neu bauen
@@ -288,6 +397,10 @@ function PlotService.RefreshSlot(plot, slot: number)
 	if sellPrompt and sellPrompt:IsA("ProximityPrompt") then
 		sellPrompt.ActionText = sellText(entry)
 	end
+	local label = plot.CashLabels[slot]
+	if label and plot.Owner then
+		setText(label, cashPadText(entry, Services.EconomyService.GetMultiplier(plot.Owner)))
+	end
 end
 
 -- Schlüpf-Zeitpunkte neu berechnen (z.B. nach Kauf von "2x Schlüpfen")
@@ -304,7 +417,16 @@ function PlotService.UpdateHatchTimes(plot)
 	end
 end
 
+-- Stockwerke + Look so bauen, wie sie dem Besitzer gehören (frei = Grundzustand).
+-- Im Foto-Modus (plot.PhotoFloors) stehen alle Stockwerke.
+function PlotService.ApplyBase(plot)
+	local data = plot.Owner and Services.DataService.Get(plot.Owner)
+	BaseBuilder.SetFloors(plot, if plot.PhotoFloors then BaseBuilder.MaxFloors() else floorsOf(data))
+	BaseBuilder.SetLook(plot, lookOf(data))
+end
+
 function PlotService.RenderAll(plot)
+	PlotService.ApplyBase(plot)
 	for slot = 1, #plot.Slots do
 		PlotService.RenderSlot(plot, slot)
 	end
@@ -325,9 +447,11 @@ end
 -- -------------------------------------------------------------------
 -- FOTO-DEKO (nur Optik für Thumbnails: keine Spieldaten, keine Prompts)
 -- -------------------------------------------------------------------
--- Füllt ALLE Slots ohne echten Meteor (auch die gesperrten) mit Deko-Aliens.
--- makeEntry() liefert { Id, Alien, Mut, Lv }. Gibt die Anzahl der Deko-Objekte zurück.
+-- Füllt ALLE Slots ohne echten Meteor (auch die gesperrten und alle Stockwerke – die werden dafür
+-- gebaut) mit Deko-Aliens. makeEntry() liefert { Id, Alien, Mut, Lv }. Gibt die Anzahl der Deko-Objekte zurück.
 function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
+	plot.PhotoFloors = true
+	PlotService.ApplyBase(plot)
 	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
 	if not folder then
 		folder = Instance.new("Folder")
@@ -349,23 +473,21 @@ function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
 	return count
 end
 
--- Entfernt nur die Deko
+-- Entfernt nur die Deko (und die Foto-Stockwerke)
 function PlotService.ClearPhotoShowcase(plot)
 	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
 	if folder then
 		folder:Destroy()
+	end
+	if plot.PhotoFloors then
+		plot.PhotoFloors = nil
+		PlotService.ApplyBase(plot)
 	end
 end
 
 -- -------------------------------------------------------------------
 -- LOCK
 -- -------------------------------------------------------------------
-local function setText(label: TextLabel, text: string)
-	if label.Text ~= text then
-		label.Text = text
-	end
-end
-
 local LOCK_BARRIER_COLOR = Color3.fromRGB(255, 40, 40)
 local SHIELD_BARRIER_COLOR = Color3.fromRGB(60, 170, 255)
 
@@ -379,22 +501,44 @@ function PlotService.UpdateLockVisual(plot)
 	local now = workspace:GetServerTimeNow()
 	local showerActive = Services.MeteorService and Services.MeteorService.IsShowerActive()
 	local shieldUntil = tonumber(plot.ShieldUntil) or 0
+	-- Barrier = schwaches Kraftfeld; die Laser-Streifen, die zufahren, zeichnet der Client (Modul Base)
 	if shieldUntil > now then
-		plot.Barrier.Transparency = 0.25
+		local text = "🛡️ " .. Util.FormatTime(math.ceil(shieldUntil - now))
+		plot.Barrier.Transparency = 0.5
 		setColor(plot.Barrier, SHIELD_BARRIER_COLOR)
-		setText(plot.LockLabel, "🛡️ SCHILD " .. Util.FormatTime(math.ceil(shieldUntil - now)))
+		setText(plot.LockLabel, text)
+		setText(plot.BarrierLabel, text)
 		setColor(plot.LockPad, Color3.fromRGB(70, 130, 200))
 	elseif plot.LockedUntil > now then
-		plot.Barrier.Transparency = 0.35
+		local text = "🔒 " .. math.ceil(plot.LockedUntil - now) .. "s"
+		plot.Barrier.Transparency = 0.6
 		setColor(plot.Barrier, LOCK_BARRIER_COLOR)
-		setText(plot.LockLabel, "🔒 " .. math.ceil(plot.LockedUntil - now) .. "s")
+		setText(plot.LockLabel, text)
+		setText(plot.BarrierLabel, text)
 		setColor(plot.LockPad, Color3.fromRGB(90, 90, 90))
 	else
 		plot.Barrier.Transparency = 1
 		setColor(plot.Barrier, LOCK_BARRIER_COLOR)
-		setText(plot.LockLabel, showerActive and "🌠 KEIN LOCK IM SCHAUER" or "🔒 LOCK")
+		setText(plot.LockLabel, showerActive and "🌠 KEIN LOCK" or "🔒 LOCK")
+		setText(plot.BarrierLabel, "")
 		setColor(plot.LockPad, Color3.fromRGB(230, 60, 60))
 	end
+end
+
+-- Lock-Knopf drückt sich kurz ein (nur Optik, bei jeder Berührung durch den Besitzer)
+local function pressLockButton(plot)
+	local up = plot.LockPadUp
+	if typeof(up) ~= "CFrame" or plot.LockPressing then
+		return
+	end
+	plot.LockPressing = true
+	TweenService:Create(plot.LockPad, PRESS_DOWN, { CFrame = up * CFrame.new(0, -BUTTON_DEPTH, 0) }):Play()
+	task.delay(0.45, function()
+		TweenService:Create(plot.LockPad, PRESS_UP, { CFrame = up }):Play()
+		task.delay(0.35, function()
+			plot.LockPressing = nil
+		end)
+	end)
 end
 
 -- Attribute fürs Model (der Client liest sie): LockedUntil = Ende der Sperre (Lock ODER Schild),
@@ -475,6 +619,23 @@ function PlotService.AssignPlot(player: Player)
 			plot.Owner = player
 			plot.Model:SetAttribute("OwnerUserId", player.UserId)
 			plot.SignLabel.Text = player.DisplayName .. "s Base"
+			-- Avatar-Kopf aufs Namensschild (Web-Aufruf -> im Hintergrund, Fehler egal)
+			local image = plot.SignImage
+			if image then
+				image.Image = ""
+				task.spawn(function()
+					local ok, content = pcall(function()
+						return Players:GetUserThumbnailAsync(
+							player.UserId,
+							Enum.ThumbnailType.HeadShot,
+							Enum.ThumbnailSize.Size180x180
+						)
+					end)
+					if ok and type(content) == "string" and plot.Owner == player then
+						image.Image = content
+					end
+				end)
+			end
 			PlotService.ByPlayer[player] = plot
 			plot.ShieldUntil = 0
 			PlotService.SetLocked(plot, 0)
@@ -494,6 +655,9 @@ function PlotService.ReleasePlot(player: Player)
 	plot.Owner = nil
 	plot.Model:SetAttribute("OwnerUserId", 0)
 	plot.SignLabel.Text = "Freie Base"
+	if plot.SignImage then
+		plot.SignImage.Image = ""
+	end
 	PlotService.SetCollectText(plot, 0)
 	plot.ShieldUntil = 0
 	PlotService.SetLocked(plot, 0)
@@ -506,8 +670,65 @@ function PlotService.ReleasePlot(player: Player)
 		object:Destroy()
 		plot.MeteorParts[slot] = nil
 	end
+	for slot in pairs(plot.CashPads) do
+		removeCashPad(plot, slot)
+	end
+	plot.PhotoFloors = nil
 	PlotService.ClearPhotoShowcase(plot)
+	PlotService.ApplyBase(plot) -- Stockwerke weg, Look zurück auf Stufe 1
 	PlotService.UpdateSlotColors(plot)
+end
+
+-- -------------------------------------------------------------------
+-- STOCKWERKE & BASE-LOOK KAUFEN (Request "BuyFloor" / "BuyBaseLook", über EconomyService)
+-- -------------------------------------------------------------------
+function PlotService.BuyFloor(player: Player): (boolean, string)
+	local data = Services.DataService.Get(player)
+	local plot = PlotService.ByPlayer[player]
+	if not data or not plot then
+		return false, "Du hast keine Base"
+	end
+	local current = floorsOf(data)
+	if current >= BaseBuilder.MaxFloors() then
+		return false, "🏠 Alle Stockwerke gebaut!"
+	end
+	local def = Config.BaseFloors[current]
+	local price = math.max(0, tonumber(def.Price) or 0)
+	local need = math.max(0, math.floor(tonumber(def.RequiredRebirths) or 0))
+	if (tonumber(data.Rebirths) or 0) < need then
+		return false, "🔥 Erst " .. need .. " Rebirth" .. (need == 1 and "" or "s") .. "!"
+	end
+	if data.Cash < price then
+		return false, "💵 Du brauchst " .. Util.FormatCash(price)
+	end
+	Services.EconomyService.AddCash(player, -price)
+	data.BaseFloors = current + 1
+	PlotService.ApplyBase(plot)
+	Services.EconomyService.Effect(player, "Confetti", 1)
+	local added = #(plot.FloorSlots and plot.FloorSlots[current + 1] or {})
+	return true, "🏠 Stockwerk " .. (current + 1) .. " gebaut! +" .. added .. " Plätze"
+end
+
+function PlotService.BuyBaseLook(player: Player): (boolean, string)
+	local data = Services.DataService.Get(player)
+	local plot = PlotService.ByPlayer[player]
+	if not data or not plot then
+		return false, "Du hast keine Base"
+	end
+	local current = lookOf(data)
+	local def = Config.BaseLooks[current + 1]
+	if not def then
+		return false, "👑 Schönste Base erreicht!"
+	end
+	local price = math.max(0, tonumber(def.Price) or 0)
+	if data.Cash < price then
+		return false, "💵 Du brauchst " .. Util.FormatCash(price)
+	end
+	Services.EconomyService.AddCash(player, -price)
+	data.BaseLook = current + 1
+	PlotService.ApplyBase(plot)
+	Services.EconomyService.Effect(player, "Confetti", 1)
+	return true, "✨ Base-Look: " .. tostring(def.Name) .. "!"
 end
 
 function PlotService.TeleportHome(player: Player)
@@ -597,8 +818,13 @@ function PlotService.Init(services)
 	PlotService.TreadmillSpawn = findTreadmillSpawn(map)
 
 	local maxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
+	for _, def in ipairs(Config.BaseFloors) do
+		maxSlots += math.max(0, math.floor(tonumber(def.Slots) or 0))
+	end
 	for _, plot in ipairs(PlotService.Plots) do
 		plot.MeteorParts = plot.MeteorParts or {}
+		plot.CashPads = plot.CashPads or {}
+		plot.CashLabels = plot.CashLabels or {}
 		plot.LockedUntil = plot.LockedUntil or 0
 		plot.ShieldUntil = plot.ShieldUntil or 0
 		plot.PublishedShield = plot.ShieldUntil
@@ -642,16 +868,8 @@ function PlotService.Start()
 		task.spawn(onPlayer, player)
 	end
 
-	-- Pads: Collect-Pad + ALLE eigenen Slot-Anker (durchlaufen) sammeln Geld ein, Lock-Pad sperrt
-	-- (Touched mit Entprellung)
-	local debounce: { [Player]: number } = {}
-	local function onCollectTouch(plot, hit: BasePart)
-		local player = Players:GetPlayerFromCharacter(hit.Parent)
-		if player and player == plot.Owner and os.clock() - (debounce[player] or 0) > 0.5 then
-			debounce[player] = os.clock()
-			Services.EconomyService.Collect(player)
-		end
-	end
+	-- Pads: Geld-Pad + Geld-Felder + ALLE eigenen Slot-Anker (durchlaufen) sammeln Geld ein,
+	-- Lock-Knopf sperrt (Touched mit Entprellung)
 	for _, plot in ipairs(PlotService.Plots) do
 		plot.CollectPad.CanTouch = true
 		plot.LockPad.CanTouch = true
@@ -667,12 +885,13 @@ function PlotService.Start()
 		plot.LockPad.Touched:Connect(function(hit)
 			local player = Players:GetPlayerFromCharacter(hit.Parent)
 			if player and player == plot.Owner then
+				pressLockButton(plot)
 				tryLock(player, plot)
 			end
 		end)
 	end
 	Players.PlayerRemoving:Connect(function(player)
-		debounce[player] = nil
+		collectDebounce[player] = nil
 		lockNotifyAt[player] = nil
 		local plot = PlotService.ByPlayer[player]
 		if plot then
@@ -710,6 +929,13 @@ function PlotService.Start()
 				end
 				if tick % 4 == 0 then
 					PlotService.UpdateLockVisual(plot)
+				end
+				if tick % 20 == 0 and plot.Owner then
+					-- Geld-Felder: Multiplikator (Rebirth, Index, Pässe) kann sich ändern
+					local ok, err = pcall(PlotService.UpdateCashPads, plot)
+					if not ok then
+						warn("[PlotService] Geld-Felder: " .. tostring(err))
+					end
 				end
 			end
 		end

@@ -534,7 +534,7 @@ add("Origin", "Infinity", {
 	{ "OriginKing", "Origin, Schöpfer aller Eier", "King", rgb(255, 255, 255), rgb(0, 255, 180), 2, 0 },
 })
 
--- NACHT-EIER (nur nachts in der Parade, Blutmond-Ei nur im Blutmond) ---
+-- NACHT-EIER (nur nachts in den Nestern, Blutmond-Ei nur im Blutmond) ---
 add("Moonstone", "Rare", {
 	{ "MoonstoneBlob", "Mondschein-Mops", "Blob", rgb(200, 210, 255), rgb(255, 255, 200), 2, 1 },
 	{ "MoonstoneGhost", "Nachtgespenst Nuri", "Ghost", rgb(210, 220, 255), rgb(120, 140, 255), 2, 0 },
