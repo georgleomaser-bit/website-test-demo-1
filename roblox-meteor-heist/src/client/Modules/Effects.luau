@@ -520,7 +520,7 @@ local function buildShards()
 		return
 	end
 	for _ = 1, SHARD_COUNT do
-		local part = localPart({
+		local part: BasePart = localPart({
 			Name = "Shard",
 			Size = Vector3.new(0.5, 0.15, 0.4),
 			Material = Enum.Material.Slate,

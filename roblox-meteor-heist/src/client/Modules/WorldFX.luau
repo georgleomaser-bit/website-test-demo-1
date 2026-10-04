@@ -1259,8 +1259,9 @@ local function startWobble(record: HatchRecord)
 		return
 	end
 	record.Wobble = true
-	record.BaseCF = part.CFrame
-	record.LastCF = part.CFrame
+	local base = part.CFrame
+	record.BaseCF = base
+	record.LastCF = base
 	local radius = part.Size.Y / 2
 	local color = crackColor(part)
 	local width = math.clamp(radius * 0.09, 0.06, 0.3)
@@ -1285,7 +1286,7 @@ local function startWobble(record: HatchRecord)
 				Color = color,
 				Transparency = 1,
 				Size = Vector3.new(width, length * 0.6, width * 0.6),
-				CFrame = record.BaseCF * offset,
+				CFrame = base * offset,
 				Parent = folder,
 			})
 			table.insert(record.Cracks, crack)
