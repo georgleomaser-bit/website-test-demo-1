@@ -3,11 +3,12 @@
 --  Dieses Skript startet nur die Module im Ordner "Modules" und verbindet sie mit dem Server:
 --    UI         Baukasten (Knöpfe, Fenster, Toasts, zählende Zahlen)
 --    Hud        Knöpfe links/rechts (mit Badges), Schritte + Geld, Banner (Schauer, Egg Rush),
---               Wegweiser (Base beim Tragen, nächstes Ei), Prompt-Hinweis am Förderband
+--               Wegweiser (Base beim Tragen, nächstes Ei), Prompt-Hinweis an der Parade
 --    Windows    Shop (Gamepässe / Boosts / Gadgets), Laufbänder, Rebirth, Tagesbonus, Alien-Index
 --    Rewards    🎁 Geschenke, 🎡 Glücksrad, 📜 Tagesaufgaben
 --    Effects    fliegende Zahlen, Lieferflug, Schlüpf-Explosion, Hatch-Karte, Wackeln, Konfetti
---    WorldFX    Laufband-Meteore, Streifen, wippende Aliens, Regenbogen, Schlüpf-Countdown
+--    WorldFX    Treadmill-Streifen, wippende Aliens, Regenbogen, Schlüpf-Countdown, krasse Eier
+--    Parade     Alien-Parade: lokale Träger-Aliens (gepoolt) laufen mit den Eiern über die Straße
 --    Prompts    Klauen/Kaufen/Verkaufen-Prompts passend ein-/ausblenden
 --    Fly, PhotoMode, AdminPanel (nur für Admins)
 --  Die gesamte Oberfläche wird per Code gebaut – du musst nichts in Studio zusammenklicken.
@@ -221,7 +222,7 @@ local buyKey = if inputStyle == "Touch" then "tippen" elseif inputStyle == "Game
 UI.Toast(
 	"☄️ Willkommen bei "
 		.. tostring(Config.GameName)
-		.. "! Klau Eier am Förderband ("
+		.. "! Klau Eier aus der Alien-Parade ("
 		.. grabKey
 		.. ") – gratis!",
 	"Event"

@@ -2,7 +2,7 @@
 --  EFFEKTE vom Server (Remote "Effect": name, strength, data)
 --   "Steps"    -> fliegende "+X 👟"-Zahl über deinem Charakter (federt, Farbverlauf, kippelt)
 --   "Collect"  -> großes "+$X" in der Bildschirmmitte + Münzen fliegen von dir zum Geld-Zähler
---   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base, mit Funkenschweif
+--   "Deliver"  -> Geister-Meteor fliegt im Bogen von der Parade in die Base, mit Funkenschweif
 --                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter),
 --                 beim Aufprall: Staub-Puff + Druckwelle
 --   "Hatch"    -> Funken-Explosion + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
@@ -653,7 +653,7 @@ local function stepShake(dt: number)
 end
 
 -- ---------------------------------------------------------------------
--- LIEFERFLUG: Geister-Meteor fliegt im Bogen vom Laufband in den Slot
+-- LIEFERFLUG: Geister-Meteor fliegt im Bogen von der Parade in den Slot
 -- ---------------------------------------------------------------------
 type Flight = {
 	Part: BasePart,

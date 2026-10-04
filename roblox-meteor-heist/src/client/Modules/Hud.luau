@@ -6,7 +6,7 @@
 --   unten links:  👟 Schritte (gelb), 💵 Geld (grün), +$/s
 --   oben:         Banner (Meteoritenschauer/Glück, 🥚 Egg Rush) bzw. Countdowns bis zum nächsten
 --   unten Mitte:  Wegweiser (🏠 Base beim Tragen / 🥚 nächstes Ei im Egg Rush), Trage-Hinweis,
---                 Prompt-Hinweis am Förderband (E = Klauen gratis, F = Kaufen)
+--                 Prompt-Hinweis an der Parade (E = Klauen gratis, F = Kaufen)
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -507,7 +507,7 @@ local function buildBottom()
 	})
 	carryScale.Parent = carryLabel
 
-	-- Prompt-Hinweis am Förderband / an Eiern am Boden
+	-- Prompt-Hinweis an der Parade / an Eiern am Boden
 	hintFrame = UI.Create("Frame", {
 		Name = "PromptHint",
 		Size = UDim2.fromOffset(680, 40),
@@ -560,7 +560,7 @@ local function hintText(kind: string, state: any): string
 	if full then
 		return "📦 Deine Base ist voll – verkauf erst etwas!"
 	end
-	if kind == "Belt" then
+	if kind == "Parade" then
 		if carrying then
 			return "🏃 Erst heimbringen!   💵 " .. buyKey .. " = KAUFEN geht trotzdem"
 		end
@@ -590,7 +590,7 @@ local function updateHint()
 	end
 end
 
--- kind: "Belt" (Förderband), "Ground" (Ei am Boden), "Free" (Gratis-Zone) oder nil
+-- kind: "Parade" (Alien-Parade), "Ground" (Ei am Boden), "Free" (Gratis-Zone) oder nil
 function Hud.SetPromptHint(kind: string?)
 	if kind ~= promptHintKind then
 		promptHintKind = kind

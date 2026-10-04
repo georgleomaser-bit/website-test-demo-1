@@ -11,7 +11,7 @@ local order = {
 	"MonetizationService",
 	"GraphicsService", -- Licht & Himmel (vor der Map)
 	"PlotService", -- baut die Map (MapBuilder) + Basen
-	"MeteorService", -- Förderband mit Meteoren, Gratis-Zone, Eier am Boden, Schauer, Egg Rush
+	"MeteorService", -- Alien-Parade mit Eiern, Gratis-Zone, Eier am Boden, Schauer, Egg Rush
 	"CarryService", -- Klauen & Tragen, Bonk
 	"GadgetService", -- Speed Coil, Falle, Super-Bonk, Umhang
 	"EconomyService",

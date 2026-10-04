@@ -3,12 +3,12 @@
 --   in den Basen:
 --     "Klauen" (StealPrompt)     nur bei FREMDEN Basen, die nicht gesperrt sind
 --     "Verkaufen" (SellPrompt)   nur in deiner EIGENEN Base
---   am Förderband / am Boden (Ordner BeltMeteors, GroundMeteors):
+--   an der Alien-Parade / am Boden (Ordner ParadeMeteors, GroundMeteors):
 --     "Klauen"/"Schnappen" (GrabPrompt)  aus, solange du schon etwas trägst
 --     "Kaufen" (BuyPrompt)               immer an (wird automatisch geliefert)
---  Dazu: Hinweis unten im HUD, solange ein Förderband-/Boden-Prompt sichtbar ist
+--  Dazu: Hinweis unten im HUD, solange ein Parade-/Boden-Prompt sichtbar ist
 --  (E = Klauen gratis, F = Kaufen). Der Server prüft beim Auslösen trotzdem alles.
---  Halte-Sperre: Wer E an einem Band-Meteor hält, dem springt der Prompt nicht zum nächsten Meteor.
+--  Halte-Sperre: Wer E an einem Parade-Ei hält, dem springt der Prompt nicht zum nächsten Ei.
 --  Eingefroren (Falle / Admin): Klauen und Schnappen sind aus.
 -- =====================================================================
 
@@ -24,18 +24,18 @@ local ctx: any = nil
 
 -- Prompt -> Base-Model (oder false, wenn keine Base gefunden wurde)
 local tracked: { [ProximityPrompt]: Instance | false } = {}
--- GrabPrompts an Förderband-Meteoren und Eiern am Boden -> true = von UNS ausgeschaltet
+-- GrabPrompts an Parade-Eiern und Eiern am Boden -> true = von UNS ausgeschaltet
 -- (nur die schalten wir später wieder ein; sonst gilt, was der Server eingestellt hat)
 local grabPrompts: { [ProximityPrompt]: boolean } = {}
--- Gerade sichtbare Förderband-/Boden-Prompts -> Art ("Belt", "Ground", "Free")
+-- Gerade sichtbare Parade-/Boden-Prompts -> Art ("Parade", "Ground", "Free")
 local shownPrompts: { [ProximityPrompt]: string } = {}
 local photoMode = false
 local carrying = false
 local frozen = false -- eigener HumanoidRootPart verankert (Falle / Admin-Freeze)
 local tipShown = false
 
--- Klauen am Förderband: Während E gehalten wird (Config.BeltGrabHold), fährt das Band weiter.
--- Roblox könnte dann zum nächsten Meteor wechseln und das Halten abbrechen -> solange die
+-- Klauen an der Parade: Während E gehalten wird (Config.ParadeGrabHold), läuft der Träger weiter.
+-- Roblox könnte dann zum nächsten Ei wechseln und das Halten abbrechen -> solange die
 -- ANDEREN GrabPrompts lokal aus. Spätestens nach HOLD_SAFETY Sekunden ist alles wieder normal.
 local HOLD_SAFETY = 3
 local HOLD_RELEASE_AFTER_TRIGGER = 0.8 -- bis der Server "trägt" meldet (dann bleiben sie sowieso aus)
@@ -122,22 +122,22 @@ local function track(inst: Instance)
 	end
 end
 
--- Liegt der Prompt an einem Meteor auf dem Förderband / am Boden? -> "Belt" / "Ground" / nil
+-- Liegt der Prompt an einem Ei in der Parade / am Boden? -> "Parade" / "Ground" / nil
 local function meteorFolderKind(prompt: Instance): string?
 	local part = prompt.Parent
 	local folder = part and part.Parent
 	if not folder then
 		return nil
 	end
-	if folder.Name == "BeltMeteors" then
-		return "Belt"
+	if folder.Name == "ParadeMeteors" then
+		return "Parade"
 	elseif folder.Name == "GroundMeteors" then
 		return "Ground"
 	end
 	return nil
 end
 
--- Art des Hinweises: Förderband, Ei am Boden (tragen) oder Gratis-Zone (automatische Lieferung)
+-- Art des Hinweises: Parade, Ei am Boden (tragen) oder Gratis-Zone (automatische Lieferung)
 local function hintKind(prompt: ProximityPrompt): string?
 	local kind = meteorFolderKind(prompt)
 	if kind == "Ground" and prompt.Name == "BuyPrompt" then
@@ -200,7 +200,7 @@ local function holdOff(prompt: ProximityPrompt)
 	end
 end
 
--- Förderband-Meteore werden lokal bewegt (der Server lässt sie am Bandstart stehen) ->
+-- Parade-Eier werden lokal bewegt (der Server lässt sie im Start-Hangar stehen) ->
 -- echte Reichweite steht im Attribut "ClientMaxDistance" und wird hier lokal eingestellt.
 -- Der Server setzt das Attribut schon, bevor der Meteor in die Map kommt -> einmal lesen reicht
 -- (keine Verbindung pro Meteor = kein Speicherleck).
@@ -216,13 +216,13 @@ local function watchReach(inst: Instance)
 		grabPrompts[inst] = false
 		updateGrab(inst)
 		if holdPrompt then
-			holdOff(inst) -- neuer Meteor während des Haltens -> auch aus
+			holdOff(inst) -- neues Ei während des Haltens -> auch aus
 		end
 	end
 end
 
--- Welcher Hinweis gilt gerade? Förderband vor Boden vor Gratis-Zone
-local HINT_PRIORITY: { [string]: number } = { Belt = 3, Ground = 2, Free = 1 }
+-- Welcher Hinweis gilt gerade? Parade vor Boden vor Gratis-Zone
+local HINT_PRIORITY: { [string]: number } = { Parade = 3, Ground = 2, Free = 1 }
 
 local function refreshHint()
 	if not ctx then
@@ -243,7 +243,7 @@ function Prompts.UpdateAll()
 	table.clear(mineCache)
 	table.clear(lockedCache)
 	frozen = isFrozen()
-	-- Sicherheitsnetz für die Halte-Sperre: der gehaltene Meteor ist weg (geklaut, gekauft, Bandende)
+	-- Sicherheitsnetz für die Halte-Sperre: das gehaltene Ei ist weg (geklaut, gekauft, im Ziel-Tor)
 	-- und Roblox hat kein "losgelassen" mehr gemeldet -> sofort freigeben statt erst nach HOLD_SAFETY
 	local held = holdPrompt
 	if held and not holdTriggered and not held:IsDescendantOf(workspace) then
@@ -299,16 +299,16 @@ function Prompts.Init(map: Instance, context: any)
 	end
 	map.DescendantAdded:Connect(watchReach)
 
-	-- Hinweis im HUD, solange ein Förderband-/Boden-Prompt in Reichweite angezeigt wird
+	-- Hinweis im HUD, solange ein Parade-/Boden-Prompt in Reichweite angezeigt wird
 	ProximityPromptService.PromptShown:Connect(function(prompt)
 		local kind = hintKind(prompt)
 		if kind then
 			shownPrompts[prompt] = kind
 			refreshHint()
-			if kind == "Belt" and not tipShown and ctx then
+			if kind == "Parade" and not tipShown and ctx then
 				tipShown = true
 				ctx.Toast(
-					"💡 Klauen ist GRATIS – aber du musst das Ei selbst heimtragen! Kaufen = Lieferung.",
+					"Klauen ist gratis – aber du musst das Ei selbst heimtragen. Kaufen = Lieferung.",
 					"Info"
 				)
 			end
@@ -319,16 +319,16 @@ function Prompts.Init(map: Instance, context: any)
 			shownPrompts[prompt] = nil
 			refreshHint()
 		end
-		-- Der gehaltene Prompt verschwindet (Meteor geklaut/gekauft/am Bandende, außer Reichweite):
+		-- Der gehaltene Prompt verschwindet (Ei geklaut/gekauft/im Ziel-Tor, außer Reichweite):
 		-- Halte-Sperre gleich aufheben, sonst kann man bis zu HOLD_SAFETY Sekunden nichts schnappen
 		if prompt == holdPrompt and not holdTriggered then
 			scheduleRelease(HOLD_RELEASE_AFTER_CANCEL)
 		end
 	end)
 
-	-- Halte-Sperre am Förderband (siehe oben): E auf einem Band-Meteor halten -> andere GrabPrompts aus
+	-- Halte-Sperre an der Parade (siehe oben): E an einem Parade-Ei halten -> andere GrabPrompts aus
 	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
-		if prompt.Name ~= "GrabPrompt" or meteorFolderKind(prompt) ~= "Belt" or photoMode or carrying or frozen then
+		if prompt.Name ~= "GrabPrompt" or meteorFolderKind(prompt) ~= "Parade" or photoMode or carrying or frozen then
 			return
 		end
 		releaseHold()

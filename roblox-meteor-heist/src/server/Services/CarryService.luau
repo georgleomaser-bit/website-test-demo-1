@@ -3,7 +3,7 @@
 --    und muss sie dann in die eigene Base tragen (Source = "Plot").
 --    Wer gebonkt wird, stirbt, in eine Falle tritt, zu langsam ist oder das Spiel verlässt,
 --    verliert die Beute: sie fliegt zurück zum Besitzer.
---  * Eier vom FÖRDERBAND (E = Klauen) und Eier am Boden (fallen gelassen / Egg Rush) sind gratis,
+--  * Eier aus der ALIEN-PARADE (E = Klauen) und Eier am Boden (fallen gelassen / Egg Rush) sind gratis,
 --    müssen aber auch nach Hause getragen werden (Source = "Ground"). Klappt das nicht,
 --    fällt das Ei an Ort und Stelle auf den Boden – und JEDER kann es schnappen.
 --  * Gekaufte Meteore (F) muss man NICHT tragen – sie fliegen automatisch in die Base.
@@ -33,12 +33,12 @@ local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der B
 -- Mindest-Tragezeit: kürzester möglicher Weg (raus aus der fremden Base, rein in die eigene)
 -- geteilt durch Trage-Tempo * diesen Faktor. Schneller geht es nur mit Teleport/Durch-Wände-Laufen.
 local MIN_CARRY_SPEED_FACTOR = 1.5
--- Förderband und Laufbänder schieben mit (wer mit Beute auf dem Band mitfährt, ist schneller)
-local CONVEYOR_EXTRA_SPEED = math.max(Config.BeltSpeed, 14)
+-- Laufbänder (Treadmills) schieben mit (wer mit Beute auf dem Band mitfährt, ist schneller)
+local CONVEYOR_EXTRA_SPEED = 14
 local SUPER_BONK_NAME = "Super-Bonk" -- Werkzeug-Name im Rucksack (normaler Schläger: "Bonk")
 -- Lange Heimwege (info.ScaleTimeout, z.B. das Ei vom Meteor-Run): Trage-Zeit = Weg / Trage-Tempo * TRIP_SLACK
 -- + TRIP_EXTRA, mindestens Config.CarryTimeout. Der Weg wird großzügig gerechnet (|dx| + |dz| bis zum
--- Eingang der eigenen Base – Umwege um Basen und Förderband sind darin enthalten).
+-- Eingang der eigenen Base – Umwege um Basen und Parade sind darin enthalten).
 local TRIP_SLACK = 1.3
 local TRIP_EXTRA = 10
 local TRIP_MAX = 240
@@ -60,7 +60,7 @@ local function ownsGadget(player: Player, id: string): boolean
 end
 
 -- Höchstes mögliches Trage-Tempo (für die Mindest-Tragezeit): Schritte-Tempo * Trage-Faktor
--- (Gamepass "Volle Speed beim Tragen" = kein Abzug), Speed Coil obendrauf, plus Förderband-Schub
+-- (Gamepass "Volle Speed beim Tragen" = kein Abzug), Speed Coil obendrauf, plus Laufband-Schub
 local function maxCarrySpeed(player: Player): number
 	local factor = Services.MonetizationService.HasPass(player, "CarryFast") and 1 or Config.CarrySpeedFactor
 	local speed = math.max(8, Services.EconomyService.GetSpeed(player) * factor)
@@ -245,7 +245,7 @@ local function tripTimeout(player: Player, entry, from: Vector3?): number
 	return math.clamp(math.ceil(seconds), Config.CarryTimeout, TRIP_MAX)
 end
 
--- Mindest-Tragezeit für ein Ei vom Band/Boden: Luftlinie bis zum Eingang der eigenen Base
+-- Mindest-Tragezeit für ein Ei aus der Parade/vom Boden: Luftlinie bis zum Eingang der eigenen Base
 local function minGroundCarryTime(player: Player, from: Vector3?): number
 	local plot = Services.PlotService.GetPlot(player)
 	if not plot or not from or Services.PlotService.IsInside(plot, from) then
@@ -346,7 +346,7 @@ local function createVisual(player: Player, entry): Instance?
 end
 
 -- info (Plot):   { Source = "Plot", VictimPlot, VictimPlayer, Slot, EntryRef, MinTime? }
--- info (Ground): { Source = "Ground", From = "Belt"|"Drop"|"Run"?, GrabPosition?, MinTime?, ScaleTimeout? }
+-- info (Ground): { Source = "Ground", From = "Parade"|"Drop"|"Run"?, GrabPosition?, MinTime?, ScaleTimeout? }
 --   ScaleTimeout = true: Trage-Zeit wächst mit der Entfernung zur eigenen Base (tripTimeout)
 -- Dazu kommen hier: Entry, Started, Character, StartPos, LastPos (laufend), Visual, Timeout
 function CarryService.StartCarry(player: Player, entry, info)
@@ -412,7 +412,7 @@ local function visualPosition(info): Vector3?
 	return nil
 end
 
--- Ei vom Band/Boden sicher zu Hause -> in einen freien Slot, Schlüpf-Countdown startet
+-- Ei aus der Parade/vom Boden sicher zu Hause -> in einen freien Slot, Schlüpf-Countdown startet
 local function succeedGround(player: Player, info)
 	local data = Services.DataService.Get(player)
 	local plot = Services.PlotService.GetPlot(player)
@@ -487,7 +487,7 @@ local function succeed(player: Player)
 	Services.EconomyService.Effect(player, "Confetti", 1)
 end
 
--- Hinweise beim Verlieren: Beute aus einer Base fliegt zurück, ein Ei vom Band fällt herunter
+-- Hinweise beim Verlieren: Beute aus einer Base fliegt zurück, ein Ei aus der Parade fällt herunter
 local PLOT_FAIL_TEXT = {
 	bonked = "💥 Gebonkt! Die Beute fliegt zurück.",
 	timeout = "⏰ Zu langsam! Die Beute fliegt zurück.",
@@ -506,7 +506,7 @@ local GROUND_FAIL_TEXT = {
 	died = "💀 Das Ei ist runtergefallen – jemand anderes kann es jetzt schnappen!",
 }
 
--- Ei vom Band/Boden verloren -> fällt als GRATIS-Ei auf den Boden (jeder darf es schnappen)
+-- Ei aus der Parade/vom Boden verloren -> fällt als GRATIS-Ei auf den Boden (jeder darf es schnappen)
 local function dropGroundLoot(player: Player, info, reason: string, from: Vector3?)
 	local spot: Vector3? = nil
 	if reason == "teleport" or reason == "invalid" then

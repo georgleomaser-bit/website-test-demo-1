@@ -20,8 +20,8 @@ local PlotService = {}
 PlotService.Plots = {} :: { any } -- Liste aller Basen (Felder siehe MapBuilder)
 PlotService.ByPlayer = {} :: { [Player]: any }
 PlotService.MapFolder = nil :: Folder?
--- Laufband: { Part, Start, Dir, Length, Width, TopY }
-PlotService.Belt = nil :: any
+-- Alien-Parade: { Folder, Path, RoadWidth, Start } (siehe MapBuilder.ParadeInfo)
+PlotService.Parade = nil :: any
 PlotService.FreeZone = { Center = Vector3.new(0, 0.2, -264), Radius = 20 }
 PlotService.LobbySpawn = CFrame.new(0, 4, -300)
 PlotService.LeaderboardCFrame = CFrame.new(0, 13, -190)
@@ -581,7 +581,7 @@ function PlotService.Init(services)
 	local map = MapBuilder.Build() :: any
 	PlotService.MapFolder = map.MapFolder
 	PlotService.Plots = map.Plots or {}
-	PlotService.Belt = map.Belt
+	PlotService.Parade = map.Parade
 	if map.FreeZone then
 		PlotService.FreeZone = map.FreeZone
 	end

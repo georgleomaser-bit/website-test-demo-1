@@ -279,13 +279,17 @@ Config.IndexBonusPerAlien = 0.01
 -- ALIEN-PARADE in der Map-Mitte: kleine Aliens marschieren über eine bunte Straße vom UFO-Hangar
 -- (am Spawn-Platz) zum Ziel-Tor und tragen je ein Ei auf dem Kopf. E halten = klauen, F = kaufen.
 -- Seltene Eier (ab Parade.BossFromRarity) trägt ein großer, langsamer BOSS mit Leibwächtern.
-Config.ParadeSpawnInterval = 0.33 -- alle X Sekunden startet ein neuer Träger (auf zwei Spuren)
+Config.ParadeSpawnInterval = 0.3 -- alle X Sekunden startet ein neuer Träger (auf zwei Spuren, mit 1-3 Eiern)
 Config.ParadeSpeed = 8 -- Studs pro Sekunde (kleine Träger)
 Config.MaxParadeMeteors = 170 -- Sicherheitsgrenze (mehr Eier sind nie gleichzeitig unterwegs)
 Config.ShowerMaxParadeMeteors = 220 -- im Meteoritenschauer darf die Parade voller werden
 Config.Parade = {
 	Lanes = { -2.6, 2.6 }, -- zwei Spuren (seitlicher Abstand zur Straßenmitte), abwechselnd belegt
-	Gap = 0.8, -- Mindestabstand (Studs) zwischen zwei Eiern derselben Spur
+	Gap = 0.8, -- Mindestabstand (Studs) zwischen zwei Trägern derselben Spur
+	-- STAPEL: kleine Eier (bis StackMaxRarity) tragen die Aliens oft zu zweit oder zu dritt übereinander.
+	-- StackChances = Chance für 1, 2, 3 Eier (Summe 1)
+	StackMaxRarity = "Uncommon",
+	StackChances = { 0.4, 0.35, 0.25 },
 	-- BOSS: ab dieser Seltenheit trägt ein großer Boss das Ei, ab GuardsPlusFrom mit 3 statt 2 Leibwächtern
 	BossFromRarity = "Legendary",
 	GuardsPlusFrom = "Mythic",

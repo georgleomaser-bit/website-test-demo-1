@@ -179,7 +179,7 @@ local function groundBelow(position: Vector3): Vector3
 	end
 	local map = Services.PlotService.MapFolder
 	if map then
-		for _, name in ipairs({ "BeltMeteors", "GroundMeteors" }) do
+		for _, name in ipairs({ "ParadeMeteors", "GroundMeteors" }) do
 			local folder = map:FindFirstChild(name)
 			if folder then
 				table.insert(ignore, folder)
@@ -294,12 +294,21 @@ local function updateTag(p: Player)
 	gui.Parent = head
 end
 
+-- Große Admin-Ansage oben in der Mitte (Client: Effects "Announce" mit Kopfbild, Name + Haken, Text).
+-- text ist schon gefiltert (TextService), userId/name = Absender.
+local function showAnnouncement(text: string, userId: number, name: string)
+	if #text == 0 or #text > 200 then
+		return
+	end
+	Remotes.Effect:FireAllClients("Announce", 0, { Text = text, UserId = userId, Name = string.sub(name, 1, 40) })
+end
+
 local function handleGlobal(message)
 	if type(message) ~= "table" then
 		return
 	end
 	if message.Type == "Announce" and type(message.Text) == "string" then
-		Services.EconomyService.NotifyAll("📢 " .. message.Text, "Announce")
+		showAnnouncement(message.Text, tonumber(message.UserId) or 0, tostring(message.Name or "Admin"))
 	elseif message.Type == "Luck" then
 		Services.MeteorService.SetServerLuck(num(message.Mult, 1, 1, 100), num(message.Until, 0, 0, math.huge))
 		Services.EconomyService.NotifyAll(
@@ -420,7 +429,7 @@ function Actions.GetPlayers(_admin)
 	return true, "OK", list
 end
 
--- Where: "Belt" (Standard, aufs Laufband), "Free" (Gratis-Zone) oder "Me" (vor dem Admin)
+-- Where: "Parade" (Standard, alter Name "Belt"), "Free" (Gratis-Zone) oder "Me" (vor dem Admin)
 function Actions.SpawnMeteor(admin, args)
 	local id = args.MeteorId
 	if type(id) ~= "string" or not Config.MeteorsById[id] then
@@ -461,10 +470,10 @@ function Actions.SpawnMeteor(admin, args)
 		elseif where == "Free" then
 			Services.MeteorService.SpawnStatic(opts)
 		else
-			Services.MeteorService.QueueBelt(opts)
+			Services.MeteorService.QueueParade(opts)
 		end
 	end
-	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "aufs Förderband")
+	local target = where == "Me" and "vor dir" or (where == "Free" and "in der Gratis-Zone" or "zur Parade")
 	return true, count .. "x " .. Config.MeteorsById[id].Name .. " " .. target
 end
 
@@ -472,13 +481,13 @@ function Actions.MeteorRain(_admin, args)
 	local rarity = Config.RaritiesByName[args.Rarity] and args.Rarity or nil
 	local count = math.floor(num(args.Count, 10, 1, 40))
 	for _ = 1, count do
-		Services.MeteorService.QueueBelt({ Rarity = rarity, Announce = false })
+		Services.MeteorService.QueueParade({ Rarity = rarity, Announce = false })
 	end
 	Services.EconomyService.NotifyAll(
-		"☄️ ADMIN-METEORREGEN aufs Förderband" .. (rarity and (" (" .. rarity .. ")") or "") .. "! 🏃",
+		"☄️ Admin-Eierregen in der Parade" .. (rarity and (" (" .. rarity .. ")") or "") .. "!",
 		"Event"
 	)
-	return true, count .. " Meteore kommen aufs Förderband"
+	return true, count .. " Eier kommen in die Parade"
 end
 
 function Actions.GiveMeteor(admin, args)
@@ -656,10 +665,10 @@ function Actions.Announce(admin, args)
 		return false, "Text-Filter nicht erreichbar"
 	end
 	if args.Global then
-		publishGlobal({ Type = "Announce", Text = filtered })
+		publishGlobal({ Type = "Announce", Text = filtered, UserId = admin.UserId, Name = admin.DisplayName })
 		return true, "An ALLE Server gesendet"
 	end
-	Services.EconomyService.NotifyAll("📢 " .. filtered, "Announce")
+	showAnnouncement(filtered, admin.UserId, admin.DisplayName)
 	return true, "Gesendet"
 end
 
@@ -790,7 +799,7 @@ end
 
 function Actions.ClearGround(_admin)
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Förderband, Gratis-Zone & Eier am Boden geleert"
+	return true, "🧹 Parade, Gratis-Zone & Eier am Boden geleert"
 end
 
 -- 🥚 Egg Rush sofort starten (läuft schon einer: wird verlängert, mehr Eier)
@@ -956,7 +965,7 @@ function Actions.PhotoBase(admin)
 	return true, count > 0 and ("🏠 Foto-Base: " .. count .. " Deko-Aliens") or "🏠 Base ist schon voll"
 end
 
--- Foto-Modus: Deko weg, Slot-Farben zurück, Laufband + Gratis-Zone leer
+-- Foto-Modus: Deko weg, Slot-Farben zurück, Parade + Gratis-Zone leer
 function Actions.PhotoClear(admin)
 	local plot = Services.PlotService.GetPlot(admin)
 	if plot then
@@ -964,7 +973,7 @@ function Actions.PhotoClear(admin)
 		Services.PlotService.UpdateSlotColors(plot)
 	end
 	Services.MeteorService.ClearGround()
-	return true, "🧹 Foto-Deko entfernt, Förderband, Gratis-Zone & Eier geleert"
+	return true, "🧹 Foto-Deko entfernt, Parade, Gratis-Zone & Eier geleert"
 end
 
 -- -------------------------------------------------------------------

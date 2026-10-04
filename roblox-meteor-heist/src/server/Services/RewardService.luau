@@ -38,7 +38,7 @@ local MAX_GIFT_SECONDS = 86400 -- mehr als ein Tag Spielzeit geht an einem Tag n
 -- Tagesaufgaben: Goals = feste Auswahl, Scale = wächst mit dem Fortschritt des Spielers.
 -- Social = braucht andere Spieler (Klauen aus Basen, Bonken) -> höchstens eine davon pro Tag.
 local QUEST_POOL = {
-	{ Id = "Grab", Kind = "Grab", Text = "🥚 Klau %s Eier vom Band", Goals = { 5, 6, 8, 10 } },
+	{ Id = "Grab", Kind = "Grab", Text = "🥚 Klau %s Eier aus der Parade", Goals = { 5, 6, 8, 10 } },
 	{ Id = "Steal", Kind = "Steal", Text = "😈 Klau %s Aliens/Eier aus Basen", Goals = { 2, 3 }, Social = true },
 	{ Id = "Hatch", Kind = "Hatch", Text = "🐣 Lass %s Aliens schlüpfen", Goals = { 5, 6, 8 } },
 	{ Id = "Steps", Kind = "Steps", Text = "👟 Lauf %s Schritte", Scale = "Steps" },

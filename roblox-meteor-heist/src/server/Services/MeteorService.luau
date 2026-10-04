@@ -134,7 +134,7 @@ local function publishAttributes()
 	ReplicatedStorage:SetAttribute("NextEggRushAt", nextEggRushAt)
 end
 
--- Ansage an alle für seltene Eier (Förderband, Klauen) – höchstens alle RARE_ANNOUNCE_GAP Sekunden,
+-- Ansage an alle für seltene Eier (Parade, Klauen) – höchstens alle RARE_ANNOUNCE_GAP Sekunden,
 -- überzählige fallen weg (sonst verdrängen sie wichtige eigene Meldungen wie den Diebstahl-Alarm)
 local function rareAnnounce(text: string)
 	local t = os.clock()
@@ -194,7 +194,7 @@ function MeteorService.StartShower(duration: number?)
 		end
 	end
 	Services.EconomyService.NotifyAll(
-		"🌠 METEORITENSCHAUER! Viel mehr Meteore, keine Locks, " .. Config.ShowerLuck .. "x Glück!",
+		"🌠 METEORITENSCHAUER! Volle Parade, keine Locks, " .. Config.ShowerLuck .. "x Glück!",
 		"Event"
 	)
 end
@@ -219,7 +219,7 @@ function MeteorService.RollMutation(luck: number): string
 	return mut.Name
 end
 
--- Zufälliger Meteor einer Seltenheit (nur Förderband-Meteore; includeAll = auch Admin/nicht spawnbare)
+-- Zufälliger Meteor einer Seltenheit (nur Meteore, die von selbst in die Parade kommen; includeAll = auch Admin/nicht spawnbare)
 function MeteorService.RandomOfRarity(rarityName: string, includeAll: boolean?)
 	local list = Config.MeteorsByRarity[rarityName]
 	if (not list or #list == 0) and includeAll then
@@ -602,13 +602,17 @@ end
 -- -------------------------------------------------------------------
 -- PROMPTS
 -- -------------------------------------------------------------------
--- Förderband: E = Klauen (gratis, tragen), F = Kaufen (automatische Lieferung)
-local function attachBeltPrompts(record, serverReach: number)
+-- Parade: E = Klauen (gratis, tragen), F = Kaufen (automatische Lieferung)
+local function attachParadePrompts(record, serverReach: number)
 	local part: BasePart = record.Part
 	local def = Config.MeteorsById[record.Entry.Id]
 	local radius = part.Size.X / 2
-	-- man steht hinter dem Geländer -> größere Reichweite als am Boden
-	local clientReach = math.max(BELT_CLIENT_REACH, radius + 10)
+	-- waagrechte Reichweite: am Boss absichtlich klein (man muss in die Schubs-Zone der Leibwächter)
+	local horiz = if record.Boss then PARADE.BossGrabReach else math.max(PARADE_CLIENT_REACH, radius + 10)
+	record.HorizReach = horiz
+	-- Der Client misst in 3D (zum Ei hoch auf dem Kopf) -> Höhe einrechnen
+	local dy = math.max(0, PARADE.RoadTop + record.Offset - ROOT_HEIGHT)
+	local clientReach = math.sqrt(horiz * horiz + dy * dy)
 	record.ClientReach = clientReach
 
 	local grab = MeteorFactory.AddPrompt(
@@ -616,27 +620,27 @@ local function attachBeltPrompts(record, serverReach: number)
 		"GrabPrompt",
 		"Klauen",
 		def.Name,
-		Config.BeltGrabHold,
+		Config.ParadeGrabHold,
 		Enum.KeyCode.E,
 		serverReach
 	)
 	grab.GamepadKeyCode = Enum.KeyCode.ButtonX
 	grab.UIOffset = GRAB_UI_OFFSET
 	-- Der Client stellt die echte Reichweite lokal ein (die Server-Reichweite ist absichtlich riesig,
-	-- weil der Meteor auf dem Server am Bandstart bleibt).
+	-- weil das Ei auf dem Server im Start-Hangar bleibt).
 	grab:SetAttribute("ClientMaxDistance", clientReach)
 	-- gratis -> der Server prüft, ob wirklich so lange gehalten wurde
 	MeteorFactory.OnHeldTrigger(grab, function(player)
 		tryGrab(player, record)
 	end)
 
-	local action = record.Price > 0 and ("Kaufen " .. Util.FormatCash(record.Price)) or "🎁 Gratis holen"
+	local action = record.Price > 0 and ("Kaufen " .. Util.FormatCash(record.Price)) or "Gratis holen"
 	local buy = MeteorFactory.AddPrompt(
 		part,
 		"BuyPrompt",
 		action,
 		def.Name .. " (" .. def.Rarity .. ")",
-		Config.BeltBuyHold,
+		Config.ParadeBuyHold,
 		Enum.KeyCode.F,
 		serverReach
 	)
@@ -713,131 +717,288 @@ local function announce(entry, text: string)
 end
 
 -- -------------------------------------------------------------------
--- FÖRDERBAND – Spawnen
+-- PARADE – Spawnen
 -- -------------------------------------------------------------------
--- Legt einen Meteor sofort an den Bandstart der Spur "lane" (ohne Platzprüfung – dafür sorgt die Schleife).
--- lane: 0 = Bandmitte, -1 / 1 = Schauer-Spuren links / rechts
--- shouldAnnounce: nil = natürlicher Meteor (Ansage ab Celestial, gebremst), true = vom Admin bestellt
-local function spawnOnBelt(entry, price: number, lane: number, shouldAnnounce: boolean?)
-	local belt = getBelt()
-	if not belt then
-		return nil
-	end
-	local speed = Config.BeltSpeed
-	local size = MeteorFactory.GetSize(entry)
-	local radius = size / 2
-	local t0 = now()
-	local side = belt.Dir:Cross(Vector3.yAxis) -- waagrecht quer zum Band
-	local start = belt.Start + Vector3.new(0, radius, 0) + side * (lane * Config.BeltLaneOffset)
+local BOSS_ANNOUNCE_GAP = 6 -- normale Boss-Ansagen höchstens alle 6 s
+local lastBossAnnounce = -math.huge
+local serverReachCache: number? = nil
 
-	local part = MeteorFactory.Create(entry, "Belt", price)
-	part.CFrame = CFrame.new(start)
-	-- Attribute VOR dem Parenten setzen -> kommen gleichzeitig beim Client an
-	part:SetAttribute("BeltT0", t0)
-	part:SetAttribute("BeltSpeed", speed)
-	part:SetAttribute("BeltStart", start)
-	part:SetAttribute("BeltDir", belt.Dir)
-
-	local record = {
-		Kind = "Belt",
-		Entry = entry,
-		Part = part,
-		Price = price,
-		T0 = t0,
-		Start = start,
-		Dir = belt.Dir,
-		Speed = speed,
-		Expires = t0 + belt.Length / speed,
-		Claimed = false,
-	}
-	table.insert(beltRecords, record)
-	-- Server-Reichweite = ganzes Band (siehe attachBeltPrompts), echte Prüfung in checkReach
-	attachBeltPrompts(record, belt.Length + 60)
-	part.Parent = beltFolder
-
-	laneLast[lane] = { T0 = t0, Radius = radius }
-
+local function rarityIndexOf(entry): number
 	local def = Config.MeteorsById[entry.Id]
-	local index = Config.RarityIndex[def.Rarity]
-	if shouldAnnounce == true and index >= ADMIN_SPAWN_ANNOUNCE then
-		announce(entry, "☄️ Ein %s fährt aufs Förderband!")
-	elseif shouldAnnounce == nil and index >= SECRET_SPAWN_ANNOUNCE then
-		announce(entry, "🌈 WAHNSINN! Ein %s fährt aufs Förderband!")
-	elseif shouldAnnounce == nil and index >= RARE_SPAWN_ANNOUNCE then
-		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
-		rareAnnounce("☄️ Ein " .. def.Rarity .. " " .. mut .. def.Name .. " fährt aufs Förderband!")
-	end
-	return record
+	return def and Config.RarityIndex[def.Rarity] or 1
 end
 
--- Ist am Bandstart der Spur "lane" genug Platz für einen Meteor mit diesem Radius?
--- Geprüft wird gegen den letzten Meteor JEDER Spur: Kugeln auf Nachbarspuren berühren sich nur,
--- wenn sie seitlich näher sind als ihre Radien zusammen.
-local function laneHasRoom(lane: number, radius: number): boolean
+local function isBossEntry(entry): boolean
+	return rarityIndexOf(entry) >= BOSS_FROM
+end
+
+-- Gruppe = Eier auf EINEM Träger (1-3 gestapelt) oder ein einzelnes Boss-Ei
+local function groupIsBoss(group: { any }): boolean
+	return #group == 1 and isBossEntry(group[1])
+end
+
+-- Platz, den die Gruppe vor sich braucht (halbe Tiefe des Trägers bzw. des größten Eis)
+local function groupFront(group: { any }): number
+	if groupIsBoss(group) then
+		return BOSS_FRONT
+	end
+	local front = CARRIER_MIN_HALF
+	for _, entry in ipairs(group) do
+		front = math.max(front, MeteorFactory.GetSize(entry) / 2)
+	end
+	return front
+end
+
+-- Startet einen Träger mit seinen Eiern im Start-Hangar (ohne Platzprüfung – dafür sorgt die Schleife).
+-- free = gratis, lane = Spur (Boss: egal, läuft in der Mitte)
+-- shouldAnnounce: nil = natürlich (Boss-Ansage gebremst), true = vom Admin bestellt, false = still
+local function spawnCarrier(group: { any }, free: boolean, lane: number, shouldAnnounce: boolean?)
+	local path = getPath()
+	if not path or #group == 0 then
+		return
+	end
 	local t = now()
-	for otherLane, last in pairs(laneLast) do
-		local apart = math.abs(otherLane - lane) * Config.BeltLaneOffset
-		local needed = last.Radius + radius + BELT_GAP
-		if apart < needed then
-			local alongNeeded = math.sqrt(needed * needed - apart * apart)
-			if (t - last.T0) * Config.BeltSpeed < alongNeeded then
-				return false
-			end
+	local p0 = clockAt(t)
+	local boss = groupIsBoss(group)
+	local speed = Config.ParadeSpeed * (if boss then PARADE.BossSpeedFactor else 1)
+	local laneOffset = if boss then 0 else lane
+	local index = rarityIndexOf(group[1])
+	local guards = if not boss then 0 elseif index >= GUARDS_PLUS_FROM then 3 else 2
+	carrierCounter += 1
+	local startPos, startDir = ParadePath.Sample(path, 0)
+	local side = ParadePath.Right(startDir)
+	local serverReach = serverReachCache
+	if not serverReach then
+		-- Server-Reichweite = ganze Strecke (das Ei bleibt auf dem Server im Hangar), echte Prüfung in checkReach
+		serverReach = ParadePath.MaxDistanceFrom(path, startPos) + 60
+		serverReachCache = serverReach
+	end
+	local height = PARADE.CarrierHeight * (if boss then PARADE.BossScale else 1)
+	for stack, entry in ipairs(group) do
+		local size = MeteorFactory.GetSize(entry)
+		local offset = height + size / 2 + 0.05 -- Ei-Mitte über der Straße (gestapelt: übereinander)
+		height += size
+		local price = if free then 0 else math.floor(Config.MeteorValue(entry))
+		local part = MeteorFactory.Create(entry, "Parade", price)
+		part.CFrame = CFrame.new(startPos + side * laneOffset + Vector3.new(0, offset, 0))
+		-- Attribute VOR dem Parenten setzen -> kommen gleichzeitig beim Client an
+		part:SetAttribute("ParadeT0", t)
+		part:SetAttribute("ParadeP0", p0)
+		part:SetAttribute("ParadeSpeed", speed)
+		part:SetAttribute("ParadeLane", laneOffset)
+		part:SetAttribute("ParadeOffset", offset)
+		part:SetAttribute("ParadeStack", stack)
+		part:SetAttribute("Carrier", if boss then "Boss" else "Small")
+		part:SetAttribute("CarrierId", carrierCounter)
+		if boss then
+			part:SetAttribute("ParadeGuards", guards)
+		end
+		local record = {
+			Kind = "Parade",
+			Entry = entry,
+			Part = part,
+			Price = price,
+			T0 = t,
+			P0 = p0,
+			Speed = speed,
+			Lane = laneOffset,
+			Offset = offset,
+			Boss = boss,
+			Guards = guards,
+			CarrierId = carrierCounter,
+			NextPush = t + PARADE.PushInterval,
+			Claimed = false,
+		}
+		table.insert(paradeRecords, record)
+		attachParadePrompts(record, serverReach)
+		part.Parent = paradeFolder
+	end
+
+	-- Abstand merken: ein Boss sperrt alle Spuren (er läuft in der Mitte, Leibwächter daneben)
+	local info = { P0 = p0, Speed = speed, Back = if boss then BOSS_BACK else groupFront(group) }
+	if boss then
+		for _, l in ipairs(PARADE.Lanes) do
+			laneLast[l] = info
+		end
+	else
+		laneLast[lane] = info
+	end
+
+	if boss then
+		local entry = group[1]
+		if shouldAnnounce == true and index >= ADMIN_SPAWN_ANNOUNCE then
+			announce(entry, "👑 Ein Boss bringt %s zur Parade!")
+		elseif shouldAnnounce == nil and index >= SECRET_SPAWN_ANNOUNCE then
+			announce(entry, "👑 WAHNSINN! Ein Boss bringt %s zur Parade!")
+		elseif shouldAnnounce == nil and os.clock() - lastBossAnnounce >= BOSS_ANNOUNCE_GAP then
+			lastBossAnnounce = os.clock()
+			announce(entry, "👑 Boss-Parade: %s – mit Leibwächtern!")
 		end
 	end
-	return true
 end
 
--- Freie Spur für einen Meteor mit diesem Radius (nil = gerade kein Platz, kurz warten).
--- Normal: Bandmitte. Im Meteoritenschauer: kleine Meteore abwechselnd links/rechts, große in die Mitte.
-local function pickLane(radius: number): number?
-	if not MeteorService.IsShowerActive() or radius > LANE_MAX_RADIUS then
-		return if laneHasRoom(0, radius) then 0 else nil
+-- Hat die Spur am Start genug Platz für eine Gruppe mit diesem vorderen Platzbedarf?
+local function laneHasRoom(lane: number, front: number, t: number): boolean
+	local last = laneLast[lane]
+	if not last then
+		return true
 	end
-	for _ = 1, 2 do
-		local lane = nextSideLane
-		nextSideLane = -nextSideLane
-		if laneHasRoom(lane, radius) then
+	local traveled = (clockAt(t) - last.P0) * last.Speed
+	return traveled >= last.Back + front + PARADE.Gap
+end
+
+-- Freie Spur (nil = gerade kein Platz, kurz warten). Kleine Träger abwechselnd, Boss braucht alle Spuren.
+local function pickLane(group: { any }): number?
+	local t = now()
+	local front = groupFront(group)
+	local lanes = PARADE.Lanes
+	if groupIsBoss(group) then
+		for _, lane in ipairs(lanes) do
+			if not laneHasRoom(lane, front, t) then
+				return nil
+			end
+		end
+		return 0
+	end
+	for _ = 1, #lanes do
+		local lane = lanes[nextLane] or 0
+		nextLane = nextLane % #lanes + 1
+		if laneHasRoom(lane, front, t) then
 			return lane
 		end
 	end
 	return nil
 end
 
--- opts: { Id?, Mut?, Rarity?, Free?, Announce? } -> kommt so bald wie möglich aufs Band
--- (Announce = true: allen ansagen, ab Mythic)
-function MeteorService.QueueBelt(opts)
-	table.insert(beltQueue, opts or {})
+-- Nächste natürliche Gruppe: kleine Eier werden oft gestapelt (1-3 auf einem Träger)
+local function rollGroup(): { any }
+	local first = spareEntry or MeteorService.RollEntry()
+	spareEntry = nil
+	local group = { first }
+	if rarityIndexOf(first) <= STACK_MAX_RARITY then
+		local chances = PARADE.StackChances
+		local r = rng:NextNumber()
+		local count = 1
+		local sum = 0
+		for i, chance in ipairs(chances) do
+			sum += chance
+			if r < sum then
+				count = i
+				break
+			end
+			count = i
+		end
+		for _ = 2, count do
+			local extra = MeteorService.RollEntry()
+			if rarityIndexOf(extra) <= STACK_MAX_RARITY then
+				table.insert(group, extra)
+			else
+				spareEntry = extra -- großes Ei: kommt als nächstes einzeln
+				break
+			end
+		end
+	end
+	return group
 end
 
--- Ein Schritt der Förderband-Schleife: Warteschlange zuerst, dann natürliche Meteore
-local function beltStep()
-	local t = now()
-	-- abgelaufene Meteore (über das Bandende) entfernen. Die Liste ist nach Startzeit sortiert
-	-- (gleiches Tempo, gleiche Länge) -> die ältesten stehen vorne, mehr muss man nicht prüfen.
-	while beltRecords[1] and t >= beltRecords[1].Expires do
-		removeRecord(beltRecords[1])
-	end
-	local shower = MeteorService.IsShowerActive()
-	local cap = if shower then math.max(Config.MaxBeltMeteors, Config.ShowerMaxBeltMeteors) else Config.MaxBeltMeteors
-	if #beltRecords >= cap then
+-- Leibwächter schubsen alle weg, die dem Boss zu nahe kommen (wie ein Bonk, nur ohne Beute-Verlust)
+local function pushAround(record, t: number)
+	local path = getPath()
+	if not path then
 		return
 	end
-	local queued = beltQueue[1]
+	local dist = paradeDistance(record, t)
+	if dist < 6 or dist > path.Length - 6 then
+		return -- noch im Hangar / schon im Ziel-Tor
+	end
+	local pos, dir = ParadePath.Sample(path, dist)
+	local radius = PARADE.PushRadius
+	for _, player in ipairs(Players:GetPlayers()) do
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if root and humanoid and humanoid.Health > 0 and not root.Anchored then
+			local rootPos = root.Position
+			local dx, dz = rootPos.X - pos.X, rootPos.Z - pos.Z
+			local d = math.sqrt(dx * dx + dz * dz)
+			if d < radius and rootPos.Y < pos.Y + 30 then
+				local away = if d > 0.5 then Vector3.new(dx / d, 0, dz / d) else ParadePath.Right(dir)
+				-- Rückstoß (läuft beim Spieler, weil der seine Physik besitzt)
+				local attachment = Instance.new("Attachment")
+				attachment.Parent = root
+				local velocity = Instance.new("LinearVelocity")
+				velocity.Attachment0 = attachment
+				velocity.MaxForce = 1e6
+				velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+				velocity.VectorVelocity = away * PARADE.PushForce + Vector3.new(0, 25, 0)
+				velocity.Parent = root
+				Debris:AddItem(velocity, 0.18)
+				Debris:AddItem(attachment, 0.18)
+				Services.EconomyService.Effect(player, "Shake", 0.4)
+				local clock = os.clock()
+				if clock - (pushNotifyAt[player] or -math.huge) >= PUSH_NOTIFY_GAP then
+					pushNotifyAt[player] = clock
+					Services.EconomyService.Notify(player, "Die Leibwächter schubsen! Greif zwischen den Schubsern zu.", "Info")
+				end
+			end
+		end
+	end
+end
+
+-- opts: { Id?, Mut?, Rarity?, Free?, Announce? } -> kommt so bald wie möglich in die Parade
+-- (Announce = true: allen ansagen, ab Mythic)
+function MeteorService.QueueParade(opts)
+	table.insert(paradeQueue, opts or {})
+end
+
+-- Ein Schritt der Parade-Schleife: Uhr-Tempo, Abmelden, Schubsen, Warteschlange, natürliche Träger
+local function paradeStep()
+	local t = now()
+	local shower = MeteorService.IsShowerActive()
+	local wantedRate = if shower then tonumber(Config.ShowerParadeSpeedMult) or 1 else 1
+	if clockRate ~= wantedRate then
+		setClockRate(wantedRate)
+	end
+	local path = getPath()
+	if not path then
+		return
+	end
+	-- Eier hinter dem Ziel-Tor abmelden, Bosse schubsen (verschiedene Tempos -> alle prüfen)
+	local length = path.Length
+	local interval = PARADE.PushInterval
+	for i = #paradeRecords, 1, -1 do
+		local record = paradeRecords[i]
+		if paradeDistance(record, t) > length then
+			removeRecord(record)
+		elseif record.Boss and t >= record.NextPush then
+			record.NextPush += interval
+			if record.NextPush <= t then
+				record.NextPush = t + interval
+			end
+			pushAround(record, t)
+		end
+	end
+	local cap = if shower
+		then math.max(Config.MaxParadeMeteors, Config.ShowerMaxParadeMeteors)
+		else Config.MaxParadeMeteors
+	local queued = paradeQueue[1]
 	if queued then
+		if #paradeRecords >= cap then
+			return
+		end
 		if not queued.Entry then
 			queued.Entry = makeEntry(queued)
 			if not queued.Entry then
-				table.remove(beltQueue, 1)
+				table.remove(paradeQueue, 1)
 				return
 			end
 		end
-		local lane = pickLane(MeteorFactory.GetSize(queued.Entry) / 2)
+		local group = { queued.Entry }
+		local lane = pickLane(group)
 		if lane then
-			table.remove(beltQueue, 1)
-			local price = queued.Free and 0 or math.floor(Config.MeteorValue(queued.Entry))
+			table.remove(paradeQueue, 1)
 			-- vom Admin bestellt: Announce true/false, sonst (z.B. Meteorregen) keine Ansage
-			spawnOnBelt(queued.Entry, price, lane, queued.Announce == true)
+			spawnCarrier(group, queued.Free == true, lane, queued.Announce == true)
 		end
 		return
 	end
@@ -845,16 +1006,16 @@ local function beltStep()
 		return
 	end
 	if not pendingNatural and t >= nextNaturalAt then
-		pendingNatural = MeteorService.RollEntry()
-		local interval = if shower then Config.ShowerBeltInterval else Config.BeltSpawnInterval
-		nextNaturalAt = t + interval
+		pendingNatural = rollGroup()
+		local spawnInterval = if shower then Config.ShowerParadeInterval else Config.ParadeSpawnInterval
+		nextNaturalAt = t + spawnInterval
 	end
-	if pendingNatural then
-		local lane = pickLane(MeteorFactory.GetSize(pendingNatural) / 2)
+	local group = pendingNatural
+	if group and #paradeRecords + #group <= cap then
+		local lane = pickLane(group)
 		if lane then
-			local entry = pendingNatural
 			pendingNatural = nil
-			spawnOnBelt(entry, math.floor(Config.MeteorValue(entry)), lane, nil)
+			spawnCarrier(group, false, lane, nil)
 		end
 	end
 end
@@ -870,8 +1031,8 @@ local function rayParams(respectCanCollide: boolean): RaycastParams
 			table.insert(ignore, player.Character)
 		end
 	end
-	if beltFolder then
-		table.insert(ignore, beltFolder)
+	if paradeFolder then
+		table.insert(ignore, paradeFolder)
 	end
 	if groundFolder then
 		table.insert(ignore, groundFolder)
@@ -947,25 +1108,21 @@ local function spawnDrop(entry, groundPos: Vector3, opts)
 	return record
 end
 
--- Stelle über dem Förderband (oder im Geländer)? -> seitlich daneben auf die Wiese schieben.
--- Sonst läge das Ei still auf dem Band, während die anderen Meteore hindurchfahren.
-local DROP_BELT_MARGIN = 3 -- so weit neben der Lauffläche zählt noch als "auf dem Band"
-local DROP_BELT_GAP = 5 -- so weit neben der Lauffläche landet das Ei (plus sein Radius)
-local function offBelt(position: Vector3, radius: number): Vector3
-	local belt = getBelt()
-	if not belt then
+-- Stelle auf der Parade-Straße? -> seitlich daneben auf die Wiese schieben.
+-- Sonst läge das Ei still auf der Straße, während die Träger hindurchlaufen.
+local DROP_ROAD_MARGIN = 2 -- so weit neben der Straße zählt noch als "auf der Straße"
+local DROP_ROAD_GAP = 4 -- so weit neben der Straße landet das Ei (plus sein Radius)
+local function offParade(position: Vector3, radius: number): Vector3
+	local path = getPath()
+	if not path then
 		return position
 	end
-	local halfWidth = (tonumber(belt.Width) or 14) / 2
-	local rel = Vector3.new(position.X - belt.Start.X, 0, position.Z - belt.Start.Z)
-	local along = rel:Dot(belt.Dir)
-	local sideVec = rel - belt.Dir * along
-	local side = sideVec.Magnitude
-	if along < -2 or along > belt.Length + 2 or side >= halfWidth + DROP_BELT_MARGIN then
-		return position
+	local halfWidth = (tonumber(PARADE.RoadWidth) or 20) / 2
+	local point, along, side, outward = ParadePath.Nearest(path, position)
+	if along <= 0.01 or along >= path.Length - 0.01 or side >= halfWidth + DROP_ROAD_MARGIN then
+		return position -- neben der Straße (oder vor/hinter Hangar und Tor)
 	end
-	local outward = if side > 0.05 then sideVec.Unit else belt.Dir:Cross(Vector3.yAxis).Unit
-	local target = belt.Start + belt.Dir * along + outward * (halfWidth + DROP_BELT_GAP + radius)
+	local target = point + outward * (halfWidth + DROP_ROAD_GAP + radius)
 	return Vector3.new(target.X, position.Y, target.Z)
 end
 
@@ -983,7 +1140,7 @@ function MeteorService.DropMeteor(entry, position: Vector3, from: Vector3?)
 		Xp = 0,
 		Alien = entry.Alien,
 	}
-	local spot = offBelt(position, MeteorFactory.GetSize(clean) / 2)
+	local spot = offParade(position, MeteorFactory.GetSize(clean) / 2)
 	return spawnDrop(clean, groundBelow(spot), { From = from, Lifetime = Config.DroppedLifetime })
 end
 
@@ -1028,7 +1185,7 @@ local function mapArea()
 	return area
 end
 
--- Freier Platz auf der Wiese: innerhalb der Map, nicht in/an Basen, nicht am Förderband,
+-- Freier Platz auf der Wiese: innerhalb der Map, nicht in/an Basen, nicht an der Parade-Straße,
 -- nicht auf dem Spawn-Platz/Bäumen (der Strahl muss genau den Wiesenboden "Ground" treffen).
 local function findEggSpot(radius: number, groundPart: BasePart, params: RaycastParams): Vector3?
 	local area = mapArea()
@@ -1036,17 +1193,16 @@ local function findEggSpot(radius: number, groundPart: BasePart, params: Raycast
 	if area.MaxX - area.MinX <= margin * 2 or area.MaxZ - area.MinZ <= margin * 2 then
 		return nil
 	end
-	local belt = getBelt()
+	local path = getPath()
+	local roadClear = (tonumber(PARADE.RoadWidth) or 20) / 2 + EGG_ROAD_CLEARANCE + radius
 	for _ = 1, EGG_SPOT_TRIES do
 		local x = rng:NextNumber(area.MinX + margin, area.MaxX - margin)
 		local z = rng:NextNumber(area.MinZ + margin, area.MaxZ - margin)
 		local flatPos = Vector3.new(x, 0, z)
 		local ok = true
-		if belt then
-			local rel = flatPos - Vector3.new(belt.Start.X, 0, belt.Start.Z)
-			local along = rel:Dot(belt.Dir)
-			local side = (rel - belt.Dir * along).Magnitude
-			if along > -20 and along < belt.Length + 20 and side < EGG_BELT_CLEARANCE + radius then
+		if path then
+			local _, _, side = ParadePath.Nearest(path, flatPos)
+			if side < roadClear then
 				ok = false
 			end
 		end
@@ -1242,17 +1398,17 @@ function MeteorService.SpawnStatic(opts)
 	return record
 end
 
--- Allgemeiner Spawn (Admin-Panel): opts.Where = "Belt" (Standard), "Free" (Gratis-Zone) oder Position
+-- Allgemeiner Spawn (Admin-Panel): opts.Where = "Parade" (Standard), "Free" (Gratis-Zone) oder Position
 function MeteorService.SpawnMeteor(opts)
 	opts = opts or {}
 	if opts.Position or opts.Where == "Free" then
 		return MeteorService.SpawnStatic(opts)
 	end
-	MeteorService.QueueBelt(opts)
+	MeteorService.QueueParade(opts)
 	return nil
 end
 
--- Förderband, Gratis-Zone und alle Eier am Boden leeren
+-- Parade, Gratis-Zone und alle Eier am Boden leeren
 function MeteorService.ClearGround()
 	for i = #groundRecords, 1, -1 do
 		removeRecord(groundRecords[i])
@@ -1260,12 +1416,13 @@ function MeteorService.ClearGround()
 	for i = #dropRecords, 1, -1 do
 		removeRecord(dropRecords[i])
 	end
-	for i = #beltRecords, 1, -1 do
-		removeRecord(beltRecords[i])
+	for i = #paradeRecords, 1, -1 do
+		removeRecord(paradeRecords[i])
 	end
-	table.clear(beltQueue)
+	table.clear(paradeQueue)
 	table.clear(laneLast)
 	pendingNatural = nil
+	spareEntry = nil
 end
 
 -- -------------------------------------------------------------------
@@ -1312,12 +1469,11 @@ function MeteorService.Init(services)
 		created.Parent = map
 		return created
 	end
-	beltFolder = getFolder("BeltMeteors")
+	paradeFolder = getFolder("ParadeMeteors") -- Name wird vom Client gesucht!
 	groundFolder = getFolder("GroundMeteors")
-	local belt = getBelt()
-	if belt and belt.Part then
-		belt.Part:SetAttribute("BeltSpeed", Config.BeltSpeed)
-	end
+	-- Parade-Uhr starten (der Client braucht sie, um die Träger zu bewegen)
+	clockT, clockP, clockRate = now(), 0, 1
+	publishClock()
 end
 
 function MeteorService.Start()
@@ -1327,15 +1483,16 @@ function MeteorService.Start()
 	publishAttributes()
 	Players.PlayerRemoving:Connect(function(player)
 		actionLimiter.Clear(player)
+		pushNotifyAt[player] = nil
 	end)
 
-	-- Förderband-Schleife (nur Rechnen + gelegentlich ein neues Part – kein Bewegen!)
+	-- Parade-Schleife (nur Rechnen + gelegentlich ein neues Part – kein Bewegen!)
 	task.spawn(function()
 		while true do
 			task.wait(0.05)
-			local ok, err = pcall(beltStep)
+			local ok, err = pcall(paradeStep)
 			if not ok then
-				warn("[MeteorService] Förderband-Fehler: " .. tostring(err))
+				warn("[MeteorService] Parade-Fehler: " .. tostring(err))
 				pendingNatural = nil
 				task.wait(1)
 			end
