@@ -333,10 +333,20 @@ local function placeTrap(player: Player)
 	end
 	-- Die ganze Falle muss in der Base liegen (am Rand würde sie vor den Eingang ragen)
 	local localFloor = plot.CFrame:PointToObjectSpace(floor)
-	local limit = (plot.HalfSize or 36) - TRAP_EDGE_MARGIN
-	if math.abs(localFloor.X) > limit or math.abs(localFloor.Z) > limit then
+	local hx, hz = Services.PlotService.HalfExtents(plot)
+	-- (Rand innen: FENCE 1 Stud dick -> mit TRAP_EDGE_MARGIN steht die Falle nie im Rand)
+	if math.abs(localFloor.X) > hx - TRAP_EDGE_MARGIN or math.abs(localFloor.Z) > hz - TRAP_EDGE_MARGIN then
 		Services.EconomyService.Notify(player, "🪤 Zu nah am Rand – stell die Falle weiter innen auf!", "Error")
 		return
+	end
+	-- Nur direkt auf den Base-Boden (nicht auf Baumstamm, Laterne oder Rand)
+	local floorPart = plot.Model.PrimaryPart
+	if floorPart then
+		local floorTop = floorPart.Position.Y + floorPart.Size.Y / 2
+		if math.abs(floor.Y - floorTop) > 0.5 then
+			Services.EconomyService.Notify(player, "🪤 Stell die Falle auf den Boden deiner Base!", "Error")
+			return
+		end
 	end
 	trapPlacedAt[player] = t
 	local folder = plot.Model:FindFirstChild("Traps")

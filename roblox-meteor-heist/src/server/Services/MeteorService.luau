@@ -70,6 +70,8 @@ local BUY_UI_OFFSET = Vector2.new(0, 40)
 local RARE_GRAB_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen sagen, wer gerade vom Band klaut
 local RARE_SPAWN_ANNOUNCE = Config.RarityIndex.Celestial or 7 -- ab Celestial: "fährt aufs Förderband"
 local ADMIN_SPAWN_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- vom Admin bestellte Meteore: schon ab Mythic
+-- ab Secret (auch Admin-Eier): Ansage IMMER (nicht gebremst) – so ein Ei will niemand verpassen
+local SECRET_SPAWN_ANNOUNCE = Config.RarityIndex.Secret or 9
 local RARE_ANNOUNCE_GAP = 4 -- solche Ansagen höchstens alle 4 Sekunden (sonst ist der Bildschirm voll)
 -- Kaufen/Klauen/Schnappen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
 local actionLimiter = Util.RateLimiter(6, 1)
@@ -85,7 +87,7 @@ local EGG_SPACING = 3 -- Abstand zwischen zwei Eiern
 local EGG_RUSH_SHOWER_GAP = 60 -- Egg Rush nicht direkt vor/nach dem Meteoritenschauer
 local SHOWER_AFTER_RUSH = 20 -- Schauer wartet, bis der Egg Rush vorbei ist (+ so viele Sekunden)
 -- Ersatz-Grenzen, falls die Map keine "Boundary"-Wände hat
-local FALLBACK_AREA = { MinX = -150, MaxX = 150, MinZ = -406, MaxZ = 256 }
+local FALLBACK_AREA = { MinX = -168, MaxX = 168, MinZ = -406, MaxZ = 256 }
 
 local serverLuckMult = 1
 local serverLuckUntil = 0
@@ -678,6 +680,8 @@ local function spawnOnBelt(entry, price: number, lane: number, shouldAnnounce: b
 	local index = Config.RarityIndex[def.Rarity]
 	if shouldAnnounce == true and index >= ADMIN_SPAWN_ANNOUNCE then
 		announce(entry, "☄️ Ein %s fährt aufs Förderband!")
+	elseif shouldAnnounce == nil and index >= SECRET_SPAWN_ANNOUNCE then
+		announce(entry, "🌈 WAHNSINN! Ein %s fährt aufs Förderband!")
 	elseif shouldAnnounce == nil and index >= RARE_SPAWN_ANNOUNCE then
 		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
 		rareAnnounce("☄️ Ein " .. def.Rarity .. " " .. mut .. def.Name .. " fährt aufs Förderband!")
@@ -967,9 +971,10 @@ local function findEggSpot(radius: number, groundPart: BasePart, params: Raycast
 		end
 		if ok then
 			for _, plot in ipairs(Services.PlotService.Plots) do
-				local half = (plot.HalfSize or 36) + radius + EGG_PLOT_MARGIN
+				local hx, hz = Services.PlotService.HalfExtents(plot)
+				local plotMargin = radius + EGG_PLOT_MARGIN
 				local localPos = plot.CFrame:PointToObjectSpace(flatPos)
-				if math.abs(localPos.X) <= half and math.abs(localPos.Z) <= half then
+				if math.abs(localPos.X) <= hx + plotMargin and math.abs(localPos.Z) <= hz + plotMargin then
 					ok = false
 					break
 				end

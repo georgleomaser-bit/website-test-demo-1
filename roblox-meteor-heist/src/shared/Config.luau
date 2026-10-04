@@ -155,7 +155,7 @@ Config.StarterPack = {
 -- ---------------------------------------------------------------------
 Config.StartCash = 100
 Config.BaseSlots = 12
-Config.ExtraSlotsAmount = 6 -- Gamepass "+6 Plätze" (max. 18 – die Map baut 18 Slot-Pads je Base)
+Config.ExtraSlotsAmount = 6 -- Gamepass "+6 Plätze" (max. 18 – die Map baut 18 unsichtbare Slot-Anker je Base)
 Config.MaxPlots = 8 -- Spieler pro Server (in den Game Settings "Max Players" = 8 setzen!)
 Config.SellRatio = 0.5 -- Verkauf = 50% vom Wert
 

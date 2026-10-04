@@ -2,6 +2,15 @@
 -- Material/Farbe nach Mutation, Spezial-Effekte der Admin-Meteore, Namensschild darüber.
 -- Lichter und Feuer gibt es bewusst sparsam (viele Meteore gleichzeitig = sonst Lag).
 -- Dazu: Prompts anlegen (AddPrompt) und serverseitig prüfen, ob lange genug gehalten wurde (OnHeldTrigger).
+--
+-- KRASSE EIER (ab Legendary, auf Band / Boden / in der Base – nicht beim Tragen):
+--   • Lichtsäule (Beam zwischen zwei Attachments, nach oben verblassend)
+--   • Glitzer-Partikel "RareSparkle" in Seltenheitsfarbe
+--   • Mythic+: Funkenregen "RareSparks" (+ Blitze, die der Client lokal zeichnet)
+--   • Secret/Admin: Regenbogen-Aura "RareAura" und Regenbogen-Säule
+--   • Attribut "RareFX" = Stufe (1 Legendary, 2 Mythic..Divine, 3 Secret/Admin): der Client (WorldFX)
+--     dreht damit lokal einen Ring ums Ei, lässt das Licht pulsieren und schaltet die Partikel nur in
+--     Kameranähe ein (Emitter starten deshalb AUS).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
@@ -11,11 +20,18 @@ local MeteorFactory = {}
 
 -- Ab welcher Seltenheit (Index in Config.Rarities) gibt es welchen Effekt?
 -- Laufband: es liegen sehr viele Meteore gleichzeitig darauf -> noch sparsamer.
-local LIGHT_FROM = { Base = 5, Ground = 5, Belt = 6, Carry = 7 }
+local LIGHT_FROM = { Base = 5, Ground = 5, Belt = 5, Carry = 7 }
 local FIRE_FROM = { Base = 7, Ground = 7, Belt = 99, Carry = 99 }
 local SPARKLES_FROM = { Base = 6, Ground = 6, Belt = 7, Carry = 99 }
 local SHADOW_MIN_SIZE = 3.5 -- nur große Meteore werfen Schatten
 local FROST_WHITEN = 0.4 -- Frost-Meteore etwas weißer als die Mutationsfarbe (sonst fast wie Diamond)
+
+-- Krasse Eier (siehe oben)
+local RARE_FROM = Config.RarityIndex.Legendary or 5
+local RARE_MYTHIC = Config.RarityIndex.Mythic or 6
+local RARE_SECRET = Config.RarityIndex.Secret or 9
+local RARE_MODES: { [string]: boolean } = { Belt = true, Ground = true, Base = true }
+local PILLAR_HEIGHT = 28
 
 local GREEN = Color3.fromRGB(120, 255, 120)
 local YELLOW = Color3.fromRGB(255, 230, 90)
@@ -166,6 +182,116 @@ local function addSpecialEffects(part: BasePart, def, color: Color3, size: numbe
 	end
 end
 
+-- Farbverlauf durch alle Regenbogenfarben (für Säule + Aura der Secret/Admin-Eier)
+local function rainbowSequence(): ColorSequence
+	local keys = {}
+	for i = 0, 6 do
+		table.insert(keys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6, 0.85, 1)))
+	end
+	return ColorSequence.new(keys)
+end
+
+local function rareEmitter(name: string, part: BasePart, props: { [string]: any }): ParticleEmitter
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = name
+	emitter.LightEmission = 1
+	emitter.LightInfluence = 0
+	emitter.Enabled = false -- der Client schaltet nur Emitter in Kameranähe ein (WorldFX)
+	for key, value in pairs(props) do
+		(emitter :: any)[key] = value
+	end
+	emitter.Parent = part
+	return emitter
+end
+
+-- Lichtsäule, Glitzern, Funkenregen, Regenbogen-Aura (siehe Kopf der Datei)
+local function addRareEffects(part: BasePart, rarityIndex: number, color: Color3, size: number)
+	local tier = if rarityIndex >= RARE_SECRET then 3 elseif rarityIndex >= RARE_MYTHIC then 2 else 1
+	local rainbow = tier >= 3
+	part:SetAttribute("RareFX", tier)
+
+	-- Lichtsäule: Beam von der Ei-Mitte senkrecht nach oben, unten kräftig, oben unsichtbar.
+	-- (Das obere Attachment richtet der Client senkrecht aus, wenn das Ei auf dem Band taumelt.)
+	local bottom = Instance.new("Attachment")
+	bottom.Name = "PillarBottom"
+	bottom.Parent = part
+	local top = Instance.new("Attachment")
+	top.Name = "PillarTop"
+	top.Position = Vector3.new(0, PILLAR_HEIGHT + tier * 6, 0)
+	top.Parent = part
+	local beam = Instance.new("Beam")
+	beam.Name = "RarePillar"
+	beam.Attachment0 = bottom
+	beam.Attachment1 = top
+	beam.Color = if rainbow then rainbowSequence() else ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.5))
+	beam.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(0.55, 0.75),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	beam.Width0 = size * 0.85
+	beam.Width1 = size * 0.45
+	beam.LightEmission = 1
+	beam.LightInfluence = 0
+	beam.FaceCamera = true
+	beam.Segments = 1
+	beam.Parent = part
+
+	-- Glitzern in Seltenheitsfarbe
+	rareEmitter("RareSparkle", part, {
+		Color = if rainbow then rainbowSequence() else ColorSequence.new(color, Color3.new(1, 1, 1)),
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.3, math.clamp(size * 0.09, 0.3, 0.7)),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Transparency = NumberSequence.new(0.1, 1),
+		Lifetime = NumberRange.new(0.9, 1.6),
+		Speed = NumberRange.new(1, 3),
+		SpreadAngle = Vector2.new(180, 180),
+		Acceleration = Vector3.new(0, 2, 0),
+		RotSpeed = NumberRange.new(-180, 180),
+		Rate = 6 + tier * 5,
+	})
+	if tier >= 2 then
+		-- Funkenregen: Funken spritzen hoch und regnen herunter
+		rareEmitter("RareSparks", part, {
+			Color = ColorSequence.new(Color3.new(1, 1, 1), color),
+			Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.25),
+				NumberSequenceKeypoint.new(1, 0),
+			}),
+			Transparency = NumberSequence.new(0, 0.6),
+			Lifetime = NumberRange.new(0.8, 1.3),
+			Speed = NumberRange.new(8, 13),
+			SpreadAngle = Vector2.new(28, 28),
+			EmissionDirection = Enum.NormalId.Top,
+			Acceleration = Vector3.new(0, -24, 0),
+			Drag = 0.5,
+			Rate = 8 + tier * 3,
+		})
+	end
+	if rainbow then
+		-- Regenbogen-Aura: große weiche Kugeln in allen Farben um das Ei
+		rareEmitter("RareAura", part, {
+			Color = rainbowSequence(),
+			Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, size * 0.25),
+				NumberSequenceKeypoint.new(1, size * 0.5),
+			}),
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.3, 0.6),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+			Lifetime = NumberRange.new(1.2, 1.8),
+			Speed = NumberRange.new(size * 0.3, size * 0.6),
+			SpreadAngle = Vector2.new(180, 180),
+			Rate = 10,
+		})
+	end
+end
+
 -- mode: "Belt" (Laufband), "Ground" (Gratis-Zone/Showcase), "Base" (in der Base), "Carry" (getragen)
 function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	local def = Config.MeteorsById[entry.Id]
@@ -275,6 +401,9 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		sparkles.Parent = part
 	end
 	addSpecialEffects(part, def, part.Color, size, mode)
+	if rarityIndex >= RARE_FROM and RARE_MODES[mode] then
+		addRareEffects(part, rarityIndex, rarity.Color, size)
+	end
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Info"
@@ -318,6 +447,11 @@ function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 	local gui = part:FindFirstChild("Info")
 	if gui and gui:IsA("BillboardGui") then
 		gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
+	end
+	local beam = part:FindFirstChild("RarePillar")
+	if beam and beam:IsA("Beam") then
+		beam.Width0 = size * 0.85
+		beam.Width1 = size * 0.45
 	end
 	local fire = part:FindFirstChildOfClass("Fire")
 	if fire then

@@ -13,6 +13,8 @@
 --   • Lava-Feuer an Band-Meteoren (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
+--   • Krasse Eier (Attribut "RareFX", ab Legendary): Ring dreht sich, Licht pulsiert, Partikel nur
+--     in Kameranähe, ab Mythic Blitze (nur die nächsten MAX_RINGS)
 --  Arbeit pro Frame ist begrenzt: höchstens MAX_ANIM Aliens in ANIM_RANGE Studs werden animiert
 --  (jedes ca. 30x pro Sekunde), weit entfernte Dinge werden seltener oder gar nicht bewegt.
 -- =====================================================================
@@ -145,7 +147,7 @@ local function addBeltMeteor(inst: Instance): boolean
 		LightBase = 0,
 	}
 	local light = inst:FindFirstChildOfClass("PointLight")
-	if light then
+	if light and inst:GetAttribute("RareFX") == nil then -- krasse Eier pulsieren in stepRare
 		record.Light = light
 		record.LightBase = light.Brightness
 	end
@@ -1568,6 +1570,302 @@ function WorldFX.NoteHatch(position: Vector3)
 end
 
 -- ---------------------------------------------------------------------
+-- KRASSE EIER (Attribut "RareFX" vom Server, ab Legendary): rotierender Ring aus leuchtenden
+-- Würfeln, stärker pulsierendes Licht, Partikel nur in Kameranähe, Säule immer senkrecht,
+-- ab Mythic zuckende Blitze. Alles lokal; nur die nächsten MAX_RINGS bekommen Ring + Blitze.
+-- ---------------------------------------------------------------------
+type RareRecord = {
+	Part: BasePart,
+	Tier: number,
+	Color: Color3,
+	Emitters: { ParticleEmitter },
+	EmittersOn: boolean,
+	Light: PointLight?,
+	LightBase: number,
+	Top: Attachment?,
+	TopHeight: number,
+	Ring: { BasePart }, -- leer = gerade kein Ring
+	Phase: number,
+	Dist: number,
+	NextBolt: number,
+}
+
+local RARE_FX_RANGE = 130 -- Partikel nur so nah an der Kamera
+local RARE_RING_RANGE = 110
+local MAX_RINGS = 8 -- so viele Eier bekommen gleichzeitig Ring + Blitze (die nächsten)
+local RING_SEGMENTS = 10
+local RING_SPEED = 1.6 -- rad/s
+local RING_TILT = math.rad(18)
+local MAX_BOLTS = 4
+local BOLT_SEGMENTS = 3
+local BOLT_TIME = 0.12
+local HIDDEN_CF = CFrame.new(0, -5000, 0)
+
+local rareRecords: { RareRecord } = {}
+local rareSeen: { [Instance]: RareRecord } = {}
+local rareCandidates: { RareRecord } = {}
+local rareParts: { BasePart } = {}
+local rareCFrames: { CFrame } = {}
+type Bolt = { Parts: { BasePart }, Until: number, Active: boolean }
+local bolts: { Bolt } = {}
+
+local function rareColor(part: BasePart): Color3
+	local rarityName = part:GetAttribute("Rarity")
+	local rarities = ctx and ctx.Config.RaritiesByName
+	local rarity = rarities and type(rarityName) == "string" and rarities[rarityName]
+	if rarity and typeof(rarity.Color) == "Color3" then
+		return rarity.Color
+	end
+	return HATCH_COLOR
+end
+
+local function addRare(inst: Instance)
+	if not inst:IsA("BasePart") or rareSeen[inst] then
+		return
+	end
+	local tier = inst:GetAttribute("RareFX")
+	if type(tier) ~= "number" then
+		return
+	end
+	local emitters: { ParticleEmitter } = {}
+	for _, child in ipairs(inst:GetChildren()) do
+		if child:IsA("ParticleEmitter") and string.sub(child.Name, 1, 4) == "Rare" then
+			child.Enabled = false
+			table.insert(emitters, child)
+		end
+	end
+	local light = inst:FindFirstChildOfClass("PointLight")
+	local top = inst:FindFirstChild("PillarTop")
+	local record: RareRecord = {
+		Part = inst,
+		Tier = tier,
+		Color = rareColor(inst),
+		Emitters = emitters,
+		EmittersOn = false,
+		Light = light,
+		LightBase = if light then light.Brightness else 0,
+		Top = if top and top:IsA("Attachment") then top else nil,
+		TopHeight = if top and top:IsA("Attachment") then top.Position.Magnitude else 0,
+		Ring = {},
+		Phase = math.random() * math.pi * 2,
+		Dist = math.huge,
+		NextBolt = 0,
+	}
+	rareSeen[inst] = record
+	table.insert(rareRecords, record)
+end
+
+local function removeRing(record: RareRecord)
+	for _, segment in ipairs(record.Ring) do
+		segment:Destroy()
+	end
+	table.clear(record.Ring)
+end
+
+local function buildRing(record: RareRecord)
+	local folder = fxFolder
+	if not folder or #record.Ring > 0 then
+		return
+	end
+	local radius = record.Part.Size.X * 0.5 + 1
+	local count = RING_SEGMENTS * (if record.Tier >= 2 then 2 else 1)
+	local length = 2 * math.pi * radius / RING_SEGMENTS * 0.55
+	for i = 1, count do
+		local color = record.Color:Lerp(Color3.new(1, 1, 1), 0.25)
+		if record.Tier >= 3 then
+			color = Color3.fromHSV(((i - 1) % RING_SEGMENTS) / RING_SEGMENTS, 0.85, 1)
+		end
+		table.insert(
+			record.Ring,
+			UI.Create("Part", {
+				Name = "RareRing",
+				Anchored = true,
+				CanCollide = false,
+				CanQuery = false,
+				CanTouch = false,
+				CastShadow = false,
+				Material = Enum.Material.Neon,
+				Color = color,
+				Size = Vector3.new(0.35, 0.35, length),
+				CFrame = HIDDEN_CF,
+				Parent = folder,
+			})
+		)
+	end
+end
+
+local function setEmitters(record: RareRecord, on: boolean)
+	if record.EmittersOn == on then
+		return
+	end
+	record.EmittersOn = on
+	for _, emitter in ipairs(record.Emitters) do
+		emitter.Enabled = on
+	end
+end
+
+local function byRareDistance(a: RareRecord, b: RareRecord): boolean
+	return a.Dist < b.Dist
+end
+
+-- Alle SCAN_INTERVAL s: Partikel nach Entfernung, Ringe nur für die nächsten MAX_RINGS
+local function scanRare(camPos: Vector3)
+	local count = 0
+	for i = #rareRecords, 1, -1 do
+		local record = rareRecords[i]
+		local part = record.Part
+		if part.Parent == nil or not part:IsDescendantOf(workspace) then
+			removeRing(record)
+			rareSeen[part] = nil
+			rareRecords[i] = rareRecords[#rareRecords]
+			rareRecords[#rareRecords] = nil
+		else
+			record.Dist = (part.Position - camPos).Magnitude
+			setEmitters(record, record.Dist < RARE_FX_RANGE)
+			if record.Dist < RARE_RING_RANGE then
+				count += 1
+				rareCandidates[count] = record
+			elseif #record.Ring > 0 then
+				removeRing(record)
+			end
+		end
+	end
+	for i = #rareCandidates, count + 1, -1 do
+		rareCandidates[i] = nil
+	end
+	if count > MAX_RINGS then
+		table.sort(rareCandidates, byRareDistance)
+	end
+	for i = 1, count do
+		local record = rareCandidates[i]
+		if i <= MAX_RINGS then
+			buildRing(record)
+		else
+			removeRing(record)
+		end
+	end
+end
+
+local function buildBolts()
+	local folder = fxFolder
+	if not folder then
+		return
+	end
+	for _ = 1, MAX_BOLTS do
+		local bolt: Bolt = { Parts = {}, Until = 0, Active = false }
+		for _ = 1, BOLT_SEGMENTS do
+			table.insert(
+				bolt.Parts,
+				UI.Create("Part", {
+					Name = "RareBolt",
+					Anchored = true,
+					CanCollide = false,
+					CanQuery = false,
+					CanTouch = false,
+					CastShadow = false,
+					Material = Enum.Material.Neon,
+					Color = Color3.fromRGB(220, 240, 255),
+					Size = Vector3.new(0.25, 0.25, 1),
+					CFrame = HIDDEN_CF,
+					Parent = folder,
+				})
+			)
+		end
+		table.insert(bolts, bolt)
+	end
+end
+
+-- Blitz von oben ins Ei: Zickzack aus BOLT_SEGMENTS Stücken, kurz sichtbar
+local function fireBolt(record: RareRecord, now: number, count: number): number
+	for _, bolt in ipairs(bolts) do
+		if not bolt.Active then
+			bolt.Active = true
+			bolt.Until = now + BOLT_TIME
+			local center = record.Part.Position
+			local radius = record.Part.Size.Y / 2
+			local from = center
+				+ Vector3.new((math.random() - 0.5) * 6, 12 + math.random() * 6, (math.random() - 0.5) * 6)
+			local to = center + Vector3.new(0, radius * 0.8, 0)
+			local last = from
+			for j, segment in ipairs(bolt.Parts) do
+				local t = j / BOLT_SEGMENTS
+				local point = from:Lerp(to, t)
+				if j < BOLT_SEGMENTS then
+					point += Vector3.new((math.random() - 0.5) * 3, 0, (math.random() - 0.5) * 3)
+				end
+				local length = (point - last).Magnitude
+				segment.Size = Vector3.new(0.25, 0.25, math.max(0.2, length))
+				segment.Color = record.Color:Lerp(Color3.new(1, 1, 1), 0.6)
+				count += 1
+				rareParts[count] = segment
+				rareCFrames[count] = CFrame.lookAt((point + last) / 2, point)
+				last = point
+			end
+			return count
+		end
+	end
+	return count
+end
+
+-- Jedes Frame: Ringe drehen, Licht pulsieren, Säule senkrecht halten, Blitze
+local function stepRare(now: number)
+	local count = 0
+	for _, bolt in ipairs(bolts) do
+		if bolt.Active and now >= bolt.Until then
+			bolt.Active = false
+			for _, segment in ipairs(bolt.Parts) do
+				count += 1
+				rareParts[count] = segment
+				rareCFrames[count] = HIDDEN_CF
+			end
+		end
+	end
+	for _, record in ipairs(rareRecords) do
+		if record.EmittersOn then
+			local part = record.Part
+			local t = now + record.Phase
+			-- Glühen pulsiert kräftig
+			local light = record.Light
+			if light then
+				light.Brightness = record.LightBase * (1.1 + 0.6 * math.sin(t * 3.4))
+			end
+			-- Säule zeigt immer senkrecht nach oben (das Ei taumelt auf dem Band)
+			local top = record.Top
+			if top then
+				top.Position = part.CFrame:VectorToObjectSpace(Vector3.new(0, record.TopHeight, 0))
+			end
+			local ring = record.Ring
+			if #ring > 0 then
+				local center = part.Position
+				local radius = part.Size.X * 0.5 + 1
+				local spin = t * RING_SPEED
+				for i, segment in ipairs(ring) do
+					local second = i > RING_SEGMENTS
+					local k = if second then i - RING_SEGMENTS else i
+					local angle = (if second then -spin else spin) + k * (2 * math.pi / RING_SEGMENTS)
+					local tilt = if second then CFrame.Angles(0, 0, RING_TILT * 2.5) else CFrame.Angles(RING_TILT, 0, 0)
+					count += 1
+					rareParts[count] = segment
+					rareCFrames[count] = CFrame.new(center)
+						* tilt
+						* CFrame.Angles(0, -angle, 0)
+						* CFrame.new(radius, 0, 0)
+				end
+				if record.Tier >= 2 and now >= record.NextBolt then
+					record.NextBolt = now + 1 + math.random() * (if record.Tier >= 3 then 1.2 else 2.2)
+					count = fireBolt(record, now, count)
+				end
+			end
+		end
+	end
+	if count > 0 then
+		workspace:BulkMoveTo(rareParts, rareCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+		table.clear(rareParts)
+		table.clear(rareCFrames)
+	end
+end
+
+-- ---------------------------------------------------------------------
 -- START
 -- ---------------------------------------------------------------------
 local function watchFolder(parent: Instance, name: string, onChild: (Instance) -> ())
@@ -1599,8 +1897,10 @@ function WorldFX.Init(context: any, map: Instance)
 	watchFolder(map, "Treadmills", setupTreadmill)
 
 	-- Aliens, Regenbogen und Schlüpf-Meteore: einmal alles durchsehen, danach nur Neues
+	buildBolts()
 	for _, inst in ipairs(map:GetDescendants()) do
 		addAnim(inst)
+		addRare(inst)
 		local parent = inst.Parent
 		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
 			addHatchCandidate(inst)
@@ -1611,6 +1911,7 @@ function WorldFX.Init(context: any, map: Instance)
 		if addAnim(inst) then
 			onAlienAdded(inst)
 		end
+		addRare(inst)
 		local parent = inst.Parent
 		-- Meteore auf dem Band / am Boden schlüpfen nie -> gar nicht erst beobachten
 		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
@@ -1665,12 +1966,15 @@ function WorldFX.Init(context: any, map: Instance)
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end
+		-- krasse Eier NACH dem Band (Ringe folgen der aktuellen Position)
+		stepRare(now)
 
 		scanClock += dt
 		if scanClock >= SCAN_INTERVAL then
 			scanClock = 0
 			scanAnim(camPos)
 			scanHighlights(camPos)
+			scanRare(camPos)
 		end
 		cleanupClock += dt
 		if cleanupClock >= CLEANUP_INTERVAL then

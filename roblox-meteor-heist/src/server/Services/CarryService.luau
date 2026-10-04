@@ -184,41 +184,39 @@ function CarryService.MoveStatus(player: Player): string
 	return if now >= track.FlaggedUntil then "ok" else "flagged"
 end
 
--- Kürzester möglicher Weg (Studs) von "from" in der fremden Base bis in die eigene Base:
--- Basen haben nur vorne (lokales -Z) einen Eingang, die Wände sind zu hoch zum Drüberspringen.
--- Gerechnet wird großzügig (ganze Eingangsbreite, Luftlinie) -> echte Spieler sind immer langsamer.
-local function flat(v: Vector3): Vector3
-	return Vector3.new(v.X, 0, v.Z)
+-- Kürzester möglicher Weg (Studs) von "from" in der fremden Base bis in die eigene Base.
+-- Die Basen sind OFFEN (nur ein niedriger Rand, über den man springen kann): man kann sie an JEDER
+-- Kante verlassen und betreten. Gerechnet wird deshalb großzügig (Luftlinie bis zur nächsten Kante,
+-- Abstand der beiden Rechtecke) -> echte Spieler sind immer langsamer.
+-- Waagrechter Abstand eines Punkts zum Rechteck der Base (0 = drin)
+local function distanceToPlot(plot, p: Vector3): number
+	local minX, maxX, minZ, maxZ = Services.PlotService.WorldRect(plot)
+	local dx = math.max(minX - p.X, 0, p.X - maxX)
+	local dz = math.max(minZ - p.Z, 0, p.Z - maxZ)
+	return math.sqrt(dx * dx + dz * dz)
 end
 
-local function pointSegmentDistance(p: Vector3, a: Vector3, b: Vector3): number
-	local ab = b - a
-	local lengthSq = ab:Dot(ab)
-	local t = lengthSq > 0 and math.clamp((p - a):Dot(ab) / lengthSq, 0, 1) or 0
-	return (p - (a + ab * t)).Magnitude
+-- Von innen: Weg bis zur nächsten Kante der Base
+local function distanceToEdge(plot, p: Vector3): number
+	local hx, hz = Services.PlotService.HalfExtents(plot)
+	local localPos = plot.CFrame:PointToObjectSpace(p)
+	return math.max(0, math.min(hx - math.abs(localPos.X), hz - math.abs(localPos.Z)))
 end
 
-local function entranceSegment(plot): (Vector3, Vector3)
-	local half = plot.HalfSize or 36
-	local a = plot.CFrame:PointToWorldSpace(Vector3.new(-half, 0, -half))
-	local b = plot.CFrame:PointToWorldSpace(Vector3.new(half, 0, -half))
-	return flat(a), flat(b)
+-- Lücke zwischen zwei Basen-Rechtecken (0 = berühren sich)
+local function plotGap(a, b): number
+	local aMinX, aMaxX, aMinZ, aMaxZ = Services.PlotService.WorldRect(a)
+	local bMinX, bMaxX, bMinZ, bMaxZ = Services.PlotService.WorldRect(b)
+	local dx = math.max(bMinX - aMaxX, 0, aMinX - bMaxX)
+	local dz = math.max(bMinZ - aMaxZ, 0, aMinZ - bMaxZ)
+	return math.sqrt(dx * dx + dz * dz)
 end
 
 local function minCarryDistance(victimPlot, ownPlot, from: Vector3): number
 	if victimPlot == ownPlot then
 		return 0
 	end
-	local va, vb = entranceSegment(victimPlot)
-	local oa, ob = entranceSegment(ownPlot)
-	local toExit = pointSegmentDistance(flat(from), va, vb)
-	local between = math.min(
-		pointSegmentDistance(va, oa, ob),
-		pointSegmentDistance(vb, oa, ob),
-		pointSegmentDistance(oa, va, vb),
-		pointSegmentDistance(ob, va, vb)
-	)
-	return toExit + between
+	return distanceToEdge(victimPlot, from) + plotGap(victimPlot, ownPlot)
 end
 
 -- Trage-Tempo OHNE Speed Coil (die kann man unterwegs weglegen) – gleiche Regeln wie EconomyService
@@ -240,8 +238,8 @@ local function tripTimeout(player: Player, entry, from: Vector3?): number
 	if not plot or not from then
 		return Config.CarryTimeout
 	end
-	local half = plot.HalfSize or 36
-	local entrance = plot.CFrame:PointToWorldSpace(Vector3.new(0, 0, -half))
+	local _, halfZ = Services.PlotService.HalfExtents(plot)
+	local entrance = plot.CFrame:PointToWorldSpace(Vector3.new(0, 0, -halfZ))
 	local route = math.abs(from.X - entrance.X) + math.abs(from.Z - entrance.Z)
 	local seconds = route / slowCarrySpeed(player, entry) * TRIP_SLACK + TRIP_EXTRA
 	return math.clamp(math.ceil(seconds), Config.CarryTimeout, TRIP_MAX)
@@ -253,8 +251,7 @@ local function minGroundCarryTime(player: Player, from: Vector3?): number
 	if not plot or not from or Services.PlotService.IsInside(plot, from) then
 		return 0
 	end
-	local a, b = entranceSegment(plot)
-	return pointSegmentDistance(flat(from), a, b) / (maxCarrySpeed(player) * MIN_CARRY_SPEED_FACTOR)
+	return distanceToPlot(plot, from) / (maxCarrySpeed(player) * MIN_CARRY_SPEED_FACTOR)
 end
 
 function CarryService.IsSlotBeingStolen(plot, slot: number): boolean

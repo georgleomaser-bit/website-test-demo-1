@@ -17,8 +17,9 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 | **🦹 Klauen vom Band** | In der Map-Mitte fährt ein langes **Laufband**. Darauf kommen ca. **2 Meteore pro Sekunde**. **E halten** (knapp 1 Sekunde) = **gratis klauen**. Du trägst das Ei über dem Kopf und musst es **selbst in deine Base** bringen (60 Sekunden Zeit). Wirst du unterwegs gebonkt, fällt das Ei auf den Boden. Dann kann **jeder** es schnappen |
 | **🛒 Kaufen** | **F** am Laufband = kaufen. Der Meteor fliegt **von allein** in einen freien Platz deiner Base. Celestial, Divine und Secret kannst du erst nach Rebirths kaufen. Klauen geht immer |
 | **🏃 Tempo zählt** | Beim Tragen hast du nur **70 % Tempo**. **Seltene Beute ist schwer:** ab Legendary 60 %, ab Mythic 50 %, ab Celestial 45 % (mindestens Tempo 8). Mit dem Pass **„🏃 Volle Speed beim Tragen“** sind es immer 100 %. Schritte von den Laufbändern und das Gadget **🌀 Speed Coil** machen dich schneller |
+| **✨ Krasse Eier** | Ab **Legendary** haben Eier auf dem Band, am Boden und in der Base eine **Lichtsäule**, Glitzern und einen drehenden Ring. Ab **Mythic** dazu Funkenregen und Blitze, **Secret/Admin** eine Regenbogen-Aura – und alle bekommen eine Ansage, wenn so ein Ei aufs Band fährt. Seltene Aliens schlüpfen mit einer großen Explosion |
 | **🐣 Schlüpfen** | In der Base zählt der Meteor runter („🐣 Schlüpft in …“). Dann schlüpft ein **Alien**. Erst das Alien verdient Geld. Besondere Aliens (Ultra oder ab Epic) schlüpfen mit einer großen Karte in der Bildschirmmitte, andere seltene mit einer kleinen Karte oben rechts (beim Tragen immer klein) |
-| **💰 Einsammeln** | Das Geld sammelt sich an. Lauf über das **grüne Pad** oder über **einen deiner Plätze** |
+| **💰 Einsammeln** | Das Geld sammelt sich an. Lauf über das **grüne Pad** oder einfach **durch deine Eier/Aliens** (die Plätze sind unsichtbar) |
 | **😈 Klauen aus Basen** | Bei fremden Basen **E halten**. Du trägst den Meteor oder das Alien. Renn damit in deine Base |
 | **🔨 Verteidigen** | Mit dem **Bonk-Schläger** (Klick) verlieren Diebe ihre Beute. Aus einer Base Geklautes fliegt zurück, vom Band Geklautes fällt auf den Boden. Das rote **Lock-Pad** sperrt deine Base 60 Sekunden lang. Das **🛡️ Base-Schild** (Robux) sperrt sie 10 Minuten, sogar im Meteoritenschauer (blaue Sperre am Eingang). Nochmal kaufen = noch länger. Ein Ei, das in einer gesperrten Base am Boden liegt, darf nur der Besitzer nehmen |
 | **🥚 Egg Rush** | Ungefähr alle **6 Minuten**, 45 Sekunden lang: **25 Gratis-Eier** mit 3x Glück regnen auf die Wiese der ganzen Map. Wer zuerst da ist, schnappt sie (**E**) und trägt sie nach Hause. Oben zeigt ein Banner die Zeit, unten zeigt ein Pfeil zum nächsten Ei. Der erste Egg Rush kommt 3 Minuten nach dem Serverstart |
@@ -49,13 +50,17 @@ Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts 
 ## 🎮 So läuft das Spiel
 
 1. Du spawnst in deiner **Base**. Es gibt 8 Basen, 4 auf jeder Seite vom Laufband.
+   Die Basen sind **groß und offen** (80 x 90 Studs, bunter Noppenboden, nur ein niedriger weißer Rand).
+   Es gibt **keine sichtbaren Plätze** mehr: Eier und Aliens stehen locker verteilt (bis zu 18).
+   Vorne: links das **grüne Geld-Pad**, rechts das **rote Lock-Pad**. Ist die Base gesperrt, leuchtet vorne die Laser-Sperre
+   und jeder Fremde in der Base (auch wer über den Rand springt) wird rausgeworfen.
 2. Lauf zum **Laufband** in der Mitte. Stell dich ans Geländer.
 3. Ein Meteor fährt vorbei. **Halte E**: Du klaust ihn gratis und trägst ihn über dem Kopf.
    Renn damit **in deine Base**. Ein Pfeil unten zeigt dir den Weg.
    Lieber sicher? Drück **F**. Dann kaufst du ihn, und er fliegt von allein in deine Base.
 4. In der Base steht „🐣 Schlüpft in …“. Warte, bis die Zeit um ist.
 5. Der Meteor bricht auf. Ein **Alien** schlüpft. Jetzt verdienst du Geld pro Sekunde.
-6. Lauf über das **grüne Pad** oder einen deiner Plätze. Das Geld landet auf deinem Konto.
+6. Lauf über das **grüne Pad** oder durch deine Aliens. Das Geld landet auf deinem Konto.
 7. Klau bei anderen. Bonk Diebe weg. Schnapp dir Eier, die andere fallen lassen.
 8. Kommt ein **🥚 EGG RUSH**: Renn los und schnapp dir so viele Eier wie möglich!
 9. Schau rechts bei **🎁 Geschenke**, **🎡 Glücksrad** und **📜 Aufgaben** vorbei.
@@ -184,7 +189,7 @@ Aktion. Auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 2. Du spawnst in deiner Base. Lauf zum **Laufband** in der Mitte und **halte E** an einem Meteor.
    Trag ihn in deine Base. Oder drück **F**, dann kaufst du ihn und er fliegt von allein hin.
    Nach ein paar Sekunden schlüpft ein **Alien**.
-3. Lauf über das **grüne Pad** (oder einen deiner Plätze), um Geld einzusammeln. Das **rote Pad** sperrt deine Base.
+3. Lauf über das **grüne Pad** (oder durch deine Aliens), um Geld einzusammeln. Das **rote Pad** sperrt deine Base.
 4. Rechts auf **🏃 Laufbänder** → **🏃 Zu den Laufbändern!** → auf dem Holz-Laufband laufen = Schritte sammeln.
 5. Rechts auf **🎡 Glücksrad** → **🎡 DREHEN!**. Zum Start hast du schon Drehs.
 6. Admin-Panel: Taste **P** oder Knopf **🛠️ Admin** rechts. Dort kannst du sofort einen **🥚 Egg Rush** starten.
@@ -388,7 +393,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | Mein Ei vom Band ist weg | Du wurdest gebonkt, bist in eine Falle getreten oder die Zeit war um (60 Sekunden, beim Meteor-Run-Ei je nach Weg mehr). Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
 | „📦 Deine Base ist voll!“ | Ein Alien verkaufen (**F** halten in deiner Base) oder den Pass „+6 Plätze“ holen |
 | Ich kann mich 3 Sekunden nicht bewegen | Du bist in eine **🪤 Falle** getreten (oder ein Admin hat dich eingefroren). Das geht von allein weg |
-| Falle lässt sich nicht aufstellen | Nur in **deiner eigenen** Base, nicht direkt am Rand, und höchstens 2 gleichzeitig |
+| Falle lässt sich nicht aufstellen | Nur in **deiner eigenen** Base, direkt auf dem Boden (nicht auf Baum/Laterne), nicht direkt am Rand, und höchstens 2 gleichzeitig |
 | „🧊 Du bist eingefroren!“ | Eingefroren (Falle oder Admin) kannst du nichts klauen oder kaufen und nicht teleportieren. Kurz warten |
 | „🔒 Das Ei liegt in einer gesperrten Base!“ | Das Ei ist in einer gesperrten Base heruntergefallen. Nur der Besitzer darf es nehmen, bis das Lock vorbei ist |
 | Der Umhang geht nicht | Nach dem Sichtbarwerden braucht er 60 Sekunden Pause. Mit Beute geht er nicht an |

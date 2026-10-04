@@ -6,6 +6,8 @@
 --                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter),
 --                 beim Aufprall: Staub-Puff + Druckwelle
 --   "Hatch"    -> Funken-Explosion + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
+--                 (ab Legendary größer: Lichtsäule + zweite Druckwelle, Mythic+ Funkenwelle,
+--                  Secret/Admin Regenbogen-Explosion)
 --                 (das Alien selbst ploppt in WorldFX mit Overshoot herein)
 --   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) mit Strahlenkranz + Konfetti,
 --                    sonst bzw. beim Tragen kleine Karte oben rechts
@@ -792,6 +794,38 @@ end
 -- ---------------------------------------------------------------------
 -- SCHLÜPFEN
 -- ---------------------------------------------------------------------
+local HATCH_BIG_FROM = 5 -- ab Legendary: größere Explosion (Lichtsäule, zweite Druckwelle)
+local HATCH_HUGE_FROM = 6 -- ab Mythic: noch eine Funkenwelle
+local HATCH_RAINBOW_FROM = 9 -- Secret/Admin: Regenbogen-Explosion
+
+-- Lichtsäule beim Schlüpfen seltener Aliens: leuchtender Zylinder schießt hoch und verblasst
+local function hatchPillar(position: Vector3, color: Color3, index: number)
+	local folder = fxFolder
+	local camera = workspace.CurrentCamera
+	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
+		return
+	end
+	local width = 3 + index * 0.6
+	local height = 30 + index * 6
+	local pillar = localPart({
+		Name = "HatchPillar",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1, width, width),
+		Material = Enum.Material.Neon,
+		Color = color,
+		Transparency = 0.15,
+		CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.pi / 2),
+		Parent = folder,
+	})
+	local info = TweenInfo.new(0.9, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	TweenService:Create(pillar, info, {
+		Size = Vector3.new(height, width * 0.3, width * 0.3),
+		CFrame = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(pillar, 1)
+end
+
 local function hatch(data: any)
 	if type(data) ~= "table" or typeof(data.Position) ~= "Vector3" then
 		return
@@ -804,13 +838,32 @@ local function hatch(data: any)
 	-- Schale platzt: Splitter fliegen weg, Druckwelle am Boden
 	spawnShards(data.Position, color, 6 + math.min(index, 8), math.clamp(0.8 + index * 0.08, 0.8, 1.6))
 	ring(data.Position - Vector3.new(0, 1, 0), color, 12 + index * 1.5, 0.55)
+	-- Seltene Aliens: größere Explosion (nach Seltenheit skaliert)
+	if index >= HATCH_BIG_FROM then
+		local big = index - HATCH_BIG_FROM + 1 -- 1 = Legendary, 2 = Mythic, ...
+		hatchPillar(data.Position, color, index)
+		ring(data.Position - Vector3.new(0, 0.6, 0), WHITE, 20 + big * 6, 0.8)
+		if index >= HATCH_RAINBOW_FROM then
+			-- Regenbogen: Funken in mehreren Farben + bunte Druckwellen
+			for i = 0, 4 do
+				local hue = Color3.fromHSV(i / 5, 0.85, 1)
+				burst(data.Position + Vector3.new(0, 1 + i * 0.6, 0), hue, 20, false)
+				ring(data.Position - Vector3.new(0, 0.8 - i * 0.1, 0), hue, 16 + i * 6, 0.6 + i * 0.12)
+			end
+		elseif index >= HATCH_HUGE_FROM then
+			task.delay(0.15, function()
+				burst(data.Position + Vector3.new(0, 2, 0), color:Lerp(WHITE, 0.4), 20 + big * 10, false)
+			end)
+		end
+	end
 	-- Alien ploppt in WorldFX mit Overshoot herein
 	WorldFX.NoteHatch(data.Position)
-	-- Ganz nah dran? Kurz wackeln
+	-- Ganz nah dran? Kurz wackeln (seltene stärker und weiter)
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if rootPart and (rootPart.Position - data.Position).Magnitude < 40 then
-		shake(0.25 + index * 0.04)
+	local shakeRange = if index >= HATCH_BIG_FROM then 70 else 40
+	if rootPart and (rootPart.Position - data.Position).Magnitude < shakeRange then
+		shake(0.25 + index * 0.04 + (if index >= HATCH_BIG_FROM then 0.3 else 0))
 	end
 end
 

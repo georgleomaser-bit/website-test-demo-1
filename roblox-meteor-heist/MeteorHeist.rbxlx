@@ -697,7 +697,7 @@ Config.StarterPack = {
 -- ---------------------------------------------------------------------
 Config.StartCash = 100
 Config.BaseSlots = 12
-Config.ExtraSlotsAmount = 6 -- Gamepass "+6 Plätze" (max. 18 – die Map baut 18 Slot-Pads je Base)
+Config.ExtraSlotsAmount = 6 -- Gamepass "+6 Plätze" (max. 18 – die Map baut 18 unsichtbare Slot-Anker je Base)
 Config.MaxPlots = 8 -- Spieler pro Server (in den Game Settings "Max Players" = 8 setzen!)
 Config.SellRatio = 0.5 -- Verkauf = 50% vom Wert
 
@@ -4206,41 +4206,39 @@ function CarryService.MoveStatus(player: Player): string
 	return if now >= track.FlaggedUntil then "ok" else "flagged"
 end
 
--- Kürzester möglicher Weg (Studs) von "from" in der fremden Base bis in die eigene Base:
--- Basen haben nur vorne (lokales -Z) einen Eingang, die Wände sind zu hoch zum Drüberspringen.
--- Gerechnet wird großzügig (ganze Eingangsbreite, Luftlinie) -> echte Spieler sind immer langsamer.
-local function flat(v: Vector3): Vector3
-	return Vector3.new(v.X, 0, v.Z)
+-- Kürzester möglicher Weg (Studs) von "from" in der fremden Base bis in die eigene Base.
+-- Die Basen sind OFFEN (nur ein niedriger Rand, über den man springen kann): man kann sie an JEDER
+-- Kante verlassen und betreten. Gerechnet wird deshalb großzügig (Luftlinie bis zur nächsten Kante,
+-- Abstand der beiden Rechtecke) -> echte Spieler sind immer langsamer.
+-- Waagrechter Abstand eines Punkts zum Rechteck der Base (0 = drin)
+local function distanceToPlot(plot, p: Vector3): number
+	local minX, maxX, minZ, maxZ = Services.PlotService.WorldRect(plot)
+	local dx = math.max(minX - p.X, 0, p.X - maxX)
+	local dz = math.max(minZ - p.Z, 0, p.Z - maxZ)
+	return math.sqrt(dx * dx + dz * dz)
 end
 
-local function pointSegmentDistance(p: Vector3, a: Vector3, b: Vector3): number
-	local ab = b - a
-	local lengthSq = ab:Dot(ab)
-	local t = lengthSq > 0 and math.clamp((p - a):Dot(ab) / lengthSq, 0, 1) or 0
-	return (p - (a + ab * t)).Magnitude
+-- Von innen: Weg bis zur nächsten Kante der Base
+local function distanceToEdge(plot, p: Vector3): number
+	local hx, hz = Services.PlotService.HalfExtents(plot)
+	local localPos = plot.CFrame:PointToObjectSpace(p)
+	return math.max(0, math.min(hx - math.abs(localPos.X), hz - math.abs(localPos.Z)))
 end
 
-local function entranceSegment(plot): (Vector3, Vector3)
-	local half = plot.HalfSize or 36
-	local a = plot.CFrame:PointToWorldSpace(Vector3.new(-half, 0, -half))
-	local b = plot.CFrame:PointToWorldSpace(Vector3.new(half, 0, -half))
-	return flat(a), flat(b)
+-- Lücke zwischen zwei Basen-Rechtecken (0 = berühren sich)
+local function plotGap(a, b): number
+	local aMinX, aMaxX, aMinZ, aMaxZ = Services.PlotService.WorldRect(a)
+	local bMinX, bMaxX, bMinZ, bMaxZ = Services.PlotService.WorldRect(b)
+	local dx = math.max(bMinX - aMaxX, 0, aMinX - bMaxX)
+	local dz = math.max(bMinZ - aMaxZ, 0, aMinZ - bMaxZ)
+	return math.sqrt(dx * dx + dz * dz)
 end
 
 local function minCarryDistance(victimPlot, ownPlot, from: Vector3): number
 	if victimPlot == ownPlot then
 		return 0
 	end
-	local va, vb = entranceSegment(victimPlot)
-	local oa, ob = entranceSegment(ownPlot)
-	local toExit = pointSegmentDistance(flat(from), va, vb)
-	local between = math.min(
-		pointSegmentDistance(va, oa, ob),
-		pointSegmentDistance(vb, oa, ob),
-		pointSegmentDistance(oa, va, vb),
-		pointSegmentDistance(ob, va, vb)
-	)
-	return toExit + between
+	return distanceToEdge(victimPlot, from) + plotGap(victimPlot, ownPlot)
 end
 
 -- Trage-Tempo OHNE Speed Coil (die kann man unterwegs weglegen) – gleiche Regeln wie EconomyService
@@ -4262,8 +4260,8 @@ local function tripTimeout(player: Player, entry, from: Vector3?): number
 	if not plot or not from then
 		return Config.CarryTimeout
 	end
-	local half = plot.HalfSize or 36
-	local entrance = plot.CFrame:PointToWorldSpace(Vector3.new(0, 0, -half))
+	local _, halfZ = Services.PlotService.HalfExtents(plot)
+	local entrance = plot.CFrame:PointToWorldSpace(Vector3.new(0, 0, -halfZ))
 	local route = math.abs(from.X - entrance.X) + math.abs(from.Z - entrance.Z)
 	local seconds = route / slowCarrySpeed(player, entry) * TRIP_SLACK + TRIP_EXTRA
 	return math.clamp(math.ceil(seconds), Config.CarryTimeout, TRIP_MAX)
@@ -4275,8 +4273,7 @@ local function minGroundCarryTime(player: Player, from: Vector3?): number
 	if not plot or not from or Services.PlotService.IsInside(plot, from) then
 		return 0
 	end
-	local a, b = entranceSegment(plot)
-	return pointSegmentDistance(flat(from), a, b) / (maxCarrySpeed(player) * MIN_CARRY_SPEED_FACTOR)
+	return distanceToPlot(plot, from) / (maxCarrySpeed(player) * MIN_CARRY_SPEED_FACTOR)
 end
 
 function CarryService.IsSlotBeingStolen(plot, slot: number): boolean
@@ -6688,10 +6685,20 @@ local function placeTrap(player: Player)
 	end
 	-- Die ganze Falle muss in der Base liegen (am Rand würde sie vor den Eingang ragen)
 	local localFloor = plot.CFrame:PointToObjectSpace(floor)
-	local limit = (plot.HalfSize or 36) - TRAP_EDGE_MARGIN
-	if math.abs(localFloor.X) > limit or math.abs(localFloor.Z) > limit then
+	local hx, hz = Services.PlotService.HalfExtents(plot)
+	-- (Rand innen: FENCE 1 Stud dick -> mit TRAP_EDGE_MARGIN steht die Falle nie im Rand)
+	if math.abs(localFloor.X) > hx - TRAP_EDGE_MARGIN or math.abs(localFloor.Z) > hz - TRAP_EDGE_MARGIN then
 		Services.EconomyService.Notify(player, "🪤 Zu nah am Rand – stell die Falle weiter innen auf!", "Error")
 		return
+	end
+	-- Nur direkt auf den Base-Boden (nicht auf Baumstamm, Laterne oder Rand)
+	local floorPart = plot.Model.PrimaryPart
+	if floorPart then
+		local floorTop = floorPart.Position.Y + floorPart.Size.Y / 2
+		if math.abs(floor.Y - floorTop) > 0.5 then
+			Services.EconomyService.Notify(player, "🪤 Stell die Falle auf den Boden deiner Base!", "Error")
+			return
+		end
 	end
 	trapPlacedAt[player] = t
 	local folder = plot.Model:FindFirstChild("Traps")
@@ -7342,9 +7349,12 @@ return LeaderboardService
           <Properties>
             <string name="Name">MapBuilder</string>
             <string name="Source"><![CDATA[-- Baut die komplette Map per Code (wird von PlotService.Init EINMAL aufgerufen):
---   • knallgrüner Roblox-Rasterboden mit Bäumen, Büschen, Zaun und unsichtbaren Randwänden
+--   • knallgrüner Roblox-Noppenboden mit Block-Bäumen, Büschen, Zaun und unsichtbaren Randwänden
 --   • langes LAUFBAND (Förderband) durch die Map-Mitte, Meteore kommen aus dem Portal am Spawn-Platz
---   • 8 Basen (je 4 pro Seite, Eingang zum Band) mit 18 Slot-Pads, Collect-Pad, Lock-Pad und Schild
+--   • 8 OFFENE Basen (je 4 pro Seite, Eingang zum Band, 80 x 90 Studs): bunter Noppenboden, niedriger
+--     weißer Rand an Seiten + hinten, vorne offen mit Laser-Sperre; 18 UNSICHTBARE Slot-Anker
+--     (locker verteilt), Collect-Pad, Lock-Pad, Laternen, Block-Bäume und Namensschild
+--  Stil: schlicht, bunt, blockig (Plastic + Noppen), wenig Neon, wenige Teile.
 --   • großer Spawn-Platz mit SpawnLocation, Gratis-Zone, Bestenliste und der LAUFBAND-ZONE (Treadmills)
 -- Rückgabe von MapBuilder.Build(): siehe Typ "MapResult" unten.
 
@@ -7398,10 +7408,9 @@ type SignLine = { Name: string, Text: string, Color: Color3, Height: number }
 local GROUND_SIZE = 1024
 local GROUND_CENTER_Z = -80
 local GROUND_COLOR = Color3.fromRGB(90, 200, 70)
-local GRID_TEXTURE = "rbxassetid://6372755229" -- Standard-Raster (lädt sie nicht, bleibt der Boden einfach grün)
 
 -- Map-Rand (Zaun + unsichtbare Wände)
-local EDGE_X = 150
+local EDGE_X = 168 -- Basen-Rückseite bei x = ±124, dahinter (rechts) der Meteor-Run (RunService)
 local EDGE_MIN_Z = -406
 local EDGE_MAX_Z = 256
 
@@ -7411,33 +7420,52 @@ local BELT_WIDTH = 14
 local BELT_FRAME_TOP = 0.8 -- Oberkante des Unterbaus
 local BELT_TOP = 1.2 -- Oberkante der Lauffläche (hier liegen die Meteore auf)
 local BELT_DEFAULT_SPEED = 9 -- falls Config.BeltSpeed fehlt
-local CROSSINGS = { -80, 0, 80 } -- Lücken im Geländer zum Überqueren (genau zwischen den Basen)
+local CROSSINGS = { -90, 0, 90 } -- Lücken im Geländer zum Überqueren (genau zwischen den Basen)
 local CROSSING_WIDTH = 10
 local PORTAL_LENGTH = 16
 local PORTAL_HEIGHT = 14
 
--- Basen
-local PLOT_SIZE = 72
-local HALF = PLOT_SIZE / 2
-local PLOT_X = 70 -- Abstand Basis-Mitte <-> Bandmitte
-local PLOT_Z = { -120, -40, 40, 120 }
+-- Basen: offen (nur niedriger Rand an Seiten + hinten), vorne offen mit Laser-Sperre.
+-- Lokales Koordinatensystem einer Base: -Z = Eingang (zeigt zum Band), X = Breite, Z = Tiefe.
+local PLOT_WIDTH = 80 -- lokales X (entlang der Welt-Z-Achse)
+local PLOT_DEPTH = 90 -- lokales Z (entlang der Welt-X-Achse) -> 7200 Studs² (alt 72x72 = 5184, ca. 1,4x)
+local HALF_X = PLOT_WIDTH / 2
+local HALF_Z = PLOT_DEPTH / 2
+local PLOT_X = 79 -- Abstand Basis-Mitte <-> Bandmitte (Eingang bei x = ±34, Rückseite bei x = ±124)
+local PLOT_Z = { -135, -45, 45, 135 } -- 10 Studs Lücke zwischen den Basen
 local PLOT_FLOOR_TOP = 1
-local WALL_HEIGHT = 12
-local POST_HEIGHT = 14
+local FENCE_HEIGHT = 2 -- niedriger Rand (drüberspringen geht – Schutz macht der Lock-Rauswurf)
+local FENCE_THICK = 1
+local BARRIER_HEIGHT = 10
+-- Kräftige Roblox-Plastikfarben (Bright red, Bright orange, Bright yellow, ...)
 local PLOT_COLORS = {
-	Color3.fromRGB(255, 99, 99),
-	Color3.fromRGB(255, 170, 60),
-	Color3.fromRGB(255, 230, 80),
-	Color3.fromRGB(110, 220, 110),
-	Color3.fromRGB(80, 200, 255),
-	Color3.fromRGB(110, 120, 255),
-	Color3.fromRGB(200, 110, 255),
-	Color3.fromRGB(255, 120, 200),
+	Color3.fromRGB(196, 40, 28),
+	Color3.fromRGB(218, 133, 65),
+	Color3.fromRGB(245, 205, 48),
+	Color3.fromRGB(75, 151, 75),
+	Color3.fromRGB(13, 105, 172),
+	Color3.fromRGB(4, 175, 236),
+	Color3.fromRGB(107, 50, 124),
+	Color3.fromRGB(255, 102, 204),
 }
-local FLOOR_DARK = Color3.fromRGB(38, 40, 54)
-local SLOT_SIZE = 8
-local SLOT_COLS = { -26.25, -15.75, -5.25, 5.25, 15.75, 26.25 } -- 6 Spalten
-local SLOT_ROWS = { 0, 11.5, 23 } -- 3 Reihen: Reihe 1 nahe Eingang (Slot 1-6), Reihe 3 hinten (Slot 13-18)
+local FENCE_COLOR = Color3.fromRGB(242, 243, 243) -- Institutional white
+local WOOD_COLOR = Color3.fromRGB(124, 92, 70) -- Reddish brown
+-- Unsichtbare Slot-Anker: versetztes Raster (5-4-5-4 = 18), Reihe 1 nahe Eingang (Slot 1-5),
+-- Reihe 4 hinten (Slot 15-18). Abstand 13 Studs, dazu etwas Zufall (fester Seed: alle Basen gleich)
+-- -> auch nach dem Wackeln noch mind. ~10 Studs zwischen zwei Aliens (Footprint max. 8x8).
+local SLOT_ROWS = {
+	{ Z = -14, Count = 5 },
+	{ Z = -1, Count = 4 },
+	{ Z = 12, Count = 5 },
+	{ Z = 25, Count = 4 },
+}
+local SLOT_SPACING = 13
+local SLOT_JITTER = 1 -- Studs Zufalls-Versatz je Richtung
+local SLOT_YAW = math.rad(12) -- leicht verdreht (wirkt lockerer)
+local SLOT_SEED = 4711
+-- Anker-Kasten vom Boden bis 3 Studs hoch: wer hindurchläuft, sammelt Geld ein (Touched),
+-- PlotService.SlotTopCFrame nimmt die Unterkante (= Bodenhöhe)
+local SLOT_ANCHOR_SIZE = Vector3.new(6, 3, 6)
 
 -- Spawn-Platz (hinter dem Bandstart, -Z)
 local PLAZA_MIN_Z = -398
@@ -7531,16 +7559,9 @@ local function anchorPart(name: string, cframe: CFrame, parent: Instance): Part
 	})
 end
 
--- Standard-Rastertextur (wie im Roblox-Baseplate) auf die Oberseite legen
-local function addGrid(target: BasePart, transparency: number)
-	local texture = Instance.new("Texture")
-	texture.Name = "Grid"
-	texture.Texture = GRID_TEXTURE
-	texture.Face = Enum.NormalId.Top
-	texture.StudsPerTileU = 8
-	texture.StudsPerTileV = 8
-	texture.Transparency = transparency
-	texture.Parent = target
+-- Klassische Roblox-Noppen auf der Oberseite
+local function studs(target: BasePart)
+	target.TopSurface = Enum.SurfaceType.Studs
 end
 
 local function addLight(parent: Instance, color: Color3, range: number, brightness: number)
@@ -7567,7 +7588,8 @@ local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDist
 	label.TextScaled = true
 	label.TextColor3 = WHITE
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
+	stroke.Thickness = 4 -- dicke Kontur (Roblox-Schild-Stil)
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = label
 	label.Parent = gui
 	return gui, label
@@ -7614,8 +7636,9 @@ local function worldSign(
 		label.TextColor3 = line.Color
 		label.Text = line.Text
 		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = 2
+		stroke.Thickness = 3
 		stroke.Color = Color3.new(0, 0, 0)
+		stroke.LineJoinMode = Enum.LineJoinMode.Round
 		stroke.Parent = label
 		label.Parent = frame
 	end
@@ -7668,7 +7691,7 @@ local function buildGround(map: Folder)
 		Color = GROUND_COLOR,
 		Parent = map,
 	})
-	addGrid(ground, 0.7)
+	studs(ground)
 
 	-- Unsichtbare Randwände (durchsichtige Teile verdecken die Kamera nicht)
 	local lengthZ = EDGE_MAX_Z - EDGE_MIN_Z
@@ -7924,6 +7947,83 @@ end
 -- -------------------------------------------------------------------
 -- BASEN
 -- -------------------------------------------------------------------
+-- Blockiger Roblox-Baum: Stamm + großer Blätterblock + kleiner Block obendrauf (3 Teile).
+-- cf = Bodenpunkt (Stamm-Unterkante), scale = Größe
+local function blockTree(parent: Instance, cf: CFrame, scale: number, color: Color3)
+	local trunkHeight = 6 * scale
+	local trunkWidth = 2 * scale
+	part({
+		Name = "Trunk",
+		Size = Vector3.new(trunkWidth, trunkHeight, trunkWidth),
+		CFrame = cf * CFrame.new(0, trunkHeight / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = WOOD_COLOR,
+		Parent = parent,
+	})
+	local leafWidth, leafHeight = 8 * scale, 5 * scale
+	local leaves = part({
+		Name = "Leaves",
+		Size = Vector3.new(leafWidth, leafHeight, leafWidth),
+		CFrame = cf * CFrame.new(0, trunkHeight + leafHeight / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = color,
+		CanCollide = false,
+		Parent = parent,
+	})
+	leaves.TopSurface = Enum.SurfaceType.Studs
+	local topWidth, topHeight = 5 * scale, 3 * scale
+	local crown = part({
+		Name = "Leaves",
+		Size = Vector3.new(topWidth, topHeight, topWidth),
+		CFrame = cf * CFrame.new(0, trunkHeight + leafHeight + topHeight / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = color,
+		CanCollide = false,
+		Parent = parent,
+	})
+	crown.TopSurface = Enum.SurfaceType.Studs
+end
+
+-- Einfache Laterne: Holzpfosten + leuchtender Würfel (kein PointLight -> spart Leistung)
+local function lantern(parent: Instance, cf: CFrame)
+	local height = 6
+	part({
+		Name = "LanternPost",
+		Size = Vector3.new(0.8, height, 0.8),
+		CFrame = cf * CFrame.new(0, height / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = WOOD_COLOR,
+		Parent = parent,
+	})
+	part({
+		Name = "LanternLamp",
+		Size = Vector3.new(1.6, 1.6, 1.6),
+		CFrame = cf * CFrame.new(0, height + 0.8, 0),
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 220, 120),
+		CanCollide = false,
+		CastShadow = false,
+		Parent = parent,
+	})
+end
+
+-- Lokale Positionen (X, Z, Drehung) der 18 Slot-Anker in Slot-Reihenfolge
+local function slotLayout(): { { X: number, Z: number, Yaw: number } }
+	local rng = Random.new(SLOT_SEED)
+	local list = {}
+	for _, row in ipairs(SLOT_ROWS) do
+		for i = 1, row.Count do
+			local x = (i - (row.Count + 1) / 2) * SLOT_SPACING
+			table.insert(list, {
+				X = x + rng:NextNumber(-SLOT_JITTER, SLOT_JITTER),
+				Z = row.Z + rng:NextNumber(-SLOT_JITTER, SLOT_JITTER),
+				Yaw = rng:NextNumber(-SLOT_YAW, SLOT_YAW),
+			})
+		end
+	end
+	return list
+end
+
 local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Instance)
 	local model = Instance.new("Model")
 	model.Name = "Plot" .. index
@@ -7932,101 +8032,53 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 	model:SetAttribute("LockedUntil", 0)
 
 	local top = PLOT_FLOOR_TOP
+	-- Boden: kräftige Plastikfarbe mit Noppen (klassischer Roblox-Look)
 	local floorPart = part({
 		Name = "Floor",
-		Size = Vector3.new(PLOT_SIZE, top, PLOT_SIZE),
+		Size = Vector3.new(PLOT_WIDTH, top, PLOT_DEPTH),
 		CFrame = cf * CFrame.new(0, top / 2, 0),
-		Material = Enum.Material.SmoothPlastic,
-		Color = color:Lerp(FLOOR_DARK, 0.55),
+		Material = Enum.Material.Plastic,
+		Color = color,
 		Parent = model,
 	})
-	addGrid(floorPart, 0.85)
+	floorPart.TopSurface = Enum.SurfaceType.Studs
 	model.PrimaryPart = floorPart
 
-	-- Leuchtstreifen an der Eingangskante
-	part({
-		Name = "EntranceStripe",
-		Size = Vector3.new(PLOT_SIZE, 0.2, 1),
-		CFrame = cf * CFrame.new(0, top + 0.05, -HALF + 0.5),
-		Material = Enum.Material.Neon,
-		Color = color,
-		CanCollide = false,
-		CastShadow = false,
-		Parent = model,
-	})
-
-	-- Wände hinten + seitlich, oben mit Leuchtkante
-	local trimColor = color:Lerp(WHITE, 0.35)
-	part({
-		Name = "BackWall",
-		Size = Vector3.new(PLOT_SIZE, WALL_HEIGHT, 1.5),
-		CFrame = cf * CFrame.new(0, top + WALL_HEIGHT / 2, HALF - 0.75),
-		Material = Enum.Material.SmoothPlastic,
-		Color = color,
-		Parent = model,
-	})
-	part({
-		Name = "BackTrim",
-		Size = Vector3.new(PLOT_SIZE, 0.6, 1.9),
-		CFrame = cf * CFrame.new(0, top + WALL_HEIGHT + 0.3, HALF - 0.75),
-		Material = Enum.Material.Neon,
-		Color = trimColor,
-		CastShadow = false,
-		Parent = model,
-	})
+	-- Niedriger weißer Rand: hinten über die ganze Breite, Seiten enden STUMPF an der Rückwand
+	-- (keine überlappenden Teile mit gleichen Außenflächen -> kein Flackern/Z-Fighting).
+	-- Alles steht AUF dem Boden (Unterkante = Bodenoberkante).
+	local function fence(name: string, size: Vector3, offset: CFrame)
+		local p = part({
+			Name = name,
+			Size = size,
+			CFrame = cf * offset,
+			Material = Enum.Material.Plastic,
+			Color = FENCE_COLOR,
+			Parent = model,
+		})
+		p.TopSurface = Enum.SurfaceType.Studs
+	end
+	local fenceY = top + FENCE_HEIGHT / 2
+	fence(
+		"BackFence",
+		Vector3.new(PLOT_WIDTH, FENCE_HEIGHT, FENCE_THICK),
+		CFrame.new(0, fenceY, HALF_Z - FENCE_THICK / 2)
+	)
+	local sideLength = PLOT_DEPTH - FENCE_THICK
 	for _, s in ipairs({ -1, 1 }) do
-		part({
-			Name = "SideWall",
-			Size = Vector3.new(1.5, WALL_HEIGHT, PLOT_SIZE),
-			CFrame = cf * CFrame.new(s * (HALF - 0.75), top + WALL_HEIGHT / 2, 0),
-			Material = Enum.Material.SmoothPlastic,
-			Color = color,
-			Parent = model,
-		})
-		part({
-			Name = "SideTrim",
-			Size = Vector3.new(1.9, 0.6, PLOT_SIZE),
-			CFrame = cf * CFrame.new(s * (HALF - 0.75), top + WALL_HEIGHT + 0.3, 0),
-			Material = Enum.Material.Neon,
-			Color = trimColor,
-			CastShadow = false,
-			Parent = model,
-		})
-		part({
-			Name = "Post",
-			Size = Vector3.new(3, POST_HEIGHT, 3),
-			CFrame = cf * CFrame.new(s * (HALF - 1.5), top + POST_HEIGHT / 2, -HALF + 1.5),
-			Material = Enum.Material.Metal,
-			Color = Color3.fromRGB(60, 60, 70),
-			Parent = model,
-		})
+		fence(
+			"SideFence",
+			Vector3.new(FENCE_THICK, FENCE_HEIGHT, sideLength),
+			CFrame.new(s * (HALF_X - FENCE_THICK / 2), fenceY, -FENCE_THICK / 2)
+		)
 	end
 
-	-- Eingangstor (Balken über den Pfosten + Leuchtleiste nach vorne)
-	part({
-		Name = "GateBeam",
-		Size = Vector3.new(PLOT_SIZE, 2.4, 3),
-		CFrame = cf * CFrame.new(0, top + POST_HEIGHT + 1.2, -HALF + 1.5),
-		Material = Enum.Material.SmoothPlastic,
-		Color = color,
-		Parent = model,
-	})
-	part({
-		Name = "GateGlow",
-		Size = Vector3.new(PLOT_SIZE - 6, 0.6, 0.4),
-		CFrame = cf * CFrame.new(0, top + POST_HEIGHT + 1.2, -HALF - 0.2),
-		Material = Enum.Material.Neon,
-		Color = trimColor,
-		CanCollide = false,
-		CastShadow = false,
-		Parent = model,
-	})
-
-	-- Laser-Sperre (PlotService macht sie sichtbar, solange die Base gesperrt ist)
+	-- Laser-Sperre vorne (PlotService macht sie sichtbar, solange die Base gesperrt ist).
+	-- Etwas schmaler als der Innenraum: berührt die Seitenränder nicht (kein Flackern).
 	local barrier = part({
 		Name = "Barrier",
-		Size = Vector3.new(PLOT_SIZE - 6, POST_HEIGHT, 0.4),
-		CFrame = cf * CFrame.new(0, top + POST_HEIGHT / 2, -HALF + 1.5),
+		Size = Vector3.new(PLOT_WIDTH - 2 * FENCE_THICK - 0.2, BARRIER_HEIGHT, 0.4),
+		CFrame = cf * CFrame.new(0, top + BARRIER_HEIGHT / 2, -HALF_Z + 0.3),
 		Material = Enum.Material.ForceField,
 		Color = Color3.fromRGB(255, 40, 40),
 		Transparency = 1,
@@ -8036,30 +8088,28 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Parent = model,
 	})
 
-	-- 18 Slot-Pads (6 x 3), Reihenfolge = Slot-Nummer
+	-- 18 unsichtbare Slot-Anker (Reihenfolge = Slot-Nummer). Keine sichtbaren Pads mehr.
+	-- CanTouch: durchlaufen = Geld einsammeln (PlotService), CanQuery aus (Fallen-Strahl, Prompts).
 	local slots: { BasePart } = {}
-	for _, row in ipairs(SLOT_ROWS) do
-		for _, col in ipairs(SLOT_COLS) do
-			local slotNumber = #slots + 1
-			slots[slotNumber] = part({
-				Name = "Slot" .. slotNumber,
-				Size = Vector3.new(SLOT_SIZE, 0.3, SLOT_SIZE),
-				CFrame = cf * CFrame.new(col, top + 0.15, row),
-				Material = Enum.Material.SmoothPlastic,
-				Color = Color3.fromRGB(35, 35, 45),
-				Transparency = 0.5,
-				CanCollide = false,
-				CanTouch = true, -- Betreten = Geld einsammeln
-				CastShadow = false,
-				Parent = model,
-			})
-		end
+	for slotNumber, spot in ipairs(slotLayout()) do
+		slots[slotNumber] = part({
+			Name = "Slot" .. slotNumber,
+			Size = SLOT_ANCHOR_SIZE,
+			CFrame = cf * CFrame.new(spot.X, top + SLOT_ANCHOR_SIZE.Y / 2, spot.Z) * CFrame.Angles(0, spot.Yaw, 0),
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = true,
+			CastShadow = false,
+			Parent = model,
+		})
 	end
 
+	-- Collect- und Lock-Pad vorne links/rechts (Spawn-Punkt liegt dazwischen)
 	local collectPad = part({
 		Name = "CollectPad",
 		Size = Vector3.new(12, 0.3, 7),
-		CFrame = cf * CFrame.new(-20, top + 0.15, -24),
+		CFrame = cf * CFrame.new(-22, top + 0.15, -36),
 		Material = Enum.Material.Neon,
 		Color = Color3.fromRGB(60, 220, 90),
 		CanCollide = false,
@@ -8067,13 +8117,13 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		CastShadow = false,
 		Parent = model,
 	})
-	local _, collectLabel = billboard(collectPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
+	local _, collectLabel = billboard(collectPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 90)
 	collectLabel.Text = "💰 $0"
 
 	local lockPad = part({
 		Name = "LockPad",
 		Size = Vector3.new(10, 0.3, 7),
-		CFrame = cf * CFrame.new(20, top + 0.15, -24),
+		CFrame = cf * CFrame.new(22, top + 0.15, -36),
 		Material = Enum.Material.Neon,
 		Color = Color3.fromRGB(230, 60, 60),
 		CanCollide = false,
@@ -8081,13 +8131,21 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		CastShadow = false,
 		Parent = model,
 	})
-	local _, lockLabel = billboard(lockPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
+	local _, lockLabel = billboard(lockPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 90)
 	lockLabel.Text = "🔒 LOCK"
 
-	local signPart = anchorPart("Sign", cf * CFrame.new(0, top + POST_HEIGHT + 7, -HALF + 1.5), model)
-	local _, signLabel = billboard(signPart, UDim2.new(0, 340, 0, 64), Vector3.zero, 320)
+	-- Deko: Laternen vorne in den Ecken, blockige Bäume hinten in den Ecken (weit weg von allen Slots)
+	local deco = folder("Deco", model)
+	for _, s in ipairs({ -1, 1 }) do
+		lantern(deco, cf * CFrame.new(s * 35.5, top, -41))
+		blockTree(deco, cf * CFrame.new(s * 33, top, 38), 0.9, TREE_COLORS[(index + s) % #TREE_COLORS + 1])
+	end
+
+	-- Namensschild über dem Eingang (großes Roblox-Schild)
+	local signPart = anchorPart("Sign", cf * CFrame.new(0, top + 11, -HALF_Z + 2), model)
+	local _, signLabel = billboard(signPart, UDim2.new(0, 360, 0, 70), Vector3.zero, 320)
 	signLabel.Text = "Freie Base"
-	signLabel.TextColor3 = color
+	signLabel.TextColor3 = color:Lerp(WHITE, 0.2)
 
 	local meteorFolder = folder("Meteors", model)
 	model.Parent = parent
@@ -8096,7 +8154,10 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Index = index,
 		Model = model,
 		CFrame = cf,
-		HalfSize = HALF,
+		-- HalfSize = größere Hälfte (alter Code); genau: HalfSizeX (Breite) / HalfSizeZ (Tiefe), lokal
+		HalfSize = math.max(HALF_X, HALF_Z),
+		HalfSizeX = HALF_X,
+		HalfSizeZ = HALF_Z,
 		Color = color,
 		Owner = nil :: Player?,
 		Slots = slots,
@@ -8109,8 +8170,10 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Barrier = barrier,
 		SignLabel = signLabel,
 		LockedUntil = 0,
-		SpawnCFrame = cf * CFrame.new(0, top + 3, -12),
-		EntranceCFrame = cf * CFrame.new(0, 4, -HALF - 8),
+		-- Spawn: vorne in der Mitte zwischen Collect- und Lock-Pad, weit weg von Rand und Slots
+		SpawnCFrame = cf * CFrame.new(0, top + 3, -30),
+		-- Rauswurf: 8 Studs vor dem Eingang auf der Wiese (zwischen Band-Geländer bei x = ±8.5 und Base)
+		EntranceCFrame = cf * CFrame.new(0, 4, -HALF_Z - 8),
 	}
 end
 
@@ -8143,19 +8206,19 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 		Name = "Floor",
 		Size = Vector3.new(PLAZA_HALF_X * 2, PLAZA_TOP, PLAZA_MAX_Z - PLAZA_MIN_Z),
 		Position = Vector3.new(0, PLAZA_TOP / 2, PLAZA_CENTER.Z),
-		Material = Enum.Material.SmoothPlastic,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(205, 212, 225),
 		Parent = plaza,
 	})
-	addGrid(floorPart, 0.8)
+	studs(floorPart)
 
 	-- Große SpawnLocation mit Leuchtrand
 	part({
 		Name = "SpawnRim",
 		Size = Vector3.new(30, 0.6, 30),
 		Position = Vector3.new(0, PLAZA_TOP + 0.3, SPAWN_Z),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(0, 200, 255),
+		Material = Enum.Material.Plastic,
+		Color = Color3.fromRGB(13, 105, 172),
 		CastShadow = false,
 		Parent = plaza,
 	})
@@ -8232,7 +8295,7 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 		Name = "LeaderboardCap",
 		Size = Vector3.new(42, 1.2, 3),
 		CFrame = boardCF * CFrame.new(0, 14.6, 0),
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(255, 190, 40),
 		CastShadow = false,
 		Parent = plaza,
@@ -8259,7 +8322,7 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(0.4, 17, 17),
 		CFrame = CFrame.new(rockCenter) * CFrame.Angles(math.rad(20), 0, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(255, 140, 40),
 		CanCollide = false,
 		CastShadow = false,
@@ -8409,21 +8472,13 @@ local function buildTreadmills(map: Folder): (Folder, CFrame)
 		Name = "Deck",
 		Size = Vector3.new(deckWidth, TREADMILL_DECK_TOP - PLAZA_TOP, deckDepth),
 		Position = Vector3.new(0, (TREADMILL_DECK_TOP + PLAZA_TOP) / 2, deckCenterZ),
-		Material = Enum.Material.SmoothPlastic,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(55, 65, 95),
 		Parent = zone,
 	})
-	addGrid(deck, 0.85)
-	part({
-		Name = "DeckGlow",
-		Size = Vector3.new(deckWidth, 0.2, 0.6),
-		Position = Vector3.new(0, TREADMILL_DECK_TOP - 0.05, TREADMILL_DECK_MAX_Z - 0.3),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(0, 200, 255),
-		CanCollide = false,
-		CastShadow = false,
-		Parent = zone,
-	})
+	studs(deck)
+	-- (früher: Leuchtleiste an der Deck-Kante – lag mit ihrer Außenfläche genau in der Deck-Fläche
+	-- und flackerte; weggelassen)
 	local zoneSign = anchorPart("ZoneSign", CFrame.new(0, 30, TREADMILL_DECK_MIN_Z + 4), zone)
 	worldSign(zoneSign, "Sign", 56, 11, Vector3.zero, 500, {
 		{ Name = "Title", Text = "🏃 LAUFBÄNDER 👟", Color = Color3.fromRGB(255, 220, 60), Height = 0.6 },
@@ -8446,38 +8501,17 @@ local function buildTreadmills(map: Folder): (Folder, CFrame)
 end
 
 -- -------------------------------------------------------------------
--- DEKO (Bäume, Büsche, Zaun) – bewusst sparsam
+-- DEKO (Block-Bäume, Büsche, Zaun) – bewusst sparsam
 -- -------------------------------------------------------------------
 local function tree(parent: Instance, x: number, z: number, scale: number, color: Color3)
-	local trunkHeight = 7 * scale
-	local trunkWidth = 1.6 * scale
-	part({
-		Name = "Trunk",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(trunkHeight, trunkWidth, trunkWidth),
-		CFrame = CFrame.new(x, trunkHeight / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Wood,
-		Color = Color3.fromRGB(125, 85, 55),
-		Parent = parent,
-	})
-	local leaves = 9 * scale
-	part({
-		Name = "Leaves",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.new(leaves, leaves, leaves),
-		Position = Vector3.new(x, trunkHeight + leaves * 0.3, z),
-		Material = Enum.Material.Plastic,
-		Color = color,
-		CanCollide = false,
-		Parent = parent,
-	})
+	blockTree(parent, CFrame.new(x, 0, z), scale, color)
 end
 
+-- Busch = grüner Noppen-Block (halb im Boden)
 local function bush(parent: Instance, x: number, z: number, size: number)
-	part({
+	local p = part({
 		Name = "Bush",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.new(size, size, size),
+		Size = Vector3.new(size, size * 0.6, size),
 		Position = Vector3.new(x, size * 0.25, z),
 		Material = Enum.Material.Plastic,
 		Color = BUSH_COLOR,
@@ -8485,6 +8519,7 @@ local function bush(parent: Instance, x: number, z: number, size: number)
 		CastShadow = false,
 		Parent = parent,
 	})
+	p.TopSurface = Enum.SurfaceType.Studs
 end
 
 local function buildFence(parent: Instance)
@@ -8538,10 +8573,10 @@ local function buildDeco(map: Folder)
 
 	-- Bäume AUSSERHALB des Zauns (Horizont), gleichmäßig verteilt
 	local strips = {
-		{ -195, -160, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
-		{ 160, 195, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
-		{ -140, 140, EDGE_MAX_Z + 10, EDGE_MAX_Z + 40, 5, false },
-		{ -140, 140, EDGE_MIN_Z - 40, EDGE_MIN_Z - 10, 5, false },
+		{ -EDGE_X - 45, -EDGE_X - 12, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
+		{ EDGE_X + 12, EDGE_X + 45, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
+		{ -EDGE_X + 10, EDGE_X - 10, EDGE_MAX_Z + 10, EDGE_MAX_Z + 40, 5, false },
+		{ -EDGE_X + 10, EDGE_X - 10, EDGE_MIN_Z - 40, EDGE_MIN_Z - 10, 5, false },
 	}
 	for _, strip in ipairs(strips) do
 		local x0, x1, z0, z1, count, alongZ = strip[1], strip[2], strip[3], strip[4], strip[5], strip[6]
@@ -8555,18 +8590,16 @@ local function buildDeco(map: Folder)
 				x = x0 + (x1 - x0) * t
 				z = rng:NextNumber(z0, z1)
 			end
-			tree(deco, x, z, rng:NextNumber(1.1, 1.6), treeColor())
+			tree(deco, x, z, rng:NextNumber(1.1, 1.5), treeColor())
 		end
 	end
 
-	-- Hinter den Basen (zwischen Rückwand und Zaun)
-	for _, s in ipairs({ -1, 1 }) do
-		for _, z in ipairs({ -130, 0, 130 }) do
-			tree(deco, s * rng:NextNumber(120, 138), z + rng:NextNumber(-12, 12), rng:NextNumber(0.9, 1.2), treeColor())
-		end
-		for _, z in ipairs({ -65, 65, 180 }) do
-			bush(deco, s * rng:NextNumber(115, 140), z, rng:NextNumber(4, 6))
-		end
+	-- Hinter den LINKEN Basen (zwischen Rand x = -124 und Zaun x = -168). Rechts liegt dort der Meteor-Run.
+	for _, z in ipairs({ -135, -45, 45, 135 }) do
+		tree(deco, -146 + rng:NextNumber(-4, 4), z + rng:NextNumber(-10, 10), rng:NextNumber(0.9, 1.2), treeColor())
+	end
+	for _, z in ipairs({ -90, 0, 90 }) do
+		bush(deco, -146 + rng:NextNumber(-6, 6), z, rng:NextNumber(4, 6))
 	end
 
 	-- Am Bandende (+Z)
@@ -8642,6 +8675,15 @@ return MapBuilder
 -- Material/Farbe nach Mutation, Spezial-Effekte der Admin-Meteore, Namensschild darüber.
 -- Lichter und Feuer gibt es bewusst sparsam (viele Meteore gleichzeitig = sonst Lag).
 -- Dazu: Prompts anlegen (AddPrompt) und serverseitig prüfen, ob lange genug gehalten wurde (OnHeldTrigger).
+--
+-- KRASSE EIER (ab Legendary, auf Band / Boden / in der Base – nicht beim Tragen):
+--   • Lichtsäule (Beam zwischen zwei Attachments, nach oben verblassend)
+--   • Glitzer-Partikel "RareSparkle" in Seltenheitsfarbe
+--   • Mythic+: Funkenregen "RareSparks" (+ Blitze, die der Client lokal zeichnet)
+--   • Secret/Admin: Regenbogen-Aura "RareAura" und Regenbogen-Säule
+--   • Attribut "RareFX" = Stufe (1 Legendary, 2 Mythic..Divine, 3 Secret/Admin): der Client (WorldFX)
+--     dreht damit lokal einen Ring ums Ei, lässt das Licht pulsieren und schaltet die Partikel nur in
+--     Kameranähe ein (Emitter starten deshalb AUS).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
@@ -8651,11 +8693,18 @@ local MeteorFactory = {}
 
 -- Ab welcher Seltenheit (Index in Config.Rarities) gibt es welchen Effekt?
 -- Laufband: es liegen sehr viele Meteore gleichzeitig darauf -> noch sparsamer.
-local LIGHT_FROM = { Base = 5, Ground = 5, Belt = 6, Carry = 7 }
+local LIGHT_FROM = { Base = 5, Ground = 5, Belt = 5, Carry = 7 }
 local FIRE_FROM = { Base = 7, Ground = 7, Belt = 99, Carry = 99 }
 local SPARKLES_FROM = { Base = 6, Ground = 6, Belt = 7, Carry = 99 }
 local SHADOW_MIN_SIZE = 3.5 -- nur große Meteore werfen Schatten
 local FROST_WHITEN = 0.4 -- Frost-Meteore etwas weißer als die Mutationsfarbe (sonst fast wie Diamond)
+
+-- Krasse Eier (siehe oben)
+local RARE_FROM = Config.RarityIndex.Legendary or 5
+local RARE_MYTHIC = Config.RarityIndex.Mythic or 6
+local RARE_SECRET = Config.RarityIndex.Secret or 9
+local RARE_MODES: { [string]: boolean } = { Belt = true, Ground = true, Base = true }
+local PILLAR_HEIGHT = 28
 
 local GREEN = Color3.fromRGB(120, 255, 120)
 local YELLOW = Color3.fromRGB(255, 230, 90)
@@ -8806,6 +8855,116 @@ local function addSpecialEffects(part: BasePart, def, color: Color3, size: numbe
 	end
 end
 
+-- Farbverlauf durch alle Regenbogenfarben (für Säule + Aura der Secret/Admin-Eier)
+local function rainbowSequence(): ColorSequence
+	local keys = {}
+	for i = 0, 6 do
+		table.insert(keys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6, 0.85, 1)))
+	end
+	return ColorSequence.new(keys)
+end
+
+local function rareEmitter(name: string, part: BasePart, props: { [string]: any }): ParticleEmitter
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = name
+	emitter.LightEmission = 1
+	emitter.LightInfluence = 0
+	emitter.Enabled = false -- der Client schaltet nur Emitter in Kameranähe ein (WorldFX)
+	for key, value in pairs(props) do
+		(emitter :: any)[key] = value
+	end
+	emitter.Parent = part
+	return emitter
+end
+
+-- Lichtsäule, Glitzern, Funkenregen, Regenbogen-Aura (siehe Kopf der Datei)
+local function addRareEffects(part: BasePart, rarityIndex: number, color: Color3, size: number)
+	local tier = if rarityIndex >= RARE_SECRET then 3 elseif rarityIndex >= RARE_MYTHIC then 2 else 1
+	local rainbow = tier >= 3
+	part:SetAttribute("RareFX", tier)
+
+	-- Lichtsäule: Beam von der Ei-Mitte senkrecht nach oben, unten kräftig, oben unsichtbar.
+	-- (Das obere Attachment richtet der Client senkrecht aus, wenn das Ei auf dem Band taumelt.)
+	local bottom = Instance.new("Attachment")
+	bottom.Name = "PillarBottom"
+	bottom.Parent = part
+	local top = Instance.new("Attachment")
+	top.Name = "PillarTop"
+	top.Position = Vector3.new(0, PILLAR_HEIGHT + tier * 6, 0)
+	top.Parent = part
+	local beam = Instance.new("Beam")
+	beam.Name = "RarePillar"
+	beam.Attachment0 = bottom
+	beam.Attachment1 = top
+	beam.Color = if rainbow then rainbowSequence() else ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.5))
+	beam.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.35),
+		NumberSequenceKeypoint.new(0.55, 0.75),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	beam.Width0 = size * 0.85
+	beam.Width1 = size * 0.45
+	beam.LightEmission = 1
+	beam.LightInfluence = 0
+	beam.FaceCamera = true
+	beam.Segments = 1
+	beam.Parent = part
+
+	-- Glitzern in Seltenheitsfarbe
+	rareEmitter("RareSparkle", part, {
+		Color = if rainbow then rainbowSequence() else ColorSequence.new(color, Color3.new(1, 1, 1)),
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.3, math.clamp(size * 0.09, 0.3, 0.7)),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Transparency = NumberSequence.new(0.1, 1),
+		Lifetime = NumberRange.new(0.9, 1.6),
+		Speed = NumberRange.new(1, 3),
+		SpreadAngle = Vector2.new(180, 180),
+		Acceleration = Vector3.new(0, 2, 0),
+		RotSpeed = NumberRange.new(-180, 180),
+		Rate = 6 + tier * 5,
+	})
+	if tier >= 2 then
+		-- Funkenregen: Funken spritzen hoch und regnen herunter
+		rareEmitter("RareSparks", part, {
+			Color = ColorSequence.new(Color3.new(1, 1, 1), color),
+			Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.25),
+				NumberSequenceKeypoint.new(1, 0),
+			}),
+			Transparency = NumberSequence.new(0, 0.6),
+			Lifetime = NumberRange.new(0.8, 1.3),
+			Speed = NumberRange.new(8, 13),
+			SpreadAngle = Vector2.new(28, 28),
+			EmissionDirection = Enum.NormalId.Top,
+			Acceleration = Vector3.new(0, -24, 0),
+			Drag = 0.5,
+			Rate = 8 + tier * 3,
+		})
+	end
+	if rainbow then
+		-- Regenbogen-Aura: große weiche Kugeln in allen Farben um das Ei
+		rareEmitter("RareAura", part, {
+			Color = rainbowSequence(),
+			Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, size * 0.25),
+				NumberSequenceKeypoint.new(1, size * 0.5),
+			}),
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.3, 0.6),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+			Lifetime = NumberRange.new(1.2, 1.8),
+			Speed = NumberRange.new(size * 0.3, size * 0.6),
+			SpreadAngle = Vector2.new(180, 180),
+			Rate = 10,
+		})
+	end
+end
+
 -- mode: "Belt" (Laufband), "Ground" (Gratis-Zone/Showcase), "Base" (in der Base), "Carry" (getragen)
 function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	local def = Config.MeteorsById[entry.Id]
@@ -8915,6 +9074,9 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		sparkles.Parent = part
 	end
 	addSpecialEffects(part, def, part.Color, size, mode)
+	if rarityIndex >= RARE_FROM and RARE_MODES[mode] then
+		addRareEffects(part, rarityIndex, rarity.Color, size)
+	end
 
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Info"
@@ -8958,6 +9120,11 @@ function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 	local gui = part:FindFirstChild("Info")
 	if gui and gui:IsA("BillboardGui") then
 		gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
+	end
+	local beam = part:FindFirstChild("RarePillar")
+	if beam and beam:IsA("Beam") then
+		beam.Width0 = size * 0.85
+		beam.Width1 = size * 0.45
 	end
 	local fire = part:FindFirstChildOfClass("Fire")
 	if fire then
@@ -9115,6 +9282,8 @@ local BUY_UI_OFFSET = Vector2.new(0, 40)
 local RARE_GRAB_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen sagen, wer gerade vom Band klaut
 local RARE_SPAWN_ANNOUNCE = Config.RarityIndex.Celestial or 7 -- ab Celestial: "fährt aufs Förderband"
 local ADMIN_SPAWN_ANNOUNCE = Config.RarityIndex.Mythic or 6 -- vom Admin bestellte Meteore: schon ab Mythic
+-- ab Secret (auch Admin-Eier): Ansage IMMER (nicht gebremst) – so ein Ei will niemand verpassen
+local SECRET_SPAWN_ANNOUNCE = Config.RarityIndex.Secret or 9
 local RARE_ANNOUNCE_GAP = 4 -- solche Ansagen höchstens alle 4 Sekunden (sonst ist der Bildschirm voll)
 -- Kaufen/Klauen/Schnappen pro Spieler höchstens so oft pro Sekunde (gegen Massen-Auslösen per Cheat)
 local actionLimiter = Util.RateLimiter(6, 1)
@@ -9130,7 +9299,7 @@ local EGG_SPACING = 3 -- Abstand zwischen zwei Eiern
 local EGG_RUSH_SHOWER_GAP = 60 -- Egg Rush nicht direkt vor/nach dem Meteoritenschauer
 local SHOWER_AFTER_RUSH = 20 -- Schauer wartet, bis der Egg Rush vorbei ist (+ so viele Sekunden)
 -- Ersatz-Grenzen, falls die Map keine "Boundary"-Wände hat
-local FALLBACK_AREA = { MinX = -150, MaxX = 150, MinZ = -406, MaxZ = 256 }
+local FALLBACK_AREA = { MinX = -168, MaxX = 168, MinZ = -406, MaxZ = 256 }
 
 local serverLuckMult = 1
 local serverLuckUntil = 0
@@ -9723,6 +9892,8 @@ local function spawnOnBelt(entry, price: number, lane: number, shouldAnnounce: b
 	local index = Config.RarityIndex[def.Rarity]
 	if shouldAnnounce == true and index >= ADMIN_SPAWN_ANNOUNCE then
 		announce(entry, "☄️ Ein %s fährt aufs Förderband!")
+	elseif shouldAnnounce == nil and index >= SECRET_SPAWN_ANNOUNCE then
+		announce(entry, "🌈 WAHNSINN! Ein %s fährt aufs Förderband!")
 	elseif shouldAnnounce == nil and index >= RARE_SPAWN_ANNOUNCE then
 		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
 		rareAnnounce("☄️ Ein " .. def.Rarity .. " " .. mut .. def.Name .. " fährt aufs Förderband!")
@@ -10012,9 +10183,10 @@ local function findEggSpot(radius: number, groundPart: BasePart, params: Raycast
 		end
 		if ok then
 			for _, plot in ipairs(Services.PlotService.Plots) do
-				local half = (plot.HalfSize or 36) + radius + EGG_PLOT_MARGIN
+				local hx, hz = Services.PlotService.HalfExtents(plot)
+				local plotMargin = radius + EGG_PLOT_MARGIN
 				local localPos = plot.CFrame:PointToObjectSpace(flatPos)
-				if math.abs(localPos.X) <= half and math.abs(localPos.Z) <= half then
+				if math.abs(localPos.X) <= hx + plotMargin and math.abs(localPos.Z) <= hz + plotMargin then
 					ok = false
 					break
 				end
@@ -10747,7 +10919,10 @@ return MonetizationService
           <Properties>
             <string name="Name">PlotService</string>
             <string name="Source"><![CDATA[-- Lässt die Map bauen (MapBuilder) und verwaltet die Basen:
--- Zuweisung, Meteore/Aliens anzeigen, Collect-Pad + Slot-Pads, Lock-Pad, Schutz gegen Eindringlinge.
+-- Zuweisung, Meteore/Aliens anzeigen, Collect-Pad + Slot-Anker, Lock-Pad, Schutz gegen Eindringlinge.
+-- Basen sind OFFEN (niedriger Rand): Slots sind unsichtbare Anker-Teile (plot.Slots, 18 Stück in
+-- Slot-Reihenfolge), Basen können rechteckig sein (plot.HalfSizeX = halbe Breite, plot.HalfSizeZ =
+-- halbe Tiefe, lokal; Eingang = lokales -Z).
 -- BASE-SCHILD (Produkt): plot.ShieldUntil (Serverzeit) sperrt die Base zusätzlich zum Lock –
 -- auch während des Meteoritenschauers. Setzen über PlotService.AddShield/SetShield
 -- (wer plot.ShieldUntil direkt ändert: wird innerhalb von 0,25 s übernommen).
@@ -10776,7 +10951,6 @@ PlotService.MaxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
 
 local Services
 
-local EMPTY_SLOT_COLOR = Color3.fromRGB(35, 35, 45)
 local LOCK_NOTIFY_COOLDOWN = 2 -- Lock-Pad im Schauer: Hinweis höchstens alle 2 s (Touched feuert sehr oft)
 
 local lockNotifyAt: { [Player]: number } = {}
@@ -10788,10 +10962,33 @@ function PlotService.GetPlot(player: Player)
 	return PlotService.ByPlayer[player]
 end
 
+-- Halbe Breite (lokales X) und halbe Tiefe (lokales Z) einer Base
+function PlotService.HalfExtents(plot): (number, number)
+	local half = tonumber(plot.HalfSize) or 36
+	return tonumber(plot.HalfSizeX) or half, tonumber(plot.HalfSizeZ) or half
+end
+
+-- Rechteck der Base in Weltkoordinaten (waagrecht, aus den 4 Ecken): minX, maxX, minZ, maxZ
+function PlotService.WorldRect(plot): (number, number, number, number)
+	local hx, hz = PlotService.HalfExtents(plot)
+	local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
+	for _, corner in ipairs({
+		Vector3.new(-hx, 0, -hz),
+		Vector3.new(hx, 0, -hz),
+		Vector3.new(hx, 0, hz),
+		Vector3.new(-hx, 0, hz),
+	}) do
+		local p = plot.CFrame:PointToWorldSpace(corner)
+		minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
+		minZ, maxZ = math.min(minZ, p.Z), math.max(maxZ, p.Z)
+	end
+	return minX, maxX, minZ, maxZ
+end
+
 function PlotService.IsInside(plot, position: Vector3): boolean
-	local half = plot.HalfSize or 36
+	local hx, hz = PlotService.HalfExtents(plot)
 	local localPos = plot.CFrame:PointToObjectSpace(position)
-	return math.abs(localPos.X) <= half and math.abs(localPos.Z) <= half and localPos.Y > -6 and localPos.Y < 40
+	return math.abs(localPos.X) <= hx and math.abs(localPos.Z) <= hz and localPos.Y > -6 and localPos.Y < 40
 end
 
 -- Gesperrt = Lock (Lock-Pad) ODER Base-Schild aktiv
@@ -10842,13 +11039,14 @@ function PlotService.HatchSpeed(player: Player?): number
 	return 1
 end
 
--- Oberseite (Mitte) eines Slot-Pads – hier steht der Meteor bzw. das Alien
+-- Standpunkt eines Slots (Bodenhöhe, Drehung des Ankers) – hier steht der Meteor bzw. das Alien.
+-- Der unsichtbare Anker ist ein Kasten, der AUF dem Boden steht -> seine Unterkante = Boden.
 function PlotService.SlotTopCFrame(plot, slot: number): CFrame
 	local slotPart = plot.Slots[slot]
 	if not slotPart then
 		return plot.CFrame
 	end
-	return slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2, 0)
+	return slotPart.CFrame * CFrame.new(0, -slotPart.Size.Y / 2, 0)
 end
 
 -- Weltposition eines angezeigten Meteors (Part) oder Aliens (Model)
@@ -11033,17 +11231,13 @@ function PlotService.RenderAll(plot)
 	PlotService.UpdateSlotColors(plot)
 end
 
+-- Früher: Slot-Pads einfärben (frei / gesperrt / Foto-Modus). Die Slots sind jetzt unsichtbare
+-- Anker ohne Optik – gesperrte Slots (ohne Gamepass) zeigen einfach nichts. Bleibt als Einstieg
+-- erhalten (MonetizationService, AdminService, Foto-Modus rufen es auf) und hält die Anker unsichtbar.
 function PlotService.UpdateSlotColors(plot)
-	local count = plot.Owner and PlotService.SlotCount(plot.Owner) or 0
-	-- Foto-Deko aktiv -> alle Pads in der Plot-Farbe (volle Base sieht auf dem Foto besser aus)
-	local photo = plot.Model:FindFirstChild(PHOTO_FOLDER) ~= nil
-	for slot, slotPart in ipairs(plot.Slots) do
-		if slot <= count or photo then
-			slotPart.Color = plot.Color:Lerp(Color3.new(1, 1, 1), 0.3)
-			slotPart.Transparency = 0
-		else
-			slotPart.Color = EMPTY_SLOT_COLOR
-			slotPart.Transparency = 0.5
+	for _, slotPart in ipairs(plot.Slots) do
+		if slotPart.Transparency ~= 1 then
+			slotPart.Transparency = 1
 		end
 	end
 end
@@ -11075,7 +11269,7 @@ function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
 	return count
 end
 
--- Entfernt nur die Deko (Slot-Farben danach mit UpdateSlotColors zurücksetzen)
+-- Entfernt nur die Deko
 function PlotService.ClearPhotoShowcase(plot)
 	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
 	if folder then
@@ -11366,7 +11560,8 @@ function PlotService.Start()
 		task.spawn(onPlayer, player)
 	end
 
-	-- Pads: Collect-Pad + ALLE eigenen Slot-Pads sammeln Geld ein, Lock-Pad sperrt (Touched mit Entprellung)
+	-- Pads: Collect-Pad + ALLE eigenen Slot-Anker (durchlaufen) sammeln Geld ein, Lock-Pad sperrt
+	-- (Touched mit Entprellung)
 	local debounce: { [Player]: number } = {}
 	local function onCollectTouch(plot, hit: BasePart)
 		local player = Players:GetPlayerFromCharacter(hit.Parent)
@@ -12265,8 +12460,8 @@ local PLAZA_GAP = 6 -- Abstand Rampen-Oberkante <-> Rand des Spawn-Platzes (Z)
 local MAX_WIDTH = 14
 local MIN_WIDTH = 8
 -- Ersatzwerte, falls die Map anders aussieht (Werte aus MapBuilder)
-local FALLBACK_PLOT_EDGE = 106
-local FALLBACK_WALL_X = 150
+local FALLBACK_PLOT_EDGE = 124
+local FALLBACK_WALL_X = 168
 local FALLBACK_WALL_MAX_Z = 256
 local FALLBACK_PLAZA_MAX_Z = -226
 
@@ -12369,7 +12564,7 @@ local recordLabel: TextLabel? = nil
 local serverRecord: { Name: string, Time: number }? = nil
 
 -- Geometrie (wird beim Bauen gesetzt)
-local X0 = 128
+local X0 = 146
 local Z0 = -232
 local WIDTH = MAX_WIDTH
 local lavaBoxes: { Box } = {}
@@ -12570,7 +12765,9 @@ local function computeLayout(map: Instance?)
 	for _, plot in ipairs(Services.PlotService.Plots) do
 		local cf = plot.CFrame
 		if typeof(cf) == "CFrame" and cf.Position.X > 0 then
-			plotEdge = math.max(plotEdge, cf.Position.X + (plot.HalfSize or 36))
+			-- Basen können rechteckig + gedreht sein -> echte Außenkante aus dem Welt-Rechteck
+			local _, maxX = Services.PlotService.WorldRect(plot)
+			plotEdge = math.max(plotEdge, maxX)
 		end
 	end
 	if plotEdge == -math.huge then
@@ -14885,6 +15082,8 @@ return AdminPanel
 --                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter),
 --                 beim Aufprall: Staub-Puff + Druckwelle
 --   "Hatch"    -> Funken-Explosion + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
+--                 (ab Legendary größer: Lichtsäule + zweite Druckwelle, Mythic+ Funkenwelle,
+--                  Secret/Admin Regenbogen-Explosion)
 --                 (das Alien selbst ploppt in WorldFX mit Overshoot herein)
 --   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) mit Strahlenkranz + Konfetti,
 --                    sonst bzw. beim Tragen kleine Karte oben rechts
@@ -15671,6 +15870,38 @@ end
 -- ---------------------------------------------------------------------
 -- SCHLÜPFEN
 -- ---------------------------------------------------------------------
+local HATCH_BIG_FROM = 5 -- ab Legendary: größere Explosion (Lichtsäule, zweite Druckwelle)
+local HATCH_HUGE_FROM = 6 -- ab Mythic: noch eine Funkenwelle
+local HATCH_RAINBOW_FROM = 9 -- Secret/Admin: Regenbogen-Explosion
+
+-- Lichtsäule beim Schlüpfen seltener Aliens: leuchtender Zylinder schießt hoch und verblasst
+local function hatchPillar(position: Vector3, color: Color3, index: number)
+	local folder = fxFolder
+	local camera = workspace.CurrentCamera
+	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
+		return
+	end
+	local width = 3 + index * 0.6
+	local height = 30 + index * 6
+	local pillar = localPart({
+		Name = "HatchPillar",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(1, width, width),
+		Material = Enum.Material.Neon,
+		Color = color,
+		Transparency = 0.15,
+		CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.pi / 2),
+		Parent = folder,
+	})
+	local info = TweenInfo.new(0.9, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	TweenService:Create(pillar, info, {
+		Size = Vector3.new(height, width * 0.3, width * 0.3),
+		CFrame = CFrame.new(position + Vector3.new(0, height / 2, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+		Transparency = 1,
+	}):Play()
+	Debris:AddItem(pillar, 1)
+end
+
 local function hatch(data: any)
 	if type(data) ~= "table" or typeof(data.Position) ~= "Vector3" then
 		return
@@ -15683,13 +15914,32 @@ local function hatch(data: any)
 	-- Schale platzt: Splitter fliegen weg, Druckwelle am Boden
 	spawnShards(data.Position, color, 6 + math.min(index, 8), math.clamp(0.8 + index * 0.08, 0.8, 1.6))
 	ring(data.Position - Vector3.new(0, 1, 0), color, 12 + index * 1.5, 0.55)
+	-- Seltene Aliens: größere Explosion (nach Seltenheit skaliert)
+	if index >= HATCH_BIG_FROM then
+		local big = index - HATCH_BIG_FROM + 1 -- 1 = Legendary, 2 = Mythic, ...
+		hatchPillar(data.Position, color, index)
+		ring(data.Position - Vector3.new(0, 0.6, 0), WHITE, 20 + big * 6, 0.8)
+		if index >= HATCH_RAINBOW_FROM then
+			-- Regenbogen: Funken in mehreren Farben + bunte Druckwellen
+			for i = 0, 4 do
+				local hue = Color3.fromHSV(i / 5, 0.85, 1)
+				burst(data.Position + Vector3.new(0, 1 + i * 0.6, 0), hue, 20, false)
+				ring(data.Position - Vector3.new(0, 0.8 - i * 0.1, 0), hue, 16 + i * 6, 0.6 + i * 0.12)
+			end
+		elseif index >= HATCH_HUGE_FROM then
+			task.delay(0.15, function()
+				burst(data.Position + Vector3.new(0, 2, 0), color:Lerp(WHITE, 0.4), 20 + big * 10, false)
+			end)
+		end
+	end
 	-- Alien ploppt in WorldFX mit Overshoot herein
 	WorldFX.NoteHatch(data.Position)
-	-- Ganz nah dran? Kurz wackeln
+	-- Ganz nah dran? Kurz wackeln (seltene stärker und weiter)
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if rootPart and (rootPart.Position - data.Position).Magnitude < 40 then
-		shake(0.25 + index * 0.04)
+	local shakeRange = if index >= HATCH_BIG_FROM then 70 else 40
+	if rootPart and (rootPart.Position - data.Position).Magnitude < shakeRange then
+		shake(0.25 + index * 0.04 + (if index >= HATCH_BIG_FROM then 0.3 else 0))
 	end
 end
 
@@ -22301,6 +22551,8 @@ return Windows
 --   • Lava-Feuer an Band-Meteoren (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
+--   • Krasse Eier (Attribut "RareFX", ab Legendary): Ring dreht sich, Licht pulsiert, Partikel nur
+--     in Kameranähe, ab Mythic Blitze (nur die nächsten MAX_RINGS)
 --  Arbeit pro Frame ist begrenzt: höchstens MAX_ANIM Aliens in ANIM_RANGE Studs werden animiert
 --  (jedes ca. 30x pro Sekunde), weit entfernte Dinge werden seltener oder gar nicht bewegt.
 -- =====================================================================
@@ -22433,7 +22685,7 @@ local function addBeltMeteor(inst: Instance): boolean
 		LightBase = 0,
 	}
 	local light = inst:FindFirstChildOfClass("PointLight")
-	if light then
+	if light and inst:GetAttribute("RareFX") == nil then -- krasse Eier pulsieren in stepRare
 		record.Light = light
 		record.LightBase = light.Brightness
 	end
@@ -23856,6 +24108,302 @@ function WorldFX.NoteHatch(position: Vector3)
 end
 
 -- ---------------------------------------------------------------------
+-- KRASSE EIER (Attribut "RareFX" vom Server, ab Legendary): rotierender Ring aus leuchtenden
+-- Würfeln, stärker pulsierendes Licht, Partikel nur in Kameranähe, Säule immer senkrecht,
+-- ab Mythic zuckende Blitze. Alles lokal; nur die nächsten MAX_RINGS bekommen Ring + Blitze.
+-- ---------------------------------------------------------------------
+type RareRecord = {
+	Part: BasePart,
+	Tier: number,
+	Color: Color3,
+	Emitters: { ParticleEmitter },
+	EmittersOn: boolean,
+	Light: PointLight?,
+	LightBase: number,
+	Top: Attachment?,
+	TopHeight: number,
+	Ring: { BasePart }, -- leer = gerade kein Ring
+	Phase: number,
+	Dist: number,
+	NextBolt: number,
+}
+
+local RARE_FX_RANGE = 130 -- Partikel nur so nah an der Kamera
+local RARE_RING_RANGE = 110
+local MAX_RINGS = 8 -- so viele Eier bekommen gleichzeitig Ring + Blitze (die nächsten)
+local RING_SEGMENTS = 10
+local RING_SPEED = 1.6 -- rad/s
+local RING_TILT = math.rad(18)
+local MAX_BOLTS = 4
+local BOLT_SEGMENTS = 3
+local BOLT_TIME = 0.12
+local HIDDEN_CF = CFrame.new(0, -5000, 0)
+
+local rareRecords: { RareRecord } = {}
+local rareSeen: { [Instance]: RareRecord } = {}
+local rareCandidates: { RareRecord } = {}
+local rareParts: { BasePart } = {}
+local rareCFrames: { CFrame } = {}
+type Bolt = { Parts: { BasePart }, Until: number, Active: boolean }
+local bolts: { Bolt } = {}
+
+local function rareColor(part: BasePart): Color3
+	local rarityName = part:GetAttribute("Rarity")
+	local rarities = ctx and ctx.Config.RaritiesByName
+	local rarity = rarities and type(rarityName) == "string" and rarities[rarityName]
+	if rarity and typeof(rarity.Color) == "Color3" then
+		return rarity.Color
+	end
+	return HATCH_COLOR
+end
+
+local function addRare(inst: Instance)
+	if not inst:IsA("BasePart") or rareSeen[inst] then
+		return
+	end
+	local tier = inst:GetAttribute("RareFX")
+	if type(tier) ~= "number" then
+		return
+	end
+	local emitters: { ParticleEmitter } = {}
+	for _, child in ipairs(inst:GetChildren()) do
+		if child:IsA("ParticleEmitter") and string.sub(child.Name, 1, 4) == "Rare" then
+			child.Enabled = false
+			table.insert(emitters, child)
+		end
+	end
+	local light = inst:FindFirstChildOfClass("PointLight")
+	local top = inst:FindFirstChild("PillarTop")
+	local record: RareRecord = {
+		Part = inst,
+		Tier = tier,
+		Color = rareColor(inst),
+		Emitters = emitters,
+		EmittersOn = false,
+		Light = light,
+		LightBase = if light then light.Brightness else 0,
+		Top = if top and top:IsA("Attachment") then top else nil,
+		TopHeight = if top and top:IsA("Attachment") then top.Position.Magnitude else 0,
+		Ring = {},
+		Phase = math.random() * math.pi * 2,
+		Dist = math.huge,
+		NextBolt = 0,
+	}
+	rareSeen[inst] = record
+	table.insert(rareRecords, record)
+end
+
+local function removeRing(record: RareRecord)
+	for _, segment in ipairs(record.Ring) do
+		segment:Destroy()
+	end
+	table.clear(record.Ring)
+end
+
+local function buildRing(record: RareRecord)
+	local folder = fxFolder
+	if not folder or #record.Ring > 0 then
+		return
+	end
+	local radius = record.Part.Size.X * 0.5 + 1
+	local count = RING_SEGMENTS * (if record.Tier >= 2 then 2 else 1)
+	local length = 2 * math.pi * radius / RING_SEGMENTS * 0.55
+	for i = 1, count do
+		local color = record.Color:Lerp(Color3.new(1, 1, 1), 0.25)
+		if record.Tier >= 3 then
+			color = Color3.fromHSV(((i - 1) % RING_SEGMENTS) / RING_SEGMENTS, 0.85, 1)
+		end
+		table.insert(
+			record.Ring,
+			UI.Create("Part", {
+				Name = "RareRing",
+				Anchored = true,
+				CanCollide = false,
+				CanQuery = false,
+				CanTouch = false,
+				CastShadow = false,
+				Material = Enum.Material.Neon,
+				Color = color,
+				Size = Vector3.new(0.35, 0.35, length),
+				CFrame = HIDDEN_CF,
+				Parent = folder,
+			})
+		)
+	end
+end
+
+local function setEmitters(record: RareRecord, on: boolean)
+	if record.EmittersOn == on then
+		return
+	end
+	record.EmittersOn = on
+	for _, emitter in ipairs(record.Emitters) do
+		emitter.Enabled = on
+	end
+end
+
+local function byRareDistance(a: RareRecord, b: RareRecord): boolean
+	return a.Dist < b.Dist
+end
+
+-- Alle SCAN_INTERVAL s: Partikel nach Entfernung, Ringe nur für die nächsten MAX_RINGS
+local function scanRare(camPos: Vector3)
+	local count = 0
+	for i = #rareRecords, 1, -1 do
+		local record = rareRecords[i]
+		local part = record.Part
+		if part.Parent == nil or not part:IsDescendantOf(workspace) then
+			removeRing(record)
+			rareSeen[part] = nil
+			rareRecords[i] = rareRecords[#rareRecords]
+			rareRecords[#rareRecords] = nil
+		else
+			record.Dist = (part.Position - camPos).Magnitude
+			setEmitters(record, record.Dist < RARE_FX_RANGE)
+			if record.Dist < RARE_RING_RANGE then
+				count += 1
+				rareCandidates[count] = record
+			elseif #record.Ring > 0 then
+				removeRing(record)
+			end
+		end
+	end
+	for i = #rareCandidates, count + 1, -1 do
+		rareCandidates[i] = nil
+	end
+	if count > MAX_RINGS then
+		table.sort(rareCandidates, byRareDistance)
+	end
+	for i = 1, count do
+		local record = rareCandidates[i]
+		if i <= MAX_RINGS then
+			buildRing(record)
+		else
+			removeRing(record)
+		end
+	end
+end
+
+local function buildBolts()
+	local folder = fxFolder
+	if not folder then
+		return
+	end
+	for _ = 1, MAX_BOLTS do
+		local bolt: Bolt = { Parts = {}, Until = 0, Active = false }
+		for _ = 1, BOLT_SEGMENTS do
+			table.insert(
+				bolt.Parts,
+				UI.Create("Part", {
+					Name = "RareBolt",
+					Anchored = true,
+					CanCollide = false,
+					CanQuery = false,
+					CanTouch = false,
+					CastShadow = false,
+					Material = Enum.Material.Neon,
+					Color = Color3.fromRGB(220, 240, 255),
+					Size = Vector3.new(0.25, 0.25, 1),
+					CFrame = HIDDEN_CF,
+					Parent = folder,
+				})
+			)
+		end
+		table.insert(bolts, bolt)
+	end
+end
+
+-- Blitz von oben ins Ei: Zickzack aus BOLT_SEGMENTS Stücken, kurz sichtbar
+local function fireBolt(record: RareRecord, now: number, count: number): number
+	for _, bolt in ipairs(bolts) do
+		if not bolt.Active then
+			bolt.Active = true
+			bolt.Until = now + BOLT_TIME
+			local center = record.Part.Position
+			local radius = record.Part.Size.Y / 2
+			local from = center
+				+ Vector3.new((math.random() - 0.5) * 6, 12 + math.random() * 6, (math.random() - 0.5) * 6)
+			local to = center + Vector3.new(0, radius * 0.8, 0)
+			local last = from
+			for j, segment in ipairs(bolt.Parts) do
+				local t = j / BOLT_SEGMENTS
+				local point = from:Lerp(to, t)
+				if j < BOLT_SEGMENTS then
+					point += Vector3.new((math.random() - 0.5) * 3, 0, (math.random() - 0.5) * 3)
+				end
+				local length = (point - last).Magnitude
+				segment.Size = Vector3.new(0.25, 0.25, math.max(0.2, length))
+				segment.Color = record.Color:Lerp(Color3.new(1, 1, 1), 0.6)
+				count += 1
+				rareParts[count] = segment
+				rareCFrames[count] = CFrame.lookAt((point + last) / 2, point)
+				last = point
+			end
+			return count
+		end
+	end
+	return count
+end
+
+-- Jedes Frame: Ringe drehen, Licht pulsieren, Säule senkrecht halten, Blitze
+local function stepRare(now: number)
+	local count = 0
+	for _, bolt in ipairs(bolts) do
+		if bolt.Active and now >= bolt.Until then
+			bolt.Active = false
+			for _, segment in ipairs(bolt.Parts) do
+				count += 1
+				rareParts[count] = segment
+				rareCFrames[count] = HIDDEN_CF
+			end
+		end
+	end
+	for _, record in ipairs(rareRecords) do
+		if record.EmittersOn then
+			local part = record.Part
+			local t = now + record.Phase
+			-- Glühen pulsiert kräftig
+			local light = record.Light
+			if light then
+				light.Brightness = record.LightBase * (1.1 + 0.6 * math.sin(t * 3.4))
+			end
+			-- Säule zeigt immer senkrecht nach oben (das Ei taumelt auf dem Band)
+			local top = record.Top
+			if top then
+				top.Position = part.CFrame:VectorToObjectSpace(Vector3.new(0, record.TopHeight, 0))
+			end
+			local ring = record.Ring
+			if #ring > 0 then
+				local center = part.Position
+				local radius = part.Size.X * 0.5 + 1
+				local spin = t * RING_SPEED
+				for i, segment in ipairs(ring) do
+					local second = i > RING_SEGMENTS
+					local k = if second then i - RING_SEGMENTS else i
+					local angle = (if second then -spin else spin) + k * (2 * math.pi / RING_SEGMENTS)
+					local tilt = if second then CFrame.Angles(0, 0, RING_TILT * 2.5) else CFrame.Angles(RING_TILT, 0, 0)
+					count += 1
+					rareParts[count] = segment
+					rareCFrames[count] = CFrame.new(center)
+						* tilt
+						* CFrame.Angles(0, -angle, 0)
+						* CFrame.new(radius, 0, 0)
+				end
+				if record.Tier >= 2 and now >= record.NextBolt then
+					record.NextBolt = now + 1 + math.random() * (if record.Tier >= 3 then 1.2 else 2.2)
+					count = fireBolt(record, now, count)
+				end
+			end
+		end
+	end
+	if count > 0 then
+		workspace:BulkMoveTo(rareParts, rareCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+		table.clear(rareParts)
+		table.clear(rareCFrames)
+	end
+end
+
+-- ---------------------------------------------------------------------
 -- START
 -- ---------------------------------------------------------------------
 local function watchFolder(parent: Instance, name: string, onChild: (Instance) -> ())
@@ -23887,8 +24435,10 @@ function WorldFX.Init(context: any, map: Instance)
 	watchFolder(map, "Treadmills", setupTreadmill)
 
 	-- Aliens, Regenbogen und Schlüpf-Meteore: einmal alles durchsehen, danach nur Neues
+	buildBolts()
 	for _, inst in ipairs(map:GetDescendants()) do
 		addAnim(inst)
+		addRare(inst)
 		local parent = inst.Parent
 		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
 			addHatchCandidate(inst)
@@ -23899,6 +24449,7 @@ function WorldFX.Init(context: any, map: Instance)
 		if addAnim(inst) then
 			onAlienAdded(inst)
 		end
+		addRare(inst)
 		local parent = inst.Parent
 		-- Meteore auf dem Band / am Boden schlüpfen nie -> gar nicht erst beobachten
 		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
@@ -23953,12 +24504,15 @@ function WorldFX.Init(context: any, map: Instance)
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end
+		-- krasse Eier NACH dem Band (Ringe folgen der aktuellen Position)
+		stepRare(now)
 
 		scanClock += dt
 		if scanClock >= SCAN_INTERVAL then
 			scanClock = 0
 			scanAnim(camPos)
 			scanHighlights(camPos)
+			scanRare(camPos)
 		end
 		cleanupClock += dt
 		if cleanupClock >= CLEANUP_INTERVAL then

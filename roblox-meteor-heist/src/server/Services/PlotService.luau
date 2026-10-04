@@ -1,5 +1,8 @@
 -- Lässt die Map bauen (MapBuilder) und verwaltet die Basen:
--- Zuweisung, Meteore/Aliens anzeigen, Collect-Pad + Slot-Pads, Lock-Pad, Schutz gegen Eindringlinge.
+-- Zuweisung, Meteore/Aliens anzeigen, Collect-Pad + Slot-Anker, Lock-Pad, Schutz gegen Eindringlinge.
+-- Basen sind OFFEN (niedriger Rand): Slots sind unsichtbare Anker-Teile (plot.Slots, 18 Stück in
+-- Slot-Reihenfolge), Basen können rechteckig sein (plot.HalfSizeX = halbe Breite, plot.HalfSizeZ =
+-- halbe Tiefe, lokal; Eingang = lokales -Z).
 -- BASE-SCHILD (Produkt): plot.ShieldUntil (Serverzeit) sperrt die Base zusätzlich zum Lock –
 -- auch während des Meteoritenschauers. Setzen über PlotService.AddShield/SetShield
 -- (wer plot.ShieldUntil direkt ändert: wird innerhalb von 0,25 s übernommen).
@@ -28,7 +31,6 @@ PlotService.MaxSlots = Config.BaseSlots + Config.ExtraSlotsAmount
 
 local Services
 
-local EMPTY_SLOT_COLOR = Color3.fromRGB(35, 35, 45)
 local LOCK_NOTIFY_COOLDOWN = 2 -- Lock-Pad im Schauer: Hinweis höchstens alle 2 s (Touched feuert sehr oft)
 
 local lockNotifyAt: { [Player]: number } = {}
@@ -40,10 +42,33 @@ function PlotService.GetPlot(player: Player)
 	return PlotService.ByPlayer[player]
 end
 
+-- Halbe Breite (lokales X) und halbe Tiefe (lokales Z) einer Base
+function PlotService.HalfExtents(plot): (number, number)
+	local half = tonumber(plot.HalfSize) or 36
+	return tonumber(plot.HalfSizeX) or half, tonumber(plot.HalfSizeZ) or half
+end
+
+-- Rechteck der Base in Weltkoordinaten (waagrecht, aus den 4 Ecken): minX, maxX, minZ, maxZ
+function PlotService.WorldRect(plot): (number, number, number, number)
+	local hx, hz = PlotService.HalfExtents(plot)
+	local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
+	for _, corner in ipairs({
+		Vector3.new(-hx, 0, -hz),
+		Vector3.new(hx, 0, -hz),
+		Vector3.new(hx, 0, hz),
+		Vector3.new(-hx, 0, hz),
+	}) do
+		local p = plot.CFrame:PointToWorldSpace(corner)
+		minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
+		minZ, maxZ = math.min(minZ, p.Z), math.max(maxZ, p.Z)
+	end
+	return minX, maxX, minZ, maxZ
+end
+
 function PlotService.IsInside(plot, position: Vector3): boolean
-	local half = plot.HalfSize or 36
+	local hx, hz = PlotService.HalfExtents(plot)
 	local localPos = plot.CFrame:PointToObjectSpace(position)
-	return math.abs(localPos.X) <= half and math.abs(localPos.Z) <= half and localPos.Y > -6 and localPos.Y < 40
+	return math.abs(localPos.X) <= hx and math.abs(localPos.Z) <= hz and localPos.Y > -6 and localPos.Y < 40
 end
 
 -- Gesperrt = Lock (Lock-Pad) ODER Base-Schild aktiv
@@ -94,13 +119,14 @@ function PlotService.HatchSpeed(player: Player?): number
 	return 1
 end
 
--- Oberseite (Mitte) eines Slot-Pads – hier steht der Meteor bzw. das Alien
+-- Standpunkt eines Slots (Bodenhöhe, Drehung des Ankers) – hier steht der Meteor bzw. das Alien.
+-- Der unsichtbare Anker ist ein Kasten, der AUF dem Boden steht -> seine Unterkante = Boden.
 function PlotService.SlotTopCFrame(plot, slot: number): CFrame
 	local slotPart = plot.Slots[slot]
 	if not slotPart then
 		return plot.CFrame
 	end
-	return slotPart.CFrame * CFrame.new(0, slotPart.Size.Y / 2, 0)
+	return slotPart.CFrame * CFrame.new(0, -slotPart.Size.Y / 2, 0)
 end
 
 -- Weltposition eines angezeigten Meteors (Part) oder Aliens (Model)
@@ -285,17 +311,13 @@ function PlotService.RenderAll(plot)
 	PlotService.UpdateSlotColors(plot)
 end
 
+-- Früher: Slot-Pads einfärben (frei / gesperrt / Foto-Modus). Die Slots sind jetzt unsichtbare
+-- Anker ohne Optik – gesperrte Slots (ohne Gamepass) zeigen einfach nichts. Bleibt als Einstieg
+-- erhalten (MonetizationService, AdminService, Foto-Modus rufen es auf) und hält die Anker unsichtbar.
 function PlotService.UpdateSlotColors(plot)
-	local count = plot.Owner and PlotService.SlotCount(plot.Owner) or 0
-	-- Foto-Deko aktiv -> alle Pads in der Plot-Farbe (volle Base sieht auf dem Foto besser aus)
-	local photo = plot.Model:FindFirstChild(PHOTO_FOLDER) ~= nil
-	for slot, slotPart in ipairs(plot.Slots) do
-		if slot <= count or photo then
-			slotPart.Color = plot.Color:Lerp(Color3.new(1, 1, 1), 0.3)
-			slotPart.Transparency = 0
-		else
-			slotPart.Color = EMPTY_SLOT_COLOR
-			slotPart.Transparency = 0.5
+	for _, slotPart in ipairs(plot.Slots) do
+		if slotPart.Transparency ~= 1 then
+			slotPart.Transparency = 1
 		end
 	end
 end
@@ -327,7 +349,7 @@ function PlotService.FillPhotoShowcase(plot, makeEntry: () -> any): number
 	return count
 end
 
--- Entfernt nur die Deko (Slot-Farben danach mit UpdateSlotColors zurücksetzen)
+-- Entfernt nur die Deko
 function PlotService.ClearPhotoShowcase(plot)
 	local folder = plot.Model:FindFirstChild(PHOTO_FOLDER)
 	if folder then
@@ -618,7 +640,8 @@ function PlotService.Start()
 		task.spawn(onPlayer, player)
 	end
 
-	-- Pads: Collect-Pad + ALLE eigenen Slot-Pads sammeln Geld ein, Lock-Pad sperrt (Touched mit Entprellung)
+	-- Pads: Collect-Pad + ALLE eigenen Slot-Anker (durchlaufen) sammeln Geld ein, Lock-Pad sperrt
+	-- (Touched mit Entprellung)
 	local debounce: { [Player]: number } = {}
 	local function onCollectTouch(plot, hit: BasePart)
 		local player = Players:GetPlayerFromCharacter(hit.Parent)

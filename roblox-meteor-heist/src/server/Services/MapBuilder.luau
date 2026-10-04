@@ -1,7 +1,10 @@
 -- Baut die komplette Map per Code (wird von PlotService.Init EINMAL aufgerufen):
---   • knallgrüner Roblox-Rasterboden mit Bäumen, Büschen, Zaun und unsichtbaren Randwänden
+--   • knallgrüner Roblox-Noppenboden mit Block-Bäumen, Büschen, Zaun und unsichtbaren Randwänden
 --   • langes LAUFBAND (Förderband) durch die Map-Mitte, Meteore kommen aus dem Portal am Spawn-Platz
---   • 8 Basen (je 4 pro Seite, Eingang zum Band) mit 18 Slot-Pads, Collect-Pad, Lock-Pad und Schild
+--   • 8 OFFENE Basen (je 4 pro Seite, Eingang zum Band, 80 x 90 Studs): bunter Noppenboden, niedriger
+--     weißer Rand an Seiten + hinten, vorne offen mit Laser-Sperre; 18 UNSICHTBARE Slot-Anker
+--     (locker verteilt), Collect-Pad, Lock-Pad, Laternen, Block-Bäume und Namensschild
+--  Stil: schlicht, bunt, blockig (Plastic + Noppen), wenig Neon, wenige Teile.
 --   • großer Spawn-Platz mit SpawnLocation, Gratis-Zone, Bestenliste und der LAUFBAND-ZONE (Treadmills)
 -- Rückgabe von MapBuilder.Build(): siehe Typ "MapResult" unten.
 
@@ -55,10 +58,9 @@ type SignLine = { Name: string, Text: string, Color: Color3, Height: number }
 local GROUND_SIZE = 1024
 local GROUND_CENTER_Z = -80
 local GROUND_COLOR = Color3.fromRGB(90, 200, 70)
-local GRID_TEXTURE = "rbxassetid://6372755229" -- Standard-Raster (lädt sie nicht, bleibt der Boden einfach grün)
 
 -- Map-Rand (Zaun + unsichtbare Wände)
-local EDGE_X = 150
+local EDGE_X = 168 -- Basen-Rückseite bei x = ±124, dahinter (rechts) der Meteor-Run (RunService)
 local EDGE_MIN_Z = -406
 local EDGE_MAX_Z = 256
 
@@ -68,33 +70,52 @@ local BELT_WIDTH = 14
 local BELT_FRAME_TOP = 0.8 -- Oberkante des Unterbaus
 local BELT_TOP = 1.2 -- Oberkante der Lauffläche (hier liegen die Meteore auf)
 local BELT_DEFAULT_SPEED = 9 -- falls Config.BeltSpeed fehlt
-local CROSSINGS = { -80, 0, 80 } -- Lücken im Geländer zum Überqueren (genau zwischen den Basen)
+local CROSSINGS = { -90, 0, 90 } -- Lücken im Geländer zum Überqueren (genau zwischen den Basen)
 local CROSSING_WIDTH = 10
 local PORTAL_LENGTH = 16
 local PORTAL_HEIGHT = 14
 
--- Basen
-local PLOT_SIZE = 72
-local HALF = PLOT_SIZE / 2
-local PLOT_X = 70 -- Abstand Basis-Mitte <-> Bandmitte
-local PLOT_Z = { -120, -40, 40, 120 }
+-- Basen: offen (nur niedriger Rand an Seiten + hinten), vorne offen mit Laser-Sperre.
+-- Lokales Koordinatensystem einer Base: -Z = Eingang (zeigt zum Band), X = Breite, Z = Tiefe.
+local PLOT_WIDTH = 80 -- lokales X (entlang der Welt-Z-Achse)
+local PLOT_DEPTH = 90 -- lokales Z (entlang der Welt-X-Achse) -> 7200 Studs² (alt 72x72 = 5184, ca. 1,4x)
+local HALF_X = PLOT_WIDTH / 2
+local HALF_Z = PLOT_DEPTH / 2
+local PLOT_X = 79 -- Abstand Basis-Mitte <-> Bandmitte (Eingang bei x = ±34, Rückseite bei x = ±124)
+local PLOT_Z = { -135, -45, 45, 135 } -- 10 Studs Lücke zwischen den Basen
 local PLOT_FLOOR_TOP = 1
-local WALL_HEIGHT = 12
-local POST_HEIGHT = 14
+local FENCE_HEIGHT = 2 -- niedriger Rand (drüberspringen geht – Schutz macht der Lock-Rauswurf)
+local FENCE_THICK = 1
+local BARRIER_HEIGHT = 10
+-- Kräftige Roblox-Plastikfarben (Bright red, Bright orange, Bright yellow, ...)
 local PLOT_COLORS = {
-	Color3.fromRGB(255, 99, 99),
-	Color3.fromRGB(255, 170, 60),
-	Color3.fromRGB(255, 230, 80),
-	Color3.fromRGB(110, 220, 110),
-	Color3.fromRGB(80, 200, 255),
-	Color3.fromRGB(110, 120, 255),
-	Color3.fromRGB(200, 110, 255),
-	Color3.fromRGB(255, 120, 200),
+	Color3.fromRGB(196, 40, 28),
+	Color3.fromRGB(218, 133, 65),
+	Color3.fromRGB(245, 205, 48),
+	Color3.fromRGB(75, 151, 75),
+	Color3.fromRGB(13, 105, 172),
+	Color3.fromRGB(4, 175, 236),
+	Color3.fromRGB(107, 50, 124),
+	Color3.fromRGB(255, 102, 204),
 }
-local FLOOR_DARK = Color3.fromRGB(38, 40, 54)
-local SLOT_SIZE = 8
-local SLOT_COLS = { -26.25, -15.75, -5.25, 5.25, 15.75, 26.25 } -- 6 Spalten
-local SLOT_ROWS = { 0, 11.5, 23 } -- 3 Reihen: Reihe 1 nahe Eingang (Slot 1-6), Reihe 3 hinten (Slot 13-18)
+local FENCE_COLOR = Color3.fromRGB(242, 243, 243) -- Institutional white
+local WOOD_COLOR = Color3.fromRGB(124, 92, 70) -- Reddish brown
+-- Unsichtbare Slot-Anker: versetztes Raster (5-4-5-4 = 18), Reihe 1 nahe Eingang (Slot 1-5),
+-- Reihe 4 hinten (Slot 15-18). Abstand 13 Studs, dazu etwas Zufall (fester Seed: alle Basen gleich)
+-- -> auch nach dem Wackeln noch mind. ~10 Studs zwischen zwei Aliens (Footprint max. 8x8).
+local SLOT_ROWS = {
+	{ Z = -14, Count = 5 },
+	{ Z = -1, Count = 4 },
+	{ Z = 12, Count = 5 },
+	{ Z = 25, Count = 4 },
+}
+local SLOT_SPACING = 13
+local SLOT_JITTER = 1 -- Studs Zufalls-Versatz je Richtung
+local SLOT_YAW = math.rad(12) -- leicht verdreht (wirkt lockerer)
+local SLOT_SEED = 4711
+-- Anker-Kasten vom Boden bis 3 Studs hoch: wer hindurchläuft, sammelt Geld ein (Touched),
+-- PlotService.SlotTopCFrame nimmt die Unterkante (= Bodenhöhe)
+local SLOT_ANCHOR_SIZE = Vector3.new(6, 3, 6)
 
 -- Spawn-Platz (hinter dem Bandstart, -Z)
 local PLAZA_MIN_Z = -398
@@ -188,16 +209,9 @@ local function anchorPart(name: string, cframe: CFrame, parent: Instance): Part
 	})
 end
 
--- Standard-Rastertextur (wie im Roblox-Baseplate) auf die Oberseite legen
-local function addGrid(target: BasePart, transparency: number)
-	local texture = Instance.new("Texture")
-	texture.Name = "Grid"
-	texture.Texture = GRID_TEXTURE
-	texture.Face = Enum.NormalId.Top
-	texture.StudsPerTileU = 8
-	texture.StudsPerTileV = 8
-	texture.Transparency = transparency
-	texture.Parent = target
+-- Klassische Roblox-Noppen auf der Oberseite
+local function studs(target: BasePart)
+	target.TopSurface = Enum.SurfaceType.Studs
 end
 
 local function addLight(parent: Instance, color: Color3, range: number, brightness: number)
@@ -224,7 +238,8 @@ local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDist
 	label.TextScaled = true
 	label.TextColor3 = WHITE
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
+	stroke.Thickness = 4 -- dicke Kontur (Roblox-Schild-Stil)
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = label
 	label.Parent = gui
 	return gui, label
@@ -271,8 +286,9 @@ local function worldSign(
 		label.TextColor3 = line.Color
 		label.Text = line.Text
 		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = 2
+		stroke.Thickness = 3
 		stroke.Color = Color3.new(0, 0, 0)
+		stroke.LineJoinMode = Enum.LineJoinMode.Round
 		stroke.Parent = label
 		label.Parent = frame
 	end
@@ -325,7 +341,7 @@ local function buildGround(map: Folder)
 		Color = GROUND_COLOR,
 		Parent = map,
 	})
-	addGrid(ground, 0.7)
+	studs(ground)
 
 	-- Unsichtbare Randwände (durchsichtige Teile verdecken die Kamera nicht)
 	local lengthZ = EDGE_MAX_Z - EDGE_MIN_Z
@@ -581,6 +597,83 @@ end
 -- -------------------------------------------------------------------
 -- BASEN
 -- -------------------------------------------------------------------
+-- Blockiger Roblox-Baum: Stamm + großer Blätterblock + kleiner Block obendrauf (3 Teile).
+-- cf = Bodenpunkt (Stamm-Unterkante), scale = Größe
+local function blockTree(parent: Instance, cf: CFrame, scale: number, color: Color3)
+	local trunkHeight = 6 * scale
+	local trunkWidth = 2 * scale
+	part({
+		Name = "Trunk",
+		Size = Vector3.new(trunkWidth, trunkHeight, trunkWidth),
+		CFrame = cf * CFrame.new(0, trunkHeight / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = WOOD_COLOR,
+		Parent = parent,
+	})
+	local leafWidth, leafHeight = 8 * scale, 5 * scale
+	local leaves = part({
+		Name = "Leaves",
+		Size = Vector3.new(leafWidth, leafHeight, leafWidth),
+		CFrame = cf * CFrame.new(0, trunkHeight + leafHeight / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = color,
+		CanCollide = false,
+		Parent = parent,
+	})
+	leaves.TopSurface = Enum.SurfaceType.Studs
+	local topWidth, topHeight = 5 * scale, 3 * scale
+	local crown = part({
+		Name = "Leaves",
+		Size = Vector3.new(topWidth, topHeight, topWidth),
+		CFrame = cf * CFrame.new(0, trunkHeight + leafHeight + topHeight / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = color,
+		CanCollide = false,
+		Parent = parent,
+	})
+	crown.TopSurface = Enum.SurfaceType.Studs
+end
+
+-- Einfache Laterne: Holzpfosten + leuchtender Würfel (kein PointLight -> spart Leistung)
+local function lantern(parent: Instance, cf: CFrame)
+	local height = 6
+	part({
+		Name = "LanternPost",
+		Size = Vector3.new(0.8, height, 0.8),
+		CFrame = cf * CFrame.new(0, height / 2, 0),
+		Material = Enum.Material.Plastic,
+		Color = WOOD_COLOR,
+		Parent = parent,
+	})
+	part({
+		Name = "LanternLamp",
+		Size = Vector3.new(1.6, 1.6, 1.6),
+		CFrame = cf * CFrame.new(0, height + 0.8, 0),
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 220, 120),
+		CanCollide = false,
+		CastShadow = false,
+		Parent = parent,
+	})
+end
+
+-- Lokale Positionen (X, Z, Drehung) der 18 Slot-Anker in Slot-Reihenfolge
+local function slotLayout(): { { X: number, Z: number, Yaw: number } }
+	local rng = Random.new(SLOT_SEED)
+	local list = {}
+	for _, row in ipairs(SLOT_ROWS) do
+		for i = 1, row.Count do
+			local x = (i - (row.Count + 1) / 2) * SLOT_SPACING
+			table.insert(list, {
+				X = x + rng:NextNumber(-SLOT_JITTER, SLOT_JITTER),
+				Z = row.Z + rng:NextNumber(-SLOT_JITTER, SLOT_JITTER),
+				Yaw = rng:NextNumber(-SLOT_YAW, SLOT_YAW),
+			})
+		end
+	end
+	return list
+end
+
 local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Instance)
 	local model = Instance.new("Model")
 	model.Name = "Plot" .. index
@@ -589,101 +682,53 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 	model:SetAttribute("LockedUntil", 0)
 
 	local top = PLOT_FLOOR_TOP
+	-- Boden: kräftige Plastikfarbe mit Noppen (klassischer Roblox-Look)
 	local floorPart = part({
 		Name = "Floor",
-		Size = Vector3.new(PLOT_SIZE, top, PLOT_SIZE),
+		Size = Vector3.new(PLOT_WIDTH, top, PLOT_DEPTH),
 		CFrame = cf * CFrame.new(0, top / 2, 0),
-		Material = Enum.Material.SmoothPlastic,
-		Color = color:Lerp(FLOOR_DARK, 0.55),
+		Material = Enum.Material.Plastic,
+		Color = color,
 		Parent = model,
 	})
-	addGrid(floorPart, 0.85)
+	floorPart.TopSurface = Enum.SurfaceType.Studs
 	model.PrimaryPart = floorPart
 
-	-- Leuchtstreifen an der Eingangskante
-	part({
-		Name = "EntranceStripe",
-		Size = Vector3.new(PLOT_SIZE, 0.2, 1),
-		CFrame = cf * CFrame.new(0, top + 0.05, -HALF + 0.5),
-		Material = Enum.Material.Neon,
-		Color = color,
-		CanCollide = false,
-		CastShadow = false,
-		Parent = model,
-	})
-
-	-- Wände hinten + seitlich, oben mit Leuchtkante
-	local trimColor = color:Lerp(WHITE, 0.35)
-	part({
-		Name = "BackWall",
-		Size = Vector3.new(PLOT_SIZE, WALL_HEIGHT, 1.5),
-		CFrame = cf * CFrame.new(0, top + WALL_HEIGHT / 2, HALF - 0.75),
-		Material = Enum.Material.SmoothPlastic,
-		Color = color,
-		Parent = model,
-	})
-	part({
-		Name = "BackTrim",
-		Size = Vector3.new(PLOT_SIZE, 0.6, 1.9),
-		CFrame = cf * CFrame.new(0, top + WALL_HEIGHT + 0.3, HALF - 0.75),
-		Material = Enum.Material.Neon,
-		Color = trimColor,
-		CastShadow = false,
-		Parent = model,
-	})
+	-- Niedriger weißer Rand: hinten über die ganze Breite, Seiten enden STUMPF an der Rückwand
+	-- (keine überlappenden Teile mit gleichen Außenflächen -> kein Flackern/Z-Fighting).
+	-- Alles steht AUF dem Boden (Unterkante = Bodenoberkante).
+	local function fence(name: string, size: Vector3, offset: CFrame)
+		local p = part({
+			Name = name,
+			Size = size,
+			CFrame = cf * offset,
+			Material = Enum.Material.Plastic,
+			Color = FENCE_COLOR,
+			Parent = model,
+		})
+		p.TopSurface = Enum.SurfaceType.Studs
+	end
+	local fenceY = top + FENCE_HEIGHT / 2
+	fence(
+		"BackFence",
+		Vector3.new(PLOT_WIDTH, FENCE_HEIGHT, FENCE_THICK),
+		CFrame.new(0, fenceY, HALF_Z - FENCE_THICK / 2)
+	)
+	local sideLength = PLOT_DEPTH - FENCE_THICK
 	for _, s in ipairs({ -1, 1 }) do
-		part({
-			Name = "SideWall",
-			Size = Vector3.new(1.5, WALL_HEIGHT, PLOT_SIZE),
-			CFrame = cf * CFrame.new(s * (HALF - 0.75), top + WALL_HEIGHT / 2, 0),
-			Material = Enum.Material.SmoothPlastic,
-			Color = color,
-			Parent = model,
-		})
-		part({
-			Name = "SideTrim",
-			Size = Vector3.new(1.9, 0.6, PLOT_SIZE),
-			CFrame = cf * CFrame.new(s * (HALF - 0.75), top + WALL_HEIGHT + 0.3, 0),
-			Material = Enum.Material.Neon,
-			Color = trimColor,
-			CastShadow = false,
-			Parent = model,
-		})
-		part({
-			Name = "Post",
-			Size = Vector3.new(3, POST_HEIGHT, 3),
-			CFrame = cf * CFrame.new(s * (HALF - 1.5), top + POST_HEIGHT / 2, -HALF + 1.5),
-			Material = Enum.Material.Metal,
-			Color = Color3.fromRGB(60, 60, 70),
-			Parent = model,
-		})
+		fence(
+			"SideFence",
+			Vector3.new(FENCE_THICK, FENCE_HEIGHT, sideLength),
+			CFrame.new(s * (HALF_X - FENCE_THICK / 2), fenceY, -FENCE_THICK / 2)
+		)
 	end
 
-	-- Eingangstor (Balken über den Pfosten + Leuchtleiste nach vorne)
-	part({
-		Name = "GateBeam",
-		Size = Vector3.new(PLOT_SIZE, 2.4, 3),
-		CFrame = cf * CFrame.new(0, top + POST_HEIGHT + 1.2, -HALF + 1.5),
-		Material = Enum.Material.SmoothPlastic,
-		Color = color,
-		Parent = model,
-	})
-	part({
-		Name = "GateGlow",
-		Size = Vector3.new(PLOT_SIZE - 6, 0.6, 0.4),
-		CFrame = cf * CFrame.new(0, top + POST_HEIGHT + 1.2, -HALF - 0.2),
-		Material = Enum.Material.Neon,
-		Color = trimColor,
-		CanCollide = false,
-		CastShadow = false,
-		Parent = model,
-	})
-
-	-- Laser-Sperre (PlotService macht sie sichtbar, solange die Base gesperrt ist)
+	-- Laser-Sperre vorne (PlotService macht sie sichtbar, solange die Base gesperrt ist).
+	-- Etwas schmaler als der Innenraum: berührt die Seitenränder nicht (kein Flackern).
 	local barrier = part({
 		Name = "Barrier",
-		Size = Vector3.new(PLOT_SIZE - 6, POST_HEIGHT, 0.4),
-		CFrame = cf * CFrame.new(0, top + POST_HEIGHT / 2, -HALF + 1.5),
+		Size = Vector3.new(PLOT_WIDTH - 2 * FENCE_THICK - 0.2, BARRIER_HEIGHT, 0.4),
+		CFrame = cf * CFrame.new(0, top + BARRIER_HEIGHT / 2, -HALF_Z + 0.3),
 		Material = Enum.Material.ForceField,
 		Color = Color3.fromRGB(255, 40, 40),
 		Transparency = 1,
@@ -693,30 +738,28 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Parent = model,
 	})
 
-	-- 18 Slot-Pads (6 x 3), Reihenfolge = Slot-Nummer
+	-- 18 unsichtbare Slot-Anker (Reihenfolge = Slot-Nummer). Keine sichtbaren Pads mehr.
+	-- CanTouch: durchlaufen = Geld einsammeln (PlotService), CanQuery aus (Fallen-Strahl, Prompts).
 	local slots: { BasePart } = {}
-	for _, row in ipairs(SLOT_ROWS) do
-		for _, col in ipairs(SLOT_COLS) do
-			local slotNumber = #slots + 1
-			slots[slotNumber] = part({
-				Name = "Slot" .. slotNumber,
-				Size = Vector3.new(SLOT_SIZE, 0.3, SLOT_SIZE),
-				CFrame = cf * CFrame.new(col, top + 0.15, row),
-				Material = Enum.Material.SmoothPlastic,
-				Color = Color3.fromRGB(35, 35, 45),
-				Transparency = 0.5,
-				CanCollide = false,
-				CanTouch = true, -- Betreten = Geld einsammeln
-				CastShadow = false,
-				Parent = model,
-			})
-		end
+	for slotNumber, spot in ipairs(slotLayout()) do
+		slots[slotNumber] = part({
+			Name = "Slot" .. slotNumber,
+			Size = SLOT_ANCHOR_SIZE,
+			CFrame = cf * CFrame.new(spot.X, top + SLOT_ANCHOR_SIZE.Y / 2, spot.Z) * CFrame.Angles(0, spot.Yaw, 0),
+			Transparency = 1,
+			CanCollide = false,
+			CanQuery = false,
+			CanTouch = true,
+			CastShadow = false,
+			Parent = model,
+		})
 	end
 
+	-- Collect- und Lock-Pad vorne links/rechts (Spawn-Punkt liegt dazwischen)
 	local collectPad = part({
 		Name = "CollectPad",
 		Size = Vector3.new(12, 0.3, 7),
-		CFrame = cf * CFrame.new(-20, top + 0.15, -24),
+		CFrame = cf * CFrame.new(-22, top + 0.15, -36),
 		Material = Enum.Material.Neon,
 		Color = Color3.fromRGB(60, 220, 90),
 		CanCollide = false,
@@ -724,13 +767,13 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		CastShadow = false,
 		Parent = model,
 	})
-	local _, collectLabel = billboard(collectPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
+	local _, collectLabel = billboard(collectPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 90)
 	collectLabel.Text = "💰 $0"
 
 	local lockPad = part({
 		Name = "LockPad",
 		Size = Vector3.new(10, 0.3, 7),
-		CFrame = cf * CFrame.new(20, top + 0.15, -24),
+		CFrame = cf * CFrame.new(22, top + 0.15, -36),
 		Material = Enum.Material.Neon,
 		Color = Color3.fromRGB(230, 60, 60),
 		CanCollide = false,
@@ -738,13 +781,21 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		CastShadow = false,
 		Parent = model,
 	})
-	local _, lockLabel = billboard(lockPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 80)
+	local _, lockLabel = billboard(lockPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 90)
 	lockLabel.Text = "🔒 LOCK"
 
-	local signPart = anchorPart("Sign", cf * CFrame.new(0, top + POST_HEIGHT + 7, -HALF + 1.5), model)
-	local _, signLabel = billboard(signPart, UDim2.new(0, 340, 0, 64), Vector3.zero, 320)
+	-- Deko: Laternen vorne in den Ecken, blockige Bäume hinten in den Ecken (weit weg von allen Slots)
+	local deco = folder("Deco", model)
+	for _, s in ipairs({ -1, 1 }) do
+		lantern(deco, cf * CFrame.new(s * 35.5, top, -41))
+		blockTree(deco, cf * CFrame.new(s * 33, top, 38), 0.9, TREE_COLORS[(index + s) % #TREE_COLORS + 1])
+	end
+
+	-- Namensschild über dem Eingang (großes Roblox-Schild)
+	local signPart = anchorPart("Sign", cf * CFrame.new(0, top + 11, -HALF_Z + 2), model)
+	local _, signLabel = billboard(signPart, UDim2.new(0, 360, 0, 70), Vector3.zero, 320)
 	signLabel.Text = "Freie Base"
-	signLabel.TextColor3 = color
+	signLabel.TextColor3 = color:Lerp(WHITE, 0.2)
 
 	local meteorFolder = folder("Meteors", model)
 	model.Parent = parent
@@ -753,7 +804,10 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Index = index,
 		Model = model,
 		CFrame = cf,
-		HalfSize = HALF,
+		-- HalfSize = größere Hälfte (alter Code); genau: HalfSizeX (Breite) / HalfSizeZ (Tiefe), lokal
+		HalfSize = math.max(HALF_X, HALF_Z),
+		HalfSizeX = HALF_X,
+		HalfSizeZ = HALF_Z,
 		Color = color,
 		Owner = nil :: Player?,
 		Slots = slots,
@@ -766,8 +820,10 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Barrier = barrier,
 		SignLabel = signLabel,
 		LockedUntil = 0,
-		SpawnCFrame = cf * CFrame.new(0, top + 3, -12),
-		EntranceCFrame = cf * CFrame.new(0, 4, -HALF - 8),
+		-- Spawn: vorne in der Mitte zwischen Collect- und Lock-Pad, weit weg von Rand und Slots
+		SpawnCFrame = cf * CFrame.new(0, top + 3, -30),
+		-- Rauswurf: 8 Studs vor dem Eingang auf der Wiese (zwischen Band-Geländer bei x = ±8.5 und Base)
+		EntranceCFrame = cf * CFrame.new(0, 4, -HALF_Z - 8),
 	}
 end
 
@@ -800,19 +856,19 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 		Name = "Floor",
 		Size = Vector3.new(PLAZA_HALF_X * 2, PLAZA_TOP, PLAZA_MAX_Z - PLAZA_MIN_Z),
 		Position = Vector3.new(0, PLAZA_TOP / 2, PLAZA_CENTER.Z),
-		Material = Enum.Material.SmoothPlastic,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(205, 212, 225),
 		Parent = plaza,
 	})
-	addGrid(floorPart, 0.8)
+	studs(floorPart)
 
 	-- Große SpawnLocation mit Leuchtrand
 	part({
 		Name = "SpawnRim",
 		Size = Vector3.new(30, 0.6, 30),
 		Position = Vector3.new(0, PLAZA_TOP + 0.3, SPAWN_Z),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(0, 200, 255),
+		Material = Enum.Material.Plastic,
+		Color = Color3.fromRGB(13, 105, 172),
 		CastShadow = false,
 		Parent = plaza,
 	})
@@ -889,7 +945,7 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 		Name = "LeaderboardCap",
 		Size = Vector3.new(42, 1.2, 3),
 		CFrame = boardCF * CFrame.new(0, 14.6, 0),
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(255, 190, 40),
 		CastShadow = false,
 		Parent = plaza,
@@ -916,7 +972,7 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(0.4, 17, 17),
 		CFrame = CFrame.new(rockCenter) * CFrame.Angles(math.rad(20), 0, 0) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(255, 140, 40),
 		CanCollide = false,
 		CastShadow = false,
@@ -1066,21 +1122,13 @@ local function buildTreadmills(map: Folder): (Folder, CFrame)
 		Name = "Deck",
 		Size = Vector3.new(deckWidth, TREADMILL_DECK_TOP - PLAZA_TOP, deckDepth),
 		Position = Vector3.new(0, (TREADMILL_DECK_TOP + PLAZA_TOP) / 2, deckCenterZ),
-		Material = Enum.Material.SmoothPlastic,
+		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(55, 65, 95),
 		Parent = zone,
 	})
-	addGrid(deck, 0.85)
-	part({
-		Name = "DeckGlow",
-		Size = Vector3.new(deckWidth, 0.2, 0.6),
-		Position = Vector3.new(0, TREADMILL_DECK_TOP - 0.05, TREADMILL_DECK_MAX_Z - 0.3),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(0, 200, 255),
-		CanCollide = false,
-		CastShadow = false,
-		Parent = zone,
-	})
+	studs(deck)
+	-- (früher: Leuchtleiste an der Deck-Kante – lag mit ihrer Außenfläche genau in der Deck-Fläche
+	-- und flackerte; weggelassen)
 	local zoneSign = anchorPart("ZoneSign", CFrame.new(0, 30, TREADMILL_DECK_MIN_Z + 4), zone)
 	worldSign(zoneSign, "Sign", 56, 11, Vector3.zero, 500, {
 		{ Name = "Title", Text = "🏃 LAUFBÄNDER 👟", Color = Color3.fromRGB(255, 220, 60), Height = 0.6 },
@@ -1103,38 +1151,17 @@ local function buildTreadmills(map: Folder): (Folder, CFrame)
 end
 
 -- -------------------------------------------------------------------
--- DEKO (Bäume, Büsche, Zaun) – bewusst sparsam
+-- DEKO (Block-Bäume, Büsche, Zaun) – bewusst sparsam
 -- -------------------------------------------------------------------
 local function tree(parent: Instance, x: number, z: number, scale: number, color: Color3)
-	local trunkHeight = 7 * scale
-	local trunkWidth = 1.6 * scale
-	part({
-		Name = "Trunk",
-		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(trunkHeight, trunkWidth, trunkWidth),
-		CFrame = CFrame.new(x, trunkHeight / 2, z) * CFrame.Angles(0, 0, math.rad(90)),
-		Material = Enum.Material.Wood,
-		Color = Color3.fromRGB(125, 85, 55),
-		Parent = parent,
-	})
-	local leaves = 9 * scale
-	part({
-		Name = "Leaves",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.new(leaves, leaves, leaves),
-		Position = Vector3.new(x, trunkHeight + leaves * 0.3, z),
-		Material = Enum.Material.Plastic,
-		Color = color,
-		CanCollide = false,
-		Parent = parent,
-	})
+	blockTree(parent, CFrame.new(x, 0, z), scale, color)
 end
 
+-- Busch = grüner Noppen-Block (halb im Boden)
 local function bush(parent: Instance, x: number, z: number, size: number)
-	part({
+	local p = part({
 		Name = "Bush",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.new(size, size, size),
+		Size = Vector3.new(size, size * 0.6, size),
 		Position = Vector3.new(x, size * 0.25, z),
 		Material = Enum.Material.Plastic,
 		Color = BUSH_COLOR,
@@ -1142,6 +1169,7 @@ local function bush(parent: Instance, x: number, z: number, size: number)
 		CastShadow = false,
 		Parent = parent,
 	})
+	p.TopSurface = Enum.SurfaceType.Studs
 end
 
 local function buildFence(parent: Instance)
@@ -1195,10 +1223,10 @@ local function buildDeco(map: Folder)
 
 	-- Bäume AUSSERHALB des Zauns (Horizont), gleichmäßig verteilt
 	local strips = {
-		{ -195, -160, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
-		{ 160, 195, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
-		{ -140, 140, EDGE_MAX_Z + 10, EDGE_MAX_Z + 40, 5, false },
-		{ -140, 140, EDGE_MIN_Z - 40, EDGE_MIN_Z - 10, 5, false },
+		{ -EDGE_X - 45, -EDGE_X - 12, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
+		{ EDGE_X + 12, EDGE_X + 45, EDGE_MIN_Z, EDGE_MAX_Z, 7, true },
+		{ -EDGE_X + 10, EDGE_X - 10, EDGE_MAX_Z + 10, EDGE_MAX_Z + 40, 5, false },
+		{ -EDGE_X + 10, EDGE_X - 10, EDGE_MIN_Z - 40, EDGE_MIN_Z - 10, 5, false },
 	}
 	for _, strip in ipairs(strips) do
 		local x0, x1, z0, z1, count, alongZ = strip[1], strip[2], strip[3], strip[4], strip[5], strip[6]
@@ -1212,18 +1240,16 @@ local function buildDeco(map: Folder)
 				x = x0 + (x1 - x0) * t
 				z = rng:NextNumber(z0, z1)
 			end
-			tree(deco, x, z, rng:NextNumber(1.1, 1.6), treeColor())
+			tree(deco, x, z, rng:NextNumber(1.1, 1.5), treeColor())
 		end
 	end
 
-	-- Hinter den Basen (zwischen Rückwand und Zaun)
-	for _, s in ipairs({ -1, 1 }) do
-		for _, z in ipairs({ -130, 0, 130 }) do
-			tree(deco, s * rng:NextNumber(120, 138), z + rng:NextNumber(-12, 12), rng:NextNumber(0.9, 1.2), treeColor())
-		end
-		for _, z in ipairs({ -65, 65, 180 }) do
-			bush(deco, s * rng:NextNumber(115, 140), z, rng:NextNumber(4, 6))
-		end
+	-- Hinter den LINKEN Basen (zwischen Rand x = -124 und Zaun x = -168). Rechts liegt dort der Meteor-Run.
+	for _, z in ipairs({ -135, -45, 45, 135 }) do
+		tree(deco, -146 + rng:NextNumber(-4, 4), z + rng:NextNumber(-10, 10), rng:NextNumber(0.9, 1.2), treeColor())
+	end
+	for _, z in ipairs({ -90, 0, 90 }) do
+		bush(deco, -146 + rng:NextNumber(-6, 6), z, rng:NextNumber(4, 6))
 	end
 
 	-- Am Bandende (+Z)

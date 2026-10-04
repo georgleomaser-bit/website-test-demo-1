@@ -48,8 +48,8 @@ local PLAZA_GAP = 6 -- Abstand Rampen-Oberkante <-> Rand des Spawn-Platzes (Z)
 local MAX_WIDTH = 14
 local MIN_WIDTH = 8
 -- Ersatzwerte, falls die Map anders aussieht (Werte aus MapBuilder)
-local FALLBACK_PLOT_EDGE = 106
-local FALLBACK_WALL_X = 150
+local FALLBACK_PLOT_EDGE = 124
+local FALLBACK_WALL_X = 168
 local FALLBACK_WALL_MAX_Z = 256
 local FALLBACK_PLAZA_MAX_Z = -226
 
@@ -152,7 +152,7 @@ local recordLabel: TextLabel? = nil
 local serverRecord: { Name: string, Time: number }? = nil
 
 -- Geometrie (wird beim Bauen gesetzt)
-local X0 = 128
+local X0 = 146
 local Z0 = -232
 local WIDTH = MAX_WIDTH
 local lavaBoxes: { Box } = {}
@@ -353,7 +353,9 @@ local function computeLayout(map: Instance?)
 	for _, plot in ipairs(Services.PlotService.Plots) do
 		local cf = plot.CFrame
 		if typeof(cf) == "CFrame" and cf.Position.X > 0 then
-			plotEdge = math.max(plotEdge, cf.Position.X + (plot.HalfSize or 36))
+			-- Basen können rechteckig + gedreht sein -> echte Außenkante aus dem Welt-Rechteck
+			local _, maxX = Services.PlotService.WorldRect(plot)
+			plotEdge = math.max(plotEdge, maxX)
 		end
 	end
 	if plotEdge == -math.huge then
