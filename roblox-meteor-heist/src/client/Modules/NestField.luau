@@ -314,10 +314,10 @@ end
 
 function NestField.Init(context: any, map: Instance)
 	ctx = context
-	local folder = Instance.new("Folder")
-	folder.Name = "MeteorHeistCreatures"
-	folder.Parent = workspace
-	fxFolder = folder
+	local visuals = Instance.new("Folder")
+	visuals.Name = "MeteorHeistCreatures"
+	visuals.Parent = workspace
+	fxFolder = visuals
 	player:GetAttributeChangedSignal("SpeedPadUntil"):Connect(onSpeedPad)
 	RunService.RenderStepped:Connect(step)
 

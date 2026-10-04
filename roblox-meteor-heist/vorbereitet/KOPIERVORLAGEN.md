@@ -68,23 +68,19 @@ Später ändern: **Home → Game Settings → Basic Info**.
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteore sind Alien-Eier! Aliens tragen sie in einer Parade durch die Map. KLAU sie gratis und renn heim, bevor dich jemand bonkt – oder kauf sie. In deiner Base schlüpfen ALIENS und bringen dir Geld! 😱
+Schnapp dir Alien-Eier aus den Nestern und renn heim – bevor dich ein Monster oder ein Spieler erwischt! In deiner Base schlüpfen ALIENS und bringen dir Geld! 😱
 
-🦹 Klau Eier aus der Alien-Parade (E halten) oder kauf sie (F)
-👑 Boss-Aliens tragen die seltensten Eier – mit Leibwächtern
-🐣 Aus jedem Ei schlüpft ein Alien: Normal, Selten oder Ultra
+🥚 Eier schnappen (E halten) oder kaufen (F)
+🪺 Große Nester = seltene Eier
+👾 Monster jagen dich – sei schneller!
+⚡ Speed-Pads und 👟 Laufbänder machen dich schnell
+🏁 Ei-Rennen: Gold-Ei zuerst heimbringen!
+🐣 Aus jedem Ei schlüpft ein Alien
 😈 Klau aus fremden Basen, bonk Diebe weg
-🥚 EGG RUSH: Eier regnen auf die Map – der Schnellste gewinnt!
-🌠 Meteoritenschauer: volle Parade, keine Locks, 3x Glück
-🌙 Nacht: Nacht-Eier, Sternschnuppen, Kisten. Blutmond = 2x Glück!
-🎡 Glücksrad, 🎁 Geschenke und 📜 Tagesaufgaben
-🛠️ Gadgets: Speed Coil, Falle, Super-Bonk, Umhang
-👟 7 Laufbänder, 🏏 6 Schläger bis Alien-König
-✨ Mutationen von Gold bis Rainbow
-👽 183 Aliens, 61 Meteore, 12 Seltenheiten bis Infinity
-🔁 Rebirth, Index und Tagesbonus
-
-Schaffst du es, ein ULTRA-Alien zu klauen? 👀
+🥚 Egg Rush, 🌠 Meteoritenschauer, 🌙 Nacht
+🎡 Glücksrad, 🎁 Geschenke, 📜 Aufgaben
+👽 183 Aliens, 12 Seltenheiten bis Infinity
+🔁 Rebirth und Index
 
 👍 Like und ⭐ favorisiere das Spiel!
 ```
@@ -95,23 +91,19 @@ Viele Roblox-Spieler sprechen Englisch. Darum gibt es auch eine englische Versio
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteors are alien eggs! Aliens carry them through the map in a parade. STEAL them for free and run home before someone bonks you – or buy them. In your base, ALIENS hatch and earn you cash! 😱
+Grab alien eggs from the nests and run home – before a monster or another player gets you! In your base, ALIENS hatch and earn you cash! 😱
 
-🦹 Steal eggs from the alien parade (hold E) or buy them (F)
-👑 Boss aliens carry the rarest eggs – with bodyguards
-🐣 Every egg hatches an alien: Normal, Rare or Ultra
+🥚 Grab eggs (hold E) or buy them (F)
+🪺 Big nests = rare eggs
+👾 Monsters chase you – be faster!
+⚡ Speed pads and 👟 treadmills make you fast
+🏁 Egg race: bring the golden egg home first!
+🐣 Every egg hatches an alien
 😈 Steal from other bases, bonk thieves away
-🥚 EGG RUSH: eggs rain all over the map. Fastest player wins!
-🌠 Meteor showers: packed parade, no locks, 3x luck
-🌙 Night: night eggs, shooting stars, crates. Blood moon = 2x luck!
-🎡 Lucky wheel, 🎁 gifts and 📜 daily quests
-🛠️ Gadgets: Speed Coil, trap, Super Bonk, invisibility cloak
-👟 7 treadmills, 🏏 6 bats up to Alien King
-✨ Mutations from Gold to Rainbow
-👽 183 aliens, 61 meteors, 12 rarities up to Infinity
-🔁 Rebirth, index and daily rewards
-
-Can you steal an ULTRA alien? 👀
+🥚 Egg Rush, 🌠 meteor showers, 🌙 night
+🎡 Lucky wheel, 🎁 gifts, 📜 quests
+👽 183 aliens, 12 rarities up to Infinity
+🔁 Rebirth and index
 
 👍 Like and ⭐ favorite the game!
 ```
