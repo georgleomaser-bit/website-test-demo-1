@@ -30,6 +30,7 @@ local Windows = require(Modules:WaitForChild("Windows"))
 local Rewards = require(Modules:WaitForChild("Rewards"))
 local Effects = require(Modules:WaitForChild("Effects"))
 local WorldFX = require(Modules:WaitForChild("WorldFX"))
+local Parade = require(Modules:WaitForChild("Parade"))
 local Prompts = require(Modules:WaitForChild("Prompts"))
 local Fly = require(Modules:WaitForChild("Fly"))
 local PhotoMode = require(Modules:WaitForChild("PhotoMode"))
@@ -78,6 +79,7 @@ local ctx = {
 	Prompts = Prompts,
 	Fly = Fly,
 	PhotoMode = PhotoMode,
+	Parade = Parade,
 }
 
 -- Anfrage an den Server mit ganzer Antwort: (Erfolg, Antwort-Tabelle oder nil).
@@ -132,6 +134,8 @@ task.spawn(function()
 	end
 	Hud.SetMap(map)
 	Prompts.Init(map, ctx)
+	Parade.Init(ctx, map) -- Alien-Parade: Träger-Aliens + Eier (bewegt von WorldFX, siehe SetPreStep)
+	WorldFX.SetPreStep(Parade.Step)
 	WorldFX.Init(ctx, map)
 	if ctx.State then
 		WorldFX.UpdateTreadmills(tonumber(ctx.State.Steps) or 0, ctx.State.BestTreadmill)

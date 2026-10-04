@@ -19,12 +19,12 @@ Das dauert ungefähr **15 Minuten**.
 | Dateiname | Was drauf sein soll | Wird zu |
 |---|---|---|
 | `base` | Deine Base voller Aliens, schräg von oben | Thumbnail 4 |
-| `krater` | Das Meteor-Laufband in der Mitte während eines **Meteoritenschauers** (viele Meteore!) | Thumbnail 3 |
+| `krater` | Die Alien-Parade in der Mitte während eines **Meteoritenschauers** (viele Eier!) | Thumbnail 3 |
 | `tragen` | Du rennst mit einem geklauten Ei (Meteor) oder Alien über dem Kopf | Thumbnail 1 |
 | `showcase` | Die Showcase-Reihe: ein Meteor von jeder Seltenheit nebeneinander | Thumbnail 5 |
 | `secret` | Ein Secret-Meteor oder Admin-Meteor ganz nah | Thumbnail 2 und das Icon |
 
-> 💡 Das Foto `krater` heißt so, weil es früher einen Krater gab. Jetzt zeigt es das Laufband. Der Name bleibt trotzdem **krater**.
+> 💡 Das Foto `krater` heißt so, weil es früher einen Krater gab. Jetzt zeigt es die Alien-Parade. Der Name bleibt trotzdem **krater**.
 
 ---
 
@@ -109,28 +109,29 @@ Das dauert ungefähr **15 Minuten**.
 > 💡 Erst die Admin-Meteore, dann die Foto-Base. Ist die Base voll, passt kein Admin-Meteor mehr rein.
 > Die Deko-Aliens werden **nicht gespeichert**. Sie sind nur fürs Foto.
 
-### 2. `krater` – das Laufband im Meteoritenschauer
+### 2. `krater` – die Alien-Parade im Meteoritenschauer
 
 1. Admin-Panel → Bereich **🎉 Events**.
 2. Ins Feld **Minuten** zum Beispiel `3` schreiben. So lange dauert der Schauer.
-3. Auf **🌠 Meteoritenschauer** klicken. Jetzt kommen ganz viele Meteore aufs Laufband.
-4. Noch mehr gute Meteore? Bereich **🌧️ Meteorregen** → zum Beispiel **Legendary** oder **Mythic** klicken.
-   Das Band ist jetzt richtig voll. Im Schauer fahren die Meteore auf zwei Spuren, anfangs bis zu 5 pro Sekunde.
-5. Panel zu. Drück **G** und flieg über das Laufband in der Map-Mitte.
-6. Schau schräg von oben auf das Band, sodass man viele Meteore sieht.
+3. Auf **🌠 Meteoritenschauer** klicken. Jetzt wird die Parade richtig voll und schneller.
+4. Ein paar Bosse dazu? Bereich **🌧️ Meteorregen** → zum Beispiel **Legendary** oder **Mythic** klicken.
+   Diese Eier tragen große Boss-Aliens mit Leibwächtern.
+5. Panel zu. Drück **G** und flieg über die Parade-Straße in der Map-Mitte.
+6. Schau schräg von oben auf die Straße, sodass man viele Aliens mit Eiern sieht.
 7. **H**, warten, Screenshot, **H**.
 8. Datei **`krater`** nennen.
 
 ### 3. `tragen` – du rennst mit Beute
 
-**Weg A – Ei vom Laufband klauen (am einfachsten, allein):**
+**Weg A – Ei aus der Parade klauen (am einfachsten, allein):**
 
 1. Für ein schönes, großes Ei: Admin-Panel → **☄️ Meteor spawnen** → einen großen Meteor anklicken
-   (zum Beispiel **Nebula Heart** oder **Big Bang Core**), Mutation zum Beispiel **Rainbow x15** → **Aufs Laufband**.
-2. Panel zu (**P**). Stell dich ans Geländer vom Laufband.
-3. Kommt dein Meteor vorbei: **Halte E** (knapp 1 Sekunde). Jetzt trägst du ihn über dem Kopf.
+   (zum Beispiel **Nebula Heart** oder **Big Bang Core**), Mutation zum Beispiel **Rainbow x15** → **Zur Parade**.
+2. Panel zu (**P**). Stell dich an den Rand der Parade-Straße.
+3. Kommt dein Ei vorbei: **Halte E** (knapp 1 Sekunde). Jetzt trägst du es über dem Kopf.
+   Große Eier trägt ein Boss: Warte auf den Schubser der Leibwächter, dann ganz nah ran und E halten.
    Wichtig: **E**, nicht **F**. Mit **F** kaufst du ihn, dann fliegt er von allein in deine Base.
-4. Lauf los, weg vom Band. Dreh die Kamera so, dass man dich **von vorne oder von der Seite** sieht, mit dem Ei über dem Kopf.
+4. Lauf los, weg von der Parade. Dreh die Kamera so, dass man dich **von vorne oder von der Seite** sieht, mit dem Ei über dem Kopf.
 5. **H**, warten, Screenshot, **H**.
 6. Datei **`tragen`** nennen.
 
@@ -186,7 +187,7 @@ Dann: **H**, warten, Screenshot, **H**. Datei **`secret`** nennen.
 ### Zum Schluss: aufräumen
 
 Admin-Panel → **📸 Foto-Modus** → **🧹 Foto aufräumen**.
-Die Deko-Aliens sind weg, Laufband und Gratis-Zone sind leer.
+Die Deko-Aliens sind weg, Parade und Gratis-Zone sind leer.
 Liegen noch Eier auf dem Boden? **🛡️ Moderation** → **🧽 Boden leeren**.
 Die echten Admin-Aliens in deiner Base bleiben. Weg damit: Ziel `me` → **🛡️ Moderation** → **🧹 Base leeren**.
 

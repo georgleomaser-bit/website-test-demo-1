@@ -1,16 +1,15 @@
 -- =====================================================================
 --  WELT-ANIMATIONEN (alles lokal auf deinem Gerät -> butterweich, kein Server-Lag)
---   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start),
---     dazu sanftes Wippen + Taumeln + Drehen, leuchtende Meteore pulsieren
---     (sichtbare in der Nähe jedes Frame, weit weg seltener, außerhalb des Sichtfelds noch seltener)
---   • Streifen auf dem Laufband und auf den Treadmills laufen gleichmäßig durch und tauchen an den
+--   • Alien-Parade (Eier + lokale Träger-Aliens): eigenes Modul "Parade", wird hier über
+--     WorldFX.SetPreStep jedes Frame VOR den krassen Eiern aufgerufen (Ringe folgen dem Ei)
+--   • Streifen auf den Treadmills laufen gleichmäßig durch und tauchen an den
 --     Enden unter die Lauffläche (kein Aufploppen)
 --   • Aliens leben: Atmen mit Squash & Stretch, kleine Hüpfer, Blinzeln, drehen sich zu Spielern
 --   • Eier wackeln die letzten Sekunden immer stärker, Risse leuchten auf; frisch geschlüpfte
 --     Aliens ploppen mit Overshoot herein
 --   • Regenbogen-Teile färben sich durch
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
---   • Lava-Feuer an Band-Meteoren (Attribut "LavaFire"): nur die nächsten paar brennen
+--   • Lava-Feuer an Parade-Eiern (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
 --   • Krasse Eier (Attribut "RareFX", ab Legendary): Ring dreht sich, Licht pulsiert, Partikel nur
@@ -29,13 +28,9 @@ local WorldFX = {}
 local ctx: any = nil
 local fxFolder: Folder? = nil
 
-local NEAR_DISTANCE = 120 -- sichtbar und näher dran: jedes Frame bewegen (weiter weg fällt der 4er-Takt nicht auf)
-local FAR_FRAME_SKIP = 4 -- weiter weg: nur jedes 4. Frame
 local BEHIND_FRAME_SKIP = 8 -- außerhalb des Sichtfelds (nicht zu sehen): nur jedes 8. Frame
 local CLOSE_DISTANCE = 40 -- so nah immer jedes Frame (auch knapp hinter/neben der Kamera sichtbar)
-local VIEW_MARGIN = math.rad(12) -- Sichtfeld etwas größer rechnen (große Meteore am Bildrand)
-local MAX_NEAR_BELT = 60 -- mehr nahe Band-Meteore pro Frame -> der Rest nur jedes 2. Frame
-local STRIPE_NEAR = 140 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
+local VIEW_MARGIN = math.rad(12) -- Sichtfeld etwas größer rechnen (große Eier/Träger am Bildrand)
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
 local STRIPE_SINK = 0.14 -- so tief tauchen die Streifen an den Enden unter die Lauffläche
 local SLOW_INTERVAL = 1 / 30 -- Alien-Animation + Regenbogen höchstens 30x pro Sekunde
@@ -43,14 +38,11 @@ local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens leben / wel
 local CLEANUP_INTERVAL = 1 -- so oft fliegen zerstörte Objekte aus den Listen
 local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die nächsten)
 local HIGHLIGHT_RANGE = 150
-local MAX_LAVA_FIRES = 6 -- so viele Lava-Feuer am Förderband brennen höchstens gleichzeitig (die nächsten)
+local MAX_LAVA_FIRES = 6 -- so viele Lava-Feuer in der Parade brennen höchstens gleichzeitig (die nächsten)
 local LAVA_FIRE_RANGE = 60
 local HATCH_INTERVAL = 0.2 -- Schlüpf-Countdown 5x pro Sekunde
 local HATCH_RANGE = 170
 local RAINBOW_RANGE = 400
-local BELT_SPIN = 0.6 -- sanfte Drehung der Meteore auf dem Band (rad/s)
-local BELT_BOB_SPEED = 2.2 -- Wippen der Band-Meteore (rad/s)
-local BELT_TILT = 0.12 -- Taumeln der Band-Meteore (rad)
 
 -- Aliens
 local ANIM_RANGE = 120 -- nur Aliens in Kameranähe animieren
@@ -85,90 +77,12 @@ local moveParts: { BasePart } = {}
 local moveCFrames: { CFrame } = {}
 local frameNumber = 0
 
--- ---------------------------------------------------------------------
--- METEORE AUF DEM LAUFBAND
--- ---------------------------------------------------------------------
-type BeltRecord = {
-	Part: BasePart,
-	Start: Vector3,
-	Dir: Vector3,
-	Speed: number,
-	T0: number,
-	MaxDist: number,
-	Phase: number,
-	Slot: number,
-	Fresh: boolean, -- gerade angekommen -> sofort an die richtige Stelle (steht sonst am Bandstart)
-	Bob: number, -- Wipp-Höhe (nach Größe)
-	Light: PointLight?, -- leuchtende Meteore pulsieren
-	LightBase: number,
-}
+-- Parade (eigenes Modul): wird jedes Frame vor den krassen Eiern aufgerufen
+type PreStep = (now: number, dt: number, camPos: Vector3, look: Vector3, cosLimit: number, frame: number) -> ()
+local preStep: PreStep? = nil
 
-local beltRecords: { BeltRecord } = {}
-local beltByPart: { [Instance]: BeltRecord } = {}
-local beltLength = 440
-
-local function removeBeltRecord(record: BeltRecord)
-	beltByPart[record.Part] = nil
-	local index = table.find(beltRecords, record)
-	if index then
-		beltRecords[index] = beltRecords[#beltRecords]
-		beltRecords[#beltRecords] = nil
-	end
-end
-
--- true = aufgenommen (oder kein Meteor), false = Attribute fehlen noch
-local function addBeltMeteor(inst: Instance): boolean
-	if not inst:IsA("BasePart") then
-		return true
-	end
-	if beltByPart[inst] then
-		return true
-	end
-	local t0 = inst:GetAttribute("BeltT0")
-	local start = inst:GetAttribute("BeltStart")
-	local dir = inst:GetAttribute("BeltDir")
-	local speed = inst:GetAttribute("BeltSpeed")
-	if type(t0) ~= "number" or typeof(start) ~= "Vector3" or typeof(dir) ~= "Vector3" or type(speed) ~= "number" then
-		return false
-	end
-	local direction: Vector3 = if dir.Magnitude > 0.001 then dir.Unit else Vector3.zAxis
-	local record: BeltRecord = {
-		Part = inst,
-		Start = start,
-		Dir = direction,
-		Speed = speed,
-		T0 = t0,
-		MaxDist = beltLength + 6,
-		Phase = math.random() * math.pi * 2,
-		Slot = math.random(0, BEHIND_FRAME_SKIP - 1),
-		Fresh = true,
-		Bob = math.clamp(inst.Size.Y * 0.07, 0.08, 0.4),
-		Light = nil,
-		LightBase = 0,
-	}
-	local light = inst:FindFirstChildOfClass("PointLight")
-	if light and inst:GetAttribute("RareFX") == nil then -- krasse Eier pulsieren in stepRare
-		record.Light = light
-		record.LightBase = light.Brightness
-	end
-	beltByPart[inst] = record
-	table.insert(beltRecords, record)
-	return true
-end
-
-local function watchBeltMeteor(inst: Instance)
-	if addBeltMeteor(inst) then
-		return
-	end
-	-- Attribute kommen evtl. erst nach dem Einfügen -> warten
-	local connection: RBXScriptConnection? = nil
-	connection = inst.AttributeChanged:Connect(function()
-		if addBeltMeteor(inst) or not inst.Parent then
-			if connection then
-				connection:Disconnect()
-			end
-		end
-	end)
+function WorldFX.SetPreStep(fn: PreStep?)
+	preStep = fn
 end
 
 -- Kosinus des halben Sichtfelds (Bild-Diagonale + Rand): rel:Dot(look) < Abstand * viewCos = nicht im Bild
@@ -180,66 +94,8 @@ local function viewCos(camera: Camera): number
 	return math.cos(math.min(halfDiagonal + VIEW_MARGIN, math.pi / 2))
 end
 
--- Gibt die Anzahl der eingetragenen Teile zurück.
--- Viele Meteore (bis ~160 im Schauer): ganz nahe immer, sichtbare in der Nähe jedes Frame, sichtbare
--- weit weg jedes 4., außerhalb des Sichtfelds nur jedes 8. Frame (dreht man sich, sind sie
--- spätestens nach 8 Frames richtig).
-local function stepBelt(now: number, camPos: Vector3, look: Vector3, cosLimit: number, count: number): number
-	local near = 0
-	for i = #beltRecords, 1, -1 do
-		local record = beltRecords[i]
-		local part = record.Part
-		if part.Parent == nil then
-			removeBeltRecord(record)
-		else
-			local elapsed = now - record.T0
-			local dist = math.clamp(record.Speed * elapsed, 0, record.MaxDist)
-			local pos = record.Start + record.Dir * dist
-			local rel = pos - camPos
-			local distance = rel.Magnitude
-			local slot = frameNumber + record.Slot
-			-- ganz nah (Prompts!), sichtbar in der Nähe und neu angekommen: jedes Frame
-			local due = true
-			if record.Fresh then
-				record.Fresh = false
-			elseif distance >= CLOSE_DISTANCE then
-				if rel:Dot(look) < distance * cosLimit then
-					due = slot % BEHIND_FRAME_SKIP == 0 -- außerhalb des Sichtfelds
-				elseif distance >= NEAR_DISTANCE then
-					due = slot % FAR_FRAME_SKIP == 0 -- sichtbar, aber weit weg
-				else
-					near += 1
-					if near > MAX_NEAR_BELT then
-						due = slot % 2 == 0 -- sehr viele nahe (Schauer): Rest jedes 2. Frame
-					end
-				end
-			end
-			if due then
-				local phase = record.Phase
-				local angle = elapsed * BELT_SPIN + phase
-				local c, s = math.cos(angle), math.sin(angle)
-				-- sanftes Taumeln (Kippen um die eigene X-Achse) + Wippen
-				local tilt = math.sin(elapsed * 1.3 + phase) * BELT_TILT
-				local ct, st = math.cos(tilt), math.sin(tilt)
-				local bob = math.sin(elapsed * BELT_BOB_SPEED + phase) * record.Bob
-				count += 1
-				moveParts[count] = part
-				-- Drehung um die Hochachse * Kippen, direkt als Matrix (nur EIN neues CFrame)
-				moveCFrames[count] =
-					CFrame.new(pos.X, pos.Y + bob, pos.Z, c, s * st, s * ct, 0, ct, -st, -s, c * st, c * ct)
-				local light = record.Light
-				if light and distance < NEAR_DISTANCE then
-					-- Glühen pulsiert leicht
-					light.Brightness = record.LightBase * (0.8 + 0.3 * math.sin(elapsed * 3.1 + phase))
-				end
-			end
-		end
-	end
-	return count
-end
-
 -- ---------------------------------------------------------------------
--- STREIFEN (lokale Teile, die über Band und Treadmills laufen)
+-- STREIFEN (lokale Teile, die über die Treadmills laufen)
 -- ---------------------------------------------------------------------
 type StripeSet = {
 	Parts: { BasePart },
@@ -250,7 +106,6 @@ type StripeSet = {
 	Spacing: number,
 	Speed: number,
 	Center: Vector3,
-	Always: boolean, -- true = immer bewegen (Hauptband)
 }
 
 local stripeSets: { StripeSet } = {}
@@ -264,8 +119,7 @@ local function makeStripeSet(
 	width: number,
 	speed: number,
 	spacing: number,
-	colors: { normal: Color3, accent: Color3, rainbow: boolean, accentEvery: number },
-	always: boolean
+	colors: { normal: Color3, accent: Color3, rainbow: boolean, accentEvery: number }
 ): StripeSet?
 	local folder = fxFolder
 	if not folder or length <= 1 or width <= 0.5 then
@@ -285,7 +139,6 @@ local function makeStripeSet(
 		Spacing = spacing,
 		Speed = speed,
 		Center = surfaceCFrame.Position,
-		Always = always,
 	}
 	for i = 1, count do
 		local accent = colors.accentEvery > 0 and i % colors.accentEvery == 0
@@ -316,12 +169,11 @@ end
 
 local function stepStripes(now: number, camPos: Vector3, look: Vector3, cosLimit: number, count: number): number
 	for _, set in ipairs(stripeSets) do
-		if set.Always or (set.Center - camPos).Magnitude < STRIPE_RANGE then
+		if (set.Center - camPos).Magnitude < STRIPE_RANGE then
 			local rot = set.Rot
 			local r00, r01, r02, r10, r11, r12, r20, r21, r22 =
 				rot[1], rot[2], rot[3], rot[4], rot[5], rot[6], rot[7], rot[8], rot[9]
 			local shift = (now * set.Speed) % set.Length
-			local thin = set.Always -- langes Hauptband: weit entfernte Streifen seltener bewegen
 			-- Hochachse der Streifen (2. Spalte der Drehmatrix): an den Enden darunter wegtauchen,
 			-- statt am Ende zu verschwinden und am Anfang aufzuploppen
 			local up = Vector3.new(r01, r11, r21)
@@ -339,8 +191,6 @@ local function stepStripes(now: number, camPos: Vector3, look: Vector3, cosLimit
 				local due = true
 				if distance >= CLOSE_DISTANCE and rel:Dot(look) < distance * cosLimit then
 					due = (frameNumber + i) % BEHIND_FRAME_SKIP == 0 -- nicht im Bild
-				elseif thin and distance >= STRIPE_NEAR then
-					due = (frameNumber + i) % FAR_FRAME_SKIP == 0
 				end
 				if due then
 					count += 1
@@ -351,37 +201,6 @@ local function stepStripes(now: number, camPos: Vector3, look: Vector3, cosLimit
 		end
 	end
 	return count
-end
-
--- Hauptband: Streifen quer über die ganze Länge
-local function setupMainBelt(belt: Instance)
-	if not belt:IsA("BasePart") then
-		return
-	end
-	local start = belt:GetAttribute("BeltStart")
-	local dir = belt:GetAttribute("BeltDir")
-	local length = tonumber(belt:GetAttribute("BeltLength")) or belt.Size.Z
-	local width = tonumber(belt:GetAttribute("BeltWidth")) or belt.Size.X
-	local speed = tonumber(belt:GetAttribute("BeltSpeed")) or tonumber(ctx.Config.BeltSpeed) or 9
-	if typeof(start) ~= "Vector3" then
-		start = belt.Position + Vector3.new(0, belt.Size.Y / 2, -belt.Size.Z / 2)
-	end
-	if typeof(dir) ~= "Vector3" or dir.Magnitude < 0.001 then
-		dir = Vector3.zAxis
-	end
-	local direction: Vector3 = (dir :: Vector3).Unit
-	beltLength = length
-	for _, record in ipairs(beltRecords) do
-		record.MaxDist = beltLength + 6
-	end
-	local startPos: Vector3 = start :: Vector3
-	local center = startPos + direction * (length / 2) + Vector3.new(0, 0.04, 0)
-	makeStripeSet(CFrame.lookAt(center, center + direction), length, width, speed, 5, {
-		normal = Color3.fromRGB(72, 72, 86),
-		accent = Color3.fromRGB(30, 150, 230),
-		rainbow = false,
-		accentEvery = 4,
-	}, true)
 end
 
 -- ---------------------------------------------------------------------
@@ -441,7 +260,7 @@ local function setupTreadmill(model: Instance)
 		accent = color,
 		rainbow = id == "Regenbogen" or (def ~= nil and def.Rainbow == true),
 		accentEvery = 3,
-	}, false)
+	})
 	signKey = "" -- Schilder beim nächsten Mal neu schreiben
 	updateSigns()
 end
@@ -1102,7 +921,7 @@ end
 
 -- ---------------------------------------------------------------------
 -- NUR DIE NÄCHSTEN EINSCHALTEN: Umrisse (Highlights, Roblox zeigt max. 31) und Lava-Feuer an
--- Förderband-Meteoren (sonst brennen bei Glück-Events Dutzende gleichzeitig).
+-- Parade-Eiern (sonst brennen bei Glück-Events Dutzende gleichzeitig).
 -- Der Server legt beide ausgeschaltet an; hier werden alle SCAN_INTERVAL Sekunden die nächsten
 -- "Max" in Reichweite eingeschaltet, alle anderen aus.
 -- ---------------------------------------------------------------------
@@ -1829,7 +1648,7 @@ local function stepRare(now: number)
 			if light then
 				light.Brightness = record.LightBase * (1.1 + 0.6 * math.sin(t * 3.4))
 			end
-			-- Säule zeigt immer senkrecht nach oben (das Ei taumelt auf dem Band)
+			-- Säule zeigt immer senkrecht nach oben (das Ei wackelt auf dem Kopf des Trägers)
 			local top = record.Top
 			if top then
 				top.Position = part.CFrame:VectorToObjectSpace(Vector3.new(0, record.TopHeight, 0))
@@ -1886,14 +1705,6 @@ function WorldFX.Init(context: any, map: Instance)
 	ctx = context
 	fxFolder = UI.Create("Folder", { Name = "MeteorHeistStripes", Parent = workspace })
 
-	-- Hauptband (Streifen) + Meteore darauf
-	task.spawn(function()
-		local belt = map:WaitForChild("Belt", 60)
-		if belt then
-			setupMainBelt(belt)
-		end
-	end)
-	watchFolder(map, "BeltMeteors", watchBeltMeteor)
 	watchFolder(map, "Treadmills", setupTreadmill)
 
 	-- Aliens, Regenbogen und Schlüpf-Meteore: einmal alles durchsehen, danach nur Neues
@@ -1902,7 +1713,7 @@ function WorldFX.Init(context: any, map: Instance)
 		addAnim(inst)
 		addRare(inst)
 		local parent = inst.Parent
-		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
+		if parent and parent.Name ~= "ParadeMeteors" and parent.Name ~= "GroundMeteors" then
 			addHatchCandidate(inst)
 		end
 	end
@@ -1913,8 +1724,8 @@ function WorldFX.Init(context: any, map: Instance)
 		end
 		addRare(inst)
 		local parent = inst.Parent
-		-- Meteore auf dem Band / am Boden schlüpfen nie -> gar nicht erst beobachten
-		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
+		-- Eier in der Parade / am Boden schlüpfen nie -> gar nicht erst beobachten
+		if parent and parent.Name ~= "ParadeMeteors" and parent.Name ~= "GroundMeteors" then
 			addHatchCandidate(inst)
 		end
 	end)
@@ -1958,15 +1769,18 @@ function WorldFX.Init(context: any, map: Instance)
 		table.clear(moveCFrames)
 		local look = camCFrame.LookVector
 		local cosLimit = viewCos(camera)
-		local count = stepBelt(now, camPos, look, cosLimit, 0)
-		count = stepStripes(stripeClock, camPos, look, cosLimit, count)
+		local count = stepStripes(stripeClock, camPos, look, cosLimit, 0)
 		if #wobbling > 0 then
 			count = stepEggs(now, count)
 		end
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end
-		-- krasse Eier NACH dem Band (Ringe folgen der aktuellen Position)
+		-- Parade (Eier + Träger) VOR den krassen Eiern (Ringe folgen der aktuellen Position)
+		local step = preStep
+		if step then
+			step(now, dt, camPos, look, cosLimit, frameNumber)
+		end
 		stepRare(now)
 
 		scanClock += dt

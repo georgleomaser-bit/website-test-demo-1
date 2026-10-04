@@ -307,10 +307,7 @@ function Prompts.Init(map: Instance, context: any)
 			refreshHint()
 			if kind == "Parade" and not tipShown and ctx then
 				tipShown = true
-				ctx.Toast(
-					"Klauen ist gratis – aber du musst das Ei selbst heimtragen. Kaufen = Lieferung.",
-					"Info"
-				)
+				ctx.Toast("Klauen ist gratis – aber du musst das Ei selbst heimtragen. Kaufen = Lieferung.", "Info")
 			end
 		end
 	end)

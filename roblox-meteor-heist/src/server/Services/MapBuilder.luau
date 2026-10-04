@@ -431,12 +431,8 @@ local function buildParadeHouse(
 		Vector3.new(0, HOUSE_HEIGHT - 1.5, -HOUSE_DEPTH / 2 + 1),
 		wallColor
 	)
-	local roof = block(
-		"Roof",
-		Vector3.new(HOUSE_WIDTH + 2, 2, HOUSE_DEPTH + 2),
-		Vector3.new(0, HOUSE_HEIGHT + 1, 0),
-		roofColor
-	)
+	local roof =
+		block("Roof", Vector3.new(HOUSE_WIDTH + 2, 2, HOUSE_DEPTH + 2), Vector3.new(0, HOUSE_HEIGHT + 1, 0), roofColor)
 	studs(roof)
 	local plane = block(
 		"PortalPlane",
@@ -450,14 +446,14 @@ local function buildParadeHouse(
 end
 
 local function buildParade(map: Folder): ParadeInfo
-	local folder = folder("Parade", map) -- Name wird vom Client gesucht (Attribute = Pfad + Uhr)
+	local paradeFolder = folder("Parade", map) -- Name wird vom Client gesucht (Attribute = Pfad + Uhr)
 	local path = ParadePath.FromConfig(Config)
 	if not path then
 		warn("[MapBuilder] Config.Parade.Path fehlt/kaputt – gerade Ersatz-Straße")
 		path = ParadePath.Build({ Vector3.new(0, 0, -214), Vector3.new(0, 0, 214) }, ROAD_TOP)
 	end
 	assert(path, "Parade-Pfad")
-	ParadePath.Export(folder, path)
+	ParadePath.Export(paradeFolder, path)
 	local roadWidth = tonumber(Config.Parade and Config.Parade.RoadWidth) or 20
 	local half = roadWidth / 2
 	local top = path.RoadTop
@@ -474,14 +470,14 @@ local function buildParade(map: Folder): ParadeInfo
 			CFrame = CFrame.lookAt(mid, b) - Vector3.new(0, ROAD_HEIGHT / 2, 0),
 			Material = Enum.Material.Plastic,
 			Color = ROAD_COLOR,
-			Parent = folder,
+			Parent = paradeFolder,
 		})
 		studs(road)
 		if i > 1 then
 			disc("RoadCorner", a, top - ROAD_HEIGHT - 0.02, ROAD_HEIGHT, roadWidth, {
 				Material = Enum.Material.Plastic,
 				Color = ROAD_COLOR,
-				Parent = folder,
+				Parent = paradeFolder,
 			})
 		end
 	end
@@ -514,7 +510,7 @@ local function buildParade(map: Folder): ParadeInfo
 					Material = Enum.Material.Plastic,
 					Color = KERB_COLORS[i % #KERB_COLORS + 1],
 					CastShadow = false,
-					Parent = folder,
+					Parent = paradeFolder,
 				})
 			end
 		end
@@ -531,7 +527,7 @@ local function buildParade(map: Folder): ParadeInfo
 			Position = Vector3.new(base.X, 4.5, base.Z),
 			Material = Enum.Material.Plastic,
 			Color = WHITE,
-			Parent = folder,
+			Parent = paradeFolder,
 		})
 		part({
 			Name = "Flag",
@@ -541,7 +537,7 @@ local function buildParade(map: Folder): ParadeInfo
 			Color = FLAG_COLORS[i % #FLAG_COLORS + 1],
 			CanCollide = false,
 			CastShadow = false,
-			Parent = folder,
+			Parent = paradeFolder,
 		})
 		if i % 3 == 0 then
 			local spot = points[i] - right * (side * (half + 3))
@@ -553,7 +549,7 @@ local function buildParade(map: Folder): ParadeInfo
 				Color = WHITE,
 				CanCollide = false,
 				CastShadow = false,
-				Parent = folder,
+				Parent = paradeFolder,
 			})
 			part({
 				Name = "Balloon",
@@ -563,7 +559,7 @@ local function buildParade(map: Folder): ParadeInfo
 				Material = Enum.Material.SmoothPlastic,
 				Color = FLAG_COLORS[(i + 2) % #FLAG_COLORS + 1],
 				CanCollide = false,
-				Parent = folder,
+				Parent = paradeFolder,
 			})
 		end
 	end
@@ -571,7 +567,7 @@ local function buildParade(map: Folder): ParadeInfo
 	-- Start: UFO-Hangar (Aliens kommen aus der leuchtenden Öffnung), Ziel: Tor (Aliens verschwinden)
 	local first, last = points[1], points[#points]
 	local roofTop = buildParadeHouse(
-		folder,
+		paradeFolder,
 		"StartHangar",
 		first,
 		path.Dirs[1],
@@ -584,7 +580,7 @@ local function buildParade(map: Folder): ParadeInfo
 	disc("UfoDisc", ufoPos, ufoPos.Y, 1.6, HOUSE_WIDTH - 2, {
 		Material = Enum.Material.Plastic,
 		Color = Color3.fromRGB(163, 162, 165),
-		Parent = folder,
+		Parent = paradeFolder,
 	})
 	part({
 		Name = "UfoDome",
@@ -594,10 +590,10 @@ local function buildParade(map: Folder): ParadeInfo
 		Material = Enum.Material.Glass,
 		Color = Color3.fromRGB(120, 220, 255),
 		Transparency = 0.3,
-		Parent = folder,
+		Parent = paradeFolder,
 	})
 	local endTop = buildParadeHouse(
-		folder,
+		paradeFolder,
 		"EndGate",
 		last,
 		-path.Dirs[#path.Dirs],
@@ -606,19 +602,19 @@ local function buildParade(map: Folder): ParadeInfo
 		Color3.fromRGB(255, 205, 40)
 	)
 
-	local titleAnchor = anchorPart("TitleSign", roofTop * CFrame.new(0, 12, 0), folder)
+	local titleAnchor = anchorPart("TitleSign", roofTop * CFrame.new(0, 12, 0), paradeFolder)
 	worldSign(titleAnchor, "Sign", 40, 10, Vector3.zero, 700, {
 		{ Name = "Title", Text = "ALIEN-PARADE", Color = Color3.fromRGB(120, 255, 120), Height = 0.62 },
 		-- geräteneutral (am Handy gibt es keine E/F-Tasten): halten = klauen, kurz = kaufen
 		{ Name = "Hint", Text = "Halten = Klauen • Kaufen = Lieferung", Color = WHITE, Height = 0.38 },
 	})
-	local endAnchor = anchorPart("EndSign", endTop * CFrame.new(0, 4, 0), folder)
+	local endAnchor = anchorPart("EndSign", endTop * CFrame.new(0, 4, 0), paradeFolder)
 	worldSign(endAnchor, "Sign", 16, 5, Vector3.zero, 400, {
 		{ Name = "Title", Text = "ZIEL", Color = Color3.fromRGB(255, 205, 40), Height = 1 },
 	})
 
 	return {
-		Folder = folder,
+		Folder = paradeFolder,
 		Path = path,
 		RoadWidth = roadWidth,
 		Start = first,

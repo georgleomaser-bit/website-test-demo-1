@@ -13,6 +13,9 @@
 --                    sonst bzw. beim Tragen kleine Karte oben rechts
 --   "Shake" (weich und dezent), "Confetti" (fliegt aus zwei Kanonen hoch, fällt mit Schwerkraft,
 --   dreht und flattert), "Alarm" wie bisher
+--   "ParadeBoss" -> Boss-Parade startet: bunte Konfetti-Bursts + Druckwelle am Hangar, drei Trommelschläge
+--   "Announce" -> große Admin-Ansage oben in der Mitte: Kopfbild, Name in Blau + Haken, Text in Weiß
+--                 (ohne Box, federt rein, ~8 s, blendet aus; mehrere nacheinander)
 --  Dazu: Rebirth-Bildschirmblitz (Effects.RebirthFlash, vom HUD aufgerufen).
 --  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
@@ -21,6 +24,7 @@
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
@@ -1570,6 +1574,277 @@ function Effects.RebirthFlash()
 end
 
 -- ---------------------------------------------------------------------
+-- BOSS-PARADE: Konfetti am Hangar + Trommel (lokal, nur in der Nähe)
+-- ---------------------------------------------------------------------
+local DRUM_SOUND = "rbxasset://sounds/action_jump_land.mp3" -- tiefer abgespielt = dumpfe Trommel
+local BOSS_FX_RANGE = 260
+local BOSS_COLORS = {
+	Color3.fromRGB(255, 205, 40),
+	Color3.fromRGB(255, 80, 120),
+	Color3.fromRGB(80, 200, 255),
+	Color3.fromRGB(120, 255, 120),
+}
+local drumSound: Sound? = nil
+
+local function paradeBoss(data: any)
+	if type(data) ~= "table" or typeof(data.Position) ~= "Vector3" then
+		return
+	end
+	local position: Vector3 = data.Position
+	local camera = workspace.CurrentCamera
+	if not camera or (camera.CFrame.Position - position).Magnitude > BOSS_FX_RANGE then
+		return
+	end
+	for i, color in ipairs(BOSS_COLORS) do
+		local offset = Vector3.new((i - 2.5) * 4, 2 + (i % 2) * 2, 0)
+		burst(position + offset, color, 18, i == 1)
+	end
+	ring(position - Vector3.new(0, 3.5, 0), BOSS_COLORS[1], 30, 0.7)
+	local sound = drumSound
+	if sound and not hidden then
+		task.spawn(function()
+			for beat = 1, 3 do
+				sound.PlaybackSpeed = if beat == 3 then 0.45 else 0.6
+				sound.TimePosition = 0
+				sound:Play()
+				task.wait(0.28)
+			end
+		end)
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") and (root.Position - position).Magnitude < 60 then
+		shake(0.3)
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- ADMIN-ANSAGE (oben in der Mitte, ohne Box): Kopfbild, Name + blauer Haken, ":" und Text
+-- Eine Anzeige wird einmal gebaut und wiederverwendet, mehrere Ansagen warten in einer Schlange.
+-- ---------------------------------------------------------------------
+local ANNOUNCE_BLUE = Color3.fromRGB(40, 140, 255)
+local ANNOUNCE_TIME = 8
+local ANNOUNCE_MAX_QUEUE = 5
+local ANNOUNCE_AVATAR = 64
+local ANNOUNCE_NAME_SIZE = 34
+local ANNOUNCE_BADGE = 30
+local ANNOUNCE_IN = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local ANNOUNCE_OUT = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+type AnnounceUI = {
+	Group: CanvasGroup,
+	Scale: UIScale,
+	Avatar: ImageLabel,
+	Name: TextLabel,
+	Badge: Frame,
+	Colon: TextLabel,
+	Text: TextLabel,
+}
+local announceUI: AnnounceUI? = nil
+local announceQueue: { any } = {}
+local announceBusy = false
+local thumbCache: { [number]: string } = {}
+
+local function textStroke(parent: Instance, thickness: number)
+	UI.Create("UIStroke", {
+		Thickness = thickness,
+		Color = BLACK,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = parent,
+	})
+end
+
+local function buildAnnounce(): AnnounceUI?
+	local gui = overlay
+	if not gui then
+		return nil
+	end
+	local group: CanvasGroup = UI.Create("CanvasGroup", {
+		Name = "AdminAnnounce",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, -140),
+		Size = UDim2.new(0.86, 0, 0, 96),
+		BackgroundTransparency = 1,
+		GroupTransparency = 1,
+		Visible = false,
+		ZIndex = 30,
+		Parent = gui,
+	})
+	local scale: UIScale = UI.Create("UIScale", { Scale = 1, Parent = group })
+	local avatar: ImageLabel = UI.Create("ImageLabel", {
+		Name = "Avatar",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 4, 0.5, 0),
+		Size = UDim2.fromOffset(ANNOUNCE_AVATAR, ANNOUNCE_AVATAR),
+		BackgroundColor3 = Color3.fromRGB(200, 205, 215),
+		Image = "",
+		ZIndex = 31,
+		Parent = group,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	UI.Create("UIStroke", { Thickness = 2, Color = WHITE, Parent = avatar })
+	local nameLabel: TextLabel = UI.Create("TextLabel", {
+		Name = "Name",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, ANNOUNCE_AVATAR + 14, 0.5, 0),
+		Size = UDim2.fromOffset(100, 44),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.FredokaOne,
+		TextSize = ANNOUNCE_NAME_SIZE,
+		TextColor3 = ANNOUNCE_BLUE,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 31,
+		Parent = group,
+	})
+	textStroke(nameLabel, 3)
+	-- Haken-Badge (selbst gezeichnet): zwei gedrehte blaue Quadrate = Zackenkreis, weißer Haken
+	local badge: Frame = UI.Create("Frame", {
+		Name = "Badge",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.fromOffset(ANNOUNCE_BADGE, ANNOUNCE_BADGE),
+		BackgroundTransparency = 1,
+		ZIndex = 31,
+		Parent = group,
+	})
+	for _, rotation in ipairs({ 0, 45 }) do
+		UI.Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(0.78, 0.78),
+			Rotation = rotation,
+			BackgroundColor3 = ANNOUNCE_BLUE,
+			BorderSizePixel = 0,
+			ZIndex = 31,
+			Parent = badge,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.2, 0) }) })
+	end
+	UI.Create("TextLabel", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBlack,
+		Text = "✓",
+		TextScaled = true,
+		TextColor3 = WHITE,
+		ZIndex = 32,
+		Parent = badge,
+	})
+	local colon: TextLabel = UI.Create("TextLabel", {
+		Name = "Colon",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.fromOffset(14, 44),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.FredokaOne,
+		TextSize = ANNOUNCE_NAME_SIZE,
+		Text = ":",
+		TextColor3 = WHITE,
+		ZIndex = 31,
+		Parent = group,
+	})
+	textStroke(colon, 3)
+	local text: TextLabel = UI.Create("TextLabel", {
+		Name = "Text",
+		AnchorPoint = Vector2.new(0, 0.5),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.FredokaOne,
+		TextScaled = true,
+		TextWrapped = true,
+		TextColor3 = WHITE,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 31,
+		Parent = group,
+	})
+	UI.Create("UITextSizeConstraint", { MaxTextSize = 44, MinTextSize = 14, Parent = text })
+	textStroke(text, 3)
+	return {
+		Group = group,
+		Scale = scale,
+		Avatar = avatar,
+		Name = nameLabel,
+		Badge = badge,
+		Colon = colon,
+		Text = text,
+	}
+end
+
+local function headshot(userId: number): string
+	local cached = thumbCache[userId]
+	if cached then
+		return cached
+	end
+	if userId <= 0 then
+		return ""
+	end
+	local ok, image = pcall(function()
+		return Players:GetUserThumbnailAsync(userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+	end)
+	if ok and type(image) == "string" then
+		thumbCache[userId] = image
+		return image
+	end
+	return ""
+end
+
+-- Name, Haken, ":" nebeneinander, der Text nimmt den Rest der Breite (bricht um, wenn er lang ist)
+local function layoutAnnounce(ui: AnnounceUI, name: string)
+	local nameWidth = TextService:GetTextSize(name, ANNOUNCE_NAME_SIZE, Enum.Font.FredokaOne, Vector2.new(1000, 100)).X
+		+ 4
+	local x = ANNOUNCE_AVATAR + 14
+	ui.Name.Size = UDim2.fromOffset(nameWidth, 44)
+	x += nameWidth + 6
+	ui.Badge.Position = UDim2.new(0, x, 0.5, 0)
+	x += ANNOUNCE_BADGE + 2
+	ui.Colon.Position = UDim2.new(0, x, 0.5, 0)
+	x += 18
+	ui.Text.Position = UDim2.new(0, x, 0.5, 0)
+	ui.Text.Size = UDim2.new(1, -x - 4, 1, -4)
+end
+
+local function showNextAnnounce()
+	local ui = announceUI
+	if not ui then
+		return
+	end
+	announceBusy = true
+	while #announceQueue > 0 do
+		local data = table.remove(announceQueue, 1)
+		local name = string.sub(tostring(data.Name or "Admin"), 1, 40)
+		ui.Name.Text = name
+		ui.Text.Text = tostring(data.Text)
+		ui.Avatar.Image = headshot(tonumber(data.UserId) or 0)
+		layoutAnnounce(ui, name)
+		ui.Group.Visible = true
+		ui.Group.GroupTransparency = 1
+		ui.Group.Position = UDim2.new(0.5, 0, 0, -140)
+		ui.Scale.Scale = 0.85
+		TweenService:Create(ui.Group, ANNOUNCE_IN, { Position = UDim2.new(0.5, 0, 0, 14), GroupTransparency = 0 })
+			:Play()
+		TweenService:Create(ui.Scale, ANNOUNCE_IN, { Scale = 1 }):Play()
+		task.wait(ANNOUNCE_TIME)
+		local out = TweenService:Create(ui.Group, ANNOUNCE_OUT, { GroupTransparency = 1 })
+		out:Play()
+		out.Completed:Wait()
+		ui.Group.Visible = false
+		task.wait(0.2)
+	end
+	announceBusy = false
+end
+
+local function announce(data: any)
+	if type(data) ~= "table" or type(data.Text) ~= "string" or data.Text == "" then
+		return
+	end
+	if not announceUI then
+		announceUI = buildAnnounce()
+	end
+	if #announceQueue >= ANNOUNCE_MAX_QUEUE then
+		table.remove(announceQueue, 1) -- die älteste wartende Ansage fällt weg
+	end
+	table.insert(announceQueue, data)
+	if not announceBusy then
+		task.spawn(showNextAnnounce)
+	end
+end
+
+-- ---------------------------------------------------------------------
 -- ÖFFENTLICH
 -- ---------------------------------------------------------------------
 function Effects.Play(name: any, strength: any, data: any)
@@ -1604,6 +1879,10 @@ function Effects.Play(name: any, strength: any, data: any)
 		confetti(amount)
 	elseif name == "Alarm" then
 		task.spawn(alarm)
+	elseif name == "ParadeBoss" then
+		paradeBoss(data)
+	elseif name == "Announce" then
+		announce(data)
 	end
 end
 
@@ -1646,6 +1925,8 @@ function Effects.Init(context: any)
 	buildFrozen()
 	buildCoins()
 	buildShards()
+	-- Trommel für die Boss-Parade (Sound direkt im Ordner = überall gleich laut)
+	drumSound = UI.Create("Sound", { Name = "ParadeDrum", SoundId = DRUM_SOUND, Volume = 0.8, Parent = fxFolder })
 	RunService.RenderStepped:Connect(function(dt: number)
 		stepFlyNumbers(dt)
 		if #flights > 0 then

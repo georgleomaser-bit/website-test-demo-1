@@ -68,14 +68,15 @@ Später ändern: **Home → Game Settings → Basic Info**.
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteore sind Alien-Eier und fahren auf dem Laufband vorbei! KLAU sie gratis und renn nach Hause, bevor dich jemand bonkt. Oder kauf sie: Dann fliegen sie von allein in deine Base. Dort schlüpfen ALIENS und bringen dir Geld! 😱
+Meteore sind Alien-Eier! Kleine Aliens tragen sie in einer Parade durch die Map. KLAU sie gratis und renn nach Hause, bevor dich jemand bonkt. Oder kauf sie: Dann fliegen sie von allein in deine Base. Dort schlüpfen ALIENS und bringen dir Geld! 😱
 
-🦹 Klau Eier vom Band (E halten) oder kauf sie (F)
+🦹 Klau Eier aus der Alien-Parade (E halten) oder kauf sie (F)
+👑 Boss-Aliens tragen die seltensten Eier – mit Leibwächtern
 🐣 Aus jedem Ei schlüpft ein Alien: Normal, Selten oder Ultra
 💰 Aliens bringen Geld pro Sekunde
 😈 Klau aus fremden Basen, bonk Diebe weg
 🥚 EGG RUSH: Eier regnen auf die ganze Map. Der Schnellste gewinnt!
-🌠 Meteoritenschauer: 2x Meteore, keine Locks, 3x Glück
+🌠 Meteoritenschauer: volle Parade, keine Locks, 3x Glück
 🎡 Glücksrad, 🎁 Geschenke und 📜 Tagesaufgaben
 🛠️ Gadgets: Speed Coil, Falle, Super-Bonk, Unsichtbarkeits-Umhang
 👟 7 Laufbänder: sammle Schritte, werde superschnell
@@ -94,14 +95,15 @@ Viele Roblox-Spieler sprechen Englisch. Darum gibt es auch eine englische Versio
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteors are alien eggs and roll by on the conveyor belt! STEAL them for free and run home before someone bonks you. Or buy them and they fly straight into your base. There, ALIENS hatch and earn you cash! 😱
+Meteors are alien eggs! Little aliens carry them through the map in a parade. STEAL them for free and run home before someone bonks you. Or buy them and they fly straight into your base. There, ALIENS hatch and earn you cash! 😱
 
-🦹 Steal eggs from the belt (hold E) or buy them (F)
+🦹 Steal eggs from the alien parade (hold E) or buy them (F)
+👑 Boss aliens carry the rarest eggs – with bodyguards
 🐣 Every egg hatches an alien: Normal, Rare or Ultra
 💰 Aliens earn cash every second
 😈 Steal from other bases, bonk thieves away
 🥚 EGG RUSH: eggs rain all over the map. Fastest player wins!
-🌠 Meteor showers: 2x meteors, no locks, 3x luck
+🌠 Meteor showers: packed parade, no locks, 3x luck
 🎡 Lucky wheel, 🎁 gifts and 📜 daily quests
 🛠️ Gadgets: Speed Coil, trap, Super Bonk, invisibility cloak
 👟 7 treadmills: collect steps, get super fast

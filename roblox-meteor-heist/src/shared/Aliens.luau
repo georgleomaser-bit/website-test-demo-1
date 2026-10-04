@@ -241,14 +241,14 @@ end
 
 -- COMMON -------------------------------------------------------------
 add("Pebble", "Common", {
-	{ "PebbleBlob", "Kiesel-Blobby", "Blob", rgb(150, 145, 140), rgb(255, 200, 120), 2, 1 },
-	{ "PebbleBug", "Steinkäfer Kurt", "Bug", rgb(110, 105, 100), rgb(255, 170, 60), 2, 2 },
-	{ "PebbleKing", "König Kieselstein", "King", rgb(170, 165, 160), rgb(200, 40, 60), 2, 0 },
+	{ "PebbleBlob", "Kiesel-Blobby", "Blob", rgb(178, 184, 200), rgb(255, 190, 120), 2, 1 },
+	{ "PebbleBug", "Steinkäfer Kurt", "Bug", rgb(128, 136, 156), rgb(255, 170, 60), 2, 2 },
+	{ "PebbleKing", "König Kieselstein", "King", rgb(196, 198, 210), rgb(220, 50, 75), 2, 0 },
 })
 add("Dusty", "Common", {
-	{ "DustyGhost", "Staubi Puff", "Ghost", rgb(190, 165, 135), rgb(120, 90, 60), 2, 0 },
-	{ "DustyMushroom", "Krümel-Pilz", "Mushroom", rgb(150, 120, 90), rgb(255, 235, 200), 2, 0 },
-	{ "DustyRobot", "Sandsturm-Bot 3000", "Robot", rgb(170, 140, 100), rgb(255, 140, 40), 2, 1 },
+	{ "DustyGhost", "Staubi Puff", "Ghost", rgb(232, 208, 172), rgb(190, 130, 80), 2, 0 },
+	{ "DustyMushroom", "Krümel-Pilz", "Mushroom", rgb(196, 132, 84), rgb(255, 240, 210), 2, 0 },
+	{ "DustyRobot", "Sandsturm-Bot 3000", "Robot", rgb(214, 164, 98), rgb(255, 140, 40), 2, 1 },
 })
 add("Ember", "Common", {
 	{ "EmberBlob", "Glut-Glibber", "Blob", rgb(220, 100, 50), rgb(255, 220, 80), 2, 0 },
@@ -319,9 +319,9 @@ add("Aurora", "Legendary", {
 	{ "AuroraCrystal", "Prisma-Queen Aurora", "Crystal", rgb(100, 255, 200), rgb(255, 140, 255), 3, 0 },
 })
 add("Titan", "Legendary", {
-	{ "TitanRobot", "Felsbrocken-Bot", "Robot", rgb(110, 90, 80), rgb(255, 150, 40), 2, 0 },
-	{ "TitanSpiky", "Granit-Grummel", "Spiky", rgb(120, 100, 90), rgb(255, 200, 120), 2, 0 },
-	{ "TitanCyclops", "Titan Glotzauge", "Cyclops", rgb(130, 105, 90), rgb(255, 90, 40), 1, 0 },
+	{ "TitanRobot", "Felsbrocken-Bot", "Robot", rgb(150, 120, 104), rgb(255, 150, 40), 2, 0 },
+	{ "TitanSpiky", "Granit-Grummel", "Spiky", rgb(160, 128, 112), rgb(255, 200, 120), 2, 0 },
+	{ "TitanCyclops", "Titan Glotzauge", "Cyclops", rgb(170, 132, 110), rgb(255, 90, 40), 1, 0 },
 })
 
 -- MYTHIC -------------------------------------------------------------

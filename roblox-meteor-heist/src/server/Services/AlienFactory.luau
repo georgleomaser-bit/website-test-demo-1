@@ -1,8 +1,10 @@
 --!strict
--- Baut das Aussehen eines Aliens (schlüpft aus einem Meteor) aus wenigen einfachen Teilen:
--- Körperform nach "Archetype" (Aliens.luau), Farben, Material/Farbe nach Mutation,
--- Effekte (Regenbogen, Aura, Umriss, Licht) und Namensschild darüber.
+-- Baut das Aussehen eines Aliens (schlüpft aus einem Meteor) im Stil knuffiger Roblox-Pets:
+-- wenige, runde, saubere Formen, große glänzende Augen (mit weißem Lichtreflex), Bäckchen,
+-- kleiner Mund. Jede Körperform ("Archetype", Aliens.luau) hat EIN klares Erkennungsmerkmal.
 --
+--  * Stufen: Normal = schlicht, Selten = ein Extra-Detail (je Form eins), Ultra = Flügel +
+--    Heiligenschein (King: Flügel + leuchtender Kronen-Edelstein). Admin: immer Flügel + Schein.
 --  * Mutationen: Gold (Folie), Diamond (Glas), Cosmic (Neon + Funken), Frost (Eis-Körper,
 --    Schnee-Füße, Schneeflocken), Lava (glühender Körper, Vulkangestein, kleines Feuer),
 --    Rainbow (alle farbigen Teile mit Attribut "Rainbow" -> der Client färbt sie durch).
@@ -10,7 +12,11 @@
 --  * Pivot (model:GetPivot()) = Bodenmitte -> model:PivotTo(Pad-Oberseite) stellt das Alien aufs Pad.
 --  * Das Gesicht zeigt in Blickrichtung des Pivots (LookVector / lokales -Z).
 --  * Alle Teile sind verankert, ohne Kollision. Nur "Body" (PrimaryPart) ist abfragbar (für Prompts).
---  * Höchstens 12 Teile pro Alien (Admin: 16), damit auch volle Basen nicht laggen.
+--  * Höchstens 18 Teile pro Alien (Admin: 24), damit auch volle Basen nicht laggen. Die Teile werden
+--    nach Wichtigkeit gebaut (Körper, Augen, Mund, Stufen-Extra, Bäckchen, Antennen, ...), was nicht
+--    mehr ins Budget passt, fällt weg.
+--  * Augen-Teile (Eye, Iris, Pupil, Shine) haben dieselbe Teilgröße wie ihr Auge (kleiner sichtbar per
+--    SpecialMesh.Scale) -> beim Blinzeln (WorldFX) sinken sie alle gleich tief in den Kopf.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")) :: any
@@ -20,7 +26,7 @@ local Aliens = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Al
 type AlienDef = Aliens.AlienDef
 type Entry = { Id: string, Alien: string?, Mut: string?, Lv: number? }
 
--- Aussehen einer Mutation an "Main" (Körper) und "Shade" (Füße, Käfer-Kopf, Arme, Antennen).
+-- Aussehen einer Mutation an "Main" (Körper), "Light" (Bauch, Schnauze) und "Shade" (Füße, Arme, Antennen).
 -- Die Farbe kommt aus Config.Mutations; ohne Eintrag hier wird nur umgefärbt.
 type MutStyle = {
 	Material: Enum.Material,
@@ -31,6 +37,9 @@ type MutStyle = {
 	ShadeAlpha: number?,
 }
 
+-- Ellipsoid (Mitte + Radien), auf dessen Vorderseite (-Z) ein Gesicht sitzt
+type Face = { c: Vector3, r: Vector3 }
+
 type Ctx = {
 	model: Model,
 	s: number, -- Gesamt-Skalierung (Seltenheit * Stufe * Modus * Level)
@@ -38,39 +47,47 @@ type Ctx = {
 	accent: Color3,
 	eyes: number,
 	antennas: number,
+	tier: number, -- 1 = Normal, 2 = Selten, 3 = Ultra
+	rank: number, -- Seltenheits-Rang (1 Common .. 10 Admin)
+	admin: boolean,
+	faceRole: string, -- Rolle der Fläche, auf der die Augen sitzen (für die Augenfarbe)
 	mutStyle: MutStyle?,
 	mutColor: Color3?, -- nil = eigene Farbe (Normal, Regenbogen)
 	rainbow: boolean, -- Körper + Leucht-Teile färben sich durch
 	rainbowShade: boolean, -- auch die Shade-Teile (Regenbogen-Mutation)
 	carry: boolean,
-	darkFace: boolean, -- sehr dunkles Gesicht -> leuchtende statt schwarze Knopfaugen
 	mainMaterial: Enum.Material,
 	mainTransparency: number,
 	mainReflectance: number,
 	count: number,
 	max: number,
 	top: number, -- höchster Punkt (unskaliert)
+	haloZ: number?, -- Heiligenschein vorgemerkt (wird zuletzt über dem höchsten Punkt gebaut)
 }
 
 type Builder = (ctx: Ctx) -> (Part, number)
 
 local AlienFactory = {}
 
-local MAX_PARTS = 12
-local MAX_PARTS_ADMIN = 16
+local MAX_PARTS = 18
+local MAX_PARTS_ADMIN = 24
 local ADMIN_RANK = 10
 local LEVEL_GROWTH = 0.012 -- +1,2% Größe pro Level (Level 20 = +23%)
 local LABEL_GAP = 1.6
-local SHADOW_MIN_VOLUME = 15 -- nur große Teile werfen Schatten (bewegte Schattenwerfer kosten viel)
+local SHADOW_MIN_VOLUME = 6 -- nur große Teile werfen Schatten (bewegte Schattenwerfer kosten viel)
 local MODE_SCALE: { [string]: number } = { Base = 1, Photo = 1, Carry = 0.55 }
 
-local DARK = Color3.fromRGB(25, 22, 30)
+local DARK = Color3.fromRGB(28, 24, 42) -- Augen, Mund
 local WHITE = Color3.fromRGB(250, 250, 255)
 local GOLD = Color3.fromRGB(255, 200, 40)
-local STALK = Color3.fromRGB(245, 235, 215)
-local METAL = Color3.fromRGB(70, 72, 82)
+local STALK = Color3.fromRGB(250, 238, 214)
+local METAL = Color3.fromRGB(92, 98, 115)
 local ROCK = Color3.fromRGB(70, 65, 75)
 local BLACK = Color3.new(0, 0, 0)
+local BLUSH = Color3.fromRGB(255, 105, 150)
+local TONGUE = Color3.fromRGB(255, 110, 130)
+local HALO = Color3.fromRGB(255, 226, 110)
+local LEAF = Color3.fromRGB(90, 210, 90)
 local FROST_LIGHT = Color3.fromRGB(190, 235, 255)
 local LAVA_ORANGE = Color3.fromRGB(255, 110, 30)
 local LAVA_DARK = Color3.fromRGB(120, 20, 0)
@@ -80,14 +97,18 @@ local FALLBACK_RARITY_COLORS: { [string]: Color3 } = { Admin = Color3.fromRGB(25
 local HIGHLIGHT_TIER = "Ultra"
 local HIGHLIGHT_RARITY = "Admin"
 
-local SHADE_ALPHA = 0.35 -- Shade-Teile: so viel dunkler als der Körper
+local SHADE_ALPHA = 0.3 -- Shade-Teile: so viel dunkler als der Körper
+local LIGHT_ALPHA = 0.55 -- Light-Teile (Bauch, Schnauze): so viel heller als der Körper
+local DARK_FACE = 0.2 -- Gesichtsfläche dunkler als das -> leuchtende statt dunkle Augen
+
+local TIER_INDEX: { [string]: number } = { Normal = 1, Selten = 2, Ultra = 3 }
 
 -- Teile, die der Client als Augen erkennt (Attribut "Eye" -> lokales Blinzeln)
-local EYE_PARTS: { [string]: boolean } = { Eye = true, Pupil = true, Iris = true }
+local EYE_PARTS: { [string]: boolean } = { Eye = true, Pupil = true, Iris = true, Shine = true }
 
 local MUT_STYLES: { [string]: MutStyle } = {
-	Gold = { Material = Enum.Material.Foil },
-	Diamond = { Material = Enum.Material.Glass, Transparency = 0.15 },
+	Gold = { Material = Enum.Material.Foil, Reflectance = 0.1 },
+	Diamond = { Material = Enum.Material.Glass, Transparency = 0.2, Reflectance = 0.15 },
 	Cosmic = { Material = Enum.Material.Neon },
 	-- Eis-Körper, Füße/Antennen wie aus Schnee (+ Schneeflocken, siehe addEffects)
 	Frost = {
@@ -189,7 +210,19 @@ local function mutationText(mut: any): string
 	return icon and (icon .. " " .. name) or name
 end
 
--- Farbe der Shade-Teile (Füße, Käfer-Kopf, Arme, Antennen) aus der Körperfarbe
+local function luminance(color: Color3): number
+	return 0.299 * color.R + 0.587 * color.G + 0.114 * color.B
+end
+
+-- -------------------------------------------------------------------
+-- Farben + Material nach Rolle
+-- -------------------------------------------------------------------
+-- Körperfarbe (Mutation hat Vorrang)
+local function mainColorOf(ctx: Ctx): Color3
+	return ctx.mutColor or ctx.color
+end
+
+-- Farbe der Shade-Teile (Füße, Arme, Antennen) aus der Körperfarbe
 local function shadeColorOf(ctx: Ctx, base: Color3): Color3
 	local style = ctx.mutStyle
 	local tint = style and style.ShadeTint or BLACK
@@ -197,22 +230,106 @@ local function shadeColorOf(ctx: Ctx, base: Color3): Color3
 	return base:Lerp(tint, alpha)
 end
 
--- Farbe der Fläche, auf der das Gesicht sitzt (für die Wahl der Augenfarbe).
--- Regenbogen-Teile färbt der Client in hellen, satten Farben -> zählen als hell.
-local function faceColorOf(look: Aliens.AlienLook, ctx: Ctx): Color3
-	if look.Archetype == "Mushroom" then
+-- Farbe, die eine Rolle bekommt (ohne Regenbogen-Durchfärben)
+local function roleColor(ctx: Ctx, role: string): Color3
+	if role == "Main" then
+		return mainColorOf(ctx)
+	elseif role == "Shade" then
+		return shadeColorOf(ctx, mainColorOf(ctx))
+	elseif role == "Light" then
+		return mainColorOf(ctx):Lerp(WHITE, LIGHT_ALPHA)
+	elseif role == "Accent" or role == "Glow" or role == "Cape" then
+		return ctx.accent
+	elseif role == "Dark" then
+		return DARK
+	elseif role == "White" or role == "Shine" then
+		return WHITE
+	elseif role == "Blush" then
+		return BLUSH:Lerp(mainColorOf(ctx), 0.2)
+	elseif role == "Tongue" then
+		return TONGUE
+	elseif role == "Gold" then
+		return GOLD
+	elseif role == "Stalk" then
 		return STALK
+	elseif role == "StalkShade" then
+		return STALK:Lerp(mainColorOf(ctx), 0.35)
+	elseif role == "Metal" then
+		return METAL
+	elseif role == "Rock" then
+		return ctx.color:Lerp(ROCK, 0.65)
+	elseif role == "Wing" then
+		return WHITE:Lerp(ctx.accent, 0.12)
+	elseif role == "Halo" then
+		return HALO
+	elseif role == "Leaf" then
+		return LEAF
 	end
-	local base = ctx.mutColor or look.Color
-	if look.Archetype == "Bug" then
-		-- Käfer: Gesicht sitzt am Kopf (Rolle "Shade")
-		return ctx.rainbowShade and WHITE or shadeColorOf(ctx, base)
-	end
-	return ctx.rainbow and WHITE or base
+	return ctx.color
 end
 
-local function luminance(color: Color3): number
-	return 0.299 * color.R + 0.587 * color.G + 0.114 * color.B
+-- Farbe der Fläche, auf der das Gesicht sitzt (Regenbogen färbt der Client hell + satt -> zählt als hell)
+local function faceColorOf(ctx: Ctx): Color3
+	if ctx.rainbow and ctx.faceRole == "Main" then
+		return WHITE
+	end
+	return roleColor(ctx, ctx.faceRole)
+end
+
+local function styleRole(ctx: Ctx, part: Part, role: string)
+	local material = Enum.Material.SmoothPlastic
+	local color = roleColor(ctx, role)
+	local transparency = 0
+	local reflectance = 0
+	if role == "Main" or role == "Shade" or role == "Light" then
+		material = ctx.mainMaterial
+		transparency = ctx.mainTransparency
+		reflectance = ctx.mainReflectance
+		local style = ctx.mutStyle
+		if style then
+			material = style.Material
+			transparency = math.max(transparency, style.Transparency or 0)
+			reflectance = style.Reflectance or 0
+		end
+		if role == "Shade" then
+			if style and style.ShadeMaterial then
+				material = style.ShadeMaterial
+			end
+			if ctx.rainbowShade then
+				part:SetAttribute("Rainbow", true)
+			end
+		elseif role == "Main" and ctx.rainbow then
+			part:SetAttribute("Rainbow", true)
+		end
+	elseif role == "Glow" then
+		material = Enum.Material.Neon
+		if ctx.rainbow then
+			part:SetAttribute("Rainbow", true)
+		end
+	elseif role == "Shine" then
+		material = Enum.Material.Neon
+	elseif role == "Dark" or role == "Metal" then
+		reflectance = 0.2
+	elseif role == "Blush" then
+		transparency = 0.25
+	elseif role == "Gold" then
+		material = Enum.Material.Foil
+		reflectance = 0.1
+	elseif role == "Rock" then
+		material = Enum.Material.Slate
+	elseif role == "Cape" then
+		material = Enum.Material.Fabric
+	elseif role == "Halo" then
+		material = Enum.Material.Neon
+		transparency = 0.15
+		if ctx.rainbow then
+			part:SetAttribute("Rainbow", true)
+		end
+	end
+	part.Material = material
+	part.Color = color
+	part.Transparency = transparency
+	part.Reflectance = reflectance
 end
 
 -- -------------------------------------------------------------------
@@ -245,7 +362,8 @@ local function facing(pos: Vector3, normal: Vector3): CFrame
 end
 
 -- Punkt + Normale auf der Vorderseite (-Z) eines Ellipsoids bei Höhe y und seitlich x
-local function frontPoint(center: Vector3, radii: Vector3, x: number, y: number): (Vector3, Vector3)
+local function frontPoint(face: Face, x: number, y: number): (Vector3, Vector3)
+	local center, radii = face.c, face.r
 	local dx = (x - center.X) / radii.X
 	local dy = (y - center.Y) / radii.Y
 	local depth = math.sqrt(math.max(0, 1 - dx * dx - dy * dy))
@@ -255,76 +373,36 @@ local function frontPoint(center: Vector3, radii: Vector3, x: number, y: number)
 	return point, normal.Magnitude > 1e-4 and normal.Unit or -Vector3.zAxis
 end
 
+-- CFrame auf der Vorderseite eines Ellipsoids, "out" Studs nach außen versetzt, Blick nach außen
+local function onFace(face: Face, x: number, y: number, out: number): CFrame
+	local point, normal = frontPoint(face, x, y)
+	return facing(point + normal * out, normal)
+end
+
+-- Ebene Vorderseite (z.B. Roboter-Bildschirm, Kristall): als sehr großes Ellipsoid genähert
+local function flatFace(x: number, y: number, z: number): Face
+	return { c = Vector3.new(x, y, z + 200), r = Vector3.one * 200 }
+end
+
 -- Höhe der Oberseite eines Ellipsoids bei (x, z)
-local function topY(center: Vector3, radii: Vector3, x: number, z: number): number
+local function topY(face: Face, x: number, z: number): number
+	local center, radii = face.c, face.r
 	local dx = (x - center.X) / radii.X
 	local dz = (z - center.Z) / radii.Z
 	return center.Y + radii.Y * math.sqrt(math.max(0, 1 - dx * dx - dz * dz))
 end
 
-local function styleRole(ctx: Ctx, part: Part, role: string)
-	local material = Enum.Material.SmoothPlastic
-	local color = ctx.color
-	local transparency = 0
-	local reflectance = 0
-	if role == "Main" or role == "Shade" then
-		material = ctx.mainMaterial
-		transparency = ctx.mainTransparency
-		reflectance = ctx.mainReflectance
-		color = ctx.mutColor or ctx.color
-		local style = ctx.mutStyle
-		if style then
-			material = style.Material
-			transparency = math.max(transparency, style.Transparency or 0)
-			reflectance = style.Reflectance or 0
-		end
-		if role == "Shade" then
-			if style and style.ShadeMaterial then
-				material = style.ShadeMaterial
-			end
-			color = shadeColorOf(ctx, color)
-			if ctx.rainbowShade then
-				part:SetAttribute("Rainbow", true)
-			end
-		elseif ctx.rainbow then
-			part:SetAttribute("Rainbow", true)
-		end
-	elseif role == "Accent" then
-		color = ctx.accent
-	elseif role == "Glow" then
-		color = ctx.accent
-		material = Enum.Material.Neon
-		if ctx.rainbow then
-			part:SetAttribute("Rainbow", true)
-		end
-	elseif role == "Dark" then
-		color = DARK
-		reflectance = 0.25
-	elseif role == "White" then
-		color = WHITE
-	elseif role == "Gold" then
-		color = GOLD
-		material = Enum.Material.Foil
-	elseif role == "Stalk" then
-		color = STALK
-	elseif role == "Metal" then
-		color = METAL
-		reflectance = 0.2
-	elseif role == "Rock" then
-		color = ctx.color:Lerp(ROCK, 0.65)
-		material = Enum.Material.Slate
-	elseif role == "Cape" then
-		color = ctx.accent
-		material = Enum.Material.Fabric
-	end
-	part.Material = material
-	part.Color = color
-	part.Transparency = transparency
-	part.Reflectance = reflectance
-end
-
--- shape: "Block" (Standard), "Ball", "Cylinder" (Achse = X) oder "Ellipsoid"
-local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf: CFrame, shape: string?): Part
+-- shape: "Block" (Standard), "Ball", "Cylinder" (Achse = X) oder "Ellipsoid".
+-- meshScale (nur Ellipsoid): sichtbare Größe = Size * meshScale (für Augen-Teile, siehe oben)
+local function makePart(
+	ctx: Ctx,
+	name: string,
+	role: string,
+	size: Vector3,
+	cf: CFrame,
+	shape: string?,
+	meshScale: Vector3?
+): Part
 	ctx.count += 1
 	local s = ctx.s
 	local part = Instance.new("Part")
@@ -336,6 +414,9 @@ local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf:
 	elseif shape == "Ellipsoid" then
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.Sphere
+		if meshScale then
+			mesh.Scale = meshScale
+		end
 		mesh.Parent = part
 	end
 	part.Size = size * s
@@ -346,7 +427,8 @@ local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf:
 	part.CanQuery = false
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
-	local scaled = part.Size
+	local visible = meshScale and size * meshScale or size
+	local scaled = visible * s
 	part.CastShadow = not ctx.carry and scaled.X * scaled.Y * scaled.Z >= SHADOW_MIN_VOLUME
 	if ctx.carry then
 		part.Massless = true
@@ -355,17 +437,25 @@ local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf:
 	if EYE_PARTS[name] then
 		part:SetAttribute("Eye", true) -- Client: Augen blinzeln lokal (rein optisch)
 	end
-	ctx.top = math.max(ctx.top, cf.Position.Y + halfHeight(cf, size))
+	ctx.top = math.max(ctx.top, cf.Position.Y + halfHeight(cf, visible))
 	part.Parent = ctx.model
 	return part
 end
 
 -- Wie makePart, aber nur wenn noch Platz im Teile-Budget ist
-local function tryPart(ctx: Ctx, name: string, role: string, size: Vector3, cf: CFrame, shape: string?): Part?
+local function tryPart(
+	ctx: Ctx,
+	name: string,
+	role: string,
+	size: Vector3,
+	cf: CFrame,
+	shape: string?,
+	meshScale: Vector3?
+): Part?
 	if not room(ctx, 1) then
 		return nil
 	end
-	return makePart(ctx, name, role, size, cf, shape)
+	return makePart(ctx, name, role, size, cf, shape, meshScale)
 end
 
 -- Länglicher Teil von "from" nach "to" (Arme, Beine, Tentakel, Antennen)
@@ -389,86 +479,154 @@ local function stick(
 	)
 end
 
--- -------------------------------------------------------------------
--- Gesicht: Augen, Mund, Antennen
--- -------------------------------------------------------------------
--- style: "Big" (weiß + Pupille), "Beady" (glänzend schwarz), "Oval" (Geist), "Glow" (Roboter)
-local function eyeParts(style: string): number
-	return style == "Big" and 2 or 1
-end
-
-local function addEye(ctx: Ctx, pos: Vector3, normal: Vector3, size: number, style: string)
-	local cf = facing(pos, normal)
-	if style == "Big" then
-		makePart(ctx, "Eye", "White", Vector3.one * size, cf, "Ball")
-		makePart(ctx, "Pupil", "Dark", Vector3.one * size * 0.5, cf * CFrame.new(0, 0, -size * 0.32), "Ball")
-	elseif style == "Oval" then
-		local role = ctx.darkFace and "Glow" or "Dark"
-		makePart(ctx, "Eye", role, Vector3.new(size * 0.6, size, size * 0.35), cf, "Ellipsoid")
-	elseif style == "Glow" then
-		makePart(ctx, "Eye", "Glow", Vector3.new(size, size * 0.7, size * 0.4), cf, "Block")
-	else
-		makePart(ctx, "Eye", ctx.darkFace and "Glow" or "Dark", Vector3.one * size, cf, "Ball")
+-- Paar links/rechts (nur wenn beide ins Budget passen). make(side) baut eine Seite (-1 / 1).
+local function pair(ctx: Ctx, make: (side: number) -> ())
+	if room(ctx, 2) then
+		make(-1)
+		make(1)
 	end
 end
 
--- Seitliche Versätze (x, Höhe) für n Augen
+-- -------------------------------------------------------------------
+-- Gesicht: Augen, Mund, Bäckchen, Antennen
+-- -------------------------------------------------------------------
+-- Seitliche Versätze (x in Studs, Höhe in Augenhöhen) für n Augen
 local function eyeLayout(n: number, spread: number): { Vector2 }
 	if n <= 1 then
 		return { Vector2.zero }
 	elseif n == 2 then
 		return { Vector2.new(-spread, 0), Vector2.new(spread, 0) }
 	elseif n == 3 then
-		return { Vector2.new(-spread * 1.15, -0.05), Vector2.new(0, 0.2), Vector2.new(spread * 1.15, -0.05) }
+		return { Vector2.new(-spread * 1.2, -0.12), Vector2.new(0, 0.3), Vector2.new(spread * 1.2, -0.12) }
 	end
 	return {
-		Vector2.new(-spread * 1.5, -0.12),
-		Vector2.new(-spread * 0.5, 0.05),
-		Vector2.new(spread * 0.5, 0.05),
-		Vector2.new(spread * 1.5, -0.12),
+		Vector2.new(-spread * 1.5, -0.15),
+		Vector2.new(-spread * 0.5, 0.08),
+		Vector2.new(spread * 0.5, 0.08),
+		Vector2.new(spread * 1.5, -0.15),
 	}
 end
 
--- Passt den Augen-Stil ans Budget an (Big -> Beady), damit immer alle Augen da sind
-local function fitEyeStyle(ctx: Ctx, n: number, style: string): string
-	if not room(ctx, n * eyeParts(style)) then
-		return style == "Big" and "Beady" or style
-	end
-	return style
-end
-
-local function addEyesOnEllipsoid(
-	ctx: Ctx,
-	center: Vector3,
-	radii: Vector3,
-	y: number,
-	spread: number,
-	size: number,
-	style: string
-)
+-- Große, glänzende Ovalaugen (dunkel, auf dunkler Fläche leuchtend) mit weißem Lichtreflex.
+-- Ohne Platz im Budget: ohne Reflex (aber immer alle Augen).
+local function addEyes(ctx: Ctx, face: Face, y: number, spread: number, h: number)
 	local n = ctx.eyes
-	if n >= 3 and style == "Big" then
-		style = "Beady"
-		size *= 0.75
+	if n >= 3 then
+		h *= 0.7
+		spread *= 0.75
 	end
-	style = fitEyeStyle(ctx, n, style)
-	local embed = style == "Big" and 0.15 or 0.08
+	local w, d = h * 0.76, h * 0.5
+	local withShine = room(ctx, n * 2)
+	local glow = luminance(faceColorOf(ctx)) < DARK_FACE
+	local role = glow and "Glow" or "Dark"
+	-- leuchtende (helle) Augen auf dunklem Gesicht: dunkler statt weißer Glanzpunkt
+	local shineRole = (glow and luminance(ctx.accent) > 0.75) and "Dark" or "Shine"
+	local size = Vector3.new(w, h, d)
+	local shineScale = Vector3.new(0.36, 0.36 * w / h, 0.3)
 	for _, offset in ipairs(eyeLayout(n, spread)) do
-		local point, normal = frontPoint(center, radii, offset.X, y + offset.Y)
-		addEye(ctx, point + normal * (size * embed), normal, size, style)
+		local cf = onFace(face, offset.X, y + offset.Y * h, d * 0.1)
+		makePart(ctx, "Eye", role, size, cf, "Ellipsoid")
+		if withShine then
+			makePart(
+				ctx,
+				"Shine",
+				shineRole,
+				size,
+				cf * CFrame.new(w * 0.2, h * 0.2, -d * 0.36),
+				"Ellipsoid",
+				shineScale
+			)
+		end
 	end
 end
 
-local function addMouthOnEllipsoid(ctx: Ctx, center: Vector3, radii: Vector3, y: number, width: number)
+-- Ein riesiges Zyklopen-Auge: weiß, Iris in Akzentfarbe, Pupille, Lichtreflex
+local function addBigEye(ctx: Ctx, face: Face, y: number, h: number)
+	local size = Vector3.new(h * 0.94, h, h * 0.6)
+	local cf = onFace(face, 0, y, h * 0.06)
+	makePart(ctx, "Eye", "White", size, cf, "Ellipsoid")
+	local d = size.Z
+	makePart(
+		ctx,
+		"Iris",
+		"Accent",
+		size,
+		cf * CFrame.new(0, -h * 0.03, -d * 0.3),
+		"Ellipsoid",
+		Vector3.new(0.6, 0.58, 0.5)
+	)
+	makePart(
+		ctx,
+		"Pupil",
+		"Dark",
+		size,
+		cf * CFrame.new(0, -h * 0.03, -d * 0.44),
+		"Ellipsoid",
+		Vector3.new(0.32, 0.32, 0.4)
+	)
+	tryPart(
+		ctx,
+		"Shine",
+		"Shine",
+		size,
+		cf * CFrame.new(h * 0.13, h * 0.11, -d * 0.6),
+		"Ellipsoid",
+		Vector3.new(0.17, 0.16, 0.2)
+	)
+end
+
+-- Mund. "Open" = kleines offenes Lächeln, "O" = rundes Staunen. Gibt die Lage zurück (für die Zunge).
+local function addMouth(ctx: Ctx, face: Face, y: number, w: number, style: string): CFrame?
 	if not room(ctx, 1) then
-		return
+		return nil
 	end
-	local point, normal = frontPoint(center, radii, 0, y)
-	makePart(ctx, "Mouth", "Dark", Vector3.new(width, 0.24, 0.3), facing(point, normal), "Ellipsoid")
+	local cf = onFace(face, 0, y, 0.02)
+	local role = luminance(faceColorOf(ctx)) < DARK_FACE and "Glow" or "Dark" -- dunkles Gesicht: leuchtender Mund
+	if style == "O" then
+		makePart(ctx, "Mouth", role, Vector3.new(w * 0.62, w * 0.72, 0.2), cf, "Ellipsoid")
+		return nil
+	end
+	makePart(ctx, "Mouth", role, Vector3.new(w, w * 0.6, 0.22), cf, "Ellipsoid")
+	return cf
 end
 
--- Antennen mit leuchtender Kugel. Weniger Platz im Budget -> erst ohne Kugel, dann weniger Antennen.
--- baseYAt(x) liefert die Höhe der Kopf-Oberseite an der Stelle x.
+-- Zunge im offenen Mund (unwichtig -> wird spät gebaut)
+local function addTongue(ctx: Ctx, mouth: CFrame?, w: number)
+	if mouth then
+		tryPart(
+			ctx,
+			"Tongue",
+			"Tongue",
+			Vector3.new(w * 0.62, w * 0.3, 0.16),
+			mouth * CFrame.new(0, -w * 0.12, -0.05),
+			"Ellipsoid"
+		)
+	end
+end
+
+local function addBlush(ctx: Ctx, face: Face, y: number, x: number, k: number)
+	pair(ctx, function(side)
+		makePart(ctx, "Cheek", "Blush", Vector3.new(0.44, 0.24, 0.12) * k, onFace(face, side * x, y, 0), "Ellipsoid")
+	end)
+end
+
+-- Fläche (Bauch, Schnauze) auf der Vorderseite, etwas herausstehend
+local function addPatch(ctx: Ctx, name: string, role: string, face: Face, y: number, size: Vector3): CFrame?
+	local cf = onFace(face, 0, y, -size.Z * 0.2)
+	if tryPart(ctx, name, role, size, cf, "Ellipsoid") then
+		return cf
+	end
+	return nil
+end
+
+local function addFeet(ctx: Ctx, x: number, z: number, size: Vector3, role: string)
+	pair(ctx, function(side)
+		makePart(ctx, "Foot", role, size, CFrame.new(side * x, size.Y / 2, z), "Ellipsoid")
+	end)
+end
+
+-- Antennen mit Kugel. Weniger Platz im Budget -> erst ohne Kugel, dann weniger Antennen.
+-- baseYAt(x) liefert die Höhe der Kopf-Oberseite an der Stelle x. single = x-Lage einer einzelnen Antenne.
 local function addAntennas(
 	ctx: Ctx,
 	baseYAt: (x: number) -> number,
@@ -476,7 +634,8 @@ local function addAntennas(
 	spread: number,
 	length: number,
 	lean: number,
-	tilt: number
+	tilt: number,
+	single: number?
 )
 	local n = ctx.antennas
 	local perAntenna = 2
@@ -491,402 +650,530 @@ local function addAntennas(
 	if n <= 0 then
 		return
 	end
-	local xs = n == 1 and { 0 } or (n == 2 and { -spread, spread } or { -spread, 0, spread })
+	local xs = n == 1 and { single or 0 } or (n == 2 and { -spread, spread } or { -spread, 0, spread })
+	local tipRole = (ctx.tier >= 3 or ctx.rank >= 6) and "Glow" or "Accent"
 	for _, x in ipairs(xs) do
-		local side = x > 0 and 1 or (x < 0 and -1 or 0)
+		local side = x > 0.01 and 1 or (x < -0.01 and -1 or 0)
 		local dir = Vector3.new(side * math.sin(lean), math.cos(lean), -math.sin(tilt)).Unit
-		local base = Vector3.new(x, baseYAt(x) - 0.05, z)
+		local base = Vector3.new(x, baseYAt(x) - 0.08, z)
 		local tip = base + dir * length
-		stick(ctx, "Antenna", "Shade", base, tip, 0.14, "Cylinder")
+		stick(ctx, "Antenna", "Shade", base, tip, 0.13, "Cylinder")
 		if perAntenna == 2 then
-			tryPart(ctx, "AntennaTip", "Glow", Vector3.one * 0.38, CFrame.new(tip), "Ball")
+			tryPart(ctx, "AntennaTip", tipRole, Vector3.one * 0.4, CFrame.new(tip), "Ball")
 		end
 	end
 end
 
 -- -------------------------------------------------------------------
--- KÖRPERFORMEN – jede gibt (Body, Höhe der Body-Mitte) zurück
+-- Ultra / Admin: Flügel + Heiligenschein
+-- -------------------------------------------------------------------
+-- anchor = Mitte des oberen Rückens, half = halbe Körperbreite dort, k = Flügelgröße
+local function addWings(ctx: Ctx, anchor: Vector3, half: number, k: number)
+	pair(ctx, function(side)
+		local len = 1.35 * k
+		local pos = anchor + Vector3.new(side * (half + len * 0.22), len * 0.25, 0)
+		local cf = CFrame.new(pos)
+			* CFrame.Angles(0, side * math.rad(-30), 0)
+			* CFrame.Angles(0, 0, side * math.rad(30))
+		makePart(ctx, "Wing", "Wing", Vector3.new(len, len * 0.62, 0.22 * k), cf, "Ellipsoid")
+	end)
+	if ctx.admin then
+		-- Admin: zweites, kleineres Flügelpaar darunter (Seraph-Look)
+		pair(ctx, function(side)
+			local len = 1.15 * k
+			local pos = anchor + Vector3.new(side * (half + len * 0.25), -len * 0.3, 0.1)
+			local cf = CFrame.new(pos)
+				* CFrame.Angles(0, side * math.rad(-35), 0)
+				* CFrame.Angles(0, 0, side * math.rad(-20))
+			makePart(ctx, "Wing", "Wing", Vector3.new(len, len * 0.55, 0.2 * k), cf, "Ellipsoid")
+		end)
+	end
+end
+
+local function addHalo(ctx: Ctx, pos: Vector3, diameter: number)
+	tryPart(
+		ctx,
+		"Halo",
+		"Halo",
+		Vector3.new(0.12, diameter, diameter),
+		CFrame.new(pos) * CFrame.Angles(math.rad(-12), 0, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		"Cylinder"
+	)
+end
+
+local function isUltra(ctx: Ctx): boolean
+	return ctx.tier >= 3 or ctx.admin
+end
+
+-- Flügel + Heiligenschein (nur Ultra/Admin). Der Schein wird nur vorgemerkt (1 Teil reserviert) und
+-- am Ende über dem höchsten Punkt gebaut (finishUltra), damit er nie in Antennen/Krone steckt.
+-- haloZ = nil -> nur Flügel.
+local function addUltra(ctx: Ctx, anchor: Vector3, half: number, haloZ: number?)
+	if not isUltra(ctx) then
+		return
+	end
+	addWings(ctx, anchor, half, ctx.admin and 1.15 or 1)
+	if haloZ and room(ctx, 1) then
+		ctx.haloZ = haloZ
+		ctx.max -= 1
+	end
+end
+
+local function finishUltra(ctx: Ctx)
+	local haloZ = ctx.haloZ
+	if haloZ then
+		ctx.haloZ = nil
+		ctx.max += 1
+		addHalo(ctx, Vector3.new(0, ctx.top + 0.4, haloZ), ctx.admin and 1.7 or 1.4)
+	end
+end
+
+-- -------------------------------------------------------------------
+-- KÖRPERFORMEN – jede gibt (Body, Höhe der Body-Mitte) zurück.
+-- Reihenfolge = Wichtigkeit (was am Ende nicht mehr ins Budget passt, fällt weg).
 -- -------------------------------------------------------------------
 local Builders: { [string]: Builder } = {}
 
--- Schleim-Tropfen mit Bäckchen
+-- Mochi-Schleim mit Tropfen-Spitze. Selten: runde Öhrchen.
 Builders.Blob = function(ctx: Ctx): (Part, number)
-	local c = Vector3.new(0, 1.2, 0)
-	local r = Vector3.new(1.5, 1.2, 1.5)
-	local body = makePart(ctx, "Body", "Main", r * 2, CFrame.new(c), "Ellipsoid")
-	local topC = Vector3.new(0, 2.15, 0.1)
-	local topR = Vector3.new(0.85, 0.65, 0.85)
-	makePart(ctx, "Top", "Main", topR * 2, CFrame.new(topC), "Ellipsoid")
-	addEyesOnEllipsoid(ctx, c, r, 1.55, 0.55, 0.75, "Big")
-	addAntennas(ctx, function(x)
-		return topY(topC, topR, x, topC.Z)
-	end, topC.Z, 0.4, 0.9, math.rad(20), 0)
-	addMouthOnEllipsoid(ctx, c, r, 0.8, 0.7)
-	if room(ctx, 2) then
-		for _, side in ipairs({ -1, 1 }) do
-			local point, normal = frontPoint(c, r, side * 0.95, 0.95)
-			makePart(ctx, "Cheek", "Accent", Vector3.new(0.45, 0.28, 0.15), facing(point, normal), "Ellipsoid")
-		end
-	end
-	return body, c.Y
-end
-
--- Einäugiger Riese mit Füßen und Armen
-Builders.Cyclops = function(ctx: Ctx): (Part, number)
-	local c = Vector3.new(0, 1.95, 0)
-	local r = Vector3.new(1.3, 1.5, 1.2)
-	local body = makePart(ctx, "Body", "Main", r * 2, CFrame.new(c), "Ellipsoid")
-	for _, side in ipairs({ -1, 1 }) do
-		makePart(ctx, "Foot", "Shade", Vector3.new(0.9, 0.5, 1.1), CFrame.new(side * 0.55, 0.25, -0.1), "Ellipsoid")
-	end
-	if ctx.eyes == 1 then
-		local point, normal = frontPoint(c, r, 0, 2.35)
-		local eyeCenter = point + normal * 0.2
-		local cf = facing(eyeCenter, normal)
-		makePart(ctx, "Eye", "White", Vector3.one * 1.35, cf, "Ball")
-		makePart(ctx, "Iris", "Accent", Vector3.one * 0.8, cf * CFrame.new(0, 0, -0.42), "Ball")
-		makePart(ctx, "Pupil", "Dark", Vector3.one * 0.42, cf * CFrame.new(0, 0, -0.68), "Ball")
-	else
-		addEyesOnEllipsoid(ctx, c, r, 2.35, 0.5, 0.7, "Big")
-	end
-	addAntennas(ctx, function(x)
-		return topY(c, r, x, 0)
-	end, 0, 0.45, 0.85, math.rad(25), 0)
-	addMouthOnEllipsoid(ctx, c, r, 1.35, 0.9)
-	if room(ctx, 2) then
-		for _, side in ipairs({ -1, 1 }) do
-			stick(
+	local face: Face = { c = Vector3.new(0, 1.2, 0), r = Vector3.new(1.55, 1.2, 1.45) }
+	local body = makePart(ctx, "Body", "Main", face.r * 2, CFrame.new(face.c), "Ellipsoid")
+	makePart(
+		ctx,
+		"Top",
+		"Main",
+		Vector3.new(0.62, 0.95, 0.62),
+		CFrame.new(0.1, 2.38, 0.05) * CFrame.Angles(0, 0, math.rad(-16)),
+		"Ellipsoid"
+	)
+	addEyes(ctx, face, 1.45, 0.56, 0.82)
+	local mouth = addMouth(ctx, face, 0.9, 0.44, "Open")
+	if ctx.tier >= 2 then
+		pair(ctx, function(side)
+			makePart(
 				ctx,
-				"Arm",
+				"Ear",
 				"Main",
-				Vector3.new(side * 1.1, 2.0, 0),
-				Vector3.new(side * 1.5, 1.3, -0.15),
-				0.5,
+				Vector3.new(0.75, 0.75, 0.5),
+				CFrame.new(side * 1.0, 2.05, 0.1) * CFrame.Angles(0, 0, math.rad(side * -25)),
 				"Ellipsoid"
 			)
-		end
+		end)
 	end
-	return body, c.Y
+	addUltra(ctx, Vector3.new(0, 1.55, 0.95), 0.85, 0.05)
+	addBlush(ctx, face, 1.0, 0.98, 1)
+	addAntennas(ctx, function(x)
+		return topY(face, x, 0)
+	end, 0, 0.55, 0.85, math.rad(22), 0, -0.55)
+	addTongue(ctx, mouth, 0.44)
+	return body, face.c.Y
 end
 
--- Tintenfisch mit Tentakeln
+-- Einäugiges Monsterchen auf zwei Füßen. Selten: heller Bauch.
+Builders.Cyclops = function(ctx: Ctx): (Part, number)
+	local face: Face = { c = Vector3.new(0, 1.9, 0), r = Vector3.new(1.3, 1.45, 1.2) }
+	local body = makePart(ctx, "Body", "Main", face.r * 2, CFrame.new(face.c), "Ellipsoid")
+	addFeet(ctx, 0.58, -0.12, Vector3.new(0.85, 0.5, 1.05), "Shade")
+	if ctx.eyes == 1 then
+		addBigEye(ctx, face, 2.35, 1.3)
+	else
+		addEyes(ctx, face, 2.3, 0.5, 0.75)
+	end
+	local mouth = addMouth(ctx, face, 1.5, 0.5, "Open")
+	if ctx.tier >= 2 then
+		addPatch(ctx, "Belly", "Light", face, 0.95, Vector3.new(1.3, 0.95, 0.5))
+	end
+	addUltra(ctx, Vector3.new(0, 2.2, 0.95), 0.75, 0.05)
+	pair(ctx, function(side)
+		stick(
+			ctx,
+			"Arm",
+			"Main",
+			Vector3.new(side * 1.1, 1.85, 0),
+			Vector3.new(side * 1.5, 1.25, -0.15),
+			0.5,
+			"Ellipsoid"
+		)
+	end)
+	addBlush(ctx, face, 1.75, 0.92, 1)
+	addAntennas(ctx, function(x)
+		return topY(face, x, 0)
+	end, 0, 0.5, 0.8, math.rad(25), 0)
+	addTongue(ctx, mouth, 0.5)
+	return body, face.c.Y
+end
+
+-- Kawaii-Oktopus: runder Kopf, kurze dicke Tentakel. Selten: Locke in Akzentfarbe.
 Builders.Squid = function(ctx: Ctx): (Part, number)
-	local c = Vector3.new(0, 2.6, 0)
-	local r = Vector3.new(1.3, 1.5, 1.3)
-	local body = makePart(ctx, "Body", "Main", r * 2, CFrame.new(c), "Ellipsoid")
-	local function tentacle(angle: number, reach: number)
-		local dir = Vector3.new(math.cos(angle), 0, math.sin(angle))
+	local face: Face = { c = Vector3.new(0, 2.3, 0), r = Vector3.new(1.35, 1.35, 1.3) }
+	local body = makePart(ctx, "Body", "Main", face.r * 2, CFrame.new(face.c), "Ellipsoid")
+	local function tentacle(angle: number)
+		local dir = Vector3.new(math.sin(angle), 0, -math.cos(angle))
 		stick(
 			ctx,
 			"Tentacle",
 			"Main",
-			dir * 0.6 + Vector3.new(0, 1.4, 0),
-			dir * reach + Vector3.new(0, 0.2, 0),
-			0.5,
+			dir * 0.55 + Vector3.new(0, 1.25, 0),
+			dir * 1.45 + Vector3.new(0, 0.28, 0),
+			0.56,
 			"Ellipsoid"
 		)
 	end
-	for i = 0, 3 do
-		tentacle(math.rad(45 + 90 * i), 1.35)
+	addEyes(ctx, face, 2.3, 0.55, 0.78)
+	addMouth(ctx, face, 1.7, 0.42, "O")
+	for _, deg in ipairs({ -40, 40, -110, 110 }) do
+		tentacle(math.rad(deg))
 	end
-	addEyesOnEllipsoid(ctx, c, r, 2.45, 0.55, 0.75, "Big")
+	if ctx.tier >= 2 then
+		tryPart(
+			ctx,
+			"Top",
+			"Accent",
+			Vector3.new(0.5, 0.85, 0.5),
+			CFrame.new(0.15, 3.65, 0.1) * CFrame.Angles(0, 0, math.rad(-20)),
+			"Ellipsoid"
+		)
+	end
+	addUltra(ctx, Vector3.new(0, 2.4, 0.95), 0.85, 0.05)
+	addBlush(ctx, face, 1.9, 0.88, 1)
+	pair(ctx, function(side)
+		tentacle(math.rad(side * 170))
+	end)
 	addAntennas(ctx, function(x)
-		return topY(c, r, x, 0)
-	end, 0, 0.45, 0.85, math.rad(20), 0)
-	if room(ctx, 2) then
-		tentacle(0, 1.45)
-		tentacle(math.pi, 1.45)
-	end
-	if room(ctx, 2) then
-		tentacle(math.rad(90), 1.35)
-		tentacle(math.rad(-90), 1.2)
-	end
-	return body, c.Y
+		return topY(face, x, 0)
+	end, 0, 0.5, 0.8, math.rad(20), 0, -0.5)
+	return body, face.c.Y
 end
 
--- Käfer mit Panzer, Kopf, Beinen und Fühlern
+-- Marienkäfer: runder Panzer mit Mittelnaht, heller Kopf mit Fühlern. Selten: zwei Punkte.
 Builders.Bug = function(ctx: Ctx): (Part, number)
-	local c = Vector3.new(0, 1.25, 0.25)
-	local r = Vector3.new(1.3, 0.85, 1.4)
-	local body = makePart(ctx, "Body", "Main", r * 2, CFrame.new(c), "Ellipsoid")
-	local headC = Vector3.new(0, 1.2, -1.25)
-	local headR = Vector3.new(0.8, 0.65, 0.6)
-	makePart(ctx, "Head", "Shade", headR * 2, CFrame.new(headC), "Ellipsoid")
-	for _, side in ipairs({ -1, 1 }) do
-		for _, z in ipairs({ -0.35, 0.75 }) do
+	ctx.faceRole = "Light"
+	local shell: Face = { c = Vector3.new(0, 1.2, 0.35), r = Vector3.new(1.35, 0.95, 1.35) }
+	local body = makePart(ctx, "Body", "Main", shell.r * 2, CFrame.new(shell.c), "Ellipsoid")
+	local head: Face = { c = Vector3.new(0, 1.3, -0.85), r = Vector3.new(0.9, 0.82, 0.72) }
+	makePart(ctx, "Head", "Light", head.r * 2, CFrame.new(head.c), "Ellipsoid")
+	addEyes(ctx, head, 1.45, 0.38, 0.58)
+	local mouth = addMouth(ctx, head, 0.98, 0.32, "Open")
+	makePart(
+		ctx,
+		"Seam",
+		"Dark",
+		Vector3.new(0.1, shell.r.Y * 2 + 0.03, shell.r.Z * 2 + 0.03),
+		CFrame.new(shell.c + Vector3.new(0, 0, 0.02)),
+		"Ellipsoid"
+	)
+	for _, z in ipairs({ -0.15, 0.85 }) do
+		pair(ctx, function(side)
 			stick(
 				ctx,
 				"Leg",
 				"Dark",
-				Vector3.new(side * 0.9, 0.8, z),
-				Vector3.new(side * 1.5, 0.05, z + 0.15),
-				0.2,
-				"Cylinder"
+				Vector3.new(side * 0.95, 0.6, z),
+				Vector3.new(side * 1.35, 0.14, z - 0.1),
+				0.28,
+				"Ellipsoid"
 			)
-		end
+		end)
 	end
-	addEyesOnEllipsoid(ctx, headC, headR, 1.35, 0.32, 0.45, "Beady")
-	addAntennas(ctx, function(x)
-		return topY(headC, headR, x, headC.Z)
-	end, headC.Z, 0.25, 0.9, math.rad(25), math.rad(30))
-	if room(ctx, 2) then
-		for _, side in ipairs({ -1, 1 }) do
-			local x, z = side * 0.55, 0.6
-			makePart(ctx, "Spot", "Accent", Vector3.one * 0.55, CFrame.new(x, topY(c, r, x, z) - 0.08, z), "Ball")
-		end
-	end
-	return body, c.Y
-end
-
--- Roboter auf Ketten mit Visier
-Builders.Robot = function(ctx: Ctx): (Part, number)
-	makePart(ctx, "Treads", "Metal", Vector3.new(2.2, 0.6, 1.8), CFrame.new(0, 0.3, 0))
-	local bodyY = 1.55
-	local body = makePart(ctx, "Body", "Main", Vector3.new(2.4, 1.9, 1.8), CFrame.new(0, bodyY, 0))
-	makePart(ctx, "Head", "Main", Vector3.new(1.8, 1.3, 1.5), CFrame.new(0, 3.15, 0))
-	makePart(ctx, "Visor", "Dark", Vector3.new(1.5, 0.6, 0.12), CFrame.new(0, 3.2, -0.76))
-	local style = fitEyeStyle(ctx, ctx.eyes, "Glow")
-	for _, offset in ipairs(eyeLayout(ctx.eyes, 0.42)) do
-		addEye(ctx, Vector3.new(offset.X, 3.2 + offset.Y * 0.5, -0.84), -Vector3.zAxis, 0.32, style)
-	end
-	if room(ctx, 2) then
-		for _, side in ipairs({ -1, 1 }) do
+	if ctx.tier >= 2 then
+		pair(ctx, function(side)
+			local x, z = side * 0.62, 0.55
 			makePart(
 				ctx,
-				"Arm",
-				"Shade",
-				Vector3.new(0.45, 1.4, 0.45),
-				CFrame.new(side * 1.42, 1.5, 0) * CFrame.Angles(0, 0, math.rad(side * 8))
+				"Spot",
+				"Accent",
+				Vector3.new(0.62, 0.3, 0.62),
+				CFrame.new(x, topY(shell, x, z) - 0.1, z),
+				"Ellipsoid"
 			)
-		end
+		end)
 	end
+	addUltra(ctx, Vector3.new(0, 1.7, 0.6), 0.8, -0.75)
+	addBlush(ctx, head, 1.08, 0.55, 0.75)
+	addAntennas(ctx, function(x)
+		return topY(head, x, head.c.Z)
+	end, head.c.Z, 0.3, 0.85, math.rad(25), math.rad(25))
+	addTongue(ctx, mouth, 0.32)
+	return body, shell.c.Y
+end
+
+-- Knuffiger Roboter: großer Kopf mit Bildschirm-Gesicht, Rolle statt Beine. Selten: Akzent-Streifen.
+Builders.Robot = function(ctx: Ctx): (Part, number)
+	ctx.faceRole = "Dark"
+	makePart(ctx, "Treads", "Metal", Vector3.new(1.8, 0.8, 0.8), CFrame.new(0, 0.4, 0), "Cylinder")
+	local bodyY = 1.4
+	local body = makePart(ctx, "Body", "Main", Vector3.new(1.7, 1.2, 1.4), CFrame.new(0, bodyY, 0))
+	local headY = 2.85
+	makePart(ctx, "Head", "Main", Vector3.new(2.3, 1.7, 1.8), CFrame.new(0, headY, 0))
+	makePart(ctx, "Visor", "Dark", Vector3.new(1.9, 1.25, 0.1), CFrame.new(0, headY, -0.92))
+	local screen = flatFace(0, headY, -0.97)
+	for _, offset in ipairs(eyeLayout(ctx.eyes, ctx.eyes >= 3 and 0.36 or 0.45)) do
+		local h = ctx.eyes >= 3 and 0.4 or 0.55
+		makePart(
+			ctx,
+			"Eye",
+			"Glow",
+			Vector3.new(h * 0.72, h, 0.1),
+			onFace(screen, offset.X, headY + 0.12 + offset.Y * h, 0),
+			"Ellipsoid"
+		)
+	end
+	tryPart(ctx, "Mouth", "Glow", Vector3.new(0.5, 0.14, 0.08), onFace(screen, 0, headY - 0.38, 0), "Ellipsoid")
+	if ctx.tier >= 2 then
+		tryPart(ctx, "Stripe", "Accent", Vector3.new(2.34, 0.3, 1.84), CFrame.new(0, headY + 0.62, 0))
+	end
+	addUltra(ctx, Vector3.new(0, headY - 0.1, 0.75), 1.0, 0.05)
+	pair(ctx, function(side)
+		makePart(ctx, "Ear", "Metal", Vector3.new(0.3, 0.75, 0.75), CFrame.new(side * 1.25, headY, 0), "Cylinder")
+	end)
+	pair(ctx, function(side)
+		stick(
+			ctx,
+			"Arm",
+			"Shade",
+			Vector3.new(side * 0.9, 1.75, 0),
+			Vector3.new(side * 1.28, 1.05, -0.15),
+			0.42,
+			"Ellipsoid"
+		)
+	end)
 	addAntennas(ctx, function()
-		return 3.8
-	end, 0, 0.5, 0.8, math.rad(15), 0)
-	tryPart(ctx, "ChestLight", "Glow", Vector3.one * 0.5, CFrame.new(0, 1.75, -0.88), "Ball")
-	tryPart(ctx, "Grill", "Dark", Vector3.new(0.8, 0.14, 0.1), CFrame.new(0, 2.75, -0.76))
+		return headY + 0.85
+	end, 0, 0.55, 0.75, math.rad(15), 0)
+	tryPart(ctx, "ChestLight", "Glow", Vector3.one * 0.38, CFrame.new(0, bodyY + 0.05, -0.7), "Ball")
 	return body, bodyY
 end
 
--- Schwebendes Gespenst
+-- Schwebendes Gespenst mit Wellen-Saum. Selten: Schleife.
 Builders.Ghost = function(ctx: Ctx): (Part, number)
-	ctx.mainTransparency = math.max(ctx.mainTransparency, 0.1)
-	local c = Vector3.new(0, 2.55, 0)
-	local r = Vector3.new(1.3, 1.45, 1.25)
-	local body = makePart(ctx, "Body", "Main", r * 2, CFrame.new(c), "Ellipsoid")
-	makePart(ctx, "Tail", "Main", Vector3.new(1.9, 1.6, 1.9), CFrame.new(0, 1.35, 0.15), "Ellipsoid")
-	addEyesOnEllipsoid(ctx, c, r, 2.8, 0.48, 0.75, "Oval")
-	addAntennas(ctx, function(x)
-		return topY(c, r, x, 0)
-	end, 0, 0.45, 0.8, math.rad(20), 0)
-	if room(ctx, 1) then
-		local point, normal = frontPoint(c, r, 0, 2.05)
-		makePart(ctx, "Mouth", "Dark", Vector3.new(0.5, 0.6, 0.25), facing(point, normal), "Ellipsoid")
+	ctx.mainTransparency = math.max(ctx.mainTransparency, 0.08)
+	local face: Face = { c = Vector3.new(0, 2.3, 0), r = Vector3.new(1.3, 1.5, 1.25) }
+	local body = makePart(ctx, "Body", "Main", face.r * 2, CFrame.new(face.c), "Ellipsoid")
+	addEyes(ctx, face, 2.55, 0.5, 0.8)
+	local mouth = addMouth(ctx, face, 1.95, 0.42, "Open")
+	for i = 0, 2 do
+		local angle = math.rad(-60 + 120 * i)
+		makePart(
+			ctx,
+			"Wisp",
+			"Main",
+			Vector3.new(0.95, 0.85, 0.95),
+			CFrame.new(math.sin(angle) * 0.78, 0.9, -math.cos(angle) * 0.78),
+			"Ellipsoid"
+		)
 	end
-	if room(ctx, 2) then
+	if ctx.tier >= 2 and room(ctx, 3) then
+		local knot = Vector3.new(0.75, 3.55, -0.1)
 		for _, side in ipairs({ -1, 1 }) do
-			stick(
+			makePart(
 				ctx,
-				"Arm",
-				"Main",
-				Vector3.new(side * 1.05, 2.5, 0),
-				Vector3.new(side * 1.45, 1.95, -0.25),
-				0.55,
+				"Bow",
+				"Accent",
+				Vector3.new(0.6, 0.42, 0.25),
+				CFrame.new(knot + Vector3.new(side * 0.3, 0, 0)) * CFrame.Angles(0, 0, math.rad(side * 20)),
 				"Ellipsoid"
 			)
 		end
+		makePart(ctx, "Bow", "Accent", Vector3.one * 0.26, CFrame.new(knot + Vector3.new(0, 0, -0.04)), "Ball")
 	end
-	if room(ctx, 3) then
-		for i = 0, 2 do
-			local angle = math.rad(90 + 120 * i)
-			makePart(
-				ctx,
-				"Wisp",
-				"Main",
-				Vector3.one * 0.7,
-				CFrame.new(math.cos(angle) * 0.6, 0.55, math.sin(angle) * 0.6),
-				"Ball"
-			)
-		end
-	end
-	return body, c.Y
+	addUltra(ctx, Vector3.new(0, 2.5, 0.9), 0.8, 0.05)
+	pair(ctx, function(side)
+		stick(
+			ctx,
+			"Arm",
+			"Main",
+			Vector3.new(side * 1.05, 2.2, 0),
+			Vector3.new(side * 1.5, 1.75, -0.25),
+			0.5,
+			"Ellipsoid"
+		)
+	end)
+	addBlush(ctx, face, 2.1, 0.86, 1)
+	addAntennas(ctx, function(x)
+		return topY(face, x, 0)
+	end, 0, 0.45, 0.8, math.rad(20), 0)
+	addTongue(ctx, mouth, 0.42)
+	return body, face.c.Y
 end
 
--- Lebender Edelstein (Würfel auf der Spitze) auf einem Felsen, mit leuchtenden Splittern
+-- Lebender Edelstein (Raute) auf einem Felsen, flankiert von zwei Kristallen. Selten: Kristalle leuchten.
 Builders.Crystal = function(ctx: Ctx): (Part, number)
-	ctx.mainReflectance = math.max(ctx.mainReflectance, 0.2)
-	makePart(ctx, "Rock", "Rock", Vector3.new(3.0, 0.8, 3.0), CFrame.new(0, 0.4, 0), "Ellipsoid")
-	-- Die 3 oberen Würfelflächen zeigen schräg nach oben, eine davon genau nach vorne (-Z)
-	local a, b = 1 / math.sqrt(3), math.sqrt(2 / 3)
-	local h = math.sqrt(3) / 2
-	local front = Vector3.new(0, a, -b)
-	local backLeft = Vector3.new(-h * b, a, 0.5 * b)
-	local backRight = Vector3.new(h * b, a, 0.5 * b)
-	local side = 2.0
-	local bodyY = 0.45 + side * h
-	local c = Vector3.new(0, bodyY, 0)
-	local body = makePart(ctx, "Body", "Main", Vector3.one * side, CFrame.fromMatrix(c, front, backLeft, backRight))
-	-- Gesicht auf der vorderen Fläche (von vorne gesehen eine Raute)
-	local faceCenter = c + front * (side / 2)
-	local faceUp = Vector3.new(0, b, a)
-	local style = fitEyeStyle(ctx, ctx.eyes, ctx.eyes >= 3 and "Beady" or "Big")
-	local size = style == "Big" and 0.6 or 0.42
-	for _, offset in ipairs(eyeLayout(ctx.eyes, 0.38)) do
-		local pos = faceCenter + Vector3.xAxis * offset.X + faceUp * (0.2 + offset.Y) + front * (size * 0.2)
-		addEye(ctx, pos, front, size, style)
-	end
-	if room(ctx, 1) then
-		makePart(ctx, "Mouth", "Dark", Vector3.new(0.5, 0.14, 0.1), facing(faceCenter - faceUp * 0.45, front))
-	end
-	addAntennas(ctx, function()
-		return bodyY + side * h - 0.2
-	end, 0, 0.3, 0.8, math.rad(20), 0)
-	if room(ctx, 2) then
-		for _, sideSign in ipairs({ -1, 1 }) do
-			makePart(
-				ctx,
-				"Shard",
-				"Glow",
-				Vector3.new(0.6, 1.7, 0.6),
-				CFrame.new(sideSign * 0.95, 1.25, 0.4) * CFrame.Angles(0, math.rad(45), math.rad(-sideSign * 25))
-			)
-		end
-	end
-	tryPart(
+	ctx.mainReflectance = math.max(ctx.mainReflectance, 0.15)
+	makePart(ctx, "Rock", "Rock", Vector3.new(3.0, 0.8, 2.6), CFrame.new(0, 0.4, 0), "Ellipsoid")
+	local side, depth = 1.75, 1.25
+	local bodyY = 0.5 + side * math.sqrt(0.5)
+	local body = makePart(
 		ctx,
-		"Shard",
-		"Glow",
-		Vector3.new(0.6, 1.5, 0.6),
-		CFrame.new(0, 1.2, 1.0) * CFrame.Angles(math.rad(25), math.rad(45), 0)
+		"Body",
+		"Main",
+		Vector3.new(side, side, depth),
+		CFrame.new(0, bodyY, 0) * CFrame.Angles(0, 0, math.rad(45))
 	)
+	local face = flatFace(0, bodyY, -depth / 2)
+	addEyes(ctx, face, bodyY + 0.2, 0.38, 0.6)
+	local mouth = addMouth(ctx, face, bodyY - 0.32, 0.36, "Open")
+	local shardRole = ctx.tier >= 2 and "Glow" or "Light"
+	pair(ctx, function(sideSign)
+		makePart(
+			ctx,
+			"Shard",
+			shardRole,
+			Vector3.new(0.6, 1.4, 0.6),
+			CFrame.new(sideSign * 1.2, 1.05, 0.3)
+				* CFrame.Angles(0, 0, math.rad(-sideSign * 22))
+				* CFrame.Angles(0, math.rad(45), 0)
+		)
+	end)
+	addUltra(ctx, Vector3.new(0, bodyY + 0.2, 0.55), 0.7, 0.05)
+	addBlush(ctx, face, bodyY - 0.15, 0.62, 0.85)
+	addAntennas(ctx, function()
+		return bodyY + side * 0.707 - 0.15
+	end, 0, 0.25, 0.75, math.rad(25), 0)
+	addTongue(ctx, mouth, 0.36)
 	return body, bodyY
 end
 
--- Stachelkugel
+-- Igel: runder Körper, weiche Stacheln auf Rücken + Kopf, Schnäuzchen. Selten: freche Augenbrauen.
 Builders.Spiky = function(ctx: Ctx): (Part, number)
-	local radius = 1.4
-	local c = Vector3.new(0, radius, 0)
-	local r = Vector3.one * radius
-	local body = makePart(ctx, "Body", "Main", r * 2, CFrame.new(c), "Ball")
-	addEyesOnEllipsoid(ctx, c, r, 1.65, 0.5, 0.7, "Big")
-	addMouthOnEllipsoid(ctx, c, r, 1.0, 0.6)
-	addAntennas(ctx, function(x)
-		return topY(c, r, x, 0)
-	end, 0, 0.45, 0.8, math.rad(25), 0)
+	local face: Face = { c = Vector3.new(0, 1.4, 0), r = Vector3.new(1.4, 1.3, 1.35) }
+	local body = makePart(ctx, "Body", "Main", face.r * 2, CFrame.new(face.c), "Ellipsoid")
+	addEyes(ctx, face, 1.6, 0.52, 0.72)
+	local snout = addPatch(ctx, "Snout", "Light", face, 1.05, Vector3.new(0.8, 0.52, 0.75))
+	if snout then
+		tryPart(ctx, "Nose", "Dark", Vector3.new(0.3, 0.2, 0.2), snout * CFrame.new(0, 0.12, -0.32), "Ellipsoid")
+	end
 	local function spike(dir: Vector3)
 		local d = dir.Unit
-		tryPart(ctx, "Spike", "Accent", Vector3.new(1.4, 0.5, 0.5), axisCFrame(c + d * (radius + 0.3), d), "Ellipsoid")
+		tryPart(
+			ctx,
+			"Spike",
+			"Accent",
+			Vector3.new(1.25, 0.5, 0.5),
+			axisCFrame(face.c + Vector3.new(d.X * 1.25, d.Y * 1.15, d.Z * 1.2), d),
+			"Ellipsoid"
+		)
 	end
-	spike(Vector3.new(0, 1, 0.15))
-	local pairsList = {
-		Vector3.new(0.6, 0.75, 0.2),
-		Vector3.new(0.55, 0.45, 0.7),
-		Vector3.new(0.3, 0.9, -0.35),
-	}
-	for i, dir in ipairs(pairsList) do
+	spike(Vector3.new(0, 1, 0.3))
+	for _, dir in ipairs({ Vector3.new(0.6, 0.75, 0.4), Vector3.new(0.75, 0.25, 0.75) }) do
 		if room(ctx, 2) then
 			spike(dir)
 			spike(Vector3.new(-dir.X, dir.Y, dir.Z))
 		end
-		if i == 2 and room(ctx, 1) then
-			spike(Vector3.new(0, 0.6, 0.8))
-		end
 	end
-	return body, c.Y
+	addFeet(ctx, 0.6, -0.3, Vector3.new(0.75, 0.42, 0.95), "Shade")
+	if ctx.tier >= 2 then
+		pair(ctx, function(side)
+			local cf = onFace(face, side * 0.5, 2.12, 0.02) * CFrame.Angles(0, 0, math.rad(side * -15))
+			makePart(ctx, "Brow", "Dark", Vector3.new(0.5, 0.14, 0.14), cf, "Ellipsoid")
+		end)
+	end
+	addUltra(ctx, Vector3.new(0, 1.7, 1.0), 0.8, 0.25)
+	addBlush(ctx, face, 1.12, 0.95, 1)
+	if room(ctx, 1) then
+		spike(Vector3.new(0, 0.45, 1))
+	end
+	addAntennas(ctx, function(x)
+		return topY(face, x, 0)
+	end, 0, 0.5, 0.8, math.rad(25), 0)
+	return body, face.c.Y
 end
 
--- König mit Krone, Umhang und Schnurrbart
+-- König: runder Körper, goldene Krone mit Edelstein, Umhang, Schnurrbart. Selten: Zepter.
+-- Ultra: Flügel + der Kronen-Edelstein leuchtet (statt Heiligenschein).
 Builders.King = function(ctx: Ctx): (Part, number)
-	local c = Vector3.new(0, 1.4, 0)
-	local r = Vector3.new(1.35, 1.35, 1.25)
-	local body = makePart(ctx, "Body", "Main", r * 2, CFrame.new(c), "Ellipsoid")
+	local face: Face = { c = Vector3.new(0, 1.45, 0), r = Vector3.new(1.4, 1.3, 1.3) }
+	local body = makePart(ctx, "Body", "Main", face.r * 2, CFrame.new(face.c), "Ellipsoid")
 	local crownY = 2.85
 	makePart(
 		ctx,
 		"Crown",
 		"Gold",
-		Vector3.new(0.6, 1.7, 1.7),
-		CFrame.new(0, crownY, 0) * CFrame.Angles(0, 0, math.rad(90)),
+		Vector3.new(0.55, 1.55, 1.55),
+		CFrame.new(0, crownY, 0.05) * CFrame.Angles(0, 0, math.rad(90)),
 		"Cylinder"
 	)
-	for _, pos in ipairs({ Vector3.new(-0.7, 3.3, 0), Vector3.new(0.7, 3.3, 0), Vector3.new(0, 3.35, -0.7) }) do
-		makePart(
-			ctx,
-			"CrownPoint",
-			"Gold",
-			Vector3.one * 0.45,
-			CFrame.new(pos) * CFrame.Angles(0, math.rad(45), 0) * CFrame.Angles(math.rad(45), 0, 0)
-		)
+	for _, pos in ipairs({
+		Vector3.new(0, crownY + 0.38, -0.62),
+		Vector3.new(-0.62, crownY + 0.38, 0.05),
+		Vector3.new(0.62, crownY + 0.38, 0.05),
+	}) do
+		makePart(ctx, "CrownPoint", "Gold", Vector3.new(0.4, 0.75, 0.4), CFrame.new(pos), "Ellipsoid")
 	end
-	addEyesOnEllipsoid(ctx, c, r, 1.8, 0.5, 0.7, "Big")
-	addAntennas(ctx, function()
-		return 3.15
-	end, 0.3, 0.45, 0.8, math.rad(25), 0)
-	if room(ctx, 1) then
-		local point, normal = frontPoint(c, r, 0, 1.3)
-		makePart(ctx, "Mustache", "Dark", Vector3.new(1.0, 0.28, 0.3), facing(point, normal), "Ellipsoid")
-	end
-	tryPart(ctx, "Cape", "Cape", Vector3.new(2.4, 2.3, 0.35), CFrame.new(0, 1.35, 1.2), "Ellipsoid")
-	tryPart(ctx, "Gem", "Glow", Vector3.one * 0.32, CFrame.new(0, crownY, -0.88), "Ball")
+	addEyes(ctx, face, 1.8, 0.52, 0.72)
 	if room(ctx, 2) then
 		for _, side in ipairs({ -1, 1 }) do
-			makePart(
-				ctx,
-				"Foot",
-				"Shade",
-				Vector3.new(0.85, 0.45, 1.0),
-				CFrame.new(side * 0.55, 0.22, -0.3),
-				"Ellipsoid"
-			)
+			local cf = onFace(face, side * 0.28, 1.28, 0.02) * CFrame.Angles(0, 0, math.rad(side * 12))
+			makePart(ctx, "Mustache", "Dark", Vector3.new(0.62, 0.26, 0.24), cf, "Ellipsoid")
 		end
 	end
-	return body, c.Y
+	tryPart(ctx, "Cape", "Cape", Vector3.new(2.6, 2.3, 0.35), CFrame.new(0, 1.4, 1.12), "Ellipsoid")
+	tryPart(
+		ctx,
+		"Gem",
+		isUltra(ctx) and "Glow" or "Accent",
+		Vector3.one * (isUltra(ctx) and 0.42 or 0.32),
+		CFrame.new(0, crownY, -0.78),
+		"Ball"
+	)
+	if ctx.tier >= 2 and room(ctx, 2) then
+		stick(ctx, "Scepter", "Gold", Vector3.new(1.45, 0.35, -0.45), Vector3.new(1.45, 2.15, -0.45), 0.16, "Cylinder")
+		makePart(ctx, "ScepterGem", "Accent", Vector3.one * 0.42, CFrame.new(1.45, 2.3, -0.45), "Ball")
+	end
+	addUltra(ctx, Vector3.new(0, 1.9, 1.0), 0.85, nil)
+	addFeet(ctx, 0.58, -0.4, Vector3.new(0.82, 0.45, 1.0), "Shade")
+	addBlush(ctx, face, 1.45, 0.98, 1)
+	addAntennas(ctx, function()
+		return crownY + 0.25
+	end, 0.3, 0.45, 0.8, math.rad(25), 0)
+	return body, face.c.Y
 end
 
--- Pilz-Alien: Gesicht im Stiel, gepunkteter Hut
+-- Pilz: Gesicht im hellen Stiel, großer Hut mit drei Punkten. Selten: Blätter-Spross auf dem Hut.
 Builders.Mushroom = function(ctx: Ctx): (Part, number)
-	local c = Vector3.new(0, 1.25, 0)
-	local r = Vector3.new(1.0, 1.25, 1.0)
-	local body = makePart(ctx, "Body", "Stalk", r * 2, CFrame.new(c), "Ellipsoid")
-	local capC = Vector3.new(0, 2.65, 0.05)
-	local capR = Vector3.new(1.7, 0.85, 1.7)
-	makePart(ctx, "Cap", "Main", capR * 2, CFrame.new(capC), "Ellipsoid")
-	addEyesOnEllipsoid(ctx, c, r, 1.35, 0.38, 0.62, "Big")
-	addMouthOnEllipsoid(ctx, c, r, 0.75, 0.5)
-	addAntennas(ctx, function(x)
-		return topY(capC, capR, x, capC.Z)
-	end, capC.Z, 0.5, 0.8, math.rad(20), 0)
+	ctx.faceRole = "Stalk"
+	local face: Face = { c = Vector3.new(0, 1.15, 0), r = Vector3.new(1.05, 1.15, 1.0) }
+	local body = makePart(ctx, "Body", "Stalk", face.r * 2, CFrame.new(face.c), "Ellipsoid")
+	local cap: Face = { c = Vector3.new(0, 2.55, 0.05), r = Vector3.new(1.8, 0.95, 1.7) }
+	makePart(ctx, "Cap", "Main", cap.r * 2, CFrame.new(cap.c), "Ellipsoid")
+	addEyes(ctx, face, 1.3, 0.4, 0.62)
+	local mouth = addMouth(ctx, face, 0.8, 0.36, "Open")
 	local function spot(x: number, z: number)
-		tryPart(ctx, "Spot", "Accent", Vector3.one * 0.55, CFrame.new(x, topY(capC, capR, x, z) - 0.12, z), "Ball")
-	end
-	spot(0, capC.Z)
-	if room(ctx, 2) then
-		spot(-0.95, -0.6)
-		spot(0.95, -0.6)
-	end
-	if room(ctx, 2) then
-		spot(-1.0, 0.75)
-		spot(1.0, 0.75)
-	end
-	return body, c.Y
-end
-
--- Admin-Extra: leuchtende Kugeln rund ums Alien
-local function addOrbs(ctx: Ctx, height: number)
-	for i = 0, 3 do
-		if not room(ctx, 1) then
-			return
-		end
-		local angle = math.rad(45 + 90 * i)
-		makePart(
+		local y = topY(cap, x, z)
+		local up = Vector3.new(x / cap.r.X ^ 2, (y - cap.c.Y) / cap.r.Y ^ 2, (z - cap.c.Z) / cap.r.Z ^ 2)
+		tryPart(
 			ctx,
-			"Orb",
-			"Glow",
-			Vector3.one * 0.55,
-			CFrame.new(math.cos(angle) * 1.75, height + (i % 2) * 0.5, math.sin(angle) * 1.75),
-			"Ball"
+			"Spot",
+			"Accent",
+			Vector3.new(0.68, 0.68, 0.26),
+			facing(Vector3.new(x, y - 0.06, z), up),
+			"Ellipsoid"
 		)
 	end
+	spot(0, -0.55)
+	if room(ctx, 2) then
+		spot(-1.05, -0.35)
+		spot(1.05, -0.35)
+	end
+	if ctx.tier >= 2 then
+		pair(ctx, function(side)
+			makePart(
+				ctx,
+				"Leaf",
+				"Leaf",
+				Vector3.new(0.7, 0.24, 0.42),
+				CFrame.new(side * 0.3, 3.55, 0.3) * CFrame.Angles(0, 0, math.rad(side * 35)),
+				"Ellipsoid"
+			)
+		end)
+	end
+	addUltra(ctx, Vector3.new(0, 1.7, 0.85), 0.75, 0.05)
+	addFeet(ctx, 0.5, -0.25, Vector3.new(0.7, 0.4, 0.85), "StalkShade")
+	addBlush(ctx, face, 0.98, 0.66, 0.85)
+	addAntennas(ctx, function(x)
+		return topY(cap, x, cap.c.Z)
+	end, cap.c.Z, 0.55, 0.8, math.rad(20), 0)
+	addTongue(ctx, mouth, 0.36)
+	return body, face.c.Y
 end
 
 -- -------------------------------------------------------------------
@@ -1147,12 +1434,15 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 		accent = look.Accent,
 		eyes = look.Eyes,
 		antennas = look.Antennas,
+		tier = TIER_INDEX[alien.Tier] or 1,
+		rank = rank,
+		admin = rank >= ADMIN_RANK,
+		faceRole = "Main",
 		mutStyle = if rainbowMut then nil else MUT_STYLES[mutName],
 		mutColor = mutColor,
 		rainbow = fx.Rainbow == true or rainbowMut,
 		rainbowShade = rainbowMut,
 		carry = carry,
-		darkFace = false,
 		mainMaterial = Enum.Material.SmoothPlastic,
 		mainTransparency = 0,
 		mainReflectance = look.Archetype == "Robot" and 0.12 or 0,
@@ -1160,15 +1450,10 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 		max = rank >= ADMIN_RANK and MAX_PARTS_ADMIN or MAX_PARTS,
 		top = 0,
 	}
-	-- Wie hell ist die Fläche, auf der die Augen sitzen? (Pilz: heller Stiel, Käfer: Kopf)
-	-- Sehr dunkel -> leuchtende statt schwarze Augen
-	ctx.darkFace = luminance(faceColorOf(look, ctx)) < 0.2
 
 	local builder = Builders[look.Archetype] or Builders.Blob
 	local body, bodyY = builder(ctx)
-	if rank >= ADMIN_RANK then
-		addOrbs(ctx, bodyY)
-	end
+	finishUltra(ctx)
 	body.CanQuery = not carry -- für Prompts/Klicks; getragen stört es nur die Kamera
 
 	-- Pivot = Bodenmitte, aufrecht, Blick nach -Z (beim Bauen = Welt-Ursprung).

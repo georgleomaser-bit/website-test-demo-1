@@ -73,8 +73,11 @@ local DODGE_ZONE = 8
 local DODGE_FADE = 5
 local DODGE_OFFSET = 8.4
 -- Reichweite an der Parade: waagrecht gerechnet (Eier sitzen hoch auf dem Kopf)
-local PARADE_CLIENT_REACH = 15
+-- (12: vom Bordstein erreicht man beide Spuren, aber nicht vom eigenen Base-Eingang aus)
+local PARADE_CLIENT_REACH = 12
 local PARADE_REACH_EXTRA = 4 -- Spielraum beim Server (Ping)
+-- am Boss weniger Spielraum: BossGrabReach + das bleibt INNERHALB der Schubs-Zone (PushRadius)
+local BOSS_REACH_EXTRA = 2
 local PARADE_REACH_SAMPLES = 6 -- Server prüft auch, wo das Ei bis zu 0,6 s vorher war (Ping)
 local PARADE_VERTICAL_EXTRA = 8
 local ROOT_HEIGHT = 2.5 -- Hüfte über dem Boden (für die 3D-Reichweite am Client)
@@ -331,10 +334,7 @@ local function paradeLateral(record, dist: number, t: number): number
 	local amount = 0
 	for _, other in ipairs(paradeRecords) do
 		if other.Boss and other.Part then
-			amount = math.max(
-				amount,
-				ParadePath.DodgeAmount(dist, paradeDistance(other, t), DODGE_ZONE, DODGE_FADE)
-			)
+			amount = math.max(amount, ParadePath.DodgeAmount(dist, paradeDistance(other, t), DODGE_ZONE, DODGE_FADE))
 		end
 	end
 	return ParadePath.Lateral(record.Lane, amount, DODGE_OFFSET)
@@ -450,7 +450,8 @@ local function checkReach(player: Player, record, root: BasePart): Vector3?
 				end
 			end
 		end
-		tooFar = best > (record.HorizReach or clientReach) + PARADE_REACH_EXTRA
+		local extra = if record.Boss then BOSS_REACH_EXTRA else PARADE_REACH_EXTRA
+		tooFar = best > (record.HorizReach or clientReach) + extra
 			or math.abs(rootPos.Y - bestY) > clientReach + PARADE_VERTICAL_EXTRA
 	else
 		-- liegt still: nur Spielraum für die eigene Bewegung (schnelle Spieler etwas mehr)
@@ -938,7 +939,11 @@ local function pushAround(record, t: number)
 				local clock = os.clock()
 				if clock - (pushNotifyAt[player] or -math.huge) >= PUSH_NOTIFY_GAP then
 					pushNotifyAt[player] = clock
-					Services.EconomyService.Notify(player, "Die Leibwächter schubsen! Greif zwischen den Schubsern zu.", "Info")
+					Services.EconomyService.Notify(
+						player,
+						"Die Leibwächter schubsen! Greif zwischen den Schubsern zu.",
+						"Info"
+					)
 				end
 			end
 		end
