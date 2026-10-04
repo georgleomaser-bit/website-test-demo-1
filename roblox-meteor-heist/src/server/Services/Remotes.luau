@@ -27,4 +27,7 @@ return {
 	-- Client -> Server: "Rebirth", "Daily", "Collect", "Home", "Treadmills", "BuyTreadmill", "BuyGadget" ...
 	Request = make("RemoteFunction", "Request") :: RemoteFunction,
 	Admin = make("RemoteFunction", "Admin") :: RemoteFunction, -- Client -> Server: Admin-Aktionen (geprüft!)
+	-- 🤝 Handel (TradeService): Client -> Server (Aktion, Wert) / Server -> Client (Art, Daten)
+	Trade = make("RemoteFunction", "Trade") :: RemoteFunction,
+	TradeEvent = make("RemoteEvent", "TradeEvent") :: RemoteEvent,
 }

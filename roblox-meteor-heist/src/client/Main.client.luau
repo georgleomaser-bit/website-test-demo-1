@@ -12,6 +12,7 @@
 --    Prompts    Klauen/Kaufen/Verkaufen-Prompts passend ein-/ausblenden
 --    Bat        Schläger: Ausholen/Zuschlagen (lokal), kurzes Taumeln nach einem Treffer
 --    Night      Nacht/Blutmond-Banner, Glücks-Zähler-Leiste, Sternschnuppen + leuchtende Kisten
+--    Trade      🤝 Handel mit anderen Spielern (Fenster, Anfrage-Popup, Prompt am Charakter)
 --    Fly, PhotoMode, AdminPanel (nur für Admins)
 --  Die gesamte Oberfläche wird per Code gebaut – du musst nichts in Studio zusammenklicken.
 -- =====================================================================
@@ -40,6 +41,7 @@ local AdminPanel = require(Modules:WaitForChild("AdminPanel"))
 local MeteorRun = require(Modules:WaitForChild("MeteorRun"))
 local Night = require(Modules:WaitForChild("Night"))
 local Bat = require(Modules:WaitForChild("Bat"))
+local Trade = require(Modules:WaitForChild("Trade"))
 
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local Remotes = {
@@ -131,6 +133,7 @@ PhotoMode.Init(ctx)
 MeteorRun.Start(ctx) -- ☄️ Meteor-Run: HUD, Balken, Einschläge, Knopf "☄️ Run"
 Night.Init(ctx) -- 🌙 Nacht-Banner, Glücks-Zähler, Sternschnuppen + Kisten
 task.spawn(Bat.Init, ctx) -- Schläger-Schwung + Taumeln (wartet kurz auf den Rucksack)
+Trade.Init(ctx) -- 🤝 Handel: Fenster, Anfrage-Popup, Prompt "Handeln" an anderen Spielern
 
 -- Schilder an den Laufbändern: Preis, "Gekauft" oder "Dein bestes" (nur bei Änderung neu schreiben)
 local treadmillMap: Instance? = nil

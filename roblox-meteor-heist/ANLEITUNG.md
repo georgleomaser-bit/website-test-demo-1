@@ -204,6 +204,25 @@ Knopf **☄️ Run** rechts = Teleport zum Start-Tor (nicht mit Beute). Wer etwa
 Schummeln geht nicht: Checkpoints zählen nur der Reihe nach und nur, wenn man wirklich hingelaufen ist (Teleport-Sprünge zählen nicht), zu schnelle Zeiten (schneller als Tempo 104 über die ganze Strecke) werden nicht gewertet, und wer über der Lava schwebt oder viel zu hoch fliegt, muss zurück zum Checkpoint.
 Einstellungen (Abklingzeit, Ei-Chancen, Cash) stehen oben in `src/server/Services/RunService.luau`.
 
+### 🤝 Handeln
+
+Spieler können Aliens, Eier und Cash tauschen – wie in Steal-Spielen.
+
+1. **Anfragen:** Knopf **🤝 Handel** rechts → Spieler-Liste → „🤝 Handeln“. Oder bei einem Spieler **[T]** drücken (Prompt „Handeln“).
+2. Der andere sieht oben ein **Popup** (✔ Ja / ✖ Nein). Nach **20 Sekunden** verfällt die Anfrage.
+3. **Handelsfenster:** links „Du gibst“, rechts was der andere gibt. Unten deine Base – **klick = anbieten**, nochmal klicken = zurücknehmen. Bis zu **6 Sachen** pro Seite + Cash („💵 Setzen“).
+4. Beide drücken **✅ Bereit** → **3 Sekunden** Countdown → getauscht. Jede Änderung setzt „Bereit“ bei beiden zurück.
+5. Fenster zu oder **❌ Abbruch** = Handel abgebrochen.
+
+**Einstellungen** (im Handel-Fenster): „Anfragen: AN/AUS“ blockiert Anfragen (gilt bis zum Verlassen).
+
+**Sicher:** Getauscht wird nur auf dem Server und in einem Schritt. Vorher wird geprüft: beide noch da, niemand trägt Beute,
+alles Angebotene ist noch genau so da (nicht verkauft, nicht geklaut, kein Rebirth/Reset), niemand klaut es gerade,
+genug Cash und genug freie Plätze. Sonst wird nicht getauscht und der Grund angezeigt. Danach wird sofort gespeichert.
+Ein Spieler kann nur in **einem** Handel sein. Wer geht, beendet den Handel sofort – nichts kann doppelt werden.
+In den **ersten 2 Minuten** nach dem Beitreten geht kein Handel (gegen Zweit-Accounts).
+Einstellungen (Wartezeit, Timeout, max. Sachen, Countdown) stehen oben in `src/server/Services/TradeService.luau`.
+
 ---
 
 ## 🚀 SCHRITT 1 – Spiel in Roblox Studio öffnen
@@ -490,8 +509,8 @@ roblox-meteor-heist/
     │   ├── Main.server.luau
     │   └── Services/          Data, Graphics, Plot + MapBuilder, Meteor, Carry, Economy, Treadmill,
     │                          Reward (Geschenke, Glücksrad, Aufgaben), Gadget, Monetization, Admin,
-    │                          Run (☄️ Meteor-Run), Night (🌙 Tag/Nacht), Leaderboard, MeteorFactory, AlienFactory …
+    │                          Run (☄️ Meteor-Run), Night (🌙 Tag/Nacht), Trade (🤝 Handel), Leaderboard, MeteorFactory, AlienFactory …
     └── client/   (StarterPlayerScripts.Client)
         ├── Main.client.luau   ← startet die Oberfläche
-        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, Parade, Prompts, MeteorRun, Night, Bat, Fly, PhotoMode, AdminPanel
+        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, Parade, Prompts, MeteorRun, Night, Bat, Trade, Fly, PhotoMode, AdminPanel
 ```

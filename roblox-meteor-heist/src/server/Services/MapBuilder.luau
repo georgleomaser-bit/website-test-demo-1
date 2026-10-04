@@ -1,10 +1,7 @@
 -- Baut die komplette Map per Code (wird von PlotService.Init EINMAL aufgerufen):
 --   • knallgrüner Roblox-Noppenboden mit Block-Bäumen, Büschen, Zaun und unsichtbaren Randwänden
---   • ALIEN-PARADE: bunte, kurvige Straße durch die Map-Mitte (UFO-Hangar am Spawn-Platz -> Ziel-Tor),
---     Pfad aus Config.Parade.Path, als Attribute am Ordner "Parade" (ParadePath liest ihn dort)
---   • 8 OFFENE Basen (je 4 pro Seite, Eingang zur Parade, 80 x 90 Studs): bunter Noppenboden, niedriger
---     weißer Rand an Seiten + hinten, vorne offen mit Laser-Sperre; 18 UNSICHTBARE Slot-Anker
---     (locker verteilt), Collect-Pad, Lock-Pad, Laternen, Block-Bäume und Namensschild
+--   • EI-RENNEN: großes Nester-Feld in der Map-Mitte (kleine + große Nester, Speed-Pads, Renn-Nest)
+--   • 8 OFFENE Basen (je 4 pro Seite, Eingang zum Nester-Feld) -> gebaut von BaseBuilder.luau
 --  Stil: schlicht, bunt, blockig (Plastic + Noppen), wenig Neon, wenige Teile.
 --   • großer Spawn-Platz mit SpawnLocation, Gratis-Zone, Bestenliste und der LAUFBAND-ZONE (Treadmills)
 -- Rückgabe von MapBuilder.Build(): siehe Typ "MapResult" unten.
@@ -13,15 +10,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
-local ParadePath = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ParadePath"))
+local BaseBuilder = require(script.Parent:WaitForChild("BaseBuilder"))
 
 local MapBuilder = {}
 
-export type ParadeInfo = {
-	Folder: Folder, -- Ordner "Parade" (Straße, Hangar, Tor; Attribute: Pfad P1..Pn + ParadeClock)
-	Path: ParadePath.Path,
-	RoadWidth: number,
-	Start: Vector3, -- erster Wegpunkt (im Start-Hangar)
+export type NestFieldInfo = {
+	Folder: Folder, -- Ordner "NestField" (Boden, Nester, Speed-Pads; Attribute = Grenzen der Kreaturen)
+	Nests: { BasePart }, -- Teile "Nest" (Attribute NestSize, EggPoint, RaceNest)
 }
 
 export type FreeZone = {
@@ -32,7 +27,7 @@ export type FreeZone = {
 export type MapResult = {
 	MapFolder: Folder,
 	Plots: { any },
-	Parade: ParadeInfo, -- (früher: Belt = Förderband)
+	NestField: NestFieldInfo, -- Map-Mitte: Ei-Rennen
 	LobbySpawn: CFrame,
 	LeaderboardCFrame: CFrame,
 	FreeZone: FreeZone,
@@ -64,66 +59,58 @@ local EDGE_X = 168 -- Basen-Rückseite bei x = ±124, dahinter (rechts) der Mete
 local EDGE_MIN_Z = -406
 local EDGE_MAX_Z = 256
 
--- Alien-Parade (Pfad steht in Config.Parade.Path)
-local ROAD_TOP = 0.3 -- Ersatz, falls Config.Parade.RoadTop fehlt
-local ROAD_HEIGHT = 0.4
-local ROAD_COLOR = Color3.fromRGB(116, 134, 236)
-local KERB_WIDTH = 1
-local KERB_HEIGHT = 0.9
-local KERB_COLORS = { Color3.fromRGB(196, 40, 28), Color3.fromRGB(242, 243, 243) }
-local FLAG_COLORS = {
-	Color3.fromRGB(196, 40, 28),
-	Color3.fromRGB(245, 205, 48),
-	Color3.fromRGB(13, 105, 172),
-	Color3.fromRGB(75, 151, 75),
-	Color3.fromRGB(255, 102, 204),
+-- Ei-Rennen (Nester-Feld in der Map-Mitte, Basen beginnen bei x = ±34)
+local FIELD_HALF_X = 33
+local FIELD_MIN_Z = -214 -- Spawn-Platz endet bei z = -226
+local FIELD_MAX_Z = 246
+local FIELD_TOP = 0.2
+local FIELD_COLOR = Color3.fromRGB(130, 215, 85)
+local NEST_COLOR = Color3.fromRGB(226, 186, 96) -- Stroh
+local NEST_INNER_COLOR = Color3.fromRGB(160, 110, 55)
+local NEST_GOLD_COLOR = Color3.fromRGB(255, 200, 40)
+local NEST_SMALL_SIZE = 6
+local NEST_BIG_SIZE = 14
+local NEST_RACE_SIZE = 18
+-- kleine Nester: 4 Reihen (x), von z = -195 bis 195 alle 15 Studs (vor den Basen bleibt ein Weg frei)
+local SMALL_NEST_X = { -23, -14, 14, 23 }
+local SMALL_NEST_MIN_Z = -195
+local SMALL_NEST_MAX_Z = 195
+local SMALL_NEST_STEP = 15
+-- große Nester (X, Z): Mitte + weit weg am Ende; das LETZTE ist das Renn-Nest (Gold-Ei)
+local BIG_NESTS = {
+	Vector2.new(0, -140),
+	Vector2.new(0, -50),
+	Vector2.new(0, 40),
+	Vector2.new(0, 130),
+	Vector2.new(-36, 214),
+	Vector2.new(36, 214),
+	Vector2.new(0, 230),
 }
-local HOUSE_WIDTH = 28
-local HOUSE_DEPTH = 20
-local HOUSE_HEIGHT = 14
-local HOUSE_INSET = 10 -- so weit liegt das Pfad-Ende hinter der leuchtenden Öffnung
+-- Speed-Pads (X, Z): Mitte zwischen den großen Nestern + vor jedem Base-Eingang
+local SPEED_PAD_SIZE = 5
+local SPEED_PAD_COLOR = Color3.fromRGB(0, 170, 255)
+local SPEED_PADS = {
+	Vector2.new(0, -190),
+	Vector2.new(0, -95),
+	Vector2.new(0, -5),
+	Vector2.new(0, 85),
+	Vector2.new(0, 175),
+	Vector2.new(-29.5, -135),
+	Vector2.new(-29.5, -45),
+	Vector2.new(-29.5, 45),
+	Vector2.new(-29.5, 135),
+	Vector2.new(29.5, -135),
+	Vector2.new(29.5, -45),
+	Vector2.new(29.5, 45),
+	Vector2.new(29.5, 135),
+}
+-- Revier der Kreaturen (sie betreten nie eine Base und nie den Spawn-Platz)
+local CREATURE_HALF_X = 29
+local CREATURE_MIN_Z = -205
+local CREATURE_MAX_Z = 240
 
--- Basen: offen (nur niedriger Rand an Seiten + hinten), vorne offen mit Laser-Sperre.
--- Lokales Koordinatensystem einer Base: -Z = Eingang (zeigt zur Parade), X = Breite, Z = Tiefe.
-local PLOT_WIDTH = 80 -- lokales X (entlang der Welt-Z-Achse)
-local PLOT_DEPTH = 90 -- lokales Z (entlang der Welt-X-Achse) -> 7200 Studs² (alt 72x72 = 5184, ca. 1,4x)
-local HALF_X = PLOT_WIDTH / 2
-local HALF_Z = PLOT_DEPTH / 2
-local PLOT_X = 79 -- Abstand Basis-Mitte <-> Map-Mitte (Eingang bei x = ±34, Rückseite bei x = ±124)
-local PLOT_Z = { -135, -45, 45, 135 } -- 10 Studs Lücke zwischen den Basen
-local PLOT_FLOOR_TOP = 1
-local FENCE_HEIGHT = 2 -- niedriger Rand (drüberspringen geht – Schutz macht der Lock-Rauswurf)
-local FENCE_THICK = 1
-local BARRIER_HEIGHT = 10
--- Kräftige Roblox-Plastikfarben (Bright red, Bright orange, Bright yellow, ...)
-local PLOT_COLORS = {
-	Color3.fromRGB(196, 40, 28),
-	Color3.fromRGB(218, 133, 65),
-	Color3.fromRGB(245, 205, 48),
-	Color3.fromRGB(75, 151, 75),
-	Color3.fromRGB(13, 105, 172),
-	Color3.fromRGB(4, 175, 236),
-	Color3.fromRGB(107, 50, 124),
-	Color3.fromRGB(255, 102, 204),
-}
-local FENCE_COLOR = Color3.fromRGB(242, 243, 243) -- Institutional white
+-- Basen baut BaseBuilder.luau (Maße, Slots, Stockwerke, Look). Hier nur die Holzfarbe der Block-Bäume.
 local WOOD_COLOR = Color3.fromRGB(124, 92, 70) -- Reddish brown
--- Unsichtbare Slot-Anker: versetztes Raster (5-4-5-4 = 18), Reihe 1 nahe Eingang (Slot 1-5),
--- Reihe 4 hinten (Slot 15-18). Abstand 13 Studs, dazu etwas Zufall (fester Seed: alle Basen gleich)
--- -> auch nach dem Wackeln noch mind. ~10 Studs zwischen zwei Aliens (Footprint max. 8x8).
-local SLOT_ROWS = {
-	{ Z = -14, Count = 5 },
-	{ Z = -1, Count = 4 },
-	{ Z = 12, Count = 5 },
-	{ Z = 25, Count = 4 },
-}
-local SLOT_SPACING = 13
-local SLOT_JITTER = 1 -- Studs Zufalls-Versatz je Richtung
-local SLOT_YAW = math.rad(12) -- leicht verdreht (wirkt lockerer)
-local SLOT_SEED = 4711
--- Anker-Kasten vom Boden bis 3 Studs hoch: wer hindurchläuft, sammelt Geld ein (Touched),
--- PlotService.SlotTopCFrame nimmt die Unterkante (= Bodenhöhe)
-local SLOT_ANCHOR_SIZE = Vector3.new(6, 3, 6)
 
 -- Spawn-Platz (hinter dem Start-Hangar, -Z)
 local PLAZA_MIN_Z = -398
@@ -231,28 +218,6 @@ local function addLight(parent: Instance, color: Color3, range: number, brightne
 	light.Brightness = brightness
 	light.Shadows = false
 	light.Parent = parent
-end
-
--- Einzeiliges Schild in Pixelgröße (wie bisher bei Collect/Lock/Basis-Namen)
-local function billboard(parent: Instance, size: UDim2, offset: Vector3, maxDistance: number): (BillboardGui, TextLabel)
-	local gui = Instance.new("BillboardGui")
-	gui.Size = size
-	gui.StudsOffset = offset
-	gui.MaxDistance = maxDistance
-	gui.LightInfluence = 0
-	gui.Parent = parent
-	local label = Instance.new("TextLabel")
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.fromScale(1, 1)
-	label.Font = Enum.Font.FredokaOne
-	label.TextScaled = true
-	label.TextColor3 = WHITE
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 4 -- dicke Kontur (Roblox-Schild-Stil)
-	stroke.LineJoinMode = Enum.LineJoinMode.Round
-	stroke.Parent = label
-	label.Parent = gui
-	return gui, label
 end
 
 -- Mehrzeiliges Schild in Studs-Größe (wirkt wie ein echtes Schild in der Welt).
@@ -374,257 +339,186 @@ local function buildGround(map: Folder)
 end
 
 -- -------------------------------------------------------------------
--- ALIEN-PARADE: bunte Straße mit Bordsteinen, Fähnchen, UFO-Hangar (Start) und Ziel-Tor
+-- EI-RENNEN: großes Nester-Feld in der Map-Mitte (zwischen den Basen x = ±34)
+--   viele kleine Nester (nah an den Basen), wenige große (Mitte / weit weg), Speed-Pads.
+--   Attribute: Nester (Teil "Nest") NestSize = "Small"/"Big", EggPoint = Ei-Unterkante, RaceNest = true
+--   (entferntestes großes Nest, dort erscheint das Gold-Ei); Ordner "NestField": Grenzen für die
+--   Kreaturen (MinX, MaxX, MinZ, MaxZ). Der Server (MeteorService, FieldService) liest alles von hier.
 -- -------------------------------------------------------------------
--- Haus über einem Pfad-Ende (Start-Hangar bzw. Ziel). endPoint = Pfad-Ende (liegt IM Haus),
--- inward = Richtung aus dem Haus heraus zur Straße. Vorne eine leuchtende Fläche: dort tauchen die
--- Aliens auf bzw. verschwinden (Spieler können nicht hinein -> CanCollide an).
-local function buildParadeHouse(
-	parent: Instance,
-	name: string,
-	endPoint: Vector3,
-	inward: Vector3,
-	wallColor: Color3,
-	roofColor: Color3,
-	glowColor: Color3
-): CFrame
-	local model = Instance.new("Model")
-	model.Name = name
-	model.Parent = parent
-	-- lokales System: -Z = Öffnung (zur Straße), Mitte HOUSE_DEPTH/2 hinter der Öffnung
-	local openPoint = endPoint + inward * HOUSE_INSET
-	local center = openPoint - inward * (HOUSE_DEPTH / 2)
-	local cf = CFrame.lookAt(Vector3.new(center.X, 0, center.Z), Vector3.new(center.X, 0, center.Z) + inward)
-	local halfW = HOUSE_WIDTH / 2
-	local function block(partName: string, size: Vector3, offset: Vector3, color: Color3, props: { [string]: any }?)
-		local p = part({
-			Name = partName,
-			Size = size,
-			CFrame = cf * CFrame.new(offset),
-			Material = Enum.Material.Plastic,
-			Color = color,
-			Parent = model,
-		})
-		if props then
-			for key, value in pairs(props) do
-				(p :: any)[key] = value
-			end
-		end
-		return p
-	end
-	for _, s in ipairs({ -1, 1 }) do
-		block(
-			"Wall",
-			Vector3.new(2, HOUSE_HEIGHT, HOUSE_DEPTH),
-			Vector3.new(s * (halfW - 1), HOUSE_HEIGHT / 2, 0),
-			wallColor
-		)
-	end
-	block(
-		"BackWall",
-		Vector3.new(HOUSE_WIDTH - 4, HOUSE_HEIGHT, 2),
-		Vector3.new(0, HOUSE_HEIGHT / 2, HOUSE_DEPTH / 2 - 1),
-		wallColor
-	)
-	local openHeight = HOUSE_HEIGHT - 3
-	block(
-		"Header",
-		Vector3.new(HOUSE_WIDTH - 4, 3, 2),
-		Vector3.new(0, HOUSE_HEIGHT - 1.5, -HOUSE_DEPTH / 2 + 1),
-		wallColor
-	)
-	local roof =
-		block("Roof", Vector3.new(HOUSE_WIDTH + 2, 2, HOUSE_DEPTH + 2), Vector3.new(0, HOUSE_HEIGHT + 1, 0), roofColor)
-	studs(roof)
-	local plane = block(
-		"PortalPlane",
-		Vector3.new(HOUSE_WIDTH - 4, openHeight, 0.4),
-		Vector3.new(0, openHeight / 2, -HOUSE_DEPTH / 2 + 1.2),
-		glowColor,
-		{ Material = Enum.Material.Neon, Transparency = 0.15, CastShadow = false, CanQuery = false }
-	)
-	addLight(plane, glowColor, 20, 1.5)
-	return cf * CFrame.new(0, HOUSE_HEIGHT + 2, 0) -- Dach-Oberkante (für UFO / Schild)
-end
-
-local function buildParade(map: Folder): ParadeInfo
-	local paradeFolder = folder("Parade", map) -- Name wird vom Client gesucht (Attribute = Pfad + Uhr)
-	local path = ParadePath.FromConfig(Config)
-	if not path then
-		warn("[MapBuilder] Config.Parade.Path fehlt/kaputt – gerade Ersatz-Straße")
-		path = ParadePath.Build({ Vector3.new(0, 0, -214), Vector3.new(0, 0, 214) }, ROAD_TOP)
-	end
-	assert(path, "Parade-Pfad")
-	ParadePath.Export(paradeFolder, path)
-	local roadWidth = tonumber(Config.Parade and Config.Parade.RoadWidth) or 20
-	local half = roadWidth / 2
-	local top = path.RoadTop
-	local points = path.Points
-
-	-- Straße: gerade Stücke (Noppen) + runde Scheiben an den Ecken (etwas tiefer -> kein Flackern)
-	for i = 1, #points - 1 do
-		local a, b = points[i], points[i + 1]
-		local length = (b - a).Magnitude
-		local mid = (a + b) / 2
-		local road = part({
-			Name = "Road",
-			Size = Vector3.new(roadWidth, ROAD_HEIGHT, length),
-			CFrame = CFrame.lookAt(mid, b) - Vector3.new(0, ROAD_HEIGHT / 2, 0),
-			Material = Enum.Material.Plastic,
-			Color = ROAD_COLOR,
-			Parent = paradeFolder,
-		})
-		studs(road)
-		if i > 1 then
-			disc("RoadCorner", a, top - ROAD_HEIGHT - 0.02, ROAD_HEIGHT, roadWidth, {
+local function buildNest(parent: Instance, x: number, z: number, big: boolean, race: boolean): Part
+	local diameter = if race then NEST_RACE_SIZE elseif big then NEST_BIG_SIZE else NEST_SMALL_SIZE
+	local height = if big then 1.6 else 1
+	local center = Vector3.new(x, 0, z)
+	local nest = disc("Nest", center, FIELD_TOP, height, diameter, {
+		Material = Enum.Material.Plastic,
+		Color = if race then NEST_GOLD_COLOR else NEST_COLOR,
+		Parent = parent,
+	})
+	studs(nest)
+	-- Mulde (dunkleres Stroh), steht minimal höher -> kein Flackern
+	disc("NestInner", center, FIELD_TOP, height + 0.1, diameter * 0.66, {
+		Material = Enum.Material.Plastic,
+		Color = NEST_INNER_COLOR,
+		CanCollide = false,
+		CastShadow = false,
+		Parent = parent,
+	})
+	nest:SetAttribute("NestSize", if big then "Big" else "Small")
+	nest:SetAttribute("EggPoint", Vector3.new(x, FIELD_TOP + height + 0.1, z))
+	if big then
+		-- 4 Strohhalme (Blöcke) schräg am Rand
+		for i = 0, 3 do
+			local angle = i * math.pi / 2 + math.pi / 4
+			local r = diameter / 2 - 0.6
+			part({
+				Name = "Straw",
+				Size = Vector3.new(1, 3.4, 1),
+				CFrame = CFrame.new(x + math.cos(angle) * r, FIELD_TOP + height + 0.8, z + math.sin(angle) * r)
+					* CFrame.Angles(0, -angle, math.rad(-25)),
 				Material = Enum.Material.Plastic,
-				Color = ROAD_COLOR,
-				Parent = paradeFolder,
+				Color = NEST_COLOR,
+				CanCollide = false,
+				Parent = parent,
 			})
 		end
+		-- Lichtsäule (schaltet der Server ein, solange ein Ei drin liegt)
+		local bottom = Instance.new("Attachment")
+		bottom.Name = "PillarBottom"
+		bottom.Position = Vector3.new(height / 2, 0, 0) -- (Zylinder liegt gekippt: lokales X = oben)
+		bottom.Parent = nest
+		local top = Instance.new("Attachment")
+		top.Name = "PillarTop"
+		top.Position = Vector3.new(height / 2 + 40, 0, 0)
+		top.Parent = nest
+		local beam = Instance.new("Beam")
+		beam.Name = "NestPillar"
+		beam.Attachment0 = bottom
+		beam.Attachment1 = top
+		beam.Width0 = diameter * 0.5
+		beam.Width1 = diameter * 0.3
+		beam.FaceCamera = true
+		beam.LightEmission = 1
+		beam.LightInfluence = 0
+		beam.Segments = 1
+		beam.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.4),
+			NumberSequenceKeypoint.new(0.6, 0.8),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		beam.Enabled = false
+		beam.Parent = nest
 	end
-
-	-- Bordsteine (abwechselnd rot/weiß), an den Ecken gekürzt, damit sie sich nicht überlappen
-	local kerbOffset = half + KERB_WIDTH / 2
-	local function trimAt(index: number): number
-		local dirs = path.Dirs
-		local before, after = dirs[index - 1], dirs[index]
-		if not before or not after then
-			return 0
-		end
-		local angle = math.acos(math.clamp(before:Dot(after), -1, 1))
-		return (half + KERB_WIDTH) * math.tan(angle / 2) + 0.3
-	end
-	for i = 1, #points - 1 do
-		local a, b = points[i], points[i + 1]
-		local dir = path.Dirs[i]
-		local t0, t1 = trimAt(i), trimAt(i + 1)
-		local length = (b - a).Magnitude - t0 - t1
-		if length > 1 then
-			local right = ParadePath.Right(dir)
-			local mid = a + dir * (t0 + length / 2)
-			for _, s in ipairs({ -1, 1 }) do
-				local pos = mid + right * (s * kerbOffset) + Vector3.new(0, KERB_HEIGHT / 2 - ROAD_HEIGHT, 0)
-				part({
-					Name = "Kerb",
-					Size = Vector3.new(KERB_WIDTH, KERB_HEIGHT, length),
-					CFrame = CFrame.lookAt(pos, pos + dir),
-					Material = Enum.Material.Plastic,
-					Color = KERB_COLORS[i % #KERB_COLORS + 1],
-					CastShadow = false,
-					Parent = paradeFolder,
-				})
-			end
-		end
-	end
-
-	-- Fähnchen an den Ecken (abwechselnd links/rechts) + ein paar Ballons auf der anderen Seite
-	for i = 2, #points - 1 do
-		local side = if i % 2 == 0 then 1 else -1
-		local right = ParadePath.Right(path.Tangents[i])
-		local base = points[i] + right * (side * (half + 3))
+	if race then
+		nest:SetAttribute("RaceNest", true)
+		-- Zielflagge (schwarz-weiß) neben dem Nest
+		local poleX = x + diameter / 2 + 2
 		part({
-			Name = "FlagPole",
-			Size = Vector3.new(0.4, 9, 0.4),
-			Position = Vector3.new(base.X, 4.5, base.Z),
+			Name = "RacePole",
+			Size = Vector3.new(0.6, 14, 0.6),
+			Position = Vector3.new(poleX, FIELD_TOP + 7, z),
 			Material = Enum.Material.Plastic,
 			Color = WHITE,
-			Parent = paradeFolder,
+			Parent = parent,
 		})
-		part({
-			Name = "Flag",
-			Size = Vector3.new(0.2, 2, 3),
-			CFrame = CFrame.new(base.X, 7.9, base.Z) * CFrame.new(0, 0, 1.5),
-			Material = Enum.Material.Plastic,
-			Color = FLAG_COLORS[i % #FLAG_COLORS + 1],
-			CanCollide = false,
-			CastShadow = false,
-			Parent = paradeFolder,
-		})
-		if i % 3 == 0 then
-			local spot = points[i] - right * (side * (half + 3))
+		for i = 0, 1 do
 			part({
-				Name = "BalloonString",
-				Size = Vector3.new(0.12, 7, 0.12),
-				Position = Vector3.new(spot.X, 3.5, spot.Z),
+				Name = "RaceFlag",
+				Size = Vector3.new(0.2, 2, 2.5),
+				CFrame = CFrame.new(poleX, FIELD_TOP + 12.5 - i * 2, z + 1.25 + (i * 2.5)),
 				Material = Enum.Material.Plastic,
-				Color = WHITE,
+				Color = if i == 0 then Color3.fromRGB(27, 42, 53) else WHITE,
 				CanCollide = false,
 				CastShadow = false,
-				Parent = paradeFolder,
-			})
-			part({
-				Name = "Balloon",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.new(2.6, 2.6, 2.6),
-				Position = Vector3.new(spot.X, 8.2, spot.Z),
-				Material = Enum.Material.SmoothPlastic,
-				Color = FLAG_COLORS[(i + 2) % #FLAG_COLORS + 1],
-				CanCollide = false,
-				Parent = paradeFolder,
+				Parent = parent,
 			})
 		end
 	end
+	return nest
+end
 
-	-- Start: UFO-Hangar (Aliens kommen aus der leuchtenden Öffnung), Ziel: Tor (Aliens verschwinden)
-	local first, last = points[1], points[#points]
-	local roofTop = buildParadeHouse(
-		paradeFolder,
-		"StartHangar",
-		first,
-		path.Dirs[1],
-		Color3.fromRGB(242, 243, 243),
-		Color3.fromRGB(107, 50, 124),
-		Color3.fromRGB(120, 255, 120)
-	)
-	-- UFO auf dem Dach: Scheibe + Glaskuppel
-	local ufoPos = roofTop.Position
-	disc("UfoDisc", ufoPos, ufoPos.Y, 1.6, HOUSE_WIDTH - 2, {
+-- Speed-Pad: flache Platte mit Blitz, Berühren = kurz schneller (FieldService)
+local function buildSpeedPad(parent: Instance, x: number, z: number)
+	local pad = part({
+		Name = "SpeedPad",
+		Size = Vector3.new(SPEED_PAD_SIZE, 0.3, SPEED_PAD_SIZE),
+		Position = Vector3.new(x, FIELD_TOP + 0.15, z),
+		Material = Enum.Material.SmoothPlastic,
+		Color = SPEED_PAD_COLOR,
+		CanCollide = false,
+		CanTouch = true,
+		CastShadow = false,
+		Parent = parent,
+	})
+	pad:SetAttribute("SpeedPad", true)
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Icon"
+	gui.Face = Enum.NormalId.Top
+	gui.CanvasSize = Vector2.new(100, 100)
+	gui.LightInfluence = 0
+	gui.Parent = pad
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.Text = "⚡"
+	label.TextColor3 = WHITE
+	label.Parent = gui
+end
+
+local function buildNestField(map: Folder): NestFieldInfo
+	local field = folder("NestField", map) -- Name wird von Server und Client gesucht!
+	field:SetAttribute("MinX", -CREATURE_HALF_X)
+	field:SetAttribute("MaxX", CREATURE_HALF_X)
+	field:SetAttribute("MinZ", CREATURE_MIN_Z)
+	field:SetAttribute("MaxZ", CREATURE_MAX_Z)
+
+	-- Noppenboden des Felds (etwas helleres Grün als die Wiese)
+	local floorPart = part({
+		Name = "Floor",
+		Size = Vector3.new(FIELD_HALF_X * 2, FIELD_TOP, FIELD_MAX_Z - FIELD_MIN_Z),
+		Position = Vector3.new(0, FIELD_TOP / 2, (FIELD_MIN_Z + FIELD_MAX_Z) / 2),
 		Material = Enum.Material.Plastic,
-		Color = Color3.fromRGB(163, 162, 165),
-		Parent = paradeFolder,
+		Color = FIELD_COLOR,
+		Parent = field,
 	})
-	part({
-		Name = "UfoDome",
-		Shape = Enum.PartType.Ball,
-		Size = Vector3.new(10, 10, 10),
-		Position = ufoPos + Vector3.new(0, 1.6, 0),
-		Material = Enum.Material.Glass,
-		Color = Color3.fromRGB(120, 220, 255),
-		Transparency = 0.3,
-		Parent = paradeFolder,
-	})
-	local endTop = buildParadeHouse(
-		paradeFolder,
-		"EndGate",
-		last,
-		-path.Dirs[#path.Dirs],
-		Color3.fromRGB(242, 243, 243),
-		Color3.fromRGB(13, 105, 172),
-		Color3.fromRGB(255, 205, 40)
-	)
+	studs(floorPart)
 
-	local titleAnchor = anchorPart("TitleSign", roofTop * CFrame.new(0, 12, 0), paradeFolder)
-	worldSign(titleAnchor, "Sign", 40, 10, Vector3.zero, 700, {
-		{ Name = "Title", Text = "ALIEN-PARADE", Color = Color3.fromRGB(120, 255, 120), Height = 0.62 },
-		-- geräteneutral (am Handy gibt es keine E/F-Tasten): halten = klauen, kurz = kaufen
-		{ Name = "Hint", Text = "Halten = Klauen • Kaufen = Lieferung", Color = WHITE, Height = 0.38 },
-	})
-	local endAnchor = anchorPart("EndSign", endTop * CFrame.new(0, 4, 0), paradeFolder)
-	worldSign(endAnchor, "Sign", 16, 5, Vector3.zero, 400, {
-		{ Name = "Title", Text = "ZIEL", Color = Color3.fromRGB(255, 205, 40), Height = 1 },
+	local nestsFolder = folder("Nests", field)
+	local nests: { BasePart } = {}
+	-- kleine Nester: 4 Reihen nah an den Basen, über die ganze Länge
+	for _, x in ipairs(SMALL_NEST_X) do
+		local z = SMALL_NEST_MIN_Z
+		while z <= SMALL_NEST_MAX_Z do
+			table.insert(nests, buildNest(nestsFolder, x, z, false, false))
+			z += SMALL_NEST_STEP
+		end
+	end
+	-- große Nester: Mitte + weit weg am Ende (das letzte ist das Renn-Nest)
+	for i, pos in ipairs(BIG_NESTS) do
+		table.insert(nests, buildNest(nestsFolder, pos.X, pos.Y, true, i == #BIG_NESTS))
+	end
+
+	local padsFolder = folder("SpeedPads", field)
+	for _, pos in ipairs(SPEED_PADS) do
+		buildSpeedPad(padsFolder, pos.X, pos.Y)
+	end
+
+	-- Schild am Anfang des Felds (vom Spawn-Platz aus zu sehen)
+	local signAnchor = anchorPart("TitleSign", CFrame.new(0, 16, FIELD_MIN_Z + 4), field)
+	worldSign(signAnchor, "Sign", 36, 9, Vector3.zero, 700, {
+		{ Name = "Title", Text = "🥚 EI-RENNEN", Color = Color3.fromRGB(255, 220, 80), Height = 0.6 },
+		{ Name = "Hint", Text = "Schnapp dir Eier! Achtung: Monster!", Color = WHITE, Height = 0.4 },
 	})
 
 	return {
-		Folder = paradeFolder,
-		Path = path,
-		RoadWidth = roadWidth,
-		Start = first,
+		Folder = field,
+		Nests = nests,
 	}
 end
 
 -- -------------------------------------------------------------------
--- BASEN
+-- BLOCK-BAUM (Deko; die Basen baut BaseBuilder)
 -- -------------------------------------------------------------------
 -- Blockiger Roblox-Baum: Stamm + großer Blätterblock + kleiner Block obendrauf (3 Teile).
 -- cf = Bodenpunkt (Stamm-Unterkante), scale = Größe
@@ -661,218 +555,6 @@ local function blockTree(parent: Instance, cf: CFrame, scale: number, color: Col
 		Parent = parent,
 	})
 	crown.TopSurface = Enum.SurfaceType.Studs
-end
-
--- Einfache Laterne: Holzpfosten + leuchtender Würfel (kein PointLight -> spart Leistung)
-local function lantern(parent: Instance, cf: CFrame)
-	local height = 6
-	part({
-		Name = "LanternPost",
-		Size = Vector3.new(0.8, height, 0.8),
-		CFrame = cf * CFrame.new(0, height / 2, 0),
-		Material = Enum.Material.Plastic,
-		Color = WOOD_COLOR,
-		Parent = parent,
-	})
-	part({
-		Name = "LanternLamp",
-		Size = Vector3.new(1.6, 1.6, 1.6),
-		CFrame = cf * CFrame.new(0, height + 0.8, 0),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(255, 220, 120),
-		CanCollide = false,
-		CastShadow = false,
-		Parent = parent,
-	})
-end
-
--- Lokale Positionen (X, Z, Drehung) der 18 Slot-Anker in Slot-Reihenfolge
-local function slotLayout(): { { X: number, Z: number, Yaw: number } }
-	local rng = Random.new(SLOT_SEED)
-	local list = {}
-	for _, row in ipairs(SLOT_ROWS) do
-		for i = 1, row.Count do
-			local x = (i - (row.Count + 1) / 2) * SLOT_SPACING
-			table.insert(list, {
-				X = x + rng:NextNumber(-SLOT_JITTER, SLOT_JITTER),
-				Z = row.Z + rng:NextNumber(-SLOT_JITTER, SLOT_JITTER),
-				Yaw = rng:NextNumber(-SLOT_YAW, SLOT_YAW),
-			})
-		end
-	end
-	return list
-end
-
-local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Instance)
-	local model = Instance.new("Model")
-	model.Name = "Plot" .. index
-	model:SetAttribute("PlotIndex", index)
-	model:SetAttribute("OwnerUserId", 0)
-	model:SetAttribute("LockedUntil", 0)
-
-	local top = PLOT_FLOOR_TOP
-	-- Boden: kräftige Plastikfarbe mit Noppen (klassischer Roblox-Look)
-	local floorPart = part({
-		Name = "Floor",
-		Size = Vector3.new(PLOT_WIDTH, top, PLOT_DEPTH),
-		CFrame = cf * CFrame.new(0, top / 2, 0),
-		Material = Enum.Material.Plastic,
-		Color = color,
-		Parent = model,
-	})
-	floorPart.TopSurface = Enum.SurfaceType.Studs
-	model.PrimaryPart = floorPart
-
-	-- Niedriger weißer Rand: hinten über die ganze Breite, Seiten enden STUMPF an der Rückwand
-	-- (keine überlappenden Teile mit gleichen Außenflächen -> kein Flackern/Z-Fighting).
-	-- Alles steht AUF dem Boden (Unterkante = Bodenoberkante).
-	local function fence(name: string, size: Vector3, offset: CFrame)
-		local p = part({
-			Name = name,
-			Size = size,
-			CFrame = cf * offset,
-			Material = Enum.Material.Plastic,
-			Color = FENCE_COLOR,
-			Parent = model,
-		})
-		p.TopSurface = Enum.SurfaceType.Studs
-	end
-	local fenceY = top + FENCE_HEIGHT / 2
-	fence(
-		"BackFence",
-		Vector3.new(PLOT_WIDTH, FENCE_HEIGHT, FENCE_THICK),
-		CFrame.new(0, fenceY, HALF_Z - FENCE_THICK / 2)
-	)
-	local sideLength = PLOT_DEPTH - FENCE_THICK
-	for _, s in ipairs({ -1, 1 }) do
-		fence(
-			"SideFence",
-			Vector3.new(FENCE_THICK, FENCE_HEIGHT, sideLength),
-			CFrame.new(s * (HALF_X - FENCE_THICK / 2), fenceY, -FENCE_THICK / 2)
-		)
-	end
-
-	-- Laser-Sperre vorne (PlotService macht sie sichtbar, solange die Base gesperrt ist).
-	-- Etwas schmaler als der Innenraum: berührt die Seitenränder nicht (kein Flackern).
-	local barrier = part({
-		Name = "Barrier",
-		Size = Vector3.new(PLOT_WIDTH - 2 * FENCE_THICK - 0.2, BARRIER_HEIGHT, 0.4),
-		CFrame = cf * CFrame.new(0, top + BARRIER_HEIGHT / 2, -HALF_Z + 0.3),
-		Material = Enum.Material.ForceField,
-		Color = Color3.fromRGB(255, 40, 40),
-		Transparency = 1,
-		CanCollide = false,
-		CanQuery = false,
-		CastShadow = false,
-		Parent = model,
-	})
-
-	-- 18 unsichtbare Slot-Anker (Reihenfolge = Slot-Nummer). Keine sichtbaren Pads mehr.
-	-- CanTouch: durchlaufen = Geld einsammeln (PlotService), CanQuery aus (Fallen-Strahl, Prompts).
-	local slots: { BasePart } = {}
-	for slotNumber, spot in ipairs(slotLayout()) do
-		slots[slotNumber] = part({
-			Name = "Slot" .. slotNumber,
-			Size = SLOT_ANCHOR_SIZE,
-			CFrame = cf * CFrame.new(spot.X, top + SLOT_ANCHOR_SIZE.Y / 2, spot.Z) * CFrame.Angles(0, spot.Yaw, 0),
-			Transparency = 1,
-			CanCollide = false,
-			CanQuery = false,
-			CanTouch = true,
-			CastShadow = false,
-			Parent = model,
-		})
-	end
-
-	-- Collect- und Lock-Pad vorne links/rechts (Spawn-Punkt liegt dazwischen)
-	local collectPad = part({
-		Name = "CollectPad",
-		Size = Vector3.new(12, 0.3, 7),
-		CFrame = cf * CFrame.new(-22, top + 0.15, -36),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(60, 220, 90),
-		CanCollide = false,
-		CanTouch = true,
-		CastShadow = false,
-		Parent = model,
-	})
-	local _, collectLabel = billboard(collectPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 90)
-	collectLabel.Text = "💰 $0"
-
-	local lockPad = part({
-		Name = "LockPad",
-		Size = Vector3.new(10, 0.3, 7),
-		CFrame = cf * CFrame.new(22, top + 0.15, -36),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(230, 60, 60),
-		CanCollide = false,
-		CanTouch = true,
-		CastShadow = false,
-		Parent = model,
-	})
-	local _, lockLabel = billboard(lockPad, UDim2.new(0, 200, 0, 50), Vector3.new(0, 4, 0), 90)
-	lockLabel.Text = "🔒 LOCK"
-
-	-- Deko: Laternen vorne in den Ecken, blockige Bäume hinten in den Ecken (weit weg von allen Slots)
-	local deco = folder("Deco", model)
-	for _, s in ipairs({ -1, 1 }) do
-		lantern(deco, cf * CFrame.new(s * 35.5, top, -41))
-		blockTree(deco, cf * CFrame.new(s * 33, top, 38), 0.9, TREE_COLORS[(index + s) % #TREE_COLORS + 1])
-	end
-
-	-- Namensschild über dem Eingang (großes Roblox-Schild)
-	local signPart = anchorPart("Sign", cf * CFrame.new(0, top + 11, -HALF_Z + 2), model)
-	local _, signLabel = billboard(signPart, UDim2.new(0, 360, 0, 70), Vector3.zero, 320)
-	signLabel.Text = "Freie Base"
-	signLabel.TextColor3 = color:Lerp(WHITE, 0.2)
-
-	local meteorFolder = folder("Meteors", model)
-	model.Parent = parent
-
-	return {
-		Index = index,
-		Model = model,
-		CFrame = cf,
-		-- HalfSize = größere Hälfte (alter Code); genau: HalfSizeX (Breite) / HalfSizeZ (Tiefe), lokal
-		HalfSize = math.max(HALF_X, HALF_Z),
-		HalfSizeX = HALF_X,
-		HalfSizeZ = HALF_Z,
-		Color = color,
-		Owner = nil :: Player?,
-		Slots = slots,
-		MeteorParts = {} :: { [number]: Instance },
-		MeteorFolder = meteorFolder,
-		CollectPad = collectPad,
-		CollectLabel = collectLabel,
-		LockPad = lockPad,
-		LockLabel = lockLabel,
-		Barrier = barrier,
-		SignLabel = signLabel,
-		LockedUntil = 0,
-		-- Spawn: vorne in der Mitte zwischen Collect- und Lock-Pad, weit weg von Rand und Slots
-		SpawnCFrame = cf * CFrame.new(0, top + 3, -30),
-		-- Rauswurf: 8 Studs vor dem Eingang auf der Wiese (zwischen Parade-Bordstein bei max. x = ±23 und Base)
-		EntranceCFrame = cf * CFrame.new(0, 4, -HALF_Z - 8),
-	}
-end
-
-local function buildPlots(map: Folder): { any }
-	local plotsFolder = folder("Plots", map) -- Name wird vom Client gesucht!
-	local maxPlots = math.clamp(math.floor(tonumber((Config :: any).MaxPlots) or 8), 1, 2 * #PLOT_Z)
-	local plots = {}
-	for _, side in ipairs({ -1, 1 }) do
-		for _, z in ipairs(PLOT_Z) do
-			local index = #plots + 1
-			if index > maxPlots then
-				break
-			end
-			local center = Vector3.new(side * PLOT_X, 0, z)
-			-- Eingang (lokales -Z) zeigt zur Parade in der Mitte
-			local cf = CFrame.lookAt(center, center + Vector3.new(-side, 0, 0))
-			table.insert(plots, buildPlot(index, cf, PLOT_COLORS[(index - 1) % #PLOT_COLORS + 1], plotsFolder))
-		end
-	end
-	return plots
 end
 
 -- -------------------------------------------------------------------
@@ -917,7 +599,7 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 	spawn.Parent = plaza
 	local lobbySpawn = CFrame.lookAt(
 		Vector3.new(0, spawnTop + 3.5, SPAWN_Z),
-		Vector3.new(0, spawnTop + 3.5, -214) -- Blick zum Parade-Hangar
+		Vector3.new(0, spawnTop + 3.5, -214) -- Blick zum Nester-Feld
 	)
 
 	-- Gratis-Zone: Landeplatz mit gelb-schwarzem Ring (hier landen Gratis- und Admin-Meteore)
@@ -1338,8 +1020,8 @@ function MapBuilder.Build(): MapResult
 	map.Name = "MeteorHeistMap"
 
 	buildGround(map)
-	local parade = buildParade(map)
-	local plots = buildPlots(map)
+	local nestField = buildNestField(map)
+	local plots = BaseBuilder.BuildPlots(map) -- Basen: siehe BaseBuilder.luau
 	local lobbySpawn, leaderboardCF, freeZone = buildPlaza(map)
 	local treadmillsFolder, treadmillSpawn = buildTreadmills(map)
 	buildDeco(map)
@@ -1355,7 +1037,7 @@ function MapBuilder.Build(): MapResult
 	return {
 		MapFolder = map,
 		Plots = plots,
-		Parade = parade,
+		NestField = nestField,
 		LobbySpawn = lobbySpawn,
 		LeaderboardCFrame = leaderboardCF,
 		FreeZone = freeZone,

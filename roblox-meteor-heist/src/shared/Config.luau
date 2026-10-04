@@ -156,6 +156,21 @@ Config.StarterPack = {
 Config.StartCash = 100
 Config.BaseSlots = 12
 Config.ExtraSlotsAmount = 6 -- Gamepass "+6 Plätze" (max. 18 – die Map baut 18 unsichtbare Slot-Anker je Base)
+-- STOCKWERKE: offene Plattformen über deiner Base (Treppe hoch), mit Cash kaufen, bleiben nach Rebirth.
+-- Der Reihe nach: erst Stockwerk 2, dann 3. Slots = Plätze auf dem Stockwerk (max. 6).
+-- RequiredRebirths (optional) = so viele Rebirths braucht man dafür.
+Config.BaseFloors = {
+	{ Name = "Stockwerk 2", Price = 500000, Slots = 6 },
+	{ Name = "Stockwerk 3", Price = 25000000, Slots = 6, RequiredRebirths = 1 },
+}
+-- BASE-LOOK (nur Optik): Stufe 1-5 der Reihe nach kaufen, bleibt nach Rebirth
+Config.BaseLooks = {
+	{ Name = "Start", Icon = "🏠", Price = 0, Info = "Weißer Zaun" },
+	{ Name = "Holz", Icon = "🪵", Price = 250000, Info = "Holzzaun, Torbogen, mehr Laternen" },
+	{ Name = "Stein", Icon = "🪨", Price = 5000000, Info = "Steinzaun, Fahnen, Bodenrand" },
+	{ Name = "Kristall", Icon = "💎", Price = 100000000, Info = "Blauer Zaun, Leucht-Bogen, mehr Fahnen" },
+	{ Name = "Gold", Icon = "👑", Price = 2500000000, Info = "Alles Gold!" },
+}
 Config.MaxPlots = 8 -- Spieler pro Server (in den Game Settings "Max Players" = 8 setzen!)
 Config.SellRatio = 0.5 -- Verkauf = 50% vom Wert
 
@@ -164,11 +179,11 @@ Config.LockDurationVIP = 90
 
 Config.GrabHoldDuration = 0.25 -- E halten zum Schnappen in der Gratis-Zone
 Config.StealHoldDuration = 1.5 -- E halten zum Klauen aus einer fremden Base
--- ALIEN-PARADE: jedes Ei auf dem Kopf eines Aliens hat ZWEI Knöpfe
---   E halten = KLAUEN (gratis, aber du musst es selbst nach Hause TRAGEN)
+-- EI-RENNEN: jedes Ei in einem Nest hat ZWEI Knöpfe
+--   E halten = SCHNAPPEN (gratis, aber du musst es selbst nach Hause TRAGEN)
 --   F        = KAUFEN (kostet Cash, fliegt automatisch in deine Base)
-Config.ParadeGrabHold = 0.8 -- E halten zum Klauen aus der Parade
-Config.ParadeBuyHold = 0.15 -- F halten zum Kaufen an der Parade
+Config.NestGrabHold = 0.5 -- E halten zum Schnappen aus einem Nest
+Config.NestBuyHold = 0.15 -- F halten zum Kaufen an einem Nest
 Config.GroundGrabHold = 0.3 -- E halten zum Schnappen eines Eis am Boden (fallen gelassen / Egg Rush)
 Config.DroppedLifetime = 30 -- Sekunden, bis ein fallen gelassenes Ei verschwindet
 Config.MaxDroppedMeteors = 130 -- Sicherheitsgrenze für Eier am Boden (fallen gelassen + Egg Rush)
@@ -379,50 +394,58 @@ Config.IncomePerLevel = 0.1 -- +10% Einkommen pro Level
 -- INDEX: jedes neu entdeckte Alien gibt dauerhaft +1% Einkommen
 Config.IndexBonusPerAlien = 0.01
 
--- ALIEN-PARADE in der Map-Mitte: kleine Aliens marschieren über eine bunte Straße vom UFO-Hangar
--- (am Spawn-Platz) zum Ziel-Tor und tragen je ein Ei auf dem Kopf. E halten = klauen, F = kaufen.
--- Seltene Eier (ab Parade.BossFromRarity) trägt ein großer, langsamer BOSS mit Leibwächtern.
-Config.ParadeSpawnInterval = 0.3 -- alle X Sekunden startet ein neuer Träger (auf zwei Spuren, mit 1-3 Eiern)
-Config.ParadeSpeed = 8 -- Studs pro Sekunde (kleine Träger)
-Config.MaxParadeMeteors = 170 -- Sicherheitsgrenze (mehr Eier sind nie gleichzeitig unterwegs)
-Config.ShowerMaxParadeMeteors = 220 -- im Meteoritenschauer darf die Parade voller werden
-Config.Parade = {
-	Lanes = { -2.6, 2.6 }, -- zwei Spuren (seitlicher Abstand zur Straßenmitte), abwechselnd belegt
-	Gap = 0.8, -- Mindestabstand (Studs) zwischen zwei Trägern derselben Spur
-	-- STAPEL: kleine Eier (bis StackMaxRarity) tragen die Aliens oft zu zweit oder zu dritt übereinander.
-	-- StackChances = Chance für 1, 2, 3 Eier (Summe 1)
-	StackMaxRarity = "Uncommon",
-	StackChances = { 0.4, 0.35, 0.25 },
-	-- BOSS: ab dieser Seltenheit trägt ein großer Boss das Ei, ab GuardsPlusFrom mit 3 statt 2 Leibwächtern
-	BossFromRarity = "Legendary",
-	GuardsPlusFrom = "Mythic",
-	BossSpeedFactor = 0.6, -- Boss läuft so viel langsamer (die anderen weichen beim Überholen aus)
-	BossScale = 2.2, -- so viel größer als ein kleiner Träger
-	BossGrabReach = 8, -- so nah (waagrecht) muss man an den Boss heran, um sein Ei zu klauen/kaufen
-	PushRadius = 11, -- Leibwächter schubsen alle weg, die dem Boss näher sind (Studs, waagrecht) ...
-	PushInterval = 1.5, -- ... alle X Sekunden (dazwischen klappt Klauen mit gutem Timing!)
-	PushForce = 55,
-	CarrierHeight = 5.4, -- Kopf-Oberkante eines kleinen Trägers über der Straße (Studs)
-	RoadWidth = 20,
-	RoadTop = 0.3,
-	-- Wegpunkte der Straße (X, Z). Start im UFO-Hangar, Ende im Ziel-Tor. Basen beginnen bei x = ±34,
-	-- deshalb bleibt die Straße (Mitte max. ±12, halbe Breite 10 + Bordstein) innerhalb von x = ±23.
-	Path = {
-		Vector3.new(0, 0, -214),
-		Vector3.new(0, 0, -192),
-		Vector3.new(12, 0, -162),
-		Vector3.new(12, 0, -124),
-		Vector3.new(-12, 0, -86),
-		Vector3.new(-12, 0, -48),
-		Vector3.new(12, 0, -10),
-		Vector3.new(12, 0, 28),
-		Vector3.new(-12, 0, 66),
-		Vector3.new(-12, 0, 104),
-		Vector3.new(12, 0, 142),
-		Vector3.new(12, 0, 166),
-		Vector3.new(0, 0, 192),
-		Vector3.new(0, 0, 214),
-	},
+-- EI-RENNEN in der Map-Mitte (zwischen den Basen): ein großes Nester-Feld.
+-- In zufälligen freien Nestern erscheinen Eier, liegen eine Weile und verschwinden wieder.
+-- Wer zuerst da ist, bekommt das Ei. Kleine Nester (nah an den Basen): oft, normale Eier.
+-- Große Nester (Mitte / weit weg): seltener, aber viel öfter Legendary+ (mit Lichtsäule + Ansage).
+Config.Nests = {
+	SpawnInterval = 0.45, -- alle X Sekunden ein neues Ei in einem kleinen Nest ...
+	MaxEggs = 55, -- ... bis so viele Eier in kleinen Nestern liegen
+	Lifetime = 30, -- Sekunden, dann verschwindet ein Ei aus einem kleinen Nest
+	BigInterval = { 10, 16 }, -- großes Nest: alle 10-16 Sekunden ein Ei ...
+	MaxBigEggs = 3, -- ... höchstens so viele gleichzeitig
+	BigLifetime = 45,
+	BigLuck = 4, -- Glück für Eier in großen Nestern
+	BigMinRarity = "Epic", -- Eier in großen Nestern sind mindestens so selten
+	-- Meteoritenschauer: mehr Eier und mehr große Nester gleichzeitig
+	ShowerSpawnInterval = 0.25,
+	ShowerMaxEggs = 75,
+	ShowerBigInterval = { 4, 7 },
+	ShowerMaxBigEggs = 6,
+	Reach = 9, -- so nah muss man ran (Studs)
+}
+
+-- WILDE KREATUREN im Nester-Feld: laufen herum, jagen Spieler, die zu nah kommen.
+-- Treffer = Schubs, ein getragenes Ei fällt runter (niemand stirbt). Sie verlassen das Feld nie.
+-- Tempo: Grundtempo 16 < Jagd-Tempo < gute Speed-Werte -> wer schnell ist, entkommt.
+Config.Creatures = {
+	Day = 6, -- so viele tagsüber ...
+	Night = 10, -- ... und nachts
+	RoamSpeed = 8,
+	ChaseSpeed = 21,
+	NightChaseSpeed = 25,
+	AggroRange = 25, -- so nah -> sie jagen dich
+	LoseRange = 40, -- so weit weg -> sie geben auf und gehen zurück
+	HitRange = 4.5,
+	PushForce = 60,
+	HitCooldown = 2.5, -- nach einem Treffer so lange Pause
+}
+
+-- SPEED-PADS im Feld und vor den Basen: drüberlaufen = kurz schneller
+Config.SpeedPads = {
+	Boost = 0.5, -- +50 % Tempo
+	Duration = 3, -- Sekunden
+	MaxSpeed = 120, -- schneller macht ein Pad niemanden
+}
+
+-- RENNEN-EVENT: ein Gold-Ei erscheint im entferntesten großen Nest.
+-- Wer es zuerst nach Hause bringt, bekommt das Ei (mindestens Legendary) + Cash-Bonus.
+Config.Race = {
+	Interval = 420, -- alle 7 Minuten (wartet auf Egg Rush / Schauer / Nacht-Beginn)
+	Duration = 150, -- so lange läuft das Rennen
+	MinRarity = "Legendary",
+	CashSeconds = 300, -- Bonus = 5 Min Einkommen ...
+	CashMin = 25000, -- ... mindestens so viel
 }
 
 -- GRATIS-ZONE am Spawn-Platz: hier landen Gratis- und Admin-Meteore
@@ -432,11 +455,9 @@ Config.MaxFreeMeteors = 20
 -- METEORITENSCHAUER-EVENT: alle X Sekunden, Y Sekunden lang, mehr + bessere Meteore
 Config.ShowerInterval = 480
 Config.ShowerDuration = 60
-Config.ShowerParadeInterval = 0.15 -- im Schauer starten die Träger viel öfter ...
-Config.ShowerParadeSpeedMult = 1.3 -- ... und die ganze Parade läuft schneller
 Config.ShowerLuck = 3
 
--- EGG RUSH-EVENT: alle X Sekunden regnen Y Gratis-Eier auf die Wiese der ganzen Map.
+-- EGG RUSH-EVENT: alle X Sekunden regnen Y Gratis-Eier aufs Nester-Feld.
 -- Wer zuerst da ist, schnappt sie (E) und trägt sie nach Hause. Nach "Duration" Sekunden sind sie weg.
 Config.EggRushInterval = 240
 Config.EggRushDuration = 45
@@ -547,9 +568,9 @@ Config.VIPBonus = 0.25
 -- ---------------------------------------------------------------------
 -- 4) SELTENHEITEN – Weight = Spawnchance (relativ), Size = Größe des Meteors
 --    Kleine kommen oft, große & seltene kaum -> "erst kleine, dann immer bessere"
---    Jedes Ei in der Parade und im Egg Rush kann man GRATIS klauen (ca. 3 pro Sekunde!).
---    Ungefähre Raten pro Server (Simulation, ohne Events): Legendary+ alle ~18 s,
---    Mythic+ jede Minute, Secret+ alle ~13 Min, Godly ~1 pro Stunde, Infinity fast nur nachts.
+--    Jedes Ei in den Nestern und im Egg Rush kann man GRATIS schnappen.
+--    Ungefähre Raten pro Server (Simulation, ohne Events): Legendary+ alle ~25 s,
+--    Mythic+ alle ~1,5 Min, Secret+ alle ~15 Min, Godly ~1 in 2 Stunden, Infinity fast nur nachts.
 --    HatchTime = Sekunden bis das Alien schlüpft
 --    RequiredRebirths = so viele Rebirths braucht man, um diese Seltenheit zu KAUFEN
 --    (klauen geht immer!)
@@ -617,7 +638,7 @@ Config.Rarities = {
 	{ Name = "Admin", Weight = 0, Size = 8.8, Color = Color3.fromRGB(255, 40, 40), HatchTime = 5, AdminOnly = true },
 }
 
--- GLÜCKS-ZÄHLER (pro Server): jedes Parade-Ei ohne Legendary+ zählt +1.
+-- GLÜCKS-ZÄHLER (pro Server): jedes Nest-Ei ohne Legendary+ zählt +1.
 -- Alle "Step" Eier steigt das Glück für Legendary+ um "Bonus" (höchstens "Max"x).
 -- Kommt ein Legendary+ Ei, fängt der Zähler wieder bei 0 an.
 Config.Pity = { Step = 20, Bonus = 0.25, Max = 3, FromRarity = "Legendary" }
@@ -644,8 +665,8 @@ Config.Mutations = {
 
 -- ---------------------------------------------------------------------
 -- 5) METEORE – einfach Zeilen hinzufügen (Id muss einmalig sein!)
---    Spawnable = false -> kommt nicht von selbst in die Parade (nur Admin-Panel / Produkte)
---    NightOnly = true  -> kommt nur NACHTS in die Parade (BloodMoonOnly = nur im Blutmond)
+--    Spawnable = false -> kommt nicht von selbst in die Nester (nur Admin-Panel / Produkte)
+--    NightOnly = true  -> kommt nur NACHTS in die Nester (BloodMoonOnly = nur im Blutmond)
 --    Für JEDEN Meteor müssen in Aliens.luau 3 Aliens stehen!
 --    Effects (optional): Rainbow = Regenbogen-Farben, Aura = Partikel, Highlight = Umriss,
 --    BigLight = starkes Licht
@@ -1063,7 +1084,7 @@ Config.Meteors = {
 		Color = Color3.fromRGB(255, 255, 255),
 	},
 
-	-- 🌙 NACHT-EIER: kommen NUR nachts in die Parade (NightOnly), Blutmond-Ei nur im Blutmond
+	-- 🌙 NACHT-EIER: kommen NUR nachts in die Nester (NightOnly), Blutmond-Ei nur im Blutmond
 	{
 		Id = "Moonstone",
 		Name = "Moonstone",
@@ -1166,8 +1187,8 @@ Config.Meteors = {
 -- ---------------------------------------------------------------------
 -- NACHT – Tag-Nacht-Zyklus (GraphicsService + NightService)
 --   Nach "DayLength" Sekunden Tag kommt "NightLength" Sekunden Nacht.
---   Nachts: Nacht-Eier in der Parade (NightOnly), Sternschnuppen-Eier fallen auf die Wiese,
---   leuchtende Kisten liegen herum (Geld oder 1 Glücksrad-Dreh).
+--   Nachts: Nacht-Eier in den Nestern (NightOnly), Sternschnuppen-Eier fallen aufs Nester-Feld,
+--   mehr und schnellere Kreaturen, leuchtende Kisten liegen herum (Geld oder 1 Glücksrad-Dreh).
 --   BLUTMOND: jede Nacht mit Chance "BloodMoonChance": roter Himmel, "BloodMoonLuck"x Glück.
 -- ---------------------------------------------------------------------
 Config.Night = {
@@ -1210,7 +1231,7 @@ Config.MutationsByName = {}
 Config.GamePassesByKey = {}
 Config.ProductsById = {}
 Config.ProductsByKey = {}
-Config.MeteorsByRarity = {} -- nur Meteore, die von selbst in die Parade kommen (ohne Nacht-Eier)
+Config.MeteorsByRarity = {} -- nur Meteore, die von selbst in die Nester kommen (ohne Nacht-Eier)
 Config.NightMeteorsByRarity = {} -- Nacht-Eier (NightOnly), kommen nur nachts dazu
 Config.MeteorsByRarityAll = {} -- alle Meteore (auch Admin / nicht spawnbare)
 Config.AdminMeteors = {} -- alle Meteore mit Rarity "Admin"
@@ -1270,6 +1291,9 @@ for _, heavy in ipairs(Config.HeavyCarry) do
 		warn("[Config] Config.HeavyCarry: Seltenheit '" .. tostring(heavy.FromRarity) .. "' gibt es nicht!")
 	end
 end
+if not Config.RaritiesByName[Config.Nests.BigMinRarity] or not Config.RaritiesByName[Config.Race.MinRarity] then
+	warn("[Config] Config.Nests.BigMinRarity oder Config.Race.MinRarity gibt es nicht!")
+end
 for i, treadmill in ipairs(Config.Treadmills) do
 	assert(Config.TreadmillsById[treadmill.Id] == nil, "Doppelte Laufband-Id: " .. treadmill.Id)
 	if i > 1 then
@@ -1323,7 +1347,7 @@ function Config.MeteorIncome(entry): number
 	return def.Income * alienMult * mut.Mult * Config.LevelMult(entry.Lv or 1)
 end
 
--- Wert (Kaufpreis an der Parade, Verkaufswert = Wert * SellRatio)
+-- Wert (Kaufpreis am Nest, Verkaufswert = Wert * SellRatio)
 function Config.MeteorValue(entry): number
 	local def = entry and Config.MeteorsById[entry.Id]
 	if not def then
@@ -1430,7 +1454,7 @@ Config.AdminPowers = {
 	MinJump = 20,
 	MaxJump = 300, -- Sprungkraft-Regler (normal 50)
 	DefaultJump = 50,
-	BossParadeCount = 4, -- so viele Boss-Eier bringt "Boss-Parade"
+	RareNestCount = 4, -- so viele seltene Eier bringt "Große Nester" (Admin-Panel)
 }
 
 return Config

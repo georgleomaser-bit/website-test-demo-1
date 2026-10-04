@@ -45,6 +45,8 @@ local DEFAULT_DATA = {
 	Gadgets = {}, -- ["SpeedCoil"] = true -> besessen (bleibt bei Rebirth)
 	StarterBought = false, -- ⭐ Starter-Paket schon gekauft (nur einmal im Shop)
 	Treadmills = { Holz = true }, -- gekaufte Laufbänder ["Stein"] = true (bleiben bei Rebirth)
+	BaseFloors = 1, -- 🏠 gekaufte Stockwerke (1 = nur Erdgeschoss, bleiben bei Rebirth)
+	BaseLook = 1, -- 🏠 Base-Look-Stufe 1-5 (nur Optik, bleibt bei Rebirth)
 }
 
 local LOCK_EXPIRE = 30 * 60 -- ein Lock älter als 30 Min gilt als verwaist
@@ -163,6 +165,15 @@ local function sanitizeRewards(data)
 	end
 	if type(data.StarterBought) ~= "boolean" then
 		data.StarterBought = nil
+	end
+	-- Stockwerke / Base-Look: ganze Zahl ab 1 (sonst Standard über Reconcile)
+	for _, key in ipairs({ "BaseFloors", "BaseLook" }) do
+		local value = data[key]
+		if type(value) ~= "number" or value ~= value or value < 1 or value == math.huge then
+			data[key] = nil
+		else
+			data[key] = math.floor(value)
+		end
 	end
 end
 
