@@ -242,6 +242,9 @@ Config.Treadmills = {
 	},
 }
 Config.TreadmillTick = 0.5 -- alle 0,5 Sekunden gibt es Schritte
+-- So schnell schiebt das Band (Studs/s) nach hinten. Deutlich kleiner als das Grund-Tempo 16 und als das
+-- Mindest-Tempo beim Tragen (8) – sonst kommt man nicht gegen das Band an und rutscht ständig runter.
+Config.TreadmillPush = 6
 Config.MaxWalkSpeed = 80 -- schneller geht es nicht (16 normal + max. 64 durch Schritte)
 Config.StepsPerRebirth = 0.25 -- jeder Rebirth: +25% Schritte auf allen Laufbändern
 
