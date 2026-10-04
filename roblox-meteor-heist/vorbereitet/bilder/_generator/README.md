@@ -55,7 +55,7 @@ Voraussetzung: Node.js und Playwright mit Chromium (wird automatisch über `npm 
    |---|---|---|
    | `tragen` | Du mit einem Meteor über dem Kopf | `thumbnail-1.png` „KLAU DIE METEORE!“ |
    | `secret` | Ein Secret-Meteor ganz nah | `thumbnail-2.png` „SECRET METEOR GEFUNDEN!“ und `spiel-icon.png` |
-   | `krater` | Der Krater beim Meteoritenschauer | `thumbnail-3.png` „METEORITENSCHAUER!“ (mit „3X GLÜCK“ / „KEINE LOCKS!“) |
+   | `nester` | Das Nester-Feld beim Meteoritenschauer (alter Name `krater` geht auch) | `thumbnail-3.png` „METEORITENSCHAUER!“ (mit „3X GLÜCK“ / „KEINE LOCKS!“) |
    | `base` | Deine Base voller Meteore | `thumbnail-4.png` „WERDE REICH!“ |
    | `showcase` | Die Showcase-Reihe mit allen Seltenheiten | `thumbnail-5.png` „28 METEORE ZUM SAMMELN!“ |
 

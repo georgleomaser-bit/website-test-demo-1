@@ -791,7 +791,7 @@ local function onProfileLoaded(player: Player, data)
 			task.delay(3, function()
 				EconomyService.Notify(
 					player,
-					"🌙 Offline verdient: " .. Util.FormatCash(earned) .. " – hol es am Collect-Pad!",
+					"🌙 Offline verdient: " .. Util.FormatCash(earned) .. " – hol es am Geld-Pad in deiner Base!",
 					"Success"
 				)
 			end)

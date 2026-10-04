@@ -37,12 +37,12 @@ Config.GamePasses = {
 		Description = "Verdopple dein Einkommen für immer!",
 		Icon = "💰",
 	},
-	{ Key = "VIP", Id = 0, Name = "VIP", Description = "+25% Cash, 90s Lock, VIP-Tag", Icon = "👑" },
+	{ Key = "VIP", Id = 0, Name = "VIP", Description = "+25% Cash, 90 s Lock, VIP-Schild", Icon = "👑" },
 	{
 		Key = "ExtraSlots",
 		Id = 0,
 		Name = "+6 Plätze",
-		Description = "18 statt 12 Plätze in deiner Base",
+		Description = "18 statt 12 Plätze im Erdgeschoss deiner Base",
 		Icon = "☄️",
 	},
 	{
@@ -56,7 +56,7 @@ Config.GamePasses = {
 		Key = "FastCharge",
 		Id = 0,
 		Name = "⚡ 2x Schlüpfen & Wachsen",
-		Description = "Meteore schlüpfen und Aliens leveln doppelt so schnell",
+		Description = "Eier schlüpfen und Aliens wachsen doppelt so schnell",
 		Icon = "⚡",
 	},
 	{
@@ -87,9 +87,9 @@ Config.GamePasses = {
 -- Type "Steps": so viele Schritte, wie man in "Minutes" Minuten auf dem besten
 --               freigeschalteten Laufband laufen würde, mindestens "Min".
 Config.Products = {
-	{ Key = "CashSmall", Id = 0, Name = "Cash Paket S", Icon = "💵", Type = "Cash", Minutes = 10, Min = 2500 },
-	{ Key = "CashMedium", Id = 0, Name = "Cash Paket M", Icon = "💰", Type = "Cash", Minutes = 60, Min = 20000 },
-	{ Key = "CashLarge", Id = 0, Name = "Cash Paket XL", Icon = "🏦", Type = "Cash", Minutes = 360, Min = 150000 },
+	{ Key = "CashSmall", Id = 0, Name = "Cash-Paket S", Icon = "💵", Type = "Cash", Minutes = 10, Min = 2500 },
+	{ Key = "CashMedium", Id = 0, Name = "Cash-Paket M", Icon = "💰", Type = "Cash", Minutes = 60, Min = 20000 },
+	{ Key = "CashLarge", Id = 0, Name = "Cash-Paket XL", Icon = "🏦", Type = "Cash", Minutes = 360, Min = 150000 },
 	{
 		Key = "ServerLuck",
 		Id = 0,
@@ -100,11 +100,11 @@ Config.Products = {
 		Minutes = 15,
 	},
 	{ Key = "Speed10", Id = 0, Name = "👟 Schritte-Paket", Icon = "👟", Type = "Steps", Minutes = 10, Min = 1000 },
-	{ Key = "MeteorShower", Id = 0, Name = "Meteoritenschauer JETZT", Icon = "🌠", Type = "Shower" },
+	{ Key = "MeteorShower", Id = 0, Name = "🌠 Meteoritenschauer JETZT", Icon = "🌠", Type = "Shower" },
 	{
 		Key = "LegendaryMeteor",
 		Id = 0,
-		Name = "Zufälliger Legendary Meteor",
+		Name = "Zufälliges Legendary-Ei",
 		Icon = "🌟",
 		Type = "Meteor",
 		Rarity = "Legendary",
@@ -112,7 +112,7 @@ Config.Products = {
 	{
 		Key = "MythicMeteor",
 		Id = 0,
-		Name = "Zufälliger Mythic Meteor",
+		Name = "Zufälliges Mythic-Ei",
 		Icon = "🔮",
 		Type = "Meteor",
 		Rarity = "Mythic",
@@ -190,7 +190,7 @@ Config.MaxDroppedMeteors = 130 -- Sicherheitsgrenze für Eier am Boden (fallen g
 Config.CarryTimeout = 60 -- Sekunden Zeit, um die Beute in die eigene Base zu bringen
 Config.NormalWalkSpeed = 16
 Config.CarrySpeedFactor = 0.7 -- beim Tragen: 70% vom eigenen Tempo (Gamepass "Volle Speed beim Tragen" = 100%)
--- SCHWERE BEUTE: seltene Eier/Aliens sind schwerer -> beim Tragen noch langsamer (mehr Zeit zum Bonken!).
+-- SCHWERE BEUTE: seltene Eier/Aliens sind schwerer -> beim Tragen noch langsamer (mehr Zeit, sie zu treffen!).
 -- Es gilt der kleinste passende Faktor (statt CarrySpeedFactor). Gamepass "Volle Speed beim Tragen" = kein Abzug.
 Config.HeavyCarry = {
 	{ FromRarity = "Legendary", Factor = 0.6 },
@@ -361,7 +361,7 @@ Config.Gadgets = {
 	},
 	{
 		Id = "SuperBonk",
-		Name = "Super-Bonk",
+		Name = "Super-Schlag",
 		Icon = "🔨",
 		Price = 750000,
 		Description = "Macht deinen Schläger stärker: mehr Reichweite und Wucht, schnellere Schläge",
@@ -377,10 +377,10 @@ Config.Gadgets = {
 Config.SpeedCoilBonus = 0.3 -- Speed Coil: +30% Laufgeschwindigkeit
 Config.MaxTrapsPerBase = 2 -- Fallen: so viele gleichzeitig pro Base
 Config.TrapFreezeTime = 3 -- Fallen: so viele Sekunden eingefroren
-Config.SuperBonkRangeMult = 1.5 -- Super-Bonk (Boost für den Schläger): +50% Reichweite
-Config.SuperBonkForceMult = 1.3 -- Super-Bonk: +30% Wucht
-Config.SuperBonkCooldownMult = 0.7 -- Super-Bonk: Abklingzeit des Schlägers x0,7 (schneller schlagen)
-Config.CloakDuration = 10 -- Umhang: Sekunden unsichtbar (in der Zeit kann dich niemand bonken)
+Config.SuperBonkRangeMult = 1.5 -- Super-Schlag (Boost für den Schläger): +50% Reichweite
+Config.SuperBonkForceMult = 1.3 -- Super-Schlag: +30% Wucht
+Config.SuperBonkCooldownMult = 0.7 -- Super-Schlag: Abklingzeit des Schlägers x0,7 (schneller schlagen)
+Config.CloakDuration = 10 -- Umhang: Sekunden unsichtbar (in der Zeit kann dich niemand treffen)
 Config.CloakCooldown = 60 -- Umhang: Abklingzeit in Sekunden
 
 -- SCHLÜPFEN: Gekaufte Meteore brauchen Zeit (HatchTime bei den Seltenheiten unten),

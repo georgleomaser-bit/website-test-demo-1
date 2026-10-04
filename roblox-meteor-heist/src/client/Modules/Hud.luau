@@ -1,8 +1,9 @@
 -- =====================================================================
 --  HUD (immer sichtbar), im knalligen Simulator-Stil:
 --   links:        ⭐ STARTER-PAKET (bis gekauft), 🛒 Shop, 👟 Angebot, 🔥 Rebirth, 🎁 Daily
---   rechts:       Icon-Knöpfe in 2 Spalten: 🎁 Geschenke, 🎡 Glücksrad, 📜 Aufgaben (mit Badges),
---                 👽 Index, 🏃 Laufbänder, 🏠 Home, (🛠️ Admin)
+--   rechts:       Icon-Knöpfe in 2 Spalten (LayoutOrder = Platz, jede Zahl nur einmal!):
+--                 1 🎁 Geschenke, 2 🎡 Glücksrad, 3 📜 Aufgaben (mit Badges), 4 👽 Index, 5 🏃 Laufbänder,
+--                 6 🏠 Home, 7 ☄️ Run (MeteorRun), 8 🏗️ Base (Base), 9 🤝 Handel (Trade), 99 🛠️ Admin
 --   unten links:  👟 Schritte (gelb), 💵 Geld (grün), +$/s
 --   oben:         Banner (Meteoritenschauer/Glück, 🥚 Egg Rush, 🏁 Ei-Rennen) bzw. Countdowns bis zum nächsten
 --   unten Mitte:  Wegweiser (🏠 Base beim Tragen / 🏁 Gold-Ei im Rennen / 🥚 nächstes Ei im Egg Rush),
@@ -850,7 +851,7 @@ function Hud.Refresh(state: any)
 	if incomeLabel.Text ~= income then
 		incomeLabel.Text = income
 	end
-	local info = ("☄️ %d/%d    🏃 %d    🔥 %d"):format(
+	local info = ("🏠 %d/%d    🏃 %d    🔥 %d"):format(
 		math.floor(tonumber(state.UsedSlots) or 0),
 		math.floor(tonumber(state.Slots) or 0),
 		math.floor(tonumber(state.Speed) or 16),

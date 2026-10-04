@@ -10,7 +10,7 @@
 --   große Nester:  seltener, mindestens Config.Nests.BigMinRarity, viel öfter Legendary+ (Lichtsäule + Ansage)
 -- Jedes Ei hat ZWEI Knöpfe – wer zuerst kommt, bekommt es:
 --   E halten = SCHNAPPEN (GrabPrompt): gratis, aber man muss es selbst nach Hause TRAGEN
---              (CarryService, Source = "Ground"). Klappt das nicht (Bonk, Kreatur, Tod, Falle, zu langsam),
+--              (CarryService, Source = "Ground"). Klappt das nicht (Schläger, Kreatur, Tod, Falle, zu langsam),
 --              fällt es als GRATIS-Ei auf den Boden und jeder kann es schnappen.
 --   F        = KAUFEN (BuyPrompt): kostet Cash, fliegt automatisch in die eigene Base.
 -- EIER AM BODEN ("Drop"): fallen gelassen, Egg Rush, Sternschnuppen – nur E = Schnappen und Tragen.
@@ -646,10 +646,10 @@ local function tryGrab(player: Player, record)
 	})
 	local def = Config.MeteorsById[entry.Id]
 	if isRace then
-		rareAnnounce("🏁 " .. player.DisplayName .. " hat das Gold-Ei! Bonk ihn!")
+		rareAnnounce("🏁 " .. player.DisplayName .. " hat das Gold-Ei! Hau ihn! 🔨")
 	elseif fromNest and def and Config.RarityIndex[def.Rarity] >= RARE_GRAB_ANNOUNCE then
 		local mut = entry.Mut ~= "Normal" and (entry.Mut .. " ") or ""
-		rareAnnounce(player.DisplayName .. " schnappt " .. def.Rarity .. " " .. mut .. def.Name .. "! Bonk ihn!")
+		rareAnnounce(player.DisplayName .. " schnappt " .. def.Rarity .. " " .. mut .. def.Name .. "! Hau ihn! 🔨")
 	end
 end
 

@@ -23,8 +23,8 @@ local PlotService = {}
 PlotService.Plots = {} :: { any } -- Liste aller Basen (Felder siehe MapBuilder)
 PlotService.ByPlayer = {} :: { [Player]: any }
 PlotService.MapFolder = nil :: Folder?
--- Alien-Parade: { Folder, Path, RoadWidth, Start } (siehe MapBuilder.ParadeInfo)
-PlotService.Parade = nil :: any
+-- Ei-Rennen in der Map-Mitte: { Folder, Nests } (siehe MapBuilder.NestFieldInfo)
+PlotService.NestField = nil :: any
 PlotService.FreeZone = { Center = Vector3.new(0, 0.2, -264), Radius = 20 }
 PlotService.LobbySpawn = CFrame.new(0, 4, -300)
 PlotService.LeaderboardCFrame = CFrame.new(0, 13, -190)
@@ -705,6 +705,8 @@ function PlotService.BuyFloor(player: Player): (boolean, string)
 	data.BaseFloors = current + 1
 	PlotService.ApplyBase(plot)
 	Services.EconomyService.Effect(player, "Confetti", 1)
+	-- Bau-Animation bei allen (Client-Modul Base: Teile fliegen/wachsen rein)
+	Services.EconomyService.EffectAll("FloorBuilt", 0, { Plot = plot.Index, Floor = current + 1 })
 	local added = #(plot.FloorSlots and plot.FloorSlots[current + 1] or {})
 	return true, "🏠 Stockwerk " .. (current + 1) .. " gebaut! +" .. added .. " Plätze"
 end
@@ -728,6 +730,8 @@ function PlotService.BuyBaseLook(player: Player): (boolean, string)
 	data.BaseLook = current + 1
 	PlotService.ApplyBase(plot)
 	Services.EconomyService.Effect(player, "Confetti", 1)
+	-- Funkeln + Reinploppen der neuen Deko bei allen (Client-Modul Base)
+	Services.EconomyService.EffectAll("LookUpgrade", 0, { Plot = plot.Index, Look = current + 1 })
 	return true, "✨ Base-Look: " .. tostring(def.Name) .. "!"
 end
 
@@ -804,7 +808,7 @@ function PlotService.Init(services)
 	local map = MapBuilder.Build() :: any
 	PlotService.MapFolder = map.MapFolder
 	PlotService.Plots = map.Plots or {}
-	PlotService.Parade = map.Parade
+	PlotService.NestField = map.NestField
 	if map.FreeZone then
 		PlotService.FreeZone = map.FreeZone
 	end

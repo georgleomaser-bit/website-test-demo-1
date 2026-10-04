@@ -191,7 +191,7 @@ local function productInfoText(product: any, state: any): string
 			tostring(product.Minutes or 15)
 		)
 	elseif kind == "Shower" then
-		return "🌠 Sofort für alle: zwei Spuren voller Meteore, 3x Glück, keine Locks!"
+		return "🌠 Sofort für alle: volle Nester, 3x Glück, keine Locks!"
 	elseif kind == "Meteor" then
 		return oddsText(product.Rarity)
 	elseif kind == "StarterPack" then
@@ -229,7 +229,9 @@ local function productInfoText(product: any, state: any): string
 			tostring(product.Minutes or 10)
 		)
 	elseif kind == "EggRush" then
-		return ("🥚 %s Gratis-Eier regnen für ALLE auf die Map!"):format(tostring(ctx.Config.EggRushCount or 25))
+		return ("🥚 %s Gratis-Eier regnen für ALLE aufs Nester-Feld!"):format(
+			tostring(ctx.Config.EggRushCount or 25)
+		)
 	end
 	return ""
 end
@@ -485,7 +487,7 @@ local function buildGadgetPage(page: Frame)
 	UI.Section(page, "🛠️ Gadgets – mit 💵 Cash, gehören dir für immer!", 1)
 	UI.Label({
 		Size = UDim2.new(1, 0, 0, 36),
-		Text = "Liegen nach jedem Spawn in deinem Rucksack – auch nach Rebirth. Super-Bonk macht deinen Schläger stärker.",
+		Text = "Liegen nach jedem Spawn in deinem Rucksack – auch nach Rebirth. Super-Schlag macht deinen Schläger stärker.",
 		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		TextWrapped = true,
@@ -933,11 +935,11 @@ function Windows.RefreshRebirth(state: any)
 	local unlock = nextUnlock(rebirths)
 	local detail = (
 		"Belohnung:\n• +%d%% Einkommen für immer\n• +%d%% Schritte auf jedem Laufband%s\n\n"
-		.. "Du verlierst: Cash, Meteore + Aliens.\nDu behältst: Schritte, Laufbänder, Gadgets, Index, Gamepasses."
+		.. "Du verlierst: Cash, Eier + Aliens.\nDu behältst: Schritte, Laufbänder, Stockwerke, Base-Look, Gadgets, Index, Gamepässe."
 	):format(
 		math.floor((tonumber(Config.RebirthMultPerLevel) or 0) * 100 + 0.5),
 		math.floor((tonumber(Config.StepsPerRebirth) or 0.25) * 100 + 0.5),
-		if unlock then ("\n• 🔓 " .. unlock .. "-Meteore kaufbar!") else ""
+		if unlock then ("\n• 🔓 " .. unlock .. "-Eier kaufbar!") else ""
 	)
 	if rebirthDetail.Text ~= detail then
 		rebirthDetail.Text = detail

@@ -109,15 +109,18 @@ local function ownPlot(player: Player): any
 	return nil
 end
 
--- Benutzbare Slots (Gamepass +6 berücksichtigt, nie mehr als die Map hat)
-local function slotCount(player: Player): number
+-- Benutzbare Slot-Nummern in Füll-Reihenfolge (Erdgeschoss mit/ohne Pass "+6 Plätze", dann die
+-- gekauften Stockwerke). Die Nummern sind NICHT lückenlos (z.B. 1-12, dann 19-24)!
+local function usableSlots(player: Player): { number }
 	local plots = Services.PlotService
-	local count = if plots.SlotCount then plots.SlotCount(player) else Config.BaseSlots
-	local max = tonumber(plots.MaxSlots)
-	if max then
-		count = math.min(count, max)
+	if plots.UsableSlots then
+		return plots.UsableSlots(player)
 	end
-	return count
+	local list = {}
+	for slot = 1, Config.BaseSlots do
+		table.insert(list, slot)
+	end
+	return list
 end
 
 -- "Fingerabdruck" eines Eintrags: ändert sich beim Schlüpfen / anderer Mutation.
@@ -402,7 +405,7 @@ function TradeService.Execute(trade: Trade): (boolean, string?, boolean?)
 		end
 		local free = {}
 		local meteors = datas[receiver].Meteors
-		for slot = 1, slotCount(receiver) do
+		for _, slot in ipairs(usableSlots(receiver)) do
 			if #free >= incoming then
 				break
 			end

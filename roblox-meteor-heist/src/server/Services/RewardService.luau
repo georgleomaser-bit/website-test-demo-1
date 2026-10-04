@@ -43,7 +43,7 @@ local QUEST_POOL = {
 	{ Id = "Hatch", Kind = "Hatch", Text = "🐣 Lass %s Aliens schlüpfen", Goals = { 5, 6, 8 } },
 	{ Id = "Steps", Kind = "Steps", Text = "👟 Lauf %s Schritte", Scale = "Steps" },
 	{ Id = "Collect", Kind = "Collect", Text = "💰 Sammle %s ein", Scale = "Collect" },
-	{ Id = "Bonk", Kind = "Bonk", Text = "🔨 Bonk %s Diebe", Goals = { 2, 3 }, Social = true },
+	{ Id = "Bonk", Kind = "Bonk", Text = "🔨 Triff %s Diebe mit dem Schläger", Goals = { 2, 3 }, Social = true },
 }
 local QUESTS_PER_DAY = 3
 local QUEST_STEPS_SECONDS = 240 -- "Lauf X Schritte" = 4 Minuten auf dem besten Laufband

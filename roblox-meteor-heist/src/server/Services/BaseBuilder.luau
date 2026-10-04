@@ -1,11 +1,11 @@
 -- Baut die Basen (von MapBuilder.Build aufgerufen) und ändert sie zur Laufzeit (PlotService):
---   • 8 OFFENE Basen (je 4 pro Seite, Eingang zur Parade, 80 x 90 Studs): bunter Noppenboden, niedriger
+--   • 8 OFFENE Basen (je 4 pro Seite, Eingang zum Nester-Feld, 80 x 90 Studs): bunter Noppenboden, niedriger
 --     Rand an Seiten + hinten, vorne offen mit Laser-Sperre, großer Lock-Knopf, Geld-Pad, Namensschild
 --   • Slot-Anker (unsichtbar): 18 im Erdgeschoss + je 6 auf Stockwerk 2 und 3 (immer da, Nummern fest)
 --   • STOCKWERKE (Config.BaseFloors): offene Plattformen über dem hinteren Teil, Treppe hoch.
 --     Nur gebaut, wenn gekauft (SetFloors)
 --   • BASE-LOOK (Config.BaseLooks, Stufe 1-5): Zaun, Laternen, Torbogen, Fahnen, Bodenrand (SetLook)
--- Lokales System einer Base: -Z = Eingang (zur Parade), X = Breite, Z = Tiefe.
+-- Lokales System einer Base: -Z = Eingang (zum Nester-Feld), X = Breite, Z = Tiefe.
 -- Stil: schlicht, bunt, blockig (Plastic + Noppen), wenig Neon, wenige Teile.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -662,7 +662,7 @@ function BaseBuilder.BuildPlots(map: Instance): { any }
 				break
 			end
 			local center = Vector3.new(side * PLOT_X, 0, z)
-			-- Eingang (lokales -Z) zeigt zur Parade in der Mitte
+			-- Eingang (lokales -Z) zeigt zum Nester-Feld in der Mitte
 			local cf = CFrame.lookAt(center, center + Vector3.new(-side, 0, 0))
 			table.insert(plots, buildPlot(index, cf, PLOT_COLORS[(index - 1) % #PLOT_COLORS + 1], plotsFolder))
 		end

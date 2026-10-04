@@ -685,7 +685,7 @@ function Actions.SetSteps(admin, args)
 	return #targets > 0, "👟 Schritte = " .. Util.FormatNumber(amount) .. " für " .. names(targets)
 end
 
--- 👑 Admin-Meteor: Where = "Free" (gratis in die Mitte/Gratis-Zone) oder "Base" (eigene Base)
+-- 👑 Admin-Meteor: Where = "Free" (gratis in die Gratis-Zone) oder "Base" (eigene Base)
 function Actions.SpawnAdminMeteor(admin, args)
 	local def = adminMeteorDef(args.MeteorId)
 	if not def then

@@ -1,8 +1,9 @@
 -- =====================================================================
 --  WELT-ANIMATIONEN (alles lokal auf deinem Gerät -> butterweich, kein Server-Lag)
 --   • (Optional) WorldFX.SetPreStep: ein anderes Modul kann jedes Frame VOR den krassen Eiern rechnen
---   • Streifen auf den Treadmills laufen gleichmäßig durch und tauchen an den
---     Enden unter die Lauffläche (kein Aufploppen)
+--   • Streifen auf den Laufbändern laufen gleichmäßig durch und tauchen an den
+--     Enden unter die Lauffläche (kein Aufploppen); wer läuft, wirbelt Fußstaub auf (in Bandfarbe),
+--     die Konsole zeigt die Schritte, die du gerade bekommst ("+X 👟", hüpft bei jedem Tick)
 --   • Aliens leben: Atmen mit Squash & Stretch, kleine Hüpfer, Blinzeln, drehen sich zu Spielern
 --   • Eier wackeln die letzten Sekunden immer stärker, Risse leuchten auf; frisch geschlüpfte
 --     Aliens ploppen mit Overshoot herein
@@ -19,6 +20,7 @@
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
 
@@ -205,8 +207,177 @@ local function stepStripes(now: number, camPos: Vector3, look: Vector3, cosLimit
 end
 
 -- ---------------------------------------------------------------------
--- TREADMILLS (Laufbänder auf dem Spawn-Platz)
+-- LAUFBÄNDER (auf dem Spawn-Platz): Konsole "+X 👟", Fußstaub, Streifen
 -- ---------------------------------------------------------------------
+local DUST_INTERVAL = 0.2
+local DUST_RANGE = 150
+local SCREEN_IDLE = 2.5 -- so lange nach dem letzten Tick bleibt "+X 👟" stehen
+local SCREEN_POP = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+
+type BeltRecord = {
+	Belt: BasePart,
+	Color: Color3,
+	Label: TextLabel?,
+	Scale: UIScale?,
+	RateText: string,
+	LastSteps: number,
+}
+local beltRecords: { BeltRecord } = {}
+local dustEmitters: { [Model]: ParticleEmitter } = {}
+local dustClock = 0
+
+-- Steht diese Position auf dem Laufband (über der Lauffläche, mit etwas Spielraum)?
+local function onBelt(record: BeltRecord, position: Vector3): boolean
+	local belt = record.Belt
+	local rel = belt.CFrame:PointToObjectSpace(position)
+	return math.abs(rel.X) <= belt.Size.X / 2 + 0.6
+		and math.abs(rel.Z) <= belt.Size.Z / 2 + 1
+		and rel.Y > -0.5
+		and rel.Y < 9
+end
+
+local function addBeltScreen(model: Instance, belt: BasePart, color: Color3, rate: number)
+	local record: BeltRecord = {
+		Belt = belt,
+		Color = color,
+		Label = nil,
+		Scale = nil,
+		RateText = "+" .. ctx.Util.FormatNumber(rate) .. " 👟",
+		LastSteps = -math.huge,
+	}
+	local screen = model:FindFirstChild("Screen")
+	if screen and screen:IsA("BasePart") then
+		local gui = UI.Create("SurfaceGui", {
+			Name = "StepScreen",
+			Face = Enum.NormalId.Back, -- zeigt zum Läufer (er läuft in Richtung -Z der Konsole)
+			CanvasSize = Vector2.new(250, 70),
+			LightInfluence = 0,
+			Adornee = screen,
+			Parent = screen,
+		})
+		local label: TextLabel = UI.Create("TextLabel", {
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(0.92, 0.86),
+			Font = Enum.Font.FredokaOne,
+			TextScaled = true,
+			Text = record.RateText,
+			TextColor3 = Color3.new(1, 1, 1),
+			Parent = gui,
+		})
+		UI.Create("UIStroke", { Thickness = 3, Color = Color3.new(0, 0, 0), Parent = label })
+		record.Label = label
+		record.Scale = UI.Create("UIScale", { Parent = label })
+	end
+	table.insert(beltRecords, record)
+end
+
+-- Server hat dir Schritte gegeben (Effekt "Steps"): Konsole des Bands unter dir zeigt "+X 👟" und hüpft
+function WorldFX.OnSteps(amount: number)
+	local character = Players.LocalPlayer.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not root:IsA("BasePart") then
+		return
+	end
+	for _, record in ipairs(beltRecords) do
+		local label, scale = record.Label, record.Scale
+		if label and scale and onBelt(record, root.Position) then
+			label.Text = "+" .. ctx.Util.FormatNumber(amount) .. " 👟"
+			label.TextColor3 = Color3.fromRGB(255, 230, 90)
+			scale.Scale = 1.35
+			TweenService:Create(scale, SCREEN_POP, { Scale = 1 }):Play()
+			record.LastSteps = os.clock()
+			return
+		end
+	end
+end
+
+local function makeDust(character: Model, root: BasePart): ParticleEmitter
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "TreadDust"
+	attachment.Position = Vector3.new(0, -2.8, 0.6)
+	attachment.Parent = root
+	local emitter: ParticleEmitter = UI.Create("ParticleEmitter", {
+		Name = "TreadDust",
+		LightInfluence = 0.6,
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.35),
+			NumberSequenceKeypoint.new(1, 1.2),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.4),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Lifetime = NumberRange.new(0.3, 0.55),
+		Speed = NumberRange.new(2, 4),
+		SpreadAngle = Vector2.new(35, 35),
+		EmissionDirection = Enum.NormalId.Back,
+		Acceleration = Vector3.new(0, 3, 0),
+		Drag = 4,
+		Rate = 0,
+		Parent = attachment,
+	})
+	character.Destroying:Connect(function()
+		dustEmitters[character] = nil
+	end)
+	return emitter
+end
+
+-- Alle 0,2 s: wer auf einem Band läuft, wirbelt Staub auf; Konsolen ohne neue Schritte zeigen wieder die Rate
+local function stepTreadmills(camPos: Vector3)
+	local clock = os.clock()
+	for _, record in ipairs(beltRecords) do
+		local label = record.Label
+		if label and record.LastSteps > 0 and clock - record.LastSteps > SCREEN_IDLE then
+			record.LastSteps = -math.huge
+			label.Text = record.RateText
+			label.TextColor3 = Color3.new(1, 1, 1)
+		end
+	end
+	for character, emitter in pairs(dustEmitters) do
+		if not character.Parent or not emitter.Parent then
+			dustEmitters[character] = nil
+		end
+	end
+	for _, other in ipairs(Players:GetPlayers()) do
+		local character = other.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if character and root and root:IsA("BasePart") then
+			local found: BeltRecord? = nil
+			if (root.Position - camPos).Magnitude < DUST_RANGE then
+				for _, record in ipairs(beltRecords) do
+					if onBelt(record, root.Position) then
+						found = record
+						break
+					end
+				end
+			end
+			local running = false
+			if found then
+				-- läuft = deutlich anders schnell als das Band (wer stillsteht, fährt mit)
+				local relative = root.AssemblyLinearVelocity - found.Belt.AssemblyLinearVelocity
+				running = Vector3.new(relative.X, 0, relative.Z).Magnitude > 3
+			end
+			local emitter = dustEmitters[character]
+			if running and not emitter then
+				emitter = makeDust(character, root)
+				dustEmitters[character] = emitter
+			end
+			if emitter then
+				local rate = if running then 16 else 0
+				if emitter.Rate ~= rate then
+					emitter.Rate = rate
+				end
+				if found and running then
+					local color = found.Color:Lerp(Color3.fromRGB(220, 215, 205), 0.5)
+					emitter.Color = ColorSequence.new(color)
+				end
+			end
+		end
+	end
+end
+
 local treadmillSeen: { [Instance]: boolean } = {}
 
 local function treadmillDef(id: string): any
@@ -252,6 +423,7 @@ local function setupTreadmill(model: Instance)
 		rainbow = id == "Regenbogen" or (def ~= nil and def.Rainbow == true),
 		accentEvery = 3,
 	})
+	addBeltScreen(model, belt, color, if def then tonumber(def.Rate) or 1 else 1)
 end
 -- (Laufband-Schilder – PriceLabel: Preis / "Gekauft" / "Dein bestes" – schreibt Main.client)
 
@@ -1750,6 +1922,11 @@ function WorldFX.Init(context: any, map: Instance)
 			scanAnim(camPos)
 			scanHighlights(camPos)
 			scanRare(camPos)
+		end
+		dustClock += dt
+		if dustClock >= DUST_INTERVAL then
+			dustClock = 0
+			stepTreadmills(camPos)
 		end
 		cleanupClock += dt
 		if cleanupClock >= CLEANUP_INTERVAL then

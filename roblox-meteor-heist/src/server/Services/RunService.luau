@@ -1080,7 +1080,7 @@ local function giveReward(player: Player, data, elapsed: number, newBest: boolea
 					.. player.DisplayName
 					.. " hat den Meteor-Run geschafft und trägt ein "
 					.. def.Rarity
-					.. "-Ei heim – BONK IHN! 🔨",
+					.. "-Ei heim – HAU IHN! 🔨",
 				"Event"
 			)
 		end

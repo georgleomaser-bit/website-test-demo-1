@@ -498,7 +498,7 @@ local function activateCloak(player: Player)
 	player:SetAttribute("CloakedUntil", workspace:GetServerTimeNow() + Config.CloakDuration)
 	Services.EconomyService.Notify(
 		player,
-		"👻 " .. Config.CloakDuration .. " s unsichtbar – niemand kann dich bonken! (Klauen macht sichtbar)",
+		"👻 " .. Config.CloakDuration .. " s unsichtbar – niemand kann dich treffen! (Klauen macht sichtbar)",
 		"Success"
 	)
 	task.delay(Config.CloakDuration, function()

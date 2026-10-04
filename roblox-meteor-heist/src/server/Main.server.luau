@@ -14,11 +14,11 @@ local order = {
 	"MeteorService", -- Ei-Rennen: Eier in Nestern, Gratis-Zone, Eier am Boden, Schauer, Egg Rush, Rennen
 	"NightService", -- Tag-Nacht-Zyklus: Blutmond, Sternschnuppen-Eier, leuchtende Kisten
 	"FieldService", -- Nester-Feld: wilde Kreaturen + Speed-Pads
-	"CarryService", -- Klauen & Tragen, Bonk
-	"GadgetService", -- Speed Coil, Falle, Super-Bonk, Umhang
+	"CarryService", -- Klauen & Tragen, Schläger
+	"GadgetService", -- Speed Coil, Falle, Super-Schlag, Umhang
 	"EconomyService",
 	"RewardService", -- Spielzeit-Geschenke, Glücksrad, Tagesaufgaben
-	"TreadmillService", -- Laufbänder: Schritte farmen
+	"TreadmillService", -- Laufbänder kaufen + Schritte farmen
 	"RunService", -- ☄️ Meteor-Run: Lauf-Parcours mit Gratis-Ei als Belohnung
 	"TradeService", -- 🤝 Handel zwischen Spielern
 	"AdminService",

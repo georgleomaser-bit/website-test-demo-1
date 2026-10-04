@@ -18,7 +18,7 @@
  *  Ausgabe: ../ (also vorbereitet/bilder/)
  *
  *  Screenshot-Modus (siehe README.md): Liegen in vorbereitet/screenshots/
- *  echte In-Game-Bilder (base, krater, tragen, showcase, secret als
+ *  echte In-Game-Bilder (base, nester, tragen, showcase, secret als
  *  .png/.jpg), werden Spiel-Icon und Thumbnails daraus gebaut (plus
  *  thumbnail-4/5). Fehlt ein Screenshot, wird das Bild wie bisher
  *  gezeichnet. Die 22 Pass/Produkt-Icons (8 Gamepasses, 14 Developer
@@ -1140,7 +1140,9 @@ function thumb3() {
 //  hinter den Ueberschriften. Texte/Baender/Pillen = dieselben Bausteine
 //  wie bei den gezeichneten Thumbnails.
 // ---------------------------------------------------------------------
-const SHOT_NAMES = ['base', 'krater', 'tragen', 'showcase', 'secret'];
+const SHOT_NAMES = ['base', 'nester', 'tragen', 'showcase', 'secret'];
+// alte Dateinamen von früher ("krater" = heute "nester") werden weiter erkannt
+const SHOT_ALIASES = { krater: 'nester' };
 const SHOT_EXTS = ['.png', '.jpg', '.jpeg']; // Reihenfolge = Vorrang bei doppelten Namen
 const DEFAULT_SCREENS_DIR = path.resolve(__dirname, '..', '..', 'screenshots');
 const SHOT_HREF = '__SCREENSHOT_HREF__'; // Platzhalter, wird beim Rendern ersetzt
@@ -1166,7 +1168,8 @@ function findScreens(dir) {
     });
   for (const f of files) {
     const ext = path.extname(f).toLowerCase();
-    const name = path.basename(f, path.extname(f)).toLowerCase();
+    const rawName = path.basename(f, path.extname(f)).toLowerCase();
+    const name = SHOT_ALIASES[rawName] || rawName;
     const isImage = /^\.(png|jpe?g|webp|gif|bmp|heic|heif|avif|tiff?)$/.test(ext);
     if (!isImage) continue; // z. B. README.md
     if (!SHOT_EXTS.includes(ext)) {
@@ -1448,7 +1451,7 @@ const JOBS = [
   { file: 'thumbnail-2.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 2: "SECRET METEOR GEFUNDEN!" - riesiger weiss-pinker Meteor mit Glow und Strahlen, Schild mit "SECRET"-Band.', svg: thumb2,
     shot: { from: ['secret', 'showcase'], svg: shotThumb2 } },
   { file: 'thumbnail-3.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 3: "METEORITENSCHAUER!" - viele bunte Meteore regnen schraeg herab, EVENT-Band, 3X GLUECK und KEINE LOCKS!.', svg: thumb3,
-    shot: { from: ['krater'], svg: shotThumb3 } },
+    shot: { from: ['nester'], svg: shotThumb3 } },
   { file: 'thumbnail-4.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 4 (nur mit Screenshot "base"): "WERDE REICH!" - Deine Base voller Meteore.', svg: null,
     shot: { from: ['base'], svg: shotThumb4 } },
   { file: 'thumbnail-5.png', w: TW, h: TH, kind: 'square', desc: 'Thumbnail 5 (nur mit Screenshot "showcase"): "28 METEORE ZUM SAMMELN!".', svg: null,

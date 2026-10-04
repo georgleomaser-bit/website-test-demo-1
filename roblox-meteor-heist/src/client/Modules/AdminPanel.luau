@@ -589,7 +589,7 @@ function AdminPanel.Build(ctx: any)
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(0.69, -4, 0.5, 0),
 			Size = UDim2.new(0.31, -6, 0, 38),
-			Text = "Gratis in die Mitte",
+			Text = "In die Gratis-Zone",
 			Color = Theme.Green,
 			MaxText = 16,
 			Parent = card,

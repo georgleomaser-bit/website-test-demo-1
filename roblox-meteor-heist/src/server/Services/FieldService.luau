@@ -2,7 +2,7 @@
 --
 -- KREATUREN (Config.Creatures): laufen in ihrem Revier im Feld herum. Kommt ein Spieler zu nah
 -- (AggroRange), jagen sie ihn mit festem Tempo (schneller als Grundtempo 16, langsamer als gute
--- Speed-Werte). Treffer = Schubs wie ein Bonk (CarryService.CreatureHit), ein getragenes Ei fällt runter.
+-- Speed-Werte). Treffer = Schubs wie ein Schläger-Treffer (CarryService.CreatureHit), ein getragenes Ei fällt runter.
 -- Niemand stirbt. Ziel weg / zu weit weg / aus dem Feld raus -> zurück ins Revier.
 -- Nachts mehr und schnellere Kreaturen (NightService.IsNight). Sie verlassen das Feld NIE
 -- (Grenzen = Attribute MinX/MaxX/MinZ/MaxZ am Ordner "NestField" -> betreten keine Basen).
@@ -43,6 +43,8 @@ local PUBLISH_GAP = 1 -- spätestens so oft neu senden (auch ohne Änderung)
 local VEL_CHANGE = 0.6 -- Tempo-Änderung, ab der neu gesendet wird
 local HIT_NOTIFY_GAP = 12 -- Hinweis "Monster!" höchstens so oft pro Spieler
 local PAD_COOLDOWN = 0.4 -- Touched feuert oft: höchstens so oft pro Spieler auswerten
+local PAD_REACH = 4 -- HumanoidRootPart höchstens so weit neben dem Pad-Rand (Ping, breite Avatare)
+local PAD_MAX_HEIGHT = 9 -- ... und höchstens so hoch darüber (Springen)
 local FALLBACK_BOUNDS = { MinX = -29, MaxX = 29, MinZ = -205, MaxZ = 240 }
 
 type Creature = {
@@ -347,18 +349,26 @@ end
 -- -------------------------------------------------------------------
 -- SPEED-PADS
 -- -------------------------------------------------------------------
-local function onPadTouched(hitPart: BasePart)
+local function onPadTouched(pad: BasePart, hitPart: BasePart)
 	local model = hitPart:FindFirstAncestorOfClass("Model")
 	local player = model and Players:GetPlayerFromCharacter(model)
 	if not player then
 		return
 	end
 	local humanoid = (model :: Model):FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
+	local root = (model :: Model):FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") or root.Anchored then
 		return
 	end
 	local clock = os.clock()
 	if clock < (padAt[player] or 0) then
+		return
+	end
+	-- Touched meldet der Client: nur zählen, wenn der Spieler wirklich auf/über dem Pad steht
+	-- (sonst könnte ein Exploit den Boost von überall auslösen)
+	local offset = root.Position - pad.Position
+	local reach = math.max(pad.Size.X, pad.Size.Z) / 2 + PAD_REACH
+	if offset.X * offset.X + offset.Z * offset.Z > reach * reach or offset.Y > PAD_MAX_HEIGHT or offset.Y < -2 then
 		return
 	end
 	padAt[player] = clock + PAD_COOLDOWN
@@ -399,7 +409,9 @@ function FieldService.Init(services)
 	if pads then
 		for _, pad in ipairs(pads:GetChildren()) do
 			if pad:IsA("BasePart") then
-				pad.Touched:Connect(onPadTouched)
+				pad.Touched:Connect(function(hitPart)
+					onPadTouched(pad, hitPart)
+				end)
 			end
 		end
 	end

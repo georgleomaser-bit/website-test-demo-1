@@ -2,17 +2,20 @@
 --  METEOR HEIST – Client (alles, was der Spieler sieht)
 --  Dieses Skript startet nur die Module im Ordner "Modules" und verbindet sie mit dem Server:
 --    UI         Baukasten (Knöpfe, Fenster, Toasts, zählende Zahlen)
---    Hud        Knöpfe links/rechts (mit Badges), Schritte + Geld, Banner (Schauer, Egg Rush),
+--    Hud        Knöpfe links/rechts (mit Badges), Schritte + Geld, Banner (Schauer, Egg Rush, Rennen),
 --               Wegweiser (Base beim Tragen, nächstes Ei, Gold-Ei im Rennen), Prompt-Hinweis an den Nestern
 --    Windows    Shop (Gamepässe / Boosts / Gadgets), Laufbänder, Rebirth, Tagesbonus, Alien-Index
 --    Rewards    🎁 Geschenke, 🎡 Glücksrad, 📜 Tagesaufgaben
 --    Effects    fliegende Zahlen, Lieferflug, Schlüpf-Explosion, Hatch-Karte, Wackeln, Konfetti
---    WorldFX    Treadmill-Streifen, wippende Aliens, Regenbogen, Schlüpf-Countdown, krasse Eier
---    NestField  Ei-Rennen: wilde Kreaturen (lokal gebaut, weich bewegt), Ei-Pop, Speed-Pad-Gefühl
+--    WorldFX    Laufband-Streifen + Fußstaub + Schritt-Zahl, wippende Aliens, Regenbogen, Schlüpf-Countdown,
+--               krasse Eier
+--    NestField  Ei-Rennen: wilde Kreaturen (lokal gebaut + animiert), Ei-Pop, Nest-Glitzer, Speed-Pads,
+--               Gold-Ei-Fanfare + Leuchtpfeil
 --    Prompts    Klauen/Kaufen/Verkaufen-Prompts passend ein-/ausblenden
 --    Bat        Schläger: Ausholen/Zuschlagen (lokal), kurzes Taumeln nach einem Treffer
 --    Night      Nacht/Blutmond-Banner, Glücks-Zähler-Leiste, Sternschnuppen + leuchtende Kisten
---    Trade      🤝 Handel mit anderen Spielern (Fenster, Anfrage-Popup, Prompt am Charakter)
+--    Trade      🤝 Handel mit anderen Spielern (Fenster, Anfrage-Popup, Prompt am Charakter, Tausch-Animation)
+--    Base       🏗️ Stockwerke + Base-Look kaufen, Bau-Animation, Laser-Sperre + Lock-Knopf
 --    Fly, PhotoMode, AdminPanel (nur für Admins)
 --  Die gesamte Oberfläche wird per Code gebaut – du musst nichts in Studio zusammenklicken.
 -- =====================================================================
@@ -115,8 +118,9 @@ function ctx.Request(action: string, arg: any?): boolean
 	return ok
 end
 
-ctx.Hooks.OnSteps = function(_amount: number)
+ctx.Hooks.OnSteps = function(amount: number)
 	Hud.PulseSteps()
+	WorldFX.OnSteps(amount) -- Konsole des Laufbands zeigt "+X 👟"
 end
 ctx.Hooks.OnCash = function(_amount: number)
 	Hud.PulseCash()
@@ -289,8 +293,8 @@ UI.Toast(
 	"Event"
 )
 task.delay(4, function()
-	UI.Toast("🏃 Schnell heim – Achtung, Monster! Oder kaufen (" .. buyKey .. ") = Lieferung.", "Info")
+	UI.Toast("🏃 Dann schnell heimtragen – Achtung, Monster! Kaufen (" .. buyKey .. ") liefert direkt.", "Info")
 end)
 task.delay(8, function()
-	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld!", "Info")
+	UI.Toast("🐣 In deiner Base schlüpfen Aliens – die bringen dir Geld! 💰", "Info")
 end)

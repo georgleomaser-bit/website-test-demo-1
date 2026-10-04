@@ -1994,6 +1994,29 @@ function Effects.Play(name: any, strength: any, data: any)
 	end
 end
 
+-- Bausteine für andere Module (NestField, Base, Trade, WorldFX): gleiche Optik, gleiche Grenzen
+-- (Reichweite, höchstens MAX_FLASHES Lichtblitze auf einmal), alles räumt sich selbst auf.
+function Effects.Burst(position: Vector3, color: Color3, amount: number, flash: boolean?)
+	burst(position, color, amount, flash == true)
+end
+
+function Effects.Ring(position: Vector3, color: Color3, size: number, time: number?)
+	ring(position, color, size, time or 0.6)
+end
+
+function Effects.Puff(position: Vector3, color: Color3, amount: number)
+	puff(position, color, amount)
+end
+
+function Effects.Shake(strength: number)
+	shake(strength)
+end
+
+-- Foto-Modus an? (dann keine Zusatz-Effekte auf dem Bildschirm)
+function Effects.IsHidden(): boolean
+	return hidden
+end
+
 -- Foto-Modus: fliegende Zahlen + große Karten ausblenden
 function Effects.SetHidden(value: boolean)
 	hidden = value

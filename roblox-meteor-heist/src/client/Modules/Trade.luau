@@ -2,10 +2,13 @@
 --  🤝 HANDEL (Client): Fenster mit Spieler-Liste + Einstellungen, Handelsfenster (beide Seiten),
 --  Anfrage-Popup (20 s) und ein Prompt "Handeln" am Charakter der anderen Spieler (nur lokal).
 --  Geprüft und getauscht wird NUR auf dem Server (TradeService). Hier wird nur angezeigt/angefragt.
+--  Animationen (nur Optik): neue Sachen im Angebot ploppen auf, "Bereit" und der Countdown pulsieren,
+--  beim fertigen Tausch fliegen die Karten (deine weg, seine/ihre zu dir) + Stempel "HANDEL FERTIG!".
 -- =====================================================================
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
 
@@ -17,6 +20,15 @@ local Theme = UI.Theme
 local BLACK = Color3.new(0, 0, 0)
 
 local PROMPT_NAME = "TradePrompt"
+local POP_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local PULSE_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true)
+local FLY_TIME = 0.75
+local FLY_INFO = TweenInfo.new(FLY_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local FADE_INFO =
+	TweenInfo.new(FLY_TIME * 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, FLY_TIME * 0.4)
+local STAMP_IN = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local STAMP_OUT = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 1.3)
+local MAX_FLY = 12
 
 local tradeRemote: RemoteFunction
 local win: UI.Window
@@ -40,6 +52,11 @@ local inventoryGrid: Frame
 local inventoryTitle: TextLabel
 
 local current: any = nil -- aktuelle Handels-Ansicht vom Server (nil = kein Handel)
+local shownKeys: { [string]: { [string]: boolean } } = { You = {}, Them = {} } -- für das Aufploppen
+local lastCountdown = -1
+local lastReady: { [string]: boolean } = { You = false, Them = false }
+local fxGui: ScreenGui? = nil
+local playDone: () -> ()
 local blockedRequests = false
 local waitUntil = 0 -- os.clock(), ab dann darf man handeln
 local closingByServer = false
@@ -95,7 +112,30 @@ local function clearCards(parent: Instance)
 	end
 end
 
-local function makeCard(parent: Instance, info: any, order: number, onClick: (() -> ())?)
+-- Kurzes Aufploppen (UIScale von klein auf 1 mit Überschwingen)
+local function popIn(gui: GuiObject, from: number)
+	local scale = Instance.new("UIScale")
+	scale.Scale = from
+	scale.Parent = gui
+	TweenService:Create(scale, POP_INFO, { Scale = 1 }):Play()
+end
+
+-- Kurzes Pulsieren (einmal groß und zurück)
+local function pulse(gui: GuiObject)
+	local scale = gui:FindFirstChild("PulseScale")
+	if not scale then
+		local created = Instance.new("UIScale")
+		created.Name = "PulseScale"
+		created.Parent = gui
+		scale = created
+	end
+	if scale and scale:IsA("UIScale") then
+		scale.Scale = 1
+		TweenService:Create(scale, PULSE_INFO, { Scale = 1.15 }):Play()
+	end
+end
+
+local function makeCard(parent: Instance, info: any, order: number, onClick: (() -> ())?): Frame
 	local card = UI.Card({
 		Name = "Item",
 		LayoutOrder = order,
@@ -142,6 +182,7 @@ local function makeCard(parent: Instance, info: any, order: number, onClick: (()
 		}) :: TextButton
 		button.Activated:Connect(onClick)
 	end
+	return card
 end
 
 -- ---------------------------------------------------------------------
@@ -149,8 +190,11 @@ end
 -- ---------------------------------------------------------------------
 local function fillSide(grid: Frame, offer: any, mine: boolean)
 	clearCards(grid)
+	local side = if mine then "You" else "Them"
+	local before = shownKeys[side]
+	local now: { [string]: boolean } = {}
 	for i, info in ipairs(offer.Items or {}) do
-		makeCard(
+		local card = makeCard(
 			grid,
 			info,
 			i,
@@ -160,12 +204,22 @@ local function fillSide(grid: Frame, offer: any, mine: boolean)
 				end
 				else nil
 		)
+		local key = tostring(info.Key)
+		now[key] = true
+		if not before[key] then
+			popIn(card, 0.3) -- neu im Angebot
+		end
 	end
+	shownKeys[side] = now
 end
 
-local function readyText(label: TextLabel, ready: boolean)
+local function readyText(label: TextLabel, ready: boolean, side: string)
 	label.Text = if ready then "✅ BEREIT" else "⏳ wartet"
 	label.TextColor3 = if ready then Theme.Green else Theme.SubText
+	if ready and not lastReady[side] then
+		pulse(label)
+	end
+	lastReady[side] = ready
 end
 
 local function updateStatus()
@@ -177,7 +231,14 @@ local function updateStatus()
 		local left = math.max(0, math.ceil(endsAt - workspace:GetServerTimeNow()))
 		statusLabel.Text = "🔁 Tausch in " .. left .. "..."
 		statusLabel.TextColor3 = Theme.Yellow
-	elseif current.You.Ready then
+		if left ~= lastCountdown then
+			lastCountdown = left
+			pulse(statusLabel)
+		end
+		return
+	end
+	lastCountdown = -1
+	if current.You.Ready then
 		statusLabel.Text = "Warte auf " .. current.Other.Name .. "..."
 		statusLabel.TextColor3 = Theme.SubText
 	else
@@ -200,8 +261,8 @@ local function render()
 	fillSide(theirItems, view.Them, false)
 	yourCash.Text = "💵 " .. util.FormatCash(view.You.Cash or 0)
 	theirCash.Text = "💵 " .. util.FormatCash(view.Them.Cash or 0)
-	readyText(yourReady, view.You.Ready == true)
-	readyText(theirReady, view.Them.Ready == true)
+	readyText(yourReady, view.You.Ready == true, "You")
+	readyText(theirReady, view.Them.Ready == true, "Them")
 	readyButton.SetText(if view.You.Ready then "↩️ Nicht bereit" else "✅ Bereit")
 	readyButton.SetColor(if view.You.Ready then Theme.Gray else Theme.Green)
 	local inventory = view.Inventory or {}
@@ -567,6 +628,99 @@ local function watchPlayer(other: Player)
 end
 
 -- ---------------------------------------------------------------------
+-- TAUSCH FERTIG: Karten fliegen, Stempel
+-- ---------------------------------------------------------------------
+local function flyCard(card: GuiObject, target: Vector2, spin: number)
+	local gui = fxGui
+	if not gui then
+		return
+	end
+	local group = Instance.new("CanvasGroup")
+	group.BackgroundTransparency = 1
+	group.Position = UDim2.fromOffset(card.AbsolutePosition.X, card.AbsolutePosition.Y)
+	group.Size = UDim2.fromOffset(card.AbsoluteSize.X, card.AbsoluteSize.Y)
+	group.AnchorPoint = Vector2.zero
+	local copy = card:Clone()
+	copy.Position = UDim2.fromScale(0, 0)
+	copy.Size = UDim2.fromScale(1, 1)
+	copy.AnchorPoint = Vector2.zero
+	for _, d in ipairs(copy:GetDescendants()) do
+		if d:IsA("UIScale") then
+			d:Destroy()
+		end
+	end
+	copy.Parent = group
+	group.Parent = gui
+	TweenService:Create(group, FLY_INFO, {
+		Position = UDim2.fromOffset(target.X - card.AbsoluteSize.X / 2, target.Y - card.AbsoluteSize.Y / 2),
+		Rotation = spin,
+		Size = UDim2.fromOffset(card.AbsoluteSize.X * 0.4, card.AbsoluteSize.Y * 0.4),
+	}):Play()
+	TweenService:Create(group, FADE_INFO, { GroupTransparency = 1 }):Play()
+	task.delay(FLY_TIME + 0.1, function()
+		group:Destroy()
+	end)
+end
+
+local function stamp()
+	local gui = fxGui
+	if not gui then
+		return
+	end
+	local label = Instance.new("TextLabel")
+	label.BackgroundTransparency = 1
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Position = UDim2.fromScale(0.5, 0.42)
+	label.Size = UDim2.fromOffset(520, 110)
+	label.Font = Enum.Font.FredokaOne
+	label.TextScaled = true
+	label.Text = "🤝 HANDEL FERTIG!"
+	label.TextColor3 = Theme.Green
+	label.Rotation = -12
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 5
+	stroke.Color = Color3.fromRGB(20, 60, 20)
+	stroke.Parent = label
+	local scale = Instance.new("UIScale")
+	scale.Scale = 2.4
+	scale.Parent = label
+	label.Parent = gui
+	TweenService:Create(scale, STAMP_IN, { Scale = 1 }):Play()
+	TweenService:Create(label, STAMP_IN, { Rotation = -6 }):Play()
+	TweenService:Create(label, STAMP_OUT, { TextTransparency = 1 }):Play()
+	TweenService:Create(stroke, STAMP_OUT, { Transparency = 1 }):Play()
+	task.delay(1.8, function()
+		label:Destroy()
+	end)
+	if ctx.Effects and ctx.Effects.Shake then
+		ctx.Effects.Shake(0.25)
+	end
+end
+
+playDone = function()
+	local gui = fxGui
+	if not gui or not win.IsOpen or (ctx.Effects.IsHidden and ctx.Effects.IsHidden()) then
+		return
+	end
+	local screen = gui.AbsoluteSize
+	local count = 0
+	-- seine/ihre Karten fliegen zu dir (unten), deine fliegen nach oben weg
+	for _, child in ipairs(theirItems:GetChildren()) do
+		if child:IsA("GuiObject") and count < MAX_FLY then
+			count += 1
+			flyCard(child, Vector2.new(screen.X * 0.5, screen.Y * 0.95), math.random(-25, 25))
+		end
+	end
+	for _, child in ipairs(yourItems:GetChildren()) do
+		if child:IsA("GuiObject") and count < MAX_FLY then
+			count += 1
+			flyCard(child, Vector2.new(screen.X * 0.5, -40), math.random(-25, 25))
+		end
+	end
+	stamp()
+end
+
+-- ---------------------------------------------------------------------
 -- EREIGNISSE VOM SERVER
 -- ---------------------------------------------------------------------
 local function onEvent(kind: any, data: any)
@@ -603,7 +757,13 @@ local function onEvent(kind: any, data: any)
 			UI.OpenWindow(win)
 		end
 	elseif kind == "Closed" then
+		if type(data) == "table" and data.Done == true and current then
+			playDone() -- vor dem Schließen: Karten-Positionen stehen noch
+		end
 		current = nil
+		table.clear(shownKeys.You)
+		table.clear(shownKeys.Them)
+		lastReady.You, lastReady.Them = false, false
 		render()
 		setPromptsEnabled()
 		local text = type(data) == "table" and data.Text
@@ -625,6 +785,13 @@ function Trade.Init(context: any)
 	local tradeEvent = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("TradeEvent") :: RemoteEvent
 
 	win = UI.Window("🤝 HANDEL", 620, 500, Theme.Cyan)
+	local overlay = Instance.new("ScreenGui")
+	overlay.Name = "MeteorHeistTradeFX"
+	overlay.ResetOnSpawn = false
+	overlay.IgnoreGuiInset = false
+	overlay.DisplayOrder = 6
+	overlay.Parent = player:WaitForChild("PlayerGui")
+	fxGui = overlay
 	buildListPage(win.Content)
 	buildTradePage(win.Content)
 	buildPopup()
@@ -649,7 +816,7 @@ function Trade.Init(context: any)
 			call("Cancel", nil, true)
 		end
 	end)
-	ctx.Hud.AddRightButton("🤝", "Handel", Theme.Cyan, 8, function()
+	ctx.Hud.AddRightButton("🤝", "Handel", Theme.Cyan, 9, function()
 		ctx.Windows.Toggle("Trade")
 	end)
 

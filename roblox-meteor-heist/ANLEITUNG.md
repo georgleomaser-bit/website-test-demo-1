@@ -4,7 +4,7 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 
 > **Meteore sind Alien-Eier. In der Map-Mitte liegen sie in Nestern → du SCHNAPPST sie gratis (E halten) und rennst sie
 > nach Hause, oder du kaufst sie (F), dann fliegen sie von allein in deine Base → ein Alien schlüpft → es bringt
-> Geld → du klaust bei anderen → die anderen bonken dich → Rebirth → immer bessere Meteore und Aliens.**
+> Geld → du klaust bei anderen → die anderen hauen dich mit dem Schläger → Rebirth → immer bessere Meteore und Aliens.**
 >
 > **Wer schneller ist, schnappt mehr.** Schnappen ist gratis, Kaufen kostet Geld.
 
@@ -14,12 +14,12 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 
 | Bereich | Inhalt |
 |---|---|
-| **🥚 Ei-Rennen (Map-Mitte)** | Zwischen den Basen liegt ein großes **Nester-Feld**: viele **kleine Nester** nah an den Basen, wenige **große Nester** in der Mitte und ganz hinten. Alle paar Sekunden erscheint in einem freien Nest ein Ei (es ploppt kurz auf), liegt eine Weile da (klein 30 s, groß 45 s) und verschwindet dann. Meist liegen 50–60 Eier gleichzeitig herum. **Wer zuerst da ist, bekommt es.** **E halten** (½ Sekunde) = **gratis schnappen**. Du trägst das Ei über dem Kopf und musst es **selbst in deine Base** bringen. Wirst du unterwegs gebonkt oder von einem Monster erwischt, fällt das Ei auf den Boden. Dann kann **jeder** es schnappen |
-| **🪺 Große Nester** | Seltener ein Ei, aber immer mindestens **Epic** und viel öfter **Legendary+**. Ein Ei im großen Nest hat eine **Lichtsäule**. Ab Legendary gibt es eine kurze Ansage und Konfetti |
-| **👾 Monster** | Im Feld laufen **wilde Kreaturen** herum (tags 6, nachts 10 und schneller). Kommst du näher als ~25 Studs, jagen sie dich (Tempo 21, nachts 25). Treffer = **Schubs**, dein Ei fällt runter. Niemand stirbt. Wer schnell ist (Laufbänder!), entkommt. Die Monster verlassen das Feld nie |
-| **⚡ Speed-Pads** | Blaue Platten im Feld und vor jeder Base: drüberlaufen = **3 Sekunden +50 % Tempo** |
-| **🏁 Rennen** | Etwa alle **7 Minuten**: ein **Gold-Ei** erscheint im Renn-Nest ganz hinten (Zielflagge). Ein Pfeil zeigt hin. Wer es **zuerst nach Hause** bringt, bekommt das Ei (mindestens Legendary, Gold-Mutation) und **5 Minuten Einkommen** als Bonus |
-| **🛒 Kaufen** | **F** am Nest = kaufen. Der Meteor fliegt **von allein** in einen freien Platz deiner Base. Celestial, Divine, Secret, Godly, Cosmic und Infinity kannst du erst nach Rebirths kaufen. Schnappen geht immer |
+| **🥚 Ei-Rennen (Map-Mitte)** | Zwischen den Basen liegt ein großes **Nester-Feld**: viele **kleine Nester** nah an den Basen, wenige **große Nester** in der Mitte und ganz hinten. Alle paar Sekunden fällt in ein freies Nest ein Ei (es federt kurz, Stroh fliegt), liegt eine Weile da (klein 30 s, groß 45 s) und verschwindet dann. Meist liegen 50–60 Eier gleichzeitig herum. **Wer zuerst da ist, bekommt es.** **E halten** (½ Sekunde) = **gratis schnappen**. Du trägst das Ei über dem Kopf und musst es **selbst in deine Base** bringen. Wirst du unterwegs mit dem Schläger getroffen oder von einem Monster erwischt, fällt das Ei auf den Boden. Dann kann **jeder** es schnappen |
+| **🪺 Große Nester** | Seltener ein Ei, aber immer mindestens **Epic** und viel öfter **Legendary+**. Ein Ei im großen Nest hat eine **Lichtsäule**, das Nest glitzert. Ab Legendary gibt es eine kurze Ansage und Konfetti |
+| **👾 Monster** | Im Feld laufen **wilde Kreaturen** herum (tags 6, nachts 10 und schneller). Kommst du näher als ~25 Studs, jagen sie dich (Tempo 21, nachts 25). Treffer = **Schubs**, dein Ei fällt runter. Niemand stirbt. Jagt dich ein Monster, duckt es sich kurz, sprintet los und zeigt ein rotes **„!“**. Gibt es auf, schüttelt es den Kopf („?“). Wer schnell ist (Laufbänder!), entkommt. Die Monster verlassen das Feld nie |
+| **⚡ Speed-Pads** | Blaue Platten mit laufenden Pfeilen im Feld und vor jeder Base: drüberlaufen = **3 Sekunden +50 % Tempo** (mit Leuchtspur und kurzem Sichtfeld-Puls) |
+| **🏁 Rennen** | Etwa alle **7 Minuten**: ein **Gold-Ei** erscheint im Renn-Nest ganz hinten (Zielflagge). Eine Fanfare kündigt es an, ein Leuchtpfeil über dem Ei und ein Pfeil unten im Bild zeigen hin. Wer es **zuerst nach Hause** bringt, bekommt das Ei (mindestens Legendary, Gold-Mutation) und **5 Minuten Einkommen** als Bonus |
+| **🛒 Kaufen** | **F** am Nest = kaufen. Das Ei fliegt **von allein** in einen freien Platz deiner Base. Celestial, Divine, Secret, Godly, Cosmic und Infinity kannst du erst nach Rebirths kaufen. Schnappen geht immer |
 | **🏃 Tempo zählt** | Beim Tragen hast du nur **70 % Tempo**. **Seltene Beute ist schwer:** ab Legendary 60 %, ab Mythic 50 %, ab Celestial 45 % (mindestens Tempo 8). Mit dem Pass **„🏃 Volle Speed beim Tragen“** sind es immer 100 %. Schritte von den Laufbändern und das Gadget **🌀 Speed Coil** machen dich schneller |
 | **✨ Krasse Eier** | Ab **Legendary** haben Eier im Nest, am Boden und in der Base eine **Lichtsäule**, Glitzern und einen drehenden Ring. Ab **Mythic** dazu Funkenregen und Blitze, ab **Secret** (und Admin) eine Regenbogen-Aura, **Infinity** zusätzlich kreisende Sterne, eine breitere Säule und einen doppelt so schnellen Ring – und alle bekommen eine Ansage, wenn so ein Ei im Nest liegt. Seltene Aliens schlüpfen mit einer großen Explosion |
 | **🐣 Schlüpfen** | In der Base zählt der Meteor runter („🐣 Schlüpft in …“). Dann schlüpft ein **Alien**. Erst das Alien verdient Geld. Besondere Aliens (Ultra oder ab Epic) schlüpfen mit einer großen Karte in der Bildschirmmitte, andere seltene mit einer kleinen Karte oben rechts (beim Tragen immer klein) |
@@ -31,23 +31,23 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 | **🔴 Blutmond** | Ungefähr **jede 5. Nacht**: roter Himmel, **2x Glück** bis zum Morgen und dazu das **Blood Moon Gem** (Divine), das es nur im Blutmond gibt |
 | **🍀 Glücks-Zähler** | Kommt lange kein Legendary+ Ei in die Nester, steigt das Glück für Legendary+ alle 20 Eier um 0,25 (bis 3x). Kommt eins, geht es von vorne los. Die grüne Leiste über deinem Geld zeigt den Stand (gilt für den ganzen Server) |
 | **🌠 Meteoritenschauer** | Ungefähr alle **8 Minuten**, 60 Sekunden lang: **keine Locks**, 3x Glück, und die Nester werden **voller** (fast doppelt so oft ein Ei, bis zu 75 in kleinen Nestern, bis zu 6 große Nester gleichzeitig). Nur das **🛡️ Base-Schild** hält dann noch. Von selbst kommen Schauer, Egg Rush und Rennen nie gleichzeitig |
-| **🛠️ Gadgets** | Im **🛒 Shop** (Reiter **🛠️ Gadgets**) mit Geld kaufen. Sie gehören dir für immer, auch nach einem Rebirth: **🌀 Speed Coil**, **🔨 Super-Bonk**, **🪤 Falle**, **👻 Unsichtbarkeits-Umhang** (Tabelle unten) |
+| **🛠️ Gadgets** | Im **🛒 Shop** (Reiter **🛠️ Gadgets**) mit Geld kaufen. Sie gehören dir für immer, auch nach einem Rebirth: **🌀 Speed Coil**, **🔨 Super-Schlag**, **🪤 Falle**, **👻 Unsichtbarkeits-Umhang** (Tabelle unten) |
 | **🎁 Geschenke** | Fürs Spielen: nach **2, 5, 10, 15, 20, 30, 45 und 60 Minuten** gibt es ein Geschenk (Geld, Schritte, Glücksrad-Drehs, ein Epic- und ein Legendary-Ei). Gezählt wird die **Spielzeit von heute**, über alle Besuche zusammen (sie wird gespeichert, neu beitreten setzt sie nicht zurück). Um Mitternacht (UTC) geht es von vorne los |
 | **🎡 Glücksrad** | Alle **4 Stunden 1 Gratis-Dreh**. 8 Felder: Geld (3 Größen), Schritte, 2 Drehs, Epic-, Legendary- und Mythic-Ei. Chancen: Cash S 26 %, Schritte 18 %, Cash M 18 %, Cash XL 10 %, Epic-Ei 10 %, 2 Drehs 8 %, Legendary-Ei 8 %, Mythic-Ei 2 %. Weitere Drehs gibt es als Geschenk, für Aufgaben oder für Robux. Ist bei einem Ei-Gewinn (Glücksrad oder Geschenk) die Base voll, gibt es den Verkaufswert als Geld |
-| **📜 Tagesaufgaben** | Jeden Tag **3 neue Aufgaben**, zum Beispiel „🥚 Schnapp dir 5 Eier aus den Nestern“ oder „🐣 Lass 5 Aliens schlüpfen“. Belohnung: Geld + 1 Glücksrad-Dreh. Einmal am Tag darfst du eine Aufgabe mit **🔄 tauschen** (gut, wenn zum Bonken oder Klauen gerade niemand da ist). Die neue Aufgabe geht immer allein |
+| **📜 Tagesaufgaben** | Jeden Tag **3 neue Aufgaben**, zum Beispiel „🥚 Schnapp dir 5 Eier aus den Nestern“ oder „🐣 Lass 5 Aliens schlüpfen“. Belohnung: Geld + 1 Glücksrad-Dreh. Einmal am Tag darfst du eine Aufgabe mit **🔄 tauschen** (gut, wenn zum Treffen oder Klauen gerade niemand da ist). Die neue Aufgabe geht immer allein |
 | **✨ Mutationen** | Gold x2, Frost x3, Lava x3, Diamond x4, Galaxy x10 und ganz selten **Rainbow x15** (leuchtet in allen Farben). Tabelle unten |
 | **⚡ Aufladen** | Aliens leveln von allein (Lv 1 bis 20, ca. 3 Stunden). Jedes Level gibt +10 % Geld |
 | **🏃 Speed Farm** | Auf dem Spawn-Platz stehen **7 Laufbänder** (Holz bis Regenbogen). Holz ist gratis, die anderen **kaufst du mit Geld** im Menü **🏃 Laufbänder**. Drauf laufen = **Schritte 👟** sammeln. Mehr Schritte = schneller rennen |
 | **📈 Fortschritt** | 61 Meteore in 12 Seltenheiten (Common bis Infinity, dazu Admin). Preise bis in die Billiarden |
 | **👽 Aliens & Index** | 183 Aliens (3 pro Meteor). Jedes neue Alien gibt für immer **+1 % Einkommen** |
 | **👑 Admin-Meteore** | 4 krasse Meteore: **Rainbow Overlord, Godly Sun, Void Emperor, Chaos Core**. Sie kommen **nie von selbst**. Nur du spawnst sie im Admin-Panel |
-| **🔥 Rebirth** | +50 % Geld und +25 % Schritte für immer. Neue Seltenheiten werden kaufbar. Schritte, Index und Gadgets bleiben |
+| **🔥 Rebirth** | +50 % Geld und +25 % Schritte für immer. Neue Seltenheiten werden kaufbar. Schritte, Index, Gadgets, Laufbänder, Stockwerke und Base-Look bleiben |
 | **🎁 Tagesbonus** | Jeden Tag abholen. Mit Streak bis Tag 7 |
 | **😴 Offline** | Du bekommst 25 % Geld für bis zu 3 Stunden. Meteore schlüpfen auch, wenn du weg bist |
 | **💎 Robux** | 8 Gamepasses, 14 Developer Products (mit **⭐ Starter-Paket**) und Premium-Bonus |
 | **🛠️ Admin-Panel** | Nur für dich. 5 Reiter: Spawnen (auch fertige Aliens), Events (Nacht, Blutmond, Egg Rush, Große Nester, Ei-Rennen …), Spieler (Liste, Geschenke, Moderation), Kräfte (Gott-Modus, Noclip, Tempo, Sprung, Zuschauen), Server (Info, sperren, Banns). Siehe unten |
 | **✨ Grafik** | Helles Sonnenlicht („Future“-Licht), Atmosphäre, Wolken, leichtes Leuchten, weicher Tag-Nacht-Wechsel. Knallgrüner Roblox-Rasterboden wie in Simulator-Spielen |
-| **🧈 Flüssig** | Die Eier in den Nestern liegen still. Die Monster rechnet der Server nur 5x pro Sekunde, gezeichnet und weich bewegt werden sie auf deinem Gerät. Deshalb ruckelt nichts. Fenster, Knöpfe, Zahlen und das Glücksrad sind animiert |
+| **🧈 Flüssig** | Die Eier in den Nestern liegen still. Die Monster rechnet der Server nur 5x pro Sekunde, gezeichnet und animiert (Laufen, Sprinten, Jubeln, Kopfschütteln) werden sie auf deinem Gerät. Deshalb ruckelt nichts. Fenster, Knöpfe, Zahlen, Glücksrad, Stockwerk-Bau, Handel und Laufbänder (Fußstaub, „+X 👟“ an der Konsole) sind animiert |
 | **🔒 Technik** | Sicheres Speichern (keine Duplikate, kein Datenverlust). Käufe doppelt abgesichert. Der Server prüft alles (auch, ob du E wirklich lange genug gehalten hast), Schummeln geht nicht. Globale Top-10-Bestenliste |
 
 Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts zusammenbauen.
@@ -69,7 +69,7 @@ Die **komplette Map baut sich automatisch** per Code. Du musst in Studio nichts 
 4. In der Base steht „🐣 Schlüpft in …“. Warte, bis die Zeit um ist.
 5. Der Meteor bricht auf. Ein **Alien** schlüpft. Jetzt verdienst du Geld pro Sekunde.
 6. Lauf über das **grüne Pad** oder durch deine Aliens. Das Geld landet auf deinem Konto.
-7. Klau bei anderen. Bonk Diebe weg. Schnapp dir Eier, die andere fallen lassen.
+7. Klau bei anderen. Hau Diebe mit dem Schläger weg. Schnapp dir Eier, die andere fallen lassen.
 8. Kommt ein **🥚 EGG RUSH**: Renn los und schnapp dir so viele Eier wie möglich!
 9. Schau rechts bei **🎁 Geschenke**, **🎡 Glücksrad** und **📜 Aufgaben** vorbei.
    Eine Zahl am Knopf zeigt, dass etwas auf dich wartet.
@@ -143,16 +143,16 @@ Gadgets gehören dir für immer, auch nach einem Rebirth. Nach jedem Spawn liege
 | Gadget | Preis | Was es macht |
 |---|---|---|
 | 🌀 Speed Coil | $25.000 | +30 % Tempo, solange du sie in der Hand hältst |
-| 🔨 Super-Bonk | $750.000 | Kein eigenes Werkzeug: macht **deinen Schläger** stärker (+50 % Reichweite, +30 % Wucht, schnellere Schläge) |
+| 🔨 Super-Schlag | $750.000 | Kein eigenes Werkzeug: macht **deinen Schläger** stärker (+50 % Reichweite, +30 % Wucht, schnellere Schläge) |
 | 🪤 Falle | $1,5 Mio. | Klick in deiner Base = Falle aufstellen (max. 2, nicht direkt am Rand). Wer in deiner Base reintritt, ist 3 Sekunden eingefroren und verliert seine Beute. Eingefroren kann man nichts klauen und nicht teleportieren. Danach ist er 5 Sekunden lang sicher vor der nächsten Falle |
-| 👻 Unsichtbarkeits-Umhang | $5 Mio. | Klick = 10 Sekunden unsichtbar. So lange kann dich niemand bonken. Aber: **Wer klaut, wird sofort sichtbar**, und mit Beute geht der Umhang nicht an. Gut zum Reinschleichen, nicht zum Wegrennen. Danach 60 Sekunden Pause (ab dem Sichtbarwerden) |
+| 👻 Unsichtbarkeits-Umhang | $5 Mio. | Klick = 10 Sekunden unsichtbar. So lange kann dich niemand treffen. Aber: **Wer klaut, wird sofort sichtbar**, und mit Beute geht der Umhang nicht an. Gut zum Reinschleichen, nicht zum Wegrennen. Danach 60 Sekunden Pause (ab dem Sichtbarwerden) |
 
 ### 🏃 Die Laufbänder (Speed Farm)
 
 **Laufbänder kaufst du mit Geld** (Holz ist gratis). Sie gehören dir für immer, auch nach einem Rebirth.
 Man kauft sie der Reihe nach: Knopf **🏃 Laufbänder** rechts → beim nächsten Laufband auf den Preis klicken.
 Dann **🏃 Zu den Laufbändern!** → du landest direkt auf deinem besten Laufband, Blick zur Konsole → **laufen** (W gedrückt halten).
-Alle 0,5 Sekunden gibt es Schritte. Über deinem Kopf fliegen die „+X 👟“-Zahlen.
+Alle 0,5 Sekunden gibt es Schritte. Über deinem Kopf fliegen die „+X 👟“-Zahlen, die Konsole vorne zeigt sie groß an, und unter deinen Füßen staubt es.
 Das Band schiebt dich langsam nach hinten (Tempo 6, du läufst mindestens 8). Wer stehen bleibt, rutscht hinten über die kleine Rampe aufs Deck – Stillstehen gibt keine Schritte.
 Stehst du auf einem Laufband und bekommst keine Schritte, sagt dir ein kurzer Hinweis warum („Lauf los!“, „Kaufe dieses Laufband im Laufbänder-Menü“ oder „Spielstand lädt noch“).
 Das Schild am Laufband zeigt den Preis bzw. „Gekauft“ oder „Dein bestes Laufband“.
@@ -184,7 +184,7 @@ Klick = ausholen und zuschlagen. Wer getroffen wird, fliegt weg, taumelt kurz (s
 | Galaxieschläger | 70 | 13 | 0,6 s |
 | Alien-König-Schläger | 90 | 14 | 0,55 s |
 
-Mit dem Gadget **🔨 Super-Bonk** schlägt jeder Schläger weiter, stärker und schneller.
+Mit dem Gadget **🔨 Super-Schlag** schlägt jeder Schläger weiter, stärker und schneller.
 Unsichtbare (Umhang) kann man nicht treffen. Ob ein Schlag trifft, prüft immer der Server.
 
 **Wie schnell wirst du?** Normal ist Tempo 16.
@@ -201,7 +201,7 @@ Knopf **☄️ Run** rechts = Teleport zum Start-Tor (nicht mit Beute). Wer etwa
 1. Durchs **Start-Tor** gehen → „☄️ BEREIT“. Über die **Startlinie** → der Timer läuft (oben im Bild: ⏱️ Zeit, 🚩 Checkpoint, 🏆 Bestzeit).
 2. Fünf Abschnitte: **🔥 Lava-Felder**, **🦘 Sprünge über Lücken** (alle 4 Studs breit – auch mit Anfänger-Tempo zu schaffen), **🌀 rotierende Balken**, **☄️ Meteor-Einschläge** (roter Kreis = 1 Sekunde später schlägt es ein) und **🔥 Lava-Steine**.
 3. Dazwischen 4 **🚩 Checkpoints**. Lava, Runterfallen oder ein Einschlag = zurück zum letzten Checkpoint (niemand stirbt, der Timer läuft weiter). Zurück durchs Start-Tor = Neustart.
-4. Im **🏁 Ziel**: Cash (mind. $2.500, sonst 90 Sekunden Einkommen, bei neuer Bestzeit x1,5) und ein **Gratis-Ei** (meist Epic, oft Legendary, manchmal Mythic, selten Celestial, ab 3 Rebirths ganz selten Divine). Schnelle Zeiten, Rebirths und eine neue Bestzeit geben mehr Glück. **Das Ei musst du nach Hause tragen** – wie ein geklautes Ei (Bonk = Ei fällt runter). Weil der Weg lang ist, gibt es **mehr Zeit, je weiter deine Base weg ist** (mindestens 60 Sekunden, bis ca. 90 Sekunden mit schwerem Ei und Grund-Tempo – die Zeit steht in der Meldung und am Pfeil unten). Base voll = Verkaufswert als Geld.
+4. Im **🏁 Ziel**: Cash (mind. $2.500, sonst 90 Sekunden Einkommen, bei neuer Bestzeit x1,5) und ein **Gratis-Ei** (meist Epic, oft Legendary, manchmal Mythic, selten Celestial, ab 3 Rebirths ganz selten Divine). Schnelle Zeiten, Rebirths und eine neue Bestzeit geben mehr Glück. **Das Ei musst du nach Hause tragen** – wie ein geklautes Ei (Schläger-Treffer = Ei fällt runter). Weil der Weg lang ist, gibt es **mehr Zeit, je weiter deine Base weg ist** (mindestens 60 Sekunden, bis ca. 90 Sekunden mit schwerem Ei und Grund-Tempo – die Zeit steht in der Meldung und am Pfeil unten). Base voll = Verkaufswert als Geld.
 5. Belohnung höchstens alle **3 Minuten** (die Zeit zählt trotzdem; gilt auch nach einem Server-Wechsel). Die **Bestzeit wird gespeichert**, das Schild am Start zeigt den Rekord des Servers.
 
 Schummeln geht nicht: Checkpoints zählen nur der Reihe nach und nur, wenn man wirklich hingelaufen ist (Teleport-Sprünge zählen nicht), zu schnelle Zeiten (schneller als Tempo 104 über die ganze Strecke) werden nicht gewertet, und wer über der Lava schwebt oder viel zu hoch fliegt, muss zurück zum Checkpoint.
@@ -218,6 +218,8 @@ Knopf **🏗️ Base** rechts. Alles mit Cash, bleibt nach Rebirth.
 | Look Holz → Gold | $250K – $2,5 Mrd. | Nur Optik: Zaun, Laternen, Torbogen, Fahnen, Bodenrand |
 
 Die Plätze werden der Reihe nach gefüllt: erst unten, dann oben. Diebe können über die Treppe hoch.
+Beim Kauf baut sich das Stockwerk vor allen sichtbar auf (Treppe wächst, Platte fällt rein), ein neuer Look funkelt.
+Der Lock-Knopf deiner Base leuchtet in einem pulsierenden Ring, solange die Base offen ist.
 Ist die Base gesperrt, fliegen sie von jeder Etage raus. Einstellen: `Config.BaseFloors`, `Config.BaseLooks`.
 Gebaut wird in `src/server/Services/BaseBuilder.luau`.
 
@@ -229,7 +231,7 @@ Spieler können Aliens, Eier und Cash tauschen – wie in Steal-Spielen.
 2. Der andere sieht oben ein **Popup** (✔ Ja / ✖ Nein). Nach **20 Sekunden** verfällt die Anfrage.
 3. **Handelsfenster:** links „Du gibst“, rechts was der andere gibt. Unten deine Base – **klick = anbieten**, nochmal klicken = zurücknehmen. Bis zu **6 Sachen** pro Seite + Cash („💵 Setzen“).
 4. Beide drücken **✅ Bereit** → **3 Sekunden** Countdown → getauscht. Jede Änderung setzt „Bereit“ bei beiden zurück.
-5. Fenster zu oder **❌ Abbruch** = Handel abgebrochen.
+5. Fenster zu oder **❌ Abbruch** = Handel abgebrochen. Klappt der Tausch, fliegen die Karten rüber und es gibt Konfetti.
 
 **Einstellungen** (im Handel-Fenster): „Anfragen: AN/AUS“ blockiert Anfragen (gilt bis zum Verlassen).
 
@@ -265,7 +267,7 @@ Aktion. Auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 4. Rechts auf **🏃 Laufbänder** → **🏃 Zu den Laufbändern!** → auf dem Holz-Laufband laufen = Schritte sammeln.
 5. Rechts auf **🎡 Glücksrad** → **🎡 DREHEN!**. Zum Start hast du schon Drehs.
 6. Admin-Panel: Taste **P** oder Knopf **🛠️ Admin** rechts. Dort kannst du sofort einen **🥚 Egg Rush** starten.
-7. Mit mehreren Spielern testen: **Test → Clients and Servers → 2 Players → Start**. Dann kannst du dich selbst beklauen und bonken.
+7. Mit mehreren Spielern testen: **Test → Clients and Servers → 2 Players → Start**. Dann kannst du dich selbst beklauen, schlagen und mit dir handeln.
 
 **Tasten:**
 
@@ -280,7 +282,7 @@ Aktion. Auch Hacker kommen nicht an das Panel. (Beim Testen in Studio bist du so
 | **X** | Zuschauen beenden (nur Admin) |
 
 **Knöpfe im Spiel:** links **⭐ STARTER-PAKET** (bis du es gekauft hast), **🛒 Shop**, das blaue Angebot **👟 2x Schritte**, **🔥 Rebirth**, **🎁 Daily**.
-Rechts (2 Spalten) **🎁 Geschenke**, **🎡 Glücksrad**, **📜 Aufgaben**, **👽 Index**, **🏃 Laufbänder**, **🏠 Home**, ganz unten **🛠️ Admin** (nur du).
+Rechts (2 Spalten) **🎁 Geschenke**, **🎡 Glücksrad**, **📜 Aufgaben**, **👽 Index**, **🏃 Laufbänder**, **🏠 Home**, **☄️ Run**, **🏗️ Base**, **🤝 Handel**, ganz unten **🛠️ Admin** (nur du).
 Unten links stehen deine **👟 Schritte** (gelb) und dein **💵 Geld** (grün).
 Oben zeigen Banner den **🌠 Meteoritenschauer**, den **🥚 Egg Rush**, das **🏁 Ei-Rennen** und die **🌙 Nacht** (bzw. den **🔴 Blutmond**) mit Countdown.
 Über deinem Geld zeigt die grüne Leiste den **🍀 Glücks-Zähler**.
@@ -323,9 +325,9 @@ Alle Bilder dafür liegen fertig in **`vorbereitet/bilder/`** (22 Stück, `pass-
 | Gamepass | Preis | | Product | Preis |
 |---|---|---|---|---|
 | 💰 2x Cash | 399 R$ | | ⭐ Starter-Paket (nur 1x) | **49 R$** |
-| 👑 VIP | 249 R$ | | 💵 Cash Paket S | 25 R$ |
-| ☄️ +6 Plätze | 199 R$ | | 💰 Cash Paket M | 99 R$ |
-| 🤖 Auto Collect | 149 R$ | | 🏦 Cash Paket XL | 399 R$ |
+| 👑 VIP | 249 R$ | | 💵 Cash-Paket S | 25 R$ |
+| ☄️ +6 Plätze | 199 R$ | | 💰 Cash-Paket M | 99 R$ |
+| 🤖 Auto Collect | 149 R$ | | 🏦 Cash-Paket XL | 399 R$ |
 | ⚡ 2x Schlüpfen & Wachsen | 299 R$ | | 🍀 2x Glück für den Server | 79 R$ |
 | 👟 2x Schritte | 99 R$ | | 🌠 Meteoritenschauer JETZT | 49 R$ |
 | 🍀 2x Glück | 349 R$ | | 🥚 Egg Rush JETZT | 69 R$ |
@@ -334,8 +336,8 @@ Alle Bilder dafür liegen fertig in **`vorbereitet/bilder/`** (22 Stück, `pass-
 | | | | 🎡 10+2 Glücksrad-Drehs | 199 R$ |
 | | | | 🐣 Alle Eier sofort schlüpfen | 79 R$ |
 | | | | 🛡️ Base-Schild 10 Min | 59 R$ |
-| | | | 🌟 Zufälliger Legendary Meteor | 149 R$ |
-| | | | 🔮 Zufälliger Mythic Meteor | 449 R$ |
+| | | | 🌟 Zufälliges Legendary-Ei | 149 R$ |
+| | | | 🔮 Zufälliges Mythic-Ei | 449 R$ |
 
 **Warum das zieht:**
 - Das **⭐ Starter-Paket** für 49 R$ ist ein Super-Angebot (viel Geld, 3 Drehs, Legendary-Ei, Speed Coil).
@@ -348,7 +350,7 @@ Alle Bilder dafür liegen fertig in **`vorbereitet/bilder/`** (22 Stück, `pass-
 
 Der Angebots-Knopf **„👟 2x Schritte – NUR … R$“** und der Knopf **„⭐ STARTER-PAKET“** links im Spiel erscheinen, sobald die ID eingetragen ist.
 
-**Zufalls-Käufe** (Zufalls-Meteore, Glücksrad-Drehs, Starter-Paket): Das Spiel zeigt die Chancen vor dem Kauf.
+**Zufalls-Käufe** (Zufalls-Eier, Glücksrad-Drehs, Starter-Paket): Das Spiel zeigt die Chancen vor dem Kauf.
 In Ländern, in denen Roblox solche Käufe verbietet, versteckt es sie automatisch.
 Das Starter-Paket bleibt dort sichtbar, hat aber einen festen Inhalt: 50 % mehr Geld statt der Drehs und ein festes Legendary-Ei (Solar Flare) statt eines zufälligen.
 Im Roblox-Fragebogen musst du deshalb bei **Paid Random Items** „Ja“ sagen (siehe `KOPIERVORLAGEN.md`).
@@ -384,7 +386,7 @@ Der Server prüft jede Aktion und bremst zu viele Klicks.
 
 | Reiter | Knöpfe und was sie tun |
 |---|---|
-| Spawnen | Meteor anklicken, darunter die **Alien-Variante** (Normal / Selten / Ultra), Mutation, Anzahl und Level. **Alien in Ziel-Base (geschlüpft)** = fertiges Alien fliegt in die Base. **Alien als Ei vor mir** = Ei am Boden (30 s), wer es heimträgt, bekommt genau dieses Alien. Dazu wie früher: **Ei in Ziel-Base**, **Zum Nester-Feld**, **Ei vor mir**, **Gratis-Ei in Gratis-Zone**. Darunter die **Admin-Meteore** (Gratis in die Mitte / In meine Base, Admin-Meteor-Regen) und der **Eierregen** in den Nestern (Zufall oder Seltenheit) |
+| Spawnen | Meteor anklicken, darunter die **Alien-Variante** (Normal / Selten / Ultra), Mutation, Anzahl und Level. **Alien in Ziel-Base (geschlüpft)** = fertiges Alien fliegt in die Base. **Alien als Ei vor mir** = Ei am Boden (30 s), wer es heimträgt, bekommt genau dieses Alien. Dazu wie früher: **Ei in Ziel-Base**, **Zum Nester-Feld**, **Ei vor mir**, **Gratis-Ei in Gratis-Zone**. Darunter die **Admin-Meteore** (In die Gratis-Zone / In meine Base, Admin-Meteor-Regen) und der **Eierregen** in den Nestern (Zufall oder Seltenheit) |
 | Events | Ganz oben umschalten: **Nur dieser Server** oder **ALLE Server**. **Nacht starten**, **Blutmond starten**, **Nacht beenden**. **Glück starten** (Faktor + Minuten), **Meteoritenschauer** (so viele Minuten wie im Feld), **Egg Rush**, **Große Nester** (1-10 seltene Eier ab Legendary), **Ei-Rennen** (Gold-Ei sofort). **Ansage** an alle (groß oben mit deinem Kopfbild). Spaß: **Alle Eier sofort schlüpfen**, **Konfetti-Regen für alle**, **Alle zur Mitte**, **ADMIN ABUSE**, **Mond-Schwerkraft** / **Normale Schwerkraft** |
 | Spieler | **Spielerliste** mit Geld, Rebirths, Index, Spielzeit und Ping. **Ziel** = ins Ziel-Feld übernehmen, **Zusehen** = Kamera folgt dem Spieler. **Geld & Werte**: + Cash, Cash setzen, Rebirths setzen, Schritte setzen. **Geschenke**: Empfänger Ziel oder ALLE umschalten, dann Drehs, Cash, ein Ei einer Seltenheit, ein Gadget (für immer) oder einen Gamepass (bis Server-Wechsel). **Moderation**: Grund/Text und Tage eintippen, dann **Warnung zeigen** (großer roter Hinweis beim Ziel), Kick, Bann (fürs ganze Spiel), Entbannen (UserId), Base leeren, Daten Reset, TP zu Ziel, Ziel holen, Boden leeren. **Spaß mit dem Ziel**: einfrieren/auftauen, riesig/mini/normal, unsichtbar/sichtbar |
 | Kräfte | Nur für dich: **Fliegen (G)**, **Gott-Modus** (dich kann niemand schlagen, aus deiner Base kann niemand klauen, Fallen wirken nicht), **Noclip** (durch Wände laufen), **Tempo**- und **Sprung**-Regler (ziehen und loslassen, „normal“ setzt zurück). **Zuschauen beenden** (oder Taste **X**). **Foto-Modus**: UI aus/an (H), Showcase-Reihe, Foto-Base, Foto aufräumen (siehe **`vorbereitet/FOTOS-MACHEN.md`**) |
@@ -405,7 +407,7 @@ Alles steht kommentiert in `ReplicatedStorage → Shared → Config`:
 - **Mutationen**: `Config.Mutations` (Weight = Chance, Mult = Geld-Faktor).
 - **Laufbänder (Speed Farm)**: `Config.Treadmills` (Name, Preis, Schritte pro Tick, Farbe; `LegacySteps` nur für alte Spielstände). Band-Schub: `Config.TreadmillPush` (Standard 6, höchstens 7 – sonst kommt man beim Tragen nicht mehr gegen das Band an).
 - **Schläger**: `Config.Bats` (Name, ab wie vielen Aliens im Index, Reichweite, Wucht, Abklingzeit, Farben).
-  Super-Bonk-Boost: `Config.SuperBonkRangeMult`, `Config.SuperBonkForceMult`, `Config.SuperBonkCooldownMult`.
+  Super-Schlag-Boost: `Config.SuperBonkRangeMult`, `Config.SuperBonkForceMult`, `Config.SuperBonkCooldownMult`.
 - **Basen**: `Config.BaseFloors` (Preis, Plätze, `RequiredRebirths`), `Config.BaseLooks` (Stufen 1-5, nur Optik).
 - **Admin-Kräfte**: `Config.AdminPowers` (Grenzen für Tempo- und Sprung-Regler, Anzahl bei „Große Nester“).
 - **Ei-Rennen in der Mitte**: `Config.Nests` (wie oft ein Ei kommt, wie viele höchstens, wie lange sie liegen,
@@ -474,7 +476,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | „🏃 Zu weit weg – lauf näher ran!“ | Näher ans Nest gehen. Das Ei muss direkt vor dir sein |
 | Ich werde im Feld weggeschubst | Das sind die Monster. Lauf schneller (Laufbänder, Speed-Pads) oder um sie herum |
 | Ich kann am Nest nichts schnappen | Du trägst schon etwas (erst heimbringen) oder deine Base ist voll. **F** zum Kaufen geht trotzdem |
-| Mein Ei aus dem Nest ist weg | Du wurdest gebonkt, ein Monster hat dich erwischt, du bist in eine Falle getreten oder die Zeit war um (60 Sekunden, beim Meteor-Run-Ei je nach Weg mehr). Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
+| Mein Ei aus dem Nest ist weg | Du wurdest mit dem Schläger getroffen, ein Monster hat dich erwischt, du bist in eine Falle getreten oder die Zeit war um (60 Sekunden, beim Meteor-Run-Ei je nach Weg mehr). Das Ei liegt dann 30 Sekunden am Boden. Schnell zurück und mit **E** schnappen! |
 | „📦 Deine Base ist voll!“ | Ein Alien verkaufen (**F** halten in deiner Base), ein **Stockwerk** kaufen (🏗️ Base) oder den Pass „+6 Plätze“ holen |
 | Ich kann mich 3 Sekunden nicht bewegen | Du bist in eine **🪤 Falle** getreten (oder ein Admin hat dich eingefroren). Das geht von allein weg |
 | Falle lässt sich nicht aufstellen | Nur in **deiner eigenen** Base, direkt auf einem Boden (auch oben, nicht auf Treppe/Baum/Laterne), nicht direkt am Rand, und höchstens 2 gleichzeitig |
@@ -501,7 +503,9 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 - **Performance:** wenige einfache Parts, Updates gebündelt (max. 5x pro Sekunde pro Spieler), Map wird einmal gebaut.
   Der Server bewegt keine Eier: Nest-Eier liegen still (höchstens ~60, im Schauer ~80). Die Monster rechnet der Server
   nur 5x pro Sekunde (gerade Linien, kein Pathfinding) und schickt pro Monster einen kurzen Text. Gebaut und weich bewegt
-  werden sie auf deinem Gerät (9 Teile pro Monster), weit entfernte seltener.
+  und animiert werden sie auf deinem Gerät (15 Teile pro Monster, alle mit einem Befehl pro Bild bewegt), weit
+  entfernte seltener, ganz weit entfernte gar nicht. Alle Zusatz-Animationen (Nester, Pads, Bau, Handel, Laufbänder)
+  laufen nur in deiner Nähe, benutzen feste Vorräte statt neuer Teile und räumen sich selbst auf.
 
 ## 📁 Dateien
 

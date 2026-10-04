@@ -1,16 +1,16 @@
 -- Klauen & Tragen:
 --  * Fremde Meteore UND Aliens kann man klauen (E halten), wenn die Base nicht gesperrt ist,
 --    und muss sie dann in die eigene Base tragen (Source = "Plot").
---    Wer gebonkt wird, stirbt, in eine Falle tritt, zu langsam ist oder das Spiel verlässt,
+--    Wer mit dem Schläger getroffen wird, stirbt, in eine Falle tritt, zu langsam ist oder das Spiel verlässt,
 --    verliert die Beute: sie fliegt zurück zum Besitzer.
 --  * Eier aus den NESTERN (E = Schnappen) und Eier am Boden (fallen gelassen / Egg Rush) sind gratis,
 --    müssen aber auch nach Hause getragen werden (Source = "Ground"). Klappt das nicht,
 --    fällt das Ei an Ort und Stelle auf den Boden – und JEDER kann es schnappen.
 --  * Gekaufte Meteore (F) muss man NICHT tragen – sie fliegen automatisch in die Base.
---  * Schläger zum Verteidigen (Stufe nach Index, Config.Bats; Super-Bonk-Gadget = Boost).
---  * Wilde Kreaturen im Nester-Feld (FieldService) schubsen wie ein Bonk: CarryService.CreatureHit.
+--  * Schläger zum Verteidigen (Stufe nach Index, Config.Bats; Gadget "Super-Schlag" = Boost).
+--  * Wilde Kreaturen im Nester-Feld (FieldService) schubsen wie ein Schläger-Treffer: CarryService.CreatureHit.
 --  * Seltene Beute ist schwer (Config.HeavyCarry, Tempo rechnet EconomyService), wer klaut, verliert
---    den Umhang (sonst wäre jeder Diebstahl unbonkbar), Eingefrorene können nicht klauen.
+--    den Umhang (sonst könnte man Diebe nie treffen), Eingefrorene können nicht klauen.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -516,7 +516,7 @@ end
 
 -- Hinweise beim Verlieren: Beute aus einer Base fliegt zurück, ein Ei aus einem Nest fällt herunter
 local PLOT_FAIL_TEXT = {
-	bonked = "💥 Gebonkt! Die Beute fliegt zurück.",
+	bonked = "💥 Getroffen! Die Beute fliegt zurück.",
 	timeout = "⏰ Zu langsam! Die Beute fliegt zurück.",
 	full = "📦 Deine Base ist voll – die Beute fliegt zurück!",
 	teleport = "🚫 Mit Beute kann man nicht teleportieren!",
@@ -525,7 +525,7 @@ local PLOT_FAIL_TEXT = {
 	creature = "👾 Erwischt! Die Beute fliegt zurück.",
 }
 local GROUND_FAIL_TEXT = {
-	bonked = "💥 Gebonkt! Das Ei ist runtergefallen – schnapp es dir zurück!",
+	bonked = "💥 Getroffen! Das Ei ist runtergefallen – schnapp es dir zurück!",
 	timeout = "⏰ Zu langsam! Das Ei ist runtergefallen.",
 	full = "📦 Deine Base ist voll – das Ei liegt jetzt am Boden!",
 	teleport = "🚫 Mit Beute kann man nicht teleportieren!",
@@ -671,7 +671,7 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 	Services.EconomyService.MarkDirty(owner)
 	Services.EconomyService.Notify(
 		owner,
-		"🚨 " .. thief.DisplayName .. " klaut dein " .. Config.EntryName(entry) .. "! BONK IHN!",
+		"🚨 " .. thief.DisplayName .. " klaut dein " .. Config.EntryName(entry) .. "! HAU IHN! 🔨",
 		"Alarm"
 	)
 	Services.EconomyService.Effect(owner, "Alarm", 1)
