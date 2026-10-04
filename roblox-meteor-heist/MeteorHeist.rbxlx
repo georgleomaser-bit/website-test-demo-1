@@ -19677,7 +19677,7 @@ local fxFolder: Folder? = nil
 local hidden = false -- Foto-Modus: "!" aus
 
 local MAX_SMALL = 80 -- so viele kleine Träger sind höchstens sichtbar (die nächsten)
-local MAX_BOSSES = 6
+local MAX_BOSSES = 8
 local RENDER_RANGE = 420 -- weiter weg: kein Träger-Model
 local SCAN_INTERVAL = 0.25 -- so oft wird neu verteilt, wer ein Model bekommt
 local CLOSE_DISTANCE = 45 -- so nah immer jedes Frame
