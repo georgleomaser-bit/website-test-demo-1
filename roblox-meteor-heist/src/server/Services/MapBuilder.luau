@@ -1,7 +1,8 @@
 -- Baut die komplette Map per Code (wird von PlotService.Init EINMAL aufgerufen):
 --   • knallgrüner Roblox-Noppenboden mit Block-Bäumen, Büschen, Zaun und unsichtbaren Randwänden
---   • langes LAUFBAND (Förderband) durch die Map-Mitte, Meteore kommen aus dem Portal am Spawn-Platz
---   • 8 OFFENE Basen (je 4 pro Seite, Eingang zum Band, 80 x 90 Studs): bunter Noppenboden, niedriger
+--   • ALIEN-PARADE: bunte, kurvige Straße durch die Map-Mitte (UFO-Hangar am Spawn-Platz -> Ziel-Tor),
+--     Pfad aus Config.Parade.Path, als Attribute am Ordner "Parade" (ParadePath liest ihn dort)
+--   • 8 OFFENE Basen (je 4 pro Seite, Eingang zur Parade, 80 x 90 Studs): bunter Noppenboden, niedriger
 --     weißer Rand an Seiten + hinten, vorne offen mit Laser-Sperre; 18 UNSICHTBARE Slot-Anker
 --     (locker verteilt), Collect-Pad, Lock-Pad, Laternen, Block-Bäume und Namensschild
 --  Stil: schlicht, bunt, blockig (Plastic + Noppen), wenig Neon, wenige Teile.
@@ -12,16 +13,15 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local ParadePath = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("ParadePath"))
 
 local MapBuilder = {}
 
-export type BeltInfo = {
-	Part: BasePart,
-	Start: Vector3, -- Mittellinie auf der Bandoberfläche am Startende
-	Dir: Vector3, -- Einheitsvektor (Laufrichtung der Meteore)
-	Length: number,
-	Width: number,
-	TopY: number, -- Höhe der Bandoberfläche
+export type ParadeInfo = {
+	Folder: Folder, -- Ordner "Parade" (Straße, Hangar, Tor; Attribute: Pfad P1..Pn + ParadeClock)
+	Path: ParadePath.Path,
+	RoadWidth: number,
+	Start: Vector3, -- erster Wegpunkt (im Start-Hangar)
 }
 
 export type FreeZone = {
@@ -32,7 +32,7 @@ export type FreeZone = {
 export type MapResult = {
 	MapFolder: Folder,
 	Plots: { any },
-	Belt: BeltInfo,
+	Parade: ParadeInfo, -- (früher: Belt = Förderband)
 	LobbySpawn: CFrame,
 	LeaderboardCFrame: CFrame,
 	FreeZone: FreeZone,
@@ -64,24 +64,32 @@ local EDGE_X = 168 -- Basen-Rückseite bei x = ±124, dahinter (rechts) der Mete
 local EDGE_MIN_Z = -406
 local EDGE_MAX_Z = 256
 
--- Laufband (Förderband) entlang +Z durch die Map-Mitte
-local BELT_LENGTH = 440
-local BELT_WIDTH = 14
-local BELT_FRAME_TOP = 0.8 -- Oberkante des Unterbaus
-local BELT_TOP = 1.2 -- Oberkante der Lauffläche (hier liegen die Meteore auf)
-local BELT_DEFAULT_SPEED = 9 -- falls Config.BeltSpeed fehlt
-local CROSSINGS = { -90, 0, 90 } -- Lücken im Geländer zum Überqueren (genau zwischen den Basen)
-local CROSSING_WIDTH = 10
-local PORTAL_LENGTH = 16
-local PORTAL_HEIGHT = 14
+-- Alien-Parade (Pfad steht in Config.Parade.Path)
+local ROAD_TOP = 0.3 -- Ersatz, falls Config.Parade.RoadTop fehlt
+local ROAD_HEIGHT = 0.4
+local ROAD_COLOR = Color3.fromRGB(116, 134, 236)
+local KERB_WIDTH = 1
+local KERB_HEIGHT = 0.9
+local KERB_COLORS = { Color3.fromRGB(196, 40, 28), Color3.fromRGB(242, 243, 243) }
+local FLAG_COLORS = {
+	Color3.fromRGB(196, 40, 28),
+	Color3.fromRGB(245, 205, 48),
+	Color3.fromRGB(13, 105, 172),
+	Color3.fromRGB(75, 151, 75),
+	Color3.fromRGB(255, 102, 204),
+}
+local HOUSE_WIDTH = 28
+local HOUSE_DEPTH = 20
+local HOUSE_HEIGHT = 14
+local HOUSE_INSET = 10 -- so weit liegt das Pfad-Ende hinter der leuchtenden Öffnung
 
 -- Basen: offen (nur niedriger Rand an Seiten + hinten), vorne offen mit Laser-Sperre.
--- Lokales Koordinatensystem einer Base: -Z = Eingang (zeigt zum Band), X = Breite, Z = Tiefe.
+-- Lokales Koordinatensystem einer Base: -Z = Eingang (zeigt zur Parade), X = Breite, Z = Tiefe.
 local PLOT_WIDTH = 80 -- lokales X (entlang der Welt-Z-Achse)
 local PLOT_DEPTH = 90 -- lokales Z (entlang der Welt-X-Achse) -> 7200 Studs² (alt 72x72 = 5184, ca. 1,4x)
 local HALF_X = PLOT_WIDTH / 2
 local HALF_Z = PLOT_DEPTH / 2
-local PLOT_X = 79 -- Abstand Basis-Mitte <-> Bandmitte (Eingang bei x = ±34, Rückseite bei x = ±124)
+local PLOT_X = 79 -- Abstand Basis-Mitte <-> Map-Mitte (Eingang bei x = ±34, Rückseite bei x = ±124)
 local PLOT_Z = { -135, -45, 45, 135 } -- 10 Studs Lücke zwischen den Basen
 local PLOT_FLOOR_TOP = 1
 local FENCE_HEIGHT = 2 -- niedriger Rand (drüberspringen geht – Schutz macht der Lock-Rauswurf)
@@ -117,7 +125,7 @@ local SLOT_SEED = 4711
 -- PlotService.SlotTopCFrame nimmt die Unterkante (= Bodenhöhe)
 local SLOT_ANCHOR_SIZE = Vector3.new(6, 3, 6)
 
--- Spawn-Platz (hinter dem Bandstart, -Z)
+-- Spawn-Platz (hinter dem Start-Hangar, -Z)
 local PLAZA_MIN_Z = -398
 local PLAZA_MAX_Z = -226
 local PLAZA_HALF_X = 120
@@ -160,7 +168,7 @@ local WHITE = Color3.new(1, 1, 1)
 -- BAU-HELFER
 -- -------------------------------------------------------------------
 -- Alle Teile werden gebaut, solange die Map noch NICHT im Workspace hängt (kein Nachrutschen,
--- ein einziger Replikations-Schub). Geschwindigkeiten der Bänder werden erst danach gesetzt.
+-- ein einziger Replikations-Schub). Geschwindigkeiten der Treadmills werden erst danach gesetzt.
 local pendingVelocities: { { Part: BasePart, Velocity: Vector3 } } = {}
 
 local function part(props: { [string]: any }): Part
@@ -363,7 +371,260 @@ local function buildGround(map: Folder)
 	end
 end
 
-@@PARADE@@
+-- -------------------------------------------------------------------
+-- ALIEN-PARADE: bunte Straße mit Bordsteinen, Fähnchen, UFO-Hangar (Start) und Ziel-Tor
+-- -------------------------------------------------------------------
+-- Haus über einem Pfad-Ende (Start-Hangar bzw. Ziel). endPoint = Pfad-Ende (liegt IM Haus),
+-- inward = Richtung aus dem Haus heraus zur Straße. Vorne eine leuchtende Fläche: dort tauchen die
+-- Aliens auf bzw. verschwinden (Spieler können nicht hinein -> CanCollide an).
+local function buildParadeHouse(
+	parent: Instance,
+	name: string,
+	endPoint: Vector3,
+	inward: Vector3,
+	wallColor: Color3,
+	roofColor: Color3,
+	glowColor: Color3
+): CFrame
+	local model = Instance.new("Model")
+	model.Name = name
+	model.Parent = parent
+	-- lokales System: -Z = Öffnung (zur Straße), Mitte HOUSE_DEPTH/2 hinter der Öffnung
+	local openPoint = endPoint + inward * HOUSE_INSET
+	local center = openPoint - inward * (HOUSE_DEPTH / 2)
+	local cf = CFrame.lookAt(Vector3.new(center.X, 0, center.Z), Vector3.new(center.X, 0, center.Z) + inward)
+	local halfW = HOUSE_WIDTH / 2
+	local function block(partName: string, size: Vector3, offset: Vector3, color: Color3, props: { [string]: any }?)
+		local p = part({
+			Name = partName,
+			Size = size,
+			CFrame = cf * CFrame.new(offset),
+			Material = Enum.Material.Plastic,
+			Color = color,
+			Parent = model,
+		})
+		if props then
+			for key, value in pairs(props) do
+				(p :: any)[key] = value
+			end
+		end
+		return p
+	end
+	for _, s in ipairs({ -1, 1 }) do
+		block(
+			"Wall",
+			Vector3.new(2, HOUSE_HEIGHT, HOUSE_DEPTH),
+			Vector3.new(s * (halfW - 1), HOUSE_HEIGHT / 2, 0),
+			wallColor
+		)
+	end
+	block(
+		"BackWall",
+		Vector3.new(HOUSE_WIDTH - 4, HOUSE_HEIGHT, 2),
+		Vector3.new(0, HOUSE_HEIGHT / 2, HOUSE_DEPTH / 2 - 1),
+		wallColor
+	)
+	local openHeight = HOUSE_HEIGHT - 3
+	block(
+		"Header",
+		Vector3.new(HOUSE_WIDTH - 4, 3, 2),
+		Vector3.new(0, HOUSE_HEIGHT - 1.5, -HOUSE_DEPTH / 2 + 1),
+		wallColor
+	)
+	local roof = block(
+		"Roof",
+		Vector3.new(HOUSE_WIDTH + 2, 2, HOUSE_DEPTH + 2),
+		Vector3.new(0, HOUSE_HEIGHT + 1, 0),
+		roofColor
+	)
+	studs(roof)
+	local plane = block(
+		"PortalPlane",
+		Vector3.new(HOUSE_WIDTH - 4, openHeight, 0.4),
+		Vector3.new(0, openHeight / 2, -HOUSE_DEPTH / 2 + 1.2),
+		glowColor,
+		{ Material = Enum.Material.Neon, Transparency = 0.15, CastShadow = false, CanQuery = false }
+	)
+	addLight(plane, glowColor, 20, 1.5)
+	return cf * CFrame.new(0, HOUSE_HEIGHT + 2, 0) -- Dach-Oberkante (für UFO / Schild)
+end
+
+local function buildParade(map: Folder): ParadeInfo
+	local folder = folder("Parade", map) -- Name wird vom Client gesucht (Attribute = Pfad + Uhr)
+	local path = ParadePath.FromConfig(Config)
+	if not path then
+		warn("[MapBuilder] Config.Parade.Path fehlt/kaputt – gerade Ersatz-Straße")
+		path = ParadePath.Build({ Vector3.new(0, 0, -214), Vector3.new(0, 0, 214) }, ROAD_TOP)
+	end
+	assert(path, "Parade-Pfad")
+	ParadePath.Export(folder, path)
+	local roadWidth = tonumber(Config.Parade and Config.Parade.RoadWidth) or 20
+	local half = roadWidth / 2
+	local top = path.RoadTop
+	local points = path.Points
+
+	-- Straße: gerade Stücke (Noppen) + runde Scheiben an den Ecken (etwas tiefer -> kein Flackern)
+	for i = 1, #points - 1 do
+		local a, b = points[i], points[i + 1]
+		local length = (b - a).Magnitude
+		local mid = (a + b) / 2
+		local road = part({
+			Name = "Road",
+			Size = Vector3.new(roadWidth, ROAD_HEIGHT, length),
+			CFrame = CFrame.lookAt(mid, b) - Vector3.new(0, ROAD_HEIGHT / 2, 0),
+			Material = Enum.Material.Plastic,
+			Color = ROAD_COLOR,
+			Parent = folder,
+		})
+		studs(road)
+		if i > 1 then
+			disc("RoadCorner", a, top - ROAD_HEIGHT - 0.02, ROAD_HEIGHT, roadWidth, {
+				Material = Enum.Material.Plastic,
+				Color = ROAD_COLOR,
+				Parent = folder,
+			})
+		end
+	end
+
+	-- Bordsteine (abwechselnd rot/weiß), an den Ecken gekürzt, damit sie sich nicht überlappen
+	local kerbOffset = half + KERB_WIDTH / 2
+	local function trimAt(index: number): number
+		local dirs = path.Dirs
+		local before, after = dirs[index - 1], dirs[index]
+		if not before or not after then
+			return 0
+		end
+		local angle = math.acos(math.clamp(before:Dot(after), -1, 1))
+		return (half + KERB_WIDTH) * math.tan(angle / 2) + 0.3
+	end
+	for i = 1, #points - 1 do
+		local a, b = points[i], points[i + 1]
+		local dir = path.Dirs[i]
+		local t0, t1 = trimAt(i), trimAt(i + 1)
+		local length = (b - a).Magnitude - t0 - t1
+		if length > 1 then
+			local right = ParadePath.Right(dir)
+			local mid = a + dir * (t0 + length / 2)
+			for _, s in ipairs({ -1, 1 }) do
+				local pos = mid + right * (s * kerbOffset) + Vector3.new(0, KERB_HEIGHT / 2 - ROAD_HEIGHT, 0)
+				part({
+					Name = "Kerb",
+					Size = Vector3.new(KERB_WIDTH, KERB_HEIGHT, length),
+					CFrame = CFrame.lookAt(pos, pos + dir),
+					Material = Enum.Material.Plastic,
+					Color = KERB_COLORS[i % #KERB_COLORS + 1],
+					CastShadow = false,
+					Parent = folder,
+				})
+			end
+		end
+	end
+
+	-- Fähnchen an den Ecken (abwechselnd links/rechts) + ein paar Ballons auf der anderen Seite
+	for i = 2, #points - 1 do
+		local side = if i % 2 == 0 then 1 else -1
+		local right = ParadePath.Right(path.Tangents[i])
+		local base = points[i] + right * (side * (half + 3))
+		part({
+			Name = "FlagPole",
+			Size = Vector3.new(0.4, 9, 0.4),
+			Position = Vector3.new(base.X, 4.5, base.Z),
+			Material = Enum.Material.Plastic,
+			Color = WHITE,
+			Parent = folder,
+		})
+		part({
+			Name = "Flag",
+			Size = Vector3.new(0.2, 2, 3),
+			CFrame = CFrame.new(base.X, 7.9, base.Z) * CFrame.new(0, 0, 1.5),
+			Material = Enum.Material.Plastic,
+			Color = FLAG_COLORS[i % #FLAG_COLORS + 1],
+			CanCollide = false,
+			CastShadow = false,
+			Parent = folder,
+		})
+		if i % 3 == 0 then
+			local spot = points[i] - right * (side * (half + 3))
+			part({
+				Name = "BalloonString",
+				Size = Vector3.new(0.12, 7, 0.12),
+				Position = Vector3.new(spot.X, 3.5, spot.Z),
+				Material = Enum.Material.Plastic,
+				Color = WHITE,
+				CanCollide = false,
+				CastShadow = false,
+				Parent = folder,
+			})
+			part({
+				Name = "Balloon",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(2.6, 2.6, 2.6),
+				Position = Vector3.new(spot.X, 8.2, spot.Z),
+				Material = Enum.Material.SmoothPlastic,
+				Color = FLAG_COLORS[(i + 2) % #FLAG_COLORS + 1],
+				CanCollide = false,
+				Parent = folder,
+			})
+		end
+	end
+
+	-- Start: UFO-Hangar (Aliens kommen aus der leuchtenden Öffnung), Ziel: Tor (Aliens verschwinden)
+	local first, last = points[1], points[#points]
+	local roofTop = buildParadeHouse(
+		folder,
+		"StartHangar",
+		first,
+		path.Dirs[1],
+		Color3.fromRGB(242, 243, 243),
+		Color3.fromRGB(107, 50, 124),
+		Color3.fromRGB(120, 255, 120)
+	)
+	-- UFO auf dem Dach: Scheibe + Glaskuppel
+	local ufoPos = roofTop.Position
+	disc("UfoDisc", ufoPos, ufoPos.Y, 1.6, HOUSE_WIDTH - 2, {
+		Material = Enum.Material.Plastic,
+		Color = Color3.fromRGB(163, 162, 165),
+		Parent = folder,
+	})
+	part({
+		Name = "UfoDome",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(10, 10, 10),
+		Position = ufoPos + Vector3.new(0, 1.6, 0),
+		Material = Enum.Material.Glass,
+		Color = Color3.fromRGB(120, 220, 255),
+		Transparency = 0.3,
+		Parent = folder,
+	})
+	local endTop = buildParadeHouse(
+		folder,
+		"EndGate",
+		last,
+		-path.Dirs[#path.Dirs],
+		Color3.fromRGB(242, 243, 243),
+		Color3.fromRGB(13, 105, 172),
+		Color3.fromRGB(255, 205, 40)
+	)
+
+	local titleAnchor = anchorPart("TitleSign", roofTop * CFrame.new(0, 12, 0), folder)
+	worldSign(titleAnchor, "Sign", 40, 10, Vector3.zero, 700, {
+		{ Name = "Title", Text = "ALIEN-PARADE", Color = Color3.fromRGB(120, 255, 120), Height = 0.62 },
+		-- geräteneutral (am Handy gibt es keine E/F-Tasten): halten = klauen, kurz = kaufen
+		{ Name = "Hint", Text = "Halten = Klauen • Kaufen = Lieferung", Color = WHITE, Height = 0.38 },
+	})
+	local endAnchor = anchorPart("EndSign", endTop * CFrame.new(0, 4, 0), folder)
+	worldSign(endAnchor, "Sign", 16, 5, Vector3.zero, 400, {
+		{ Name = "Title", Text = "ZIEL", Color = Color3.fromRGB(255, 205, 40), Height = 1 },
+	})
+
+	return {
+		Folder = folder,
+		Path = path,
+		RoadWidth = roadWidth,
+		Start = first,
+	}
+end
+
 -- -------------------------------------------------------------------
 -- BASEN
 -- -------------------------------------------------------------------
@@ -592,7 +853,7 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		LockedUntil = 0,
 		-- Spawn: vorne in der Mitte zwischen Collect- und Lock-Pad, weit weg von Rand und Slots
 		SpawnCFrame = cf * CFrame.new(0, top + 3, -30),
-		-- Rauswurf: 8 Studs vor dem Eingang auf der Wiese (zwischen Band-Geländer bei x = ±8.5 und Base)
+		-- Rauswurf: 8 Studs vor dem Eingang auf der Wiese (zwischen Parade-Bordstein bei max. x = ±23 und Base)
 		EntranceCFrame = cf * CFrame.new(0, 4, -HALF_Z - 8),
 	}
 end
@@ -608,7 +869,7 @@ local function buildPlots(map: Folder): { any }
 				break
 			end
 			local center = Vector3.new(side * PLOT_X, 0, z)
-			-- Eingang (lokales -Z) zeigt zum Band in der Mitte
+			-- Eingang (lokales -Z) zeigt zur Parade in der Mitte
 			local cf = CFrame.lookAt(center, center + Vector3.new(-side, 0, 0))
 			table.insert(plots, buildPlot(index, cf, PLOT_COLORS[(index - 1) % #PLOT_COLORS + 1], plotsFolder))
 		end
@@ -658,7 +919,7 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 	spawn.Parent = plaza
 	local lobbySpawn = CFrame.lookAt(
 		Vector3.new(0, spawnTop + 3.5, SPAWN_Z),
-		Vector3.new(0, spawnTop + 3.5, -BELT_LENGTH / 2) -- Blick zum Laufband
+		Vector3.new(0, spawnTop + 3.5, -214) -- Blick zum Parade-Hangar
 	)
 
 	-- Gratis-Zone: Landeplatz mit gelb-schwarzem Ring (hier landen Gratis- und Admin-Meteore)
@@ -1022,7 +1283,7 @@ local function buildDeco(map: Folder)
 		bush(deco, -146 + rng:NextNumber(-6, 6), z, rng:NextNumber(4, 6))
 	end
 
-	-- Am Bandende (+Z)
+	-- Hinter dem Ziel-Tor (+Z)
 	for _, s in ipairs({ -1, 1 }) do
 		tree(deco, s * 60, 240, 1.1, treeColor())
 		tree(deco, s * 120, 236, 1, treeColor())
@@ -1058,7 +1319,7 @@ function MapBuilder.Build(): MapResult
 	map.Name = "MeteorHeistMap"
 
 	buildGround(map)
-	local belt = buildBelt(map)
+	local parade = buildParade(map)
 	local plots = buildPlots(map)
 	local lobbySpawn, leaderboardCF, freeZone = buildPlaza(map)
 	local treadmillsFolder, treadmillSpawn = buildTreadmills(map)
@@ -1066,7 +1327,7 @@ function MapBuilder.Build(): MapResult
 
 	map.Parent = workspace
 
-	-- Erst im Workspace: Förderband-Geschwindigkeiten setzen (verankerte Teile schieben Spieler)
+	-- Erst im Workspace: Treadmill-Geschwindigkeiten setzen (verankerte Teile schieben Spieler)
 	for _, item in ipairs(pendingVelocities) do
 		item.Part.AssemblyLinearVelocity = item.Velocity
 	end
@@ -1075,7 +1336,7 @@ function MapBuilder.Build(): MapResult
 	return {
 		MapFolder = map,
 		Plots = plots,
-		Belt = belt,
+		Parade = parade,
 		LobbySpawn = lobbySpawn,
 		LeaderboardCFrame = leaderboardCF,
 		FreeZone = freeZone,
