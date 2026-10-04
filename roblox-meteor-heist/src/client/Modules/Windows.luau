@@ -6,6 +6,7 @@
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
 
@@ -14,6 +15,8 @@ local Windows = {}
 local player = Players.LocalPlayer
 local ctx: any = nil
 local Theme = UI.Theme
+
+local TAB_POP_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local list: { [string]: UI.Window } = {}
 local refreshers: { [string]: (state: any) -> () } = {}
@@ -315,9 +318,16 @@ local function selectShopTab(id: string)
 	if not shopPages[id] then
 		id = "Passes"
 	end
+	local changed = shopTab ~= id
 	shopTab = id
 	for pageId, page in pairs(shopPages) do
 		page.Visible = pageId == id
+		-- neuer Reiter: Inhalt ploppt kurz auf (federnd)
+		local scale = page:FindFirstChildOfClass("UIScale")
+		if changed and pageId == id and scale then
+			scale.Scale = 0.94
+			TweenService:Create(scale, TAB_POP_INFO, { Scale = 1 }):Play()
+		end
 	end
 	for _, tab in ipairs(SHOP_TABS) do
 		local button = shopTabButtons[tab.Id]
@@ -342,6 +352,7 @@ local function newShopPage(id: string, order: number, parent: Instance): Frame
 		Parent = parent,
 	}, {
 		UI.Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8) }),
+		UI.Create("UIScale", { Scale = 1 }),
 	})
 	shopPages[id] = page
 	return page

@@ -1651,6 +1651,7 @@ local order = {
 	"EconomyService",
 	"RewardService", -- Spielzeit-Geschenke, Glücksrad, Tagesaufgaben
 	"TreadmillService", -- Laufbänder: Schritte farmen
+	"RunService", -- ☄️ Meteor-Run: Lauf-Parcours mit Gratis-Ei als Belohnung
 	"AdminService",
 	"LeaderboardService",
 }
@@ -2843,6 +2844,9 @@ local HIGHLIGHT_RARITY = "Admin"
 
 local SHADE_ALPHA = 0.35 -- Shade-Teile: so viel dunkler als der Körper
 
+-- Teile, die der Client als Augen erkennt (Attribut "Eye" -> lokales Blinzeln)
+local EYE_PARTS: { [string]: boolean } = { Eye = true, Pupil = true, Iris = true }
+
 local MUT_STYLES: { [string]: MutStyle } = {
 	Gold = { Material = Enum.Material.Foil },
 	Diamond = { Material = Enum.Material.Glass, Transparency = 0.15 },
@@ -3110,6 +3114,9 @@ local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf:
 		part.Massless = true
 	end
 	styleRole(ctx, part, role)
+	if EYE_PARTS[name] then
+		part:SetAttribute("Eye", true) -- Client: Augen blinzeln lokal (rein optisch)
+	end
 	ctx.top = math.max(ctx.top, cf.Position.Y + halfHeight(cf, size))
 	part.Parent = ctx.model
 	return part
@@ -3945,6 +3952,9 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 	model:SetAttribute("PivotHeight", bodyY * s)
 	model:SetAttribute("TopHeight", ctx.top * s)
 	model:SetAttribute("BuiltLevelScale", lvScale)
+	-- nur für Client-Animationen (Squash & Stretch, Bewegungsstil): Body-Größe beim Bauen, Körperform
+	model:SetAttribute("Archetype", look.Archetype)
+	body:SetAttribute("BaseSize", body.Size)
 
 	addEffects(model, body, alien, mut, s, carry)
 
@@ -3995,6 +4005,7 @@ function AlienFactory.Refresh(model: Model, entry: Entry)
 		local scaledRel = CFrame.new(rel.Position * (target / current)) * rel.Rotation
 		body.PivotOffset = scaledRel:Inverse()
 		model:PivotTo(pivot)
+		body:SetAttribute("BaseSize", body.Size) -- Client-Squash rechnet mit der neuen Größe
 		-- Zähler: der Client (Wippen) merkt daran, dass sich die Teile verändert haben
 		model:SetAttribute("Rev", (tonumber(model:GetAttribute("Rev")) or 0) + 1)
 	end
@@ -6229,6 +6240,14 @@ function EconomyService.Start()
 				ok, message = true, "🏃 Ab aufs Laufband!"
 			else
 				ok, message = false, "Kein Charakter"
+			end
+		elseif action == "GoRun" then
+			-- ☄️ Meteor-Run: zum Start-Tor (RunService prüft Tragen, Einfrieren, Charakter)
+			local run = Services.RunService
+			if run then
+				ok, message = run.Teleport(player)
+			else
+				ok, message = false, "☄️ Der Meteor-Run kommt bald!"
 			end
 		end
 		dirty[player] = true
@@ -12156,6 +12175,1376 @@ return RewardService
         </Item>
         <Item class="ModuleScript" referent="26">
           <Properties>
+            <string name="Name">RunService</string>
+            <string name="Source"><![CDATA[-- ☄️ METEOR-RUN: langer Lauf-Parcours (Obby) – wer schnell ist, gewinnt ein Gratis-Ei!
+--
+-- LAGE: rechts neben dem Spawn-Platz, dann hinter den rechten Basen entlang bis zum Map-Ende
+-- (zwischen den Rückwänden der Basen und der rechten Randwand). X-Mitte, Breite und Start werden
+-- aus der Map abgeleitet (Basen, Randwände, Spawn-Platz). Deko (Bäume/Büsche) im Weg wird entfernt.
+-- Die Strecke liegt erhöht (TOP Studs): wer runterfällt, muss zurück zum letzten Checkpoint.
+--
+-- ABLAUF: Rampe hoch -> durchs Start-Tor ("Bereit") -> über die Startlinie = Timer läuft
+--   1 🔥 Lava-Felder   2 🦘 Sprünge über Lücken   3 🌀 rotierende Balken
+--   4 ☄️ Meteor-Einschläge   5 🔥 Lava-Steine   -> 🏁 Ziel-Podest mit Belohnungs-Ei
+-- Checkpoints (Pads) speichern den Fortschritt im Run. Lava, Runterfallen und Einschläge = zurück
+-- zum letzten Checkpoint (niemand stirbt). Im Ziel: Cash + ein Gratis-Ei (Epic..Mythic, selten höher),
+-- das man wie ein geklautes Ei nach Hause TRAGEN muss (CarryService, Source = "Ground").
+-- Abklingzeit pro Spieler zwischen zwei Belohnungen, Bestzeit in data.RunBest.
+--
+-- PERFORMANCE: Der Server bewegt NICHTS. Die rotierenden Balken dreht jeder Client selbst
+-- (Attribute SpinPivot/SpinAxis/SpinSpeed/SpinT0, Winkel aus der Serverzeit -> alle sehen dasselbe).
+-- Der Server prüft nur alle 0,2 s die Positionen (Lava, Checkpoints, Ziel, Runterfallen).
+-- Einschläge bestimmt der Server: Effekt "RunImpact" an alle (Warnkreis 1 s vorher), dann Treffer-Prüfung.
+--
+-- ANTI-CHEAT: Checkpoints nur in der richtigen Reihenfolge, Ziel nur mit allen Checkpoints und
+-- frühestens nach Streckenlänge / (MaxWalkSpeed * 1.3). Teleport-/Speed-Verstoß (CarryService.MoveStatus)
+-- bricht den Run ab. Wer etwas trägt, kann nicht starten.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
+local Remotes = require(script.Parent:WaitForChild("Remotes"))
+
+local RunService = {}
+local Services
+
+local rng = Random.new()
+
+-- -------------------------------------------------------------------
+-- EINSTELLUNGEN
+-- -------------------------------------------------------------------
+local TOP = 8 -- Höhe der Lauffläche über der Wiese
+local DECK = 1 -- Dicke der Lauffläche
+local RAMP_LENGTH = 32 -- Rampe von der Wiese hoch zum Start
+local PLAZA_GAP = 6 -- Abstand Rampen-Oberkante <-> Rand des Spawn-Platzes (Z)
+local MAX_WIDTH = 14
+local MIN_WIDTH = 8
+-- Ersatzwerte, falls die Map anders aussieht (Werte aus MapBuilder)
+local FALLBACK_PLOT_EDGE = 106
+local FALLBACK_WALL_X = 150
+local FALLBACK_WALL_MAX_Z = 256
+local FALLBACK_PLAZA_MAX_Z = -226
+
+local TICK = 0.2 -- so oft prüft der Server die Läufer
+local REWARD_COOLDOWN = 180 -- Sekunden zwischen zwei Belohnungen pro Spieler
+local MAX_RUN_TIME = 600 -- länger = Run abgebrochen
+local AREA_SIDE = 20 -- so weit seitlich neben der Streckenmitte = Run abgebrochen (z.B. Home-Teleport)
+local AREA_END = 12 -- so weit vor der Rampe / hinter dem Ziel = Run abgebrochen
+local FALL_DEPTH = 1 -- Hüfte tiefer als Lauffläche + FALL_DEPTH = runtergefallen
+local FOOT = 0.4 -- Lava-Felder zählen so viel breiter (Füße ragen über die Hüfte hinaus)
+local NOTIFY_GAP = 1.5 -- Hinweise (Lava, Checkpoint fehlt ...) höchstens so oft pro Spieler
+local SPEED_TOLERANCE = 1.3 -- Mindestzeit = Streckenlänge / (MaxWalkSpeed * SPEED_TOLERANCE)
+
+local IMPACT_WARN = 1 -- Sekunden Warnkreis vor dem Einschlag
+local IMPACT_RADIUS = 6
+local IMPACT_INTERVAL = 0.7 -- so oft schlägt es ein, solange jemand im Einschlag-Abschnitt ist
+local IMPACT_MAX = 6 -- höchstens so viele Einschläge gleichzeitig angekündigt
+local IMPACT_AIM_CHANCE = 0.6 -- so oft wird auf einen Läufer gezielt (mit Vorhalt)
+local IMPACT_LEAD = 0.6 -- Vorhalt in Sekunden
+
+-- Belohnung
+local PAR_TIME = 40 -- schneller als das = mehr Glück beim Ei
+local RUN_MIN_CASH = 2500
+local RUN_CASH_SECONDS = 90 -- Cash = max(RUN_MIN_CASH, Einkommen pro Sekunde * das)
+local NEW_BEST_CASH_MULT = 1.5
+local REBIRTH_LUCK = 0.1 -- pro Rebirth (max. 10) mehr Glück
+local ANNOUNCE_RARITY = Config.RarityIndex.Mythic or 6 -- ab Mythic: allen ansagen
+-- Gratis-Ei: Lucky = Gewicht wächst mit dem Glück, MinRebirths = erst ab so vielen Rebirths
+local EGG_TABLE = {
+	{ Rarity = "Epic", Weight = 60 },
+	{ Rarity = "Legendary", Weight = 28, Lucky = true },
+	{ Rarity = "Mythic", Weight = 10, Lucky = true },
+	{ Rarity = "Celestial", Weight = 1.5, Lucky = true },
+	{ Rarity = "Divine", Weight = 0.25, Lucky = true, MinRebirths = 3 },
+}
+
+-- Strecke: Abstände (Studs) ab der Rampen-Oberkante entlang +Z
+local GATE_D = 6 -- Start-Tor
+local READY_FROM_D = 7 -- ab hier "Bereit"
+local START_LINE_D = 16 -- Startlinie: hier startet der Timer
+local START_RESPAWN_D = 19 -- zurückgesetzt ohne Checkpoint -> hierhin (Timer läuft weiter)
+local CHECKPOINT_D = { 104, 192, 280, 368 } -- Mitte der Checkpoint-Pads
+local CHECKPOINT_DEPTH = 8
+local IMPACT_AFTER_CP = 3 -- Einschlag-Abschnitt liegt hinter Checkpoint 3
+local IMPACT_FROM_D = 288
+local IMPACT_TO_D = 360
+local FINISH_D = 434 -- Ziellinie
+local END_D = 452 -- Ende des Ziel-Podests
+
+local COLORS = {
+	Deck = Color3.fromRGB(46, 40, 78),
+	DeckAlt = Color3.fromRGB(60, 44, 96),
+	Edge = Color3.fromRGB(0, 220, 255),
+	Pillar = Color3.fromRGB(70, 70, 86),
+	Lava = Color3.fromRGB(255, 90, 20),
+	Stone = Color3.fromRGB(110, 100, 95),
+	Gate = Color3.fromRGB(255, 140, 40),
+	Finish = Color3.fromRGB(255, 205, 40),
+	Checkpoint = Color3.fromRGB(80, 200, 255),
+	Spinner = Color3.fromRGB(255, 60, 90),
+	Crater = Color3.fromRGB(40, 30, 30),
+}
+local WHITE = Color3.new(1, 1, 1)
+
+local RESET_TEXT: { [string]: string } = {
+	lava = "🔥 Lava! Zurück zum Checkpoint!",
+	fall = "🕳️ Runtergefallen! Zurück zum Checkpoint!",
+	impact = "☄️ Getroffen! Zurück zum Checkpoint!",
+}
+
+-- -------------------------------------------------------------------
+-- ZUSTAND
+-- -------------------------------------------------------------------
+type Box = { MinX: number, MaxX: number, MinZ: number, MaxZ: number, Top: number }
+-- Phase "Ready" = im Start-Tor (Timer steht), "Running" = Timer läuft
+type RunState = { Phase: string, Start: number, CP: number }
+
+local runs: { [Player]: RunState } = {}
+local cooldownUntil: { [number]: number } = {} -- UserId -> Serverzeit (überlebt Neu-Beitreten auf dem Server)
+local notifyAt: { [Player]: number } = {}
+local lastPos: { [Player]: Vector3 } = {} -- letzte gemessene Position (für Linien und Lava dazwischen)
+local runFolder: Folder? = nil
+local recordLabel: TextLabel? = nil
+local serverRecord: { Name: string, Time: number }? = nil
+
+-- Geometrie (wird beim Bauen gesetzt)
+local X0 = 128
+local Z0 = -232
+local WIDTH = MAX_WIDTH
+local lavaBoxes: { Box } = {}
+local checkpointZ: { number } = {}
+local respawnCF: { CFrame } = {} -- [1] = Start, [i + 1] = Checkpoint i
+local startSpawnCF = CFrame.new()
+local readyMinZ, readyMaxZ = 0, 0
+local finishZ = 0
+local exitMinZ, exitMaxZ = 0, 0 -- Rampe vom Ziel-Podest runter
+local lineMinX, lineMaxX = 0, 0 -- so breit zählen Startlinie, Checkpoints, Ziel
+local areaMinX, areaMaxX, areaMinZ, areaMaxZ = 0, 0, 0, 0 -- Strecke mit Rand
+local exitMinX = 0 -- Ziel-Rampe zählt auch noch zur Strecke (bis hier)
+local minRunTime = 0
+
+-- -------------------------------------------------------------------
+-- KLEINE HELFER
+-- -------------------------------------------------------------------
+local function now(): number
+	return workspace:GetServerTimeNow()
+end
+
+-- 41.27 -> "0:41.3"
+local function formatRunTime(seconds: number): string
+	local tenths = math.floor(math.max(0, seconds) * 10 + 0.5)
+	return string.format("%d:%04.1f", tenths // 600, (tenths % 600) / 10)
+end
+
+local function world(d: number, x: number, y: number): Vector3
+	return Vector3.new(X0 + x, y, Z0 + d)
+end
+
+local function aliveRoot(player: Player): (BasePart?, Humanoid?)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not root:IsA("BasePart") or not humanoid or humanoid.Health <= 0 then
+		return nil, nil
+	end
+	return root, humanoid
+end
+
+-- Normale Höhe des HumanoidRootPart über dem Boden, wenn man steht (R15 bzw. R6)
+local function standHeight(humanoid: Humanoid, root: BasePart): number
+	if humanoid.RigType == Enum.HumanoidRigType.R15 then
+		return humanoid.HipHeight + root.Size.Y / 2
+	end
+	return root.Size.Y / 2 + 2
+end
+
+local function notifyLimited(player: Player, text: string, kind: string)
+	local t = os.clock()
+	if t - (notifyAt[player] or 0) < NOTIFY_GAP then
+		return
+	end
+	notifyAt[player] = t
+	Services.EconomyService.Notify(player, text, kind)
+end
+
+-- Schneidet die Strecke a -> b (waagrecht) das Rechteck? (schnelle Läufer überspringen sonst Felder)
+local function segmentHitsBox(a: Vector3, b: Vector3, box: Box): boolean
+	local t0, t1 = 0, 1
+	for axis = 1, 2 do
+		local origin = if axis == 1 then a.X else a.Z
+		local delta = if axis == 1 then b.X - a.X else b.Z - a.Z
+		local lo = if axis == 1 then box.MinX else box.MinZ
+		local hi = if axis == 1 then box.MaxX else box.MaxZ
+		if math.abs(delta) < 1e-6 then
+			if origin < lo or origin > hi then
+				return false
+			end
+		else
+			local u0 = (lo - origin) / delta
+			local u1 = (hi - origin) / delta
+			if u0 > u1 then
+				u0, u1 = u1, u0
+			end
+			t0 = math.max(t0, u0)
+			t1 = math.min(t1, u1)
+			if t0 > t1 then
+				return false
+			end
+		end
+	end
+	return true
+end
+
+-- Ist die Linie bei z (quer über die Strecke) von a nach b vorwärts überquert worden?
+local function crossedLine(a: Vector3, b: Vector3, z: number): boolean
+	if not (a.Z < z and b.Z >= z) then
+		return false
+	end
+	local t = (z - a.Z) / (b.Z - a.Z)
+	local x = a.X + (b.X - a.X) * t
+	local y = a.Y + (b.Y - a.Y) * t
+	return x >= lineMinX and x <= lineMaxX and y > TOP - FALL_DEPTH and y < TOP + 20
+end
+
+-- Auf/an der Strecke (inkl. Rampe vom Ziel-Podest)? Weiter weg = Run abgebrochen
+local function inArea(p: Vector3): boolean
+	if p.X >= areaMinX and p.X <= areaMaxX and p.Z >= areaMinZ and p.Z <= areaMaxZ then
+		return true
+	end
+	return p.X >= exitMinX and p.X < areaMinX and p.Z >= exitMinZ - 4 and p.Z <= exitMaxZ + 4
+end
+
+local function inReadyZone(p: Vector3): boolean
+	return p.X >= lineMinX and p.X <= lineMaxX and p.Z >= readyMinZ and p.Z < readyMaxZ and p.Y > TOP and p.Y < TOP + 12
+end
+
+-- -------------------------------------------------------------------
+-- BAU-HELFER (wie im MapBuilder)
+-- -------------------------------------------------------------------
+local function part(props: { [string]: any }): Part
+	local p = Instance.new("Part")
+	p.Anchored = true
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.CanTouch = false -- alles wird per Position geprüft (spart Physik-Arbeit)
+	for key, value in pairs(props) do
+		if key ~= "Parent" then
+			(p :: any)[key] = value
+		end
+	end
+	p.Parent = props.Parent
+	return p
+end
+
+local function folder(name: string, parent: Instance): Folder
+	local f = Instance.new("Folder")
+	f.Name = name
+	f.Parent = parent
+	return f
+end
+
+-- Unsichtbarer Ankerpunkt für Schilder
+local function anchorPart(name: string, position: Vector3, parent: Instance): Part
+	return part({
+		Name = name,
+		Size = Vector3.new(1, 1, 1),
+		Position = position,
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		CastShadow = false,
+		Parent = parent,
+	})
+end
+
+type SignLine = { Name: string, Text: string, Color: Color3, Height: number }
+
+-- Mehrzeiliges Schild in Studs-Größe (Aufbau wie MapBuilder: BillboardGui > Frame > TextLabels)
+local function worldSign(parent: Instance, width: number, height: number, lines: { SignLine }): { [string]: TextLabel }
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Sign"
+	gui.Size = UDim2.fromScale(width, height)
+	gui.MaxDistance = 400
+	gui.LightInfluence = 0
+	gui.Parent = parent
+	local frame = Instance.new("Frame")
+	frame.Name = "Frame"
+	frame.BackgroundTransparency = 1
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Parent = gui
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Parent = frame
+	local labels: { [string]: TextLabel } = {}
+	for order, line in ipairs(lines) do
+		local label = Instance.new("TextLabel")
+		label.Name = line.Name
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, line.Height)
+		label.LayoutOrder = order
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.TextColor3 = line.Color
+		label.Text = line.Text
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 2
+		stroke.Color = Color3.new(0, 0, 0)
+		stroke.Parent = label
+		label.Parent = frame
+		labels[line.Name] = label
+	end
+	return labels
+end
+
+-- -------------------------------------------------------------------
+-- LAGE AUS DER MAP ABLEITEN
+-- -------------------------------------------------------------------
+-- X-Mitte zwischen Außenkante der rechten Basen und rechter Randwand, Start neben dem Spawn-Platz
+local function computeLayout(map: Instance?)
+	local plotEdge = -math.huge
+	for _, plot in ipairs(Services.PlotService.Plots) do
+		local cf = plot.CFrame
+		if typeof(cf) == "CFrame" and cf.Position.X > 0 then
+			plotEdge = math.max(plotEdge, cf.Position.X + (plot.HalfSize or 36))
+		end
+	end
+	if plotEdge == -math.huge then
+		plotEdge = FALLBACK_PLOT_EDGE
+	end
+	local wallX, wallMaxZ = FALLBACK_WALL_X, FALLBACK_WALL_MAX_Z
+	local plazaMaxZ = FALLBACK_PLAZA_MAX_Z
+	if map then
+		local foundX, foundZ = math.huge, -math.huge
+		for _, child in ipairs(map:GetChildren()) do
+			if child.Name == "Boundary" and child:IsA("BasePart") then
+				if child.Size.X < child.Size.Z and child.Position.X > 0 then
+					foundX = math.min(foundX, child.Position.X - child.Size.X / 2)
+				elseif child.Size.Z < child.Size.X and child.Position.Z > 0 then
+					foundZ = math.max(foundZ, child.Position.Z - child.Size.Z / 2)
+				end
+			end
+		end
+		if foundX < math.huge then
+			wallX = foundX
+		end
+		if foundZ > -math.huge then
+			wallMaxZ = foundZ
+		end
+		local plaza = map:FindFirstChild("Plaza")
+		local floorPart = plaza and plaza:FindFirstChild("Floor")
+		if floorPart and floorPart:IsA("BasePart") then
+			plazaMaxZ = floorPart.Position.Z + floorPart.Size.Z / 2
+		end
+	end
+	local gap = wallX - plotEdge
+	WIDTH = math.clamp(gap - 10, MIN_WIDTH, MAX_WIDTH)
+	X0 = (plotEdge + wallX) / 2
+	Z0 = plazaMaxZ - PLAZA_GAP
+	if gap - WIDTH < 4 then
+		warn("[RunService] Wenig Platz zwischen Basen und Randwand – der Meteor-Run wird eng")
+	end
+	if Z0 + END_D + 4 > wallMaxZ then
+		warn("[RunService] Der Meteor-Run ist länger als die Map – das Ziel liegt hinter der Randwand!")
+	end
+end
+
+-- Deko (Bäume/Büsche) im Weg entfernen, andere Kollisionen melden
+local function clearArea(map: Instance, center: Vector3, size: Vector3)
+	local deco = map:FindFirstChild("Deco")
+	-- ohne Filter (alles im Kasten), nur Teile der Map zählen
+	local hits = workspace:GetPartBoundsInBox(CFrame.new(center), size)
+	local conflicts: { string } = {}
+	for _, hit in ipairs(hits) do
+		if not hit.Parent or not hit:IsDescendantOf(map) then
+			continue -- schon entfernt (Teil eines Baums) oder gehört nicht zur Map
+		end
+		if deco and hit:IsDescendantOf(deco) then
+			-- ganzen Baum entfernen (Stamm + Krone stehen an derselben Stelle)
+			local spot = hit.Position
+			for _, other in ipairs(deco:GetChildren()) do
+				if other ~= hit and other:IsA("BasePart") then
+					local dx, dz = other.Position.X - spot.X, other.Position.Z - spot.Z
+					if dx * dx + dz * dz < 1 then
+						other:Destroy()
+					end
+				end
+			end
+			hit:Destroy()
+		elseif hit.Name ~= "Ground" and #conflicts < 5 then
+			table.insert(conflicts, hit:GetFullName())
+		end
+	end
+	if #conflicts > 0 then
+		warn("[RunService] Meteor-Run überschneidet sich mit: " .. table.concat(conflicts, ", "))
+	end
+end
+
+-- -------------------------------------------------------------------
+-- STRECKE BAUEN
+-- -------------------------------------------------------------------
+local decoFolder: Folder
+local lavaFolder: Folder
+local spinnerFolder: Folder
+local checkpointFolder: Folder
+
+-- Lauffläche von d0 bis d1 (x = Versatz zur Mitte), mit Leuchtkanten und Stützen
+local function deck(d0: number, d1: number, x: number, width: number, color: Color3)
+	local length = d1 - d0
+	local mid = (d0 + d1) / 2
+	part({
+		Name = "Deck",
+		Size = Vector3.new(width, DECK, length),
+		Position = world(mid, x, TOP - DECK / 2),
+		Material = Enum.Material.SmoothPlastic,
+		Color = color,
+		Parent = decoFolder,
+	})
+	for _, s in ipairs({ -1, 1 }) do
+		part({
+			Name = "Edge",
+			Size = Vector3.new(0.4, 0.3, length),
+			Position = world(mid, x + s * (width / 2 - 0.2), TOP + 0.15),
+			Material = Enum.Material.Neon,
+			Color = COLORS.Edge,
+			CanCollide = false,
+			CastShadow = false,
+			Parent = decoFolder,
+		})
+	end
+	local count = math.max(1, math.floor(length / 20 + 0.5))
+	for i = 1, count do
+		local d = d0 + length * (i - 0.5) / count
+		local offsets = if width >= 6 then { -(width / 2 - 1), width / 2 - 1 } else { 0 }
+		for _, ox in ipairs(offsets) do
+			part({
+				Name = "Pillar",
+				Size = Vector3.new(1.2, TOP - DECK, 1.2),
+				Position = world(d, x + ox, (TOP - DECK) / 2),
+				Material = Enum.Material.Metal,
+				Color = COLORS.Pillar,
+				CastShadow = false,
+				Parent = decoFolder,
+			})
+		end
+	end
+end
+
+-- Lava-Feld auf der Lauffläche (x0..x1 relativ zur Mitte). Ohne Kollision: man steht auf dem Deck,
+-- die Prüfung macht der Server (Position).
+local function lava(d0: number, d1: number, x0: number, x1: number)
+	part({
+		Name = "Lava",
+		Size = Vector3.new(x1 - x0, 0.2, d1 - d0),
+		Position = world((d0 + d1) / 2, (x0 + x1) / 2, TOP + 0.1),
+		Material = Enum.Material.Neon,
+		Color = COLORS.Lava,
+		CanCollide = false,
+		CanQuery = false,
+		CastShadow = false,
+		Parent = lavaFolder,
+	})
+	table.insert(lavaBoxes, {
+		MinX = X0 + x0 - FOOT,
+		MaxX = X0 + x1 + FOOT,
+		MinZ = Z0 + d0 - FOOT,
+		MaxZ = Z0 + d1 + FOOT,
+		Top = TOP,
+	})
+end
+
+-- Rotierender Balken: der Client dreht ihn um "pivot" (Achse im Pivot-Raum), der Server nie
+local function spinner(
+	name: string,
+	pivot: CFrame,
+	offset: CFrame,
+	size: Vector3,
+	axis: Vector3,
+	speed: number,
+	t0: number
+)
+	local bar = part({
+		Name = name,
+		Size = size,
+		CFrame = pivot * offset,
+		Material = Enum.Material.Neon,
+		Color = COLORS.Spinner,
+		CastShadow = false,
+		Parent = spinnerFolder,
+	})
+	bar:SetAttribute("SpinPivot", pivot)
+	bar:SetAttribute("SpinAxis", axis)
+	bar:SetAttribute("SpinSpeed", speed) -- Bogenmaß pro Sekunde
+	bar:SetAttribute("SpinT0", t0) -- Serverzeit, zu der der Balken so steht wie auf dem Server
+end
+
+local function gate(d: number, color: Color3, height: number)
+	local half = WIDTH / 2
+	for _, s in ipairs({ -1, 1 }) do
+		part({
+			Name = "GatePillar",
+			Size = Vector3.new(1.6, height, 1.6),
+			Position = world(d, s * (half + 0.8), TOP + height / 2),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(50, 50, 62),
+			Parent = decoFolder,
+		})
+		part({
+			Name = "GateGlow",
+			Size = Vector3.new(0.5, height - 1, 0.5),
+			Position = world(d, s * (half - 0.1), TOP + height / 2),
+			Material = Enum.Material.Neon,
+			Color = color,
+			CanCollide = false,
+			CastShadow = false,
+			Parent = decoFolder,
+		})
+	end
+	part({
+		Name = "GateBeam",
+		Size = Vector3.new(WIDTH + 3.2, 1.6, 1.6),
+		Position = world(d, 0, TOP + height + 0.8),
+		Material = Enum.Material.Neon,
+		Color = color,
+		CastShadow = false,
+		Parent = decoFolder,
+	})
+end
+
+-- Linie quer über die Strecke (Start/Ziel: kariert)
+local function line(d: number, checkered: boolean)
+	local tiles = math.max(2, math.floor(WIDTH / 2))
+	local tile = WIDTH / tiles
+	for row = 0, 1 do
+		for i = 0, tiles - 1 do
+			local white = (i + row) % 2 == 0
+			if checkered or white then
+				part({
+					Name = "Line",
+					Size = Vector3.new(tile, 0.06, 1),
+					Position = world(d - 0.5 + row, -WIDTH / 2 + tile * (i + 0.5), TOP + 0.03),
+					Material = Enum.Material.SmoothPlastic,
+					Color = if white then WHITE else Color3.fromRGB(20, 20, 24),
+					CanCollide = false,
+					CanQuery = false,
+					CastShadow = false,
+					Parent = decoFolder,
+				})
+			end
+		end
+	end
+end
+
+local function sectionSign(d: number, title: string, hint: string, color: Color3)
+	local anchor = anchorPart("SectionSign", world(d, WIDTH / 2 + 2.5, TOP + 7), decoFolder)
+	worldSign(anchor, 14, 4.4, {
+		{ Name = "Title", Text = title, Color = color, Height = 0.6 },
+		{ Name = "Hint", Text = hint, Color = WHITE, Height = 0.4 },
+	})
+end
+
+local function checkpointPad(index: number, d: number)
+	local pad = part({
+		Name = "Checkpoint" .. index,
+		Size = Vector3.new(WIDTH, 0.12, CHECKPOINT_DEPTH),
+		Position = world(d, 0, TOP + 0.06),
+		Material = Enum.Material.Neon,
+		Color = COLORS.Checkpoint,
+		Transparency = 0.25,
+		CanCollide = false,
+		CanQuery = false,
+		CastShadow = false,
+		Parent = checkpointFolder,
+	})
+	pad:SetAttribute("CheckpointIndex", index)
+	for _, s in ipairs({ -1, 1 }) do
+		part({
+			Name = "Flag",
+			Size = Vector3.new(0.5, 6, 0.5),
+			Position = world(d, s * (WIDTH / 2 + 0.6), TOP + 3),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(220, 220, 230),
+			Parent = decoFolder,
+		})
+		part({
+			Name = "FlagCloth",
+			Size = Vector3.new(0.2, 1.6, 2.4),
+			Position = world(d + 1.2, s * (WIDTH / 2 + 0.6), TOP + 5.2),
+			Material = Enum.Material.Neon,
+			Color = COLORS.Checkpoint,
+			CanCollide = false,
+			CastShadow = false,
+			Parent = decoFolder,
+		})
+	end
+	local anchor = anchorPart("CheckpointSign", world(d, 0, TOP + 7.5), decoFolder)
+	worldSign(anchor, 8, 2.4, {
+		{
+			Name = "Title",
+			Text = "🚩 Checkpoint " .. index .. "/" .. #CHECKPOINT_D,
+			Color = Color3.fromRGB(140, 230, 255),
+			Height = 1,
+		},
+	})
+	checkpointZ[index] = Z0 + d
+	respawnCF[index + 1] = CFrame.lookAt(world(d + 1.5, 0, TOP + 3.5), world(d + 10, 0, TOP + 3.5))
+end
+
+local function build(map: Instance): Folder
+	local half = WIDTH / 2
+	table.clear(lavaBoxes)
+	table.clear(checkpointZ)
+	table.clear(respawnCF)
+
+	local root = Instance.new("Folder")
+	root.Name = "MeteorRun"
+	decoFolder = folder("Deco", root)
+	lavaFolder = folder("Lava", root)
+	spinnerFolder = folder("Spinners", root)
+	checkpointFolder = folder("Checkpoints", root)
+
+	-- RAMPE von der Wiese hoch zum Start (Oberkante genau auf der Lauffläche)
+	local rampTop = world(0, 0, TOP)
+	local rampBottom = world(-RAMP_LENGTH, 0, 0)
+	part({
+		Name = "Ramp",
+		Size = Vector3.new(WIDTH, 1, (rampTop - rampBottom).Magnitude),
+		CFrame = CFrame.lookAt((rampTop + rampBottom) / 2, rampTop) * CFrame.new(0, -0.5, 0),
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLORS.DeckAlt,
+		Parent = decoFolder,
+	})
+	local rampSign = anchorPart("RampSign", world(-RAMP_LENGTH + 2, 0, 9), decoFolder)
+	worldSign(rampSign, 20, 5, {
+		{ Name = "Title", Text = "☄️ METEOR-RUN ⬆️", Color = COLORS.Gate, Height = 0.62 },
+		{ Name = "Hint", Text = "Schnell sein = Gratis-Ei! 🥚", Color = WHITE, Height = 0.38 },
+	})
+
+	-- START: Plattform, Tor, Startlinie
+	deck(0, 108, 0, WIDTH, COLORS.Deck)
+	gate(GATE_D, COLORS.Gate, 13)
+	line(START_LINE_D, true)
+	local startSign = anchorPart("StartSign", world(GATE_D, 0, TOP + 21), decoFolder)
+	local labels = worldSign(startSign, 30, 9, {
+		{ Name = "Title", Text = "☄️ METEOR-RUN", Color = COLORS.Gate, Height = 0.5 },
+		{ Name = "Record", Text = "🏆 Rekord: noch keiner!", Color = Color3.fromRGB(255, 230, 90), Height = 0.27 },
+		{ Name = "Hint", Text = "Über die Linie = Timer läuft!", Color = WHITE, Height = 0.23 },
+	})
+	recordLabel = labels.Record
+
+	-- 1) LAVA-FELDER (quer, dann Slalom)
+	sectionSign(22, "1/5 🔥 LAVA", "Nicht berühren – drüberspringen!", COLORS.Lava)
+	lava(28, 32, -half, half)
+	lava(40, 44, -half, half)
+	lava(50, 62, -half, half * 0.15)
+	lava(64, 76, -half * 0.15, half)
+	lava(82, 87, -half, half)
+	lava(92, 96, -half, half)
+
+	-- 2) SPRÜNGE über Lücken (Plattformen werden schmaler)
+	sectionSign(110, "2/5 🦘 SPRÜNGE", "Anlauf nehmen!", Color3.fromRGB(120, 255, 120))
+	deck(112, 124, 0, WIDTH, COLORS.DeckAlt)
+	deck(129, 137, 0, math.max(6, WIDTH * 0.6), COLORS.Deck)
+	deck(142, 150, half * 0.4, 6, COLORS.DeckAlt)
+	deck(156, 164, -half * 0.4, 6, COLORS.Deck)
+	deck(169, 284, 0, WIDTH, COLORS.DeckAlt)
+
+	-- 3) ROTIERENDE BALKEN (der Client dreht sie)
+	local t0 = now()
+	sectionSign(198, "3/5 🌀 BALKEN", "Timing ist alles!", COLORS.Spinner)
+	local barLength = WIDTH - 1
+	local function post(d: number)
+		part({
+			Name = "SpinnerPost",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(3, 1.4, 1.4),
+			CFrame = CFrame.new(world(d, 0, TOP + 1.5)) * CFrame.Angles(0, 0, math.rad(90)),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(60, 60, 72),
+			Parent = decoFolder,
+		})
+	end
+	-- a) Fegebalken knapp über dem Boden (drüberspringen)
+	post(210)
+	spinner(
+		"SweeperA",
+		CFrame.new(world(210, 0, TOP + 1.2)),
+		CFrame.new(),
+		Vector3.new(barLength, 1.2, 1.2),
+		Vector3.yAxis,
+		1.8,
+		t0
+	)
+	-- b) Windmühle: ein Balken dreht sich quer über die Strecke (unten durchlaufen, wenn er oben ist)
+	local millPivot = CFrame.new(world(234, 0, TOP + 7.5))
+	for _, s in ipairs({ -1, 1 }) do
+		part({
+			Name = "MillPost",
+			Size = Vector3.new(1.2, 10, 1.2),
+			Position = world(235.6, s * (half + 0.8), TOP + 5),
+			Material = Enum.Material.Metal,
+			Color = Color3.fromRGB(60, 60, 72),
+			Parent = decoFolder,
+		})
+	end
+	part({
+		Name = "MillBeam",
+		Size = Vector3.new(WIDTH + 2.8, 1, 1),
+		Position = world(235.6, 0, TOP + 10.5),
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(60, 60, 72),
+		Parent = decoFolder,
+	})
+	part({
+		Name = "MillAxle",
+		Size = Vector3.new(0.8, 0.8, 1.6),
+		Position = world(234.8, 0, TOP + 7.5),
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 220, 60),
+		CanCollide = false,
+		CastShadow = false,
+		Parent = decoFolder,
+	})
+	part({
+		Name = "MillHanger",
+		Size = Vector3.new(0.6, 3, 0.6),
+		Position = world(235.6, 0, TOP + 9),
+		Material = Enum.Material.Metal,
+		Color = Color3.fromRGB(60, 60, 72),
+		CanCollide = false,
+		Parent = decoFolder,
+	})
+	spinner("Windmill", millPivot, CFrame.new(), Vector3.new(barLength, 1.2, 1.2), Vector3.zAxis, 1.4, t0)
+	-- c) Kreuz aus zwei Fegebalken, andersherum
+	post(258)
+	local crossPivot = CFrame.new(world(258, 0, TOP + 1.2))
+	spinner("SweeperC1", crossPivot, CFrame.new(), Vector3.new(barLength, 1.2, 1.2), Vector3.yAxis, -1.5, t0)
+	spinner(
+		"SweeperC2",
+		crossPivot,
+		CFrame.Angles(0, math.rad(90), 0),
+		Vector3.new(barLength, 1.2, 1.2),
+		Vector3.yAxis,
+		-1.5,
+		t0
+	)
+
+	-- 4) METEOR-EINSCHLÄGE (Server bestimmt sie, Client zeigt Warnkreis + Einschlag)
+	deck(284, 372, 0, WIDTH, COLORS.Deck)
+	sectionSign(286, "4/5 ☄️ EINSCHLÄGE", "Raus aus den roten Kreisen!", Color3.fromRGB(255, 120, 120))
+	local craterRng = Random.new(4242)
+	for _ = 1, 7 do
+		local d = craterRng:NextNumber(IMPACT_FROM_D + 4, IMPACT_TO_D - 4)
+		local x = craterRng:NextNumber(-half + 2.5, half - 2.5)
+		local size = craterRng:NextNumber(3, 4.5)
+		part({
+			Name = "Crater",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.05, size, size),
+			CFrame = CFrame.new(world(d, x, TOP + 0.03)) * CFrame.Angles(0, 0, math.rad(90)),
+			Material = Enum.Material.Slate,
+			Color = COLORS.Crater,
+			CanCollide = false,
+			CanQuery = false,
+			CastShadow = false,
+			Parent = decoFolder,
+		})
+	end
+
+	-- 5) LAVA-STEINE: alles Lava, nur auf den Steinen ist man sicher
+	deck(372, END_D, 0, WIDTH, COLORS.DeckAlt)
+	sectionSign(374, "5/5 🔥 LAVA-STEINE", "Von Stein zu Stein!", COLORS.Lava)
+	lava(376, 428, -half, half)
+	for i, x in ipairs({ -0.4, 0.45, -0.3, 0.5, -0.5, 0.1, -0.35, 0.3 }) do
+		part({
+			Name = "Stone",
+			Size = Vector3.new(4, 1.4, 4),
+			Position = world(374 + i * 6.5, half * x, TOP + 0.7),
+			Material = Enum.Material.Slate,
+			Color = COLORS.Stone,
+			Parent = decoFolder,
+		})
+	end
+
+	-- CHECKPOINTS
+	respawnCF[1] = CFrame.lookAt(world(START_RESPAWN_D, 0, TOP + 3.5), world(START_RESPAWN_D + 10, 0, TOP + 3.5))
+	for index, d in ipairs(CHECKPOINT_D) do
+		checkpointPad(index, d)
+	end
+
+	-- ZIEL: Tor, Linie, Podest mit Belohnungs-Ei, Rampe runter (Richtung Basen)
+	gate(FINISH_D, COLORS.Finish, 12)
+	line(FINISH_D, true)
+	local finishSign = anchorPart("FinishSign", world(FINISH_D, 0, TOP + 18), decoFolder)
+	worldSign(finishSign, 20, 5, {
+		{ Name = "Title", Text = "🏁 ZIEL 🏁", Color = COLORS.Finish, Height = 0.62 },
+		{ Name = "Hint", Text = "Gratis-Ei – dann schnell heimtragen!", Color = WHITE, Height = 0.38 },
+	})
+	local podiumD = 444
+	part({
+		Name = "Podium",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(2, 7, 7),
+		CFrame = CFrame.new(world(podiumD, 0, TOP + 1)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.SmoothPlastic,
+		Color = Color3.fromRGB(255, 205, 60),
+		Parent = decoFolder,
+	})
+	part({
+		Name = "PodiumRing",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.3, 7.6, 7.6),
+		CFrame = CFrame.new(world(podiumD, 0, TOP + 2)) * CFrame.Angles(0, 0, math.rad(90)),
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(255, 120, 200),
+		CanCollide = false,
+		CastShadow = false,
+		Parent = decoFolder,
+	})
+	local egg = part({
+		Name = "RewardEgg",
+		Size = Vector3.new(3, 3, 3),
+		Position = world(podiumD, 0, TOP + 4.6),
+		Material = Enum.Material.Neon,
+		Color = Color3.fromRGB(180, 80, 255),
+		CanCollide = false,
+		CanQuery = false,
+		Parent = decoFolder,
+	})
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Scale = Vector3.new(1, 1.35, 1)
+	mesh.Parent = egg
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(220, 140, 255)
+	light.Range = 16
+	light.Brightness = 2
+	light.Shadows = false
+	light.Parent = egg
+	egg:SetAttribute("Bob", true) -- Client lässt es schweben und drehen
+	local eggSign = anchorPart("EggSign", world(podiumD, 0, TOP + 8.5), decoFolder)
+	worldSign(eggSign, 9, 2.2, {
+		{ Name = "Title", Text = "🥚 Belohnungs-Ei", Color = Color3.fromRGB(230, 180, 255), Height = 1 },
+	})
+	-- Rampe vom Podest runter auf die Wiese (zur Seite der Basen)
+	local exitTop = world(podiumD, -half, TOP)
+	local exitBottom = world(podiumD, -half - RAMP_LENGTH, 0)
+	part({
+		Name = "ExitRamp",
+		Size = Vector3.new(8, 1, (exitTop - exitBottom).Magnitude),
+		CFrame = CFrame.lookAt((exitTop + exitBottom) / 2, exitTop) * CFrame.new(0, -0.5, 0),
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLORS.DeckAlt,
+		Parent = decoFolder,
+	})
+
+	-- Werte für die Prüfung
+	startSpawnCF = CFrame.lookAt(world(2.5, 0, TOP + 3.5), world(12, 0, TOP + 3.5))
+	readyMinZ = Z0 + READY_FROM_D
+	readyMaxZ = Z0 + START_LINE_D
+	finishZ = Z0 + FINISH_D
+	exitMinZ = Z0 + podiumD - 6
+	exitMaxZ = Z0 + podiumD + 6
+	lineMinX = X0 - half - 3
+	lineMaxX = X0 + half + 3
+	areaMinX = X0 - AREA_SIDE
+	areaMaxX = X0 + AREA_SIDE
+	areaMinZ = Z0 - RAMP_LENGTH - AREA_END
+	areaMaxZ = Z0 + END_D + AREA_END
+	exitMinX = X0 - half - RAMP_LENGTH - 6
+	local length = FINISH_D - START_LINE_D
+	local fastest = (tonumber(Config.MaxWalkSpeed) or 80) * SPEED_TOLERANCE
+	minRunTime = length / fastest
+
+	root:SetAttribute("CheckpointCount", #CHECKPOINT_D)
+	root:SetAttribute("Length", length)
+	root:SetAttribute("MinTime", minRunTime)
+	root:SetAttribute("StartCFrame", startSpawnCF)
+	root.Parent = map
+	return root
+end
+
+-- -------------------------------------------------------------------
+-- LAUF-LOGIK
+-- -------------------------------------------------------------------
+local function publish(player: Player, run: RunState?)
+	if run then
+		player:SetAttribute("RunActive", true)
+		player:SetAttribute("RunStart", if run.Phase == "Running" then run.Start else 0)
+		player:SetAttribute("RunCP", run.CP)
+	else
+		player:SetAttribute("RunActive", false)
+		player:SetAttribute("RunStart", 0)
+		player:SetAttribute("RunCP", 0)
+	end
+end
+
+local function teleport(player: Player, cf: CFrame)
+	local character = player.Character
+	if not character then
+		return
+	end
+	character:PivotTo(cf)
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		root.AssemblyLinearVelocity = Vector3.zero
+	end
+	Services.CarryService.NoteTeleport(player, cf.Position)
+	lastPos[player] = cf.Position
+end
+
+local function cancelRun(player: Player, text: string?)
+	if not runs[player] then
+		return
+	end
+	runs[player] = nil
+	publish(player, nil)
+	if text then
+		Services.EconomyService.Notify(player, text, "Info")
+	end
+end
+
+local function resetToCheckpoint(player: Player, run: RunState, reason: string)
+	local cf = respawnCF[run.CP + 1] or respawnCF[1]
+	teleport(player, cf)
+	Services.EconomyService.Effect(player, "RunReset", 0, { Reason = reason })
+	notifyLimited(player, RESET_TEXT[reason] or "↩️ Zurück zum Checkpoint!", "Error")
+end
+
+-- Steht/läuft der Spieler zwischen a und b auf einem Lava-Feld? (beide Messungen am Boden)
+local function touchedLava(a: Vector3, b: Vector3, stand: number): boolean
+	for _, box in ipairs(lavaBoxes) do
+		local ha, hb = a.Y - box.Top, b.Y - box.Top
+		if ha > 0.5 and hb > 0.5 and ha <= stand + 0.6 and hb <= stand + 0.6 and segmentHitsBox(a, b, box) then
+			return true
+		end
+	end
+	return false
+end
+
+local function updateRecordSign()
+	local label = recordLabel
+	local record = serverRecord
+	if label and record then
+		label.Text = "🏆 Rekord: " .. record.Name .. " – " .. formatRunTime(record.Time)
+	end
+end
+
+local function rollEggRarity(luck: number, rebirths: number): string
+	local pick = Util.WeightedPick(EGG_TABLE, function(item): number
+		local list = Config.MeteorsByRarity[item.Rarity]
+		if not Config.RaritiesByName[item.Rarity] or not list or #list == 0 then
+			return 0
+		end
+		if rebirths < (item.MinRebirths or 0) then
+			return 0
+		end
+		return if item.Lucky then item.Weight * luck else item.Weight
+	end, rng)
+	return pick.Rarity
+end
+
+-- Belohnung: Cash + Gratis-Ei zum Heimtragen (Base voll -> Verkaufswert als Cash)
+local function giveReward(player: Player, data, elapsed: number, newBest: boolean): string
+	local Economy = Services.EconomyService
+	local cash = math.floor(
+		math.max(RUN_MIN_CASH, Economy.GetIncome(player) * RUN_CASH_SECONDS)
+			* (if newBest then NEW_BEST_CASH_MULT else 1)
+	)
+	Economy.AddCash(player, cash)
+	Economy.Effect(player, "Collect", cash)
+	local text = " +" .. Util.FormatCash(cash)
+
+	local rebirths = tonumber(data.Rebirths) or 0
+	local luck = 1
+		+ math.clamp((PAR_TIME - elapsed) / PAR_TIME, 0, 0.6)
+		+ math.min(rebirths, 10) * REBIRTH_LUCK
+		+ (if newBest then 0.25 else 0)
+	local Meteor = Services.MeteorService
+	local def = Meteor.RandomOfRarity(rollEggRarity(luck, rebirths))
+	if not def then
+		return text
+	end
+	local entry = { Id = def.Id, Mut = Meteor.RollMutation(1), Lv = 1, Xp = 0 }
+	local label = (if entry.Mut ~= "Normal" then entry.Mut .. " " else "") .. def.Name .. " (" .. def.Rarity .. ")"
+	local root = aliveRoot(player)
+	local canCarry = root ~= nil
+		and Services.PlotService.GetPlot(player) ~= nil
+		and Services.PlotService.FreeSlot(player) ~= nil
+		and not Services.CarryService.IsCarrying(player)
+	if root and canCarry then
+		Services.CarryService.StartCarry(player, entry, {
+			Source = "Ground",
+			From = "Run",
+			GrabPosition = root.Position,
+		})
+		if (Config.RarityIndex[def.Rarity] or 0) >= ANNOUNCE_RARITY then
+			Economy.NotifyAll(
+				"☄️ "
+					.. player.DisplayName
+					.. " hat den Meteor-Run geschafft und trägt ein "
+					.. def.Rarity
+					.. "-Ei heim – BONK IHN! 🔨",
+				"Event"
+			)
+		end
+		return text .. " 🥚 " .. label .. " – TRAG ES HEIM! 🏃"
+	end
+	local value = math.floor(Config.MeteorValue(entry) * Config.SellRatio)
+	Economy.AddCash(player, value)
+	return text .. " 📦 Base voll – " .. Util.FormatCash(value) .. " statt " .. label
+end
+
+local function finishRun(player: Player, run: RunState)
+	local elapsed = now() - run.Start
+	runs[player] = nil
+	publish(player, nil)
+	local admin = Services.AdminService
+	if elapsed < minRunTime and not (admin and admin.IsAdmin(player)) then
+		Services.EconomyService.Notify(player, "🚫 Unmöglich schnell – dieser Run zählt nicht!", "Error")
+		return
+	end
+	local data = Services.DataService.Get(player)
+	if not data then
+		return
+	end
+	local oldBest = tonumber(data.RunBest)
+	if oldBest and (oldBest ~= oldBest or oldBest <= 0) then
+		oldBest = nil
+	end
+	local newBest = oldBest == nil or elapsed < oldBest
+	local best = elapsed
+	if newBest then
+		data.RunBest = math.floor(elapsed * 100 + 0.5) / 100
+		player:SetAttribute("RunBest", data.RunBest)
+	elseif oldBest then
+		best = oldBest
+	end
+	if not serverRecord or elapsed < serverRecord.Time then
+		serverRecord = { Name = player.DisplayName, Time = elapsed }
+		updateRecordSign()
+	end
+
+	local t = now()
+	local cooldownEnd = cooldownUntil[player.UserId] or 0
+	local rewarded = t >= cooldownEnd
+	Services.EconomyService.Effect(
+		player,
+		"RunFinish",
+		elapsed,
+		{ Time = elapsed, Best = best, NewBest = newBest, Reward = rewarded }
+	)
+	local timeText = "🏁 ZIEL in "
+		.. formatRunTime(elapsed)
+		.. "!"
+		.. (if newBest then " 🏆 NEUE BESTZEIT!" else "")
+	if not rewarded then
+		Services.EconomyService.Notify(
+			player,
+			timeText .. " ⏳ Nächste Belohnung in " .. Util.FormatTime(math.ceil(cooldownEnd - t)),
+			"Info"
+		)
+		Services.EconomyService.MarkDirty(player)
+		return
+	end
+	cooldownUntil[player.UserId] = t + REWARD_COOLDOWN
+	player:SetAttribute("RunCooldownUntil", t + REWARD_COOLDOWN)
+	local rewardText = giveReward(player, data, elapsed, newBest)
+	Services.EconomyService.Notify(player, timeText .. rewardText, "Success")
+	Services.EconomyService.MarkDirty(player)
+end
+
+-- Ein Prüf-Schritt für einen Spieler (alle TICK Sekunden)
+local function stepPlayer(player: Player)
+	local root, humanoid = aliveRoot(player)
+	local run = runs[player]
+	if not root or not humanoid then
+		if run then
+			cancelRun(player)
+		end
+		return
+	end
+	local pos = root.Position
+	local last = lastPos[player] or pos
+	lastPos[player] = pos
+	if not run then
+		-- Nicht im Run: Start-Tor betreten? Lava berührt? (z.B. von der Seite reingesprungen)
+		if not inArea(pos) then
+			return
+		end
+		-- Wer schnell ist, rennt in einem Takt durchs Tor UND über die Linie -> sofort "Running"
+		local dashed = crossedLine(last, pos, readyMaxZ) and last.Z >= Z0 - RAMP_LENGTH
+		if inReadyZone(pos) or dashed then
+			if Services.CarryService.IsCarrying(player) then
+				notifyLimited(player, "🎒 Mit Beute kein Run – erst nach Hause bringen!", "Error")
+			elseif Services.EconomyService.IsReady(player) then
+				local newRun: RunState = {
+					Phase = if dashed then "Running" else "Ready",
+					Start = if dashed then now() else 0,
+					CP = 0,
+				}
+				runs[player] = newRun
+				publish(player, newRun)
+				Services.EconomyService.Effect(player, if dashed then "RunStart" else "RunReady", 0)
+			end
+		elseif
+			not Services.CarryService.IsCarrying(player) -- mit Beute wird nie teleportiert
+			and touchedLava(last, pos, standHeight(humanoid, root))
+		then
+			teleport(player, startSpawnCF)
+			notifyLimited(player, "🔥 Lava! Starte den Run am Tor ☄️", "Error")
+		end
+		return
+	end
+
+	if Services.CarryService.IsCarrying(player) then
+		cancelRun(player, "🎒 Mit Beute kein Run – abgebrochen.")
+		return
+	end
+	if not inArea(pos) then
+		cancelRun(player, "☄️ Meteor-Run abgebrochen.")
+		return
+	end
+	if Services.CarryService.MoveStatus(player) == "flagged" then
+		cancelRun(player, "🚫 Unmöglich schnell – Run abgebrochen!")
+		return
+	end
+
+	if run.Phase == "Ready" then
+		if crossedLine(last, pos, readyMaxZ) then
+			run.Phase = "Running"
+			run.Start = now()
+			publish(player, run)
+			Services.EconomyService.Effect(player, "RunStart", 0)
+		elseif not inReadyZone(pos) then
+			cancelRun(player) -- zurück aus dem Tor gelaufen
+		end
+		return
+	end
+
+	-- Running
+	if now() - run.Start > MAX_RUN_TIME then
+		cancelRun(player, "⏰ Zu lange – Meteor-Run abgebrochen.")
+		return
+	end
+	if inReadyZone(pos) then
+		-- zurück ins Start-Tor = Neustart
+		run.Phase = "Ready"
+		run.Start = 0
+		run.CP = 0
+		publish(player, run)
+		return
+	end
+	if pos.Y < TOP - FALL_DEPTH then
+		if pos.X < lineMinX and pos.Z >= exitMinZ and pos.Z <= exitMaxZ then
+			cancelRun(player, "☄️ Meteor-Run abgebrochen.") -- über die Ziel-Rampe runter (ohne alle Checkpoints)
+		else
+			resetToCheckpoint(player, run, "fall")
+		end
+		return
+	end
+	if touchedLava(last, pos, standHeight(humanoid, root)) then
+		resetToCheckpoint(player, run, "lava")
+		return
+	end
+	local nextIndex = run.CP + 1
+	local nextZ = checkpointZ[nextIndex]
+	if nextZ and crossedLine(last, pos, nextZ) then
+		run.CP = nextIndex
+		publish(player, run)
+		Services.EconomyService.Effect(player, "RunCheckpoint", nextIndex, {
+			Position = Vector3.new(X0, TOP + 0.5, nextZ),
+			Time = now() - run.Start,
+		})
+		return
+	end
+	if crossedLine(last, pos, finishZ) then
+		if run.CP >= #checkpointZ then
+			finishRun(player, run)
+		else
+			notifyLimited(player, "🚩 Du hast einen Checkpoint verpasst!", "Error")
+		end
+	end
+end
+
+-- -------------------------------------------------------------------
+-- METEOR-EINSCHLÄGE
+-- -------------------------------------------------------------------
+local pendingImpacts = 0
+local impactClock = 0
+local runnerRoots: { BasePart } = {}
+
+local function scheduleImpact(position: Vector3)
+	pendingImpacts += 1
+	Remotes.Effect:FireAllClients("RunImpact", 0, {
+		Position = position,
+		Radius = IMPACT_RADIUS,
+		At = now() + IMPACT_WARN,
+	})
+	task.delay(IMPACT_WARN, function()
+		pendingImpacts -= 1
+		local hitRadius = IMPACT_RADIUS + 1
+		for player, run in pairs(runs) do
+			if run.Phase == "Running" then
+				local root = aliveRoot(player)
+				if root then
+					local p = root.Position
+					local dx, dz = p.X - position.X, p.Z - position.Z
+					if dx * dx + dz * dz <= hitRadius * hitRadius and p.Y > position.Y - 1 and p.Y < position.Y + 9 then
+						resetToCheckpoint(player, run, "impact")
+					end
+				end
+			end
+		end
+	end)
+end
+
+local function stepImpacts(dt: number)
+	table.clear(runnerRoots)
+	local zoneMin = Z0 + IMPACT_FROM_D - 10
+	local zoneMax = Z0 + IMPACT_TO_D + 6
+	for player, run in pairs(runs) do
+		if run.Phase == "Running" and run.CP == IMPACT_AFTER_CP then
+			local root = aliveRoot(player)
+			if root and root.Position.Z >= zoneMin and root.Position.Z <= zoneMax then
+				table.insert(runnerRoots, root)
+			end
+		end
+	end
+	if #runnerRoots == 0 then
+		impactClock = 0
+		return
+	end
+	impactClock += dt
+	if impactClock < IMPACT_INTERVAL or pendingImpacts >= IMPACT_MAX then
+		return
+	end
+	impactClock = 0
+	local half = WIDTH / 2 - 1
+	local x = X0 + rng:NextNumber(-half, half)
+	local z = Z0 + rng:NextNumber(IMPACT_FROM_D, IMPACT_TO_D)
+	if rng:NextNumber() < IMPACT_AIM_CHANCE then
+		local root = runnerRoots[rng:NextInteger(1, #runnerRoots)]
+		local velocity = root.AssemblyLinearVelocity
+		local aim = root.Position + Vector3.new(velocity.X, 0, velocity.Z) * IMPACT_LEAD
+		x = math.clamp(aim.X, X0 - half, X0 + half)
+		z = math.clamp(aim.Z, Z0 + IMPACT_FROM_D, Z0 + IMPACT_TO_D)
+	end
+	scheduleImpact(Vector3.new(x, TOP, z))
+end
+
+-- -------------------------------------------------------------------
+-- ÖFFENTLICH
+-- -------------------------------------------------------------------
+-- Request "GoRun": zum Start-Tor teleportieren (nicht beim Tragen)
+function RunService.Teleport(player: Player): (boolean, string)
+	if not runFolder then
+		return false, "☄️ Der Meteor-Run ist gerade nicht da."
+	end
+	if Services.CarryService.IsCarrying(player) then
+		return false, "Mit Beute musst du laufen! 🏃"
+	end
+	local root = aliveRoot(player)
+	if not root then
+		return false, "Kein Charakter"
+	end
+	if root.Anchored then
+		return false, "🧊 Du bist eingefroren!"
+	end
+	cancelRun(player)
+	teleport(player, startSpawnCF)
+	return true, "☄️ Lauf durchs Tor – über der Linie startet der Timer!"
+end
+
+-- Läuft der Spieler gerade den Meteor-Run? (z.B. für andere Services)
+function RunService.IsRunning(player: Player): boolean
+	return runs[player] ~= nil
+end
+
+function RunService.Init(services)
+	Services = services
+	local map = Services.PlotService.MapFolder
+	if not map then
+		warn("[RunService] Keine Map – Meteor-Run wird nicht gebaut")
+		return
+	end
+	local old = map:FindFirstChild("MeteorRun")
+	if old then
+		old:Destroy()
+	end
+	computeLayout(map)
+	-- Platz schaffen: Strecke + Rampen (Bäume/Büsche weg, andere Teile melden)
+	local half = WIDTH / 2
+	local zMin = Z0 - RAMP_LENGTH - 2
+	local zMax = Z0 + END_D + 2
+	clearArea(map, Vector3.new(X0, 16, (zMin + zMax) / 2), Vector3.new(WIDTH + 8, 30, zMax - zMin))
+	clearArea(map, Vector3.new(X0 - half - RAMP_LENGTH / 2 - 2, 10, Z0 + 444), Vector3.new(RAMP_LENGTH + 4, 18, 12))
+	runFolder = build(map)
+end
+
+function RunService.Start()
+	if not runFolder then
+		return
+	end
+	Services.DataService.OnProfileLoaded(function(player: Player, data)
+		local best = tonumber(data.RunBest)
+		if best and best == best and best > 0 and best < math.huge then
+			player:SetAttribute("RunBest", best)
+		else
+			data.RunBest = nil
+		end
+		local cooldown = cooldownUntil[player.UserId]
+		if cooldown then
+			player:SetAttribute("RunCooldownUntil", cooldown)
+		end
+	end)
+
+	local function onPlayer(player: Player)
+		publish(player, nil)
+		player.CharacterAdded:Connect(function()
+			cancelRun(player) -- neuer Charakter (gestorben, Reset) -> Run ist vorbei
+		end)
+	end
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayer, player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		runs[player] = nil
+		notifyAt[player] = nil
+		lastPos[player] = nil
+	end)
+
+	task.spawn(function()
+		local last = os.clock()
+		while true do
+			task.wait(TICK)
+			local clock = os.clock()
+			local dt = math.clamp(clock - last, 0, 1)
+			last = clock
+			for _, player in ipairs(Players:GetPlayers()) do
+				local ok, err = pcall(stepPlayer, player)
+				if not ok then
+					warn("[RunService] Fehler bei " .. player.Name .. ": " .. tostring(err))
+				end
+			end
+			local ok, err = pcall(stepImpacts, dt)
+			if not ok then
+				warn("[RunService] Einschlag-Fehler: " .. tostring(err))
+			end
+		end
+	end)
+end
+
+return RunService
+]]></string>
+          </Properties>
+        </Item>
+        <Item class="ModuleScript" referent="27">
+          <Properties>
             <string name="Name">TreadmillService</string>
             <string name="Source"><![CDATA[-- SPEED FARM: Laufbänder (Treadmills) in der Laufband-Zone am Spawn-Platz.
 -- Wer auf einem freigeschalteten Laufband läuft, bekommt alle Config.TreadmillTick Sekunden
@@ -12373,19 +13762,19 @@ return TreadmillService
       </Item>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="27">
+  <Item class="StarterPlayer" referent="28">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="28">
+    <Item class="StarterPlayerScripts" referent="29">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="29">
+      <Item class="Folder" referent="30">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="LocalScript" referent="30">
+        <Item class="LocalScript" referent="31">
           <Properties>
             <string name="Name">Main</string>
             <string name="Source"><![CDATA[-- =====================================================================
@@ -12423,6 +13812,7 @@ local Prompts = require(Modules:WaitForChild("Prompts"))
 local Fly = require(Modules:WaitForChild("Fly"))
 local PhotoMode = require(Modules:WaitForChild("PhotoMode"))
 local AdminPanel = require(Modules:WaitForChild("AdminPanel"))
+local MeteorRun = require(Modules:WaitForChild("MeteorRun"))
 
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local Remotes = {
@@ -12509,6 +13899,7 @@ Rewards.Init(ctx)
 Hud.Init(ctx)
 Fly.Init(UI.Toast)
 PhotoMode.Init(ctx)
+MeteorRun.Start(ctx) -- ☄️ Meteor-Run: HUD, Balken, Einschläge, Knopf "☄️ Run"
 
 -- Welt-Sachen brauchen die Map (wird vom Server gebaut) -> im Hintergrund warten
 task.spawn(function()
@@ -12623,11 +14014,11 @@ end)
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="31">
+        <Item class="Folder" referent="32">
           <Properties>
             <string name="Name">Modules</string>
           </Properties>
-          <Item class="ModuleScript" referent="32">
+          <Item class="ModuleScript" referent="33">
             <Properties>
               <string name="Name">AdminPanel</string>
               <string name="Source"><![CDATA[-- =====================================================================
@@ -13328,19 +14719,23 @@ return AdminPanel
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="33">
+          <Item class="ModuleScript" referent="34">
             <Properties>
               <string name="Name">Effects</string>
               <string name="Source"><![CDATA[-- =====================================================================
 --  EFFEKTE vom Server (Remote "Effect": name, strength, data)
---   "Steps"    -> fliegende "+X 👟"-Zahl über deinem Charakter (wie im Speed-Simulator)
---   "Collect"  -> großes "+$X" in der Bildschirmmitte
---   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base
---                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter)
---   "Hatch"    -> Funken-Explosion + Lichtblitz, wenn ein Alien schlüpft
---   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) + Konfetti,
+--   "Steps"    -> fliegende "+X 👟"-Zahl über deinem Charakter (federt, Farbverlauf, kippelt)
+--   "Collect"  -> großes "+$X" in der Bildschirmmitte + Münzen fliegen von dir zum Geld-Zähler
+--   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base, mit Funkenschweif
+--                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter),
+--                 beim Aufprall: Staub-Puff + Druckwelle
+--   "Hatch"    -> Funken-Explosion + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
+--                 (das Alien selbst ploppt in WorldFX mit Overshoot herein)
+--   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) mit Strahlenkranz + Konfetti,
 --                    sonst bzw. beim Tragen kleine Karte oben rechts
---   "Shake", "Confetti", "Alarm" wie bisher
+--   "Shake" (weich und dezent), "Confetti" (fliegt aus zwei Kanonen hoch, fällt mit Schwerkraft,
+--   dreht und flattert), "Alarm" wie bisher
+--  Dazu: Rebirth-Bildschirmblitz (Effects.RebirthFlash, vom HUD aufgerufen).
 --  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
 -- =====================================================================
@@ -13351,12 +14746,14 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
+local WorldFX = require(script.Parent:WaitForChild("WorldFX"))
 
 local Effects = {}
 
 local player = Players.LocalPlayer
 local ctx: any = nil
 local fxFolder: Folder? = nil
+local overlay: ScreenGui? = nil -- eigene Ebene für Münzen, Konfetti, Blitze (ohne UI-Skalierung)
 local hidden = false -- Foto-Modus: fliegende Zahlen aus
 
 local WHITE = Color3.new(1, 1, 1)
@@ -13370,16 +14767,22 @@ type FlyNumber = {
 	Label: TextLabel,
 	Stroke: UIStroke,
 	Scale: UIScale,
+	Gradient: UIGradient,
 	Active: boolean,
 	Age: number,
 	X: number,
 	Y: number,
+	Tilt: number,
 }
 
 local FLY_COUNT = 12
-local FLY_LIFE = 1.1
+local FLY_LIFE = 1.15
 local FLY_RISE = 3.6
-local FLY_COLORS = { Color3.fromRGB(255, 225, 40), Color3.fromRGB(70, 190, 255) }
+-- Farbverläufe (oben hell -> unten kräftig), abwechselnd Gold und Himmelblau
+local FLY_COLORS = {
+	ColorSequence.new(Color3.fromRGB(255, 250, 170), Color3.fromRGB(255, 150, 20)),
+	ColorSequence.new(Color3.fromRGB(190, 245, 255), Color3.fromRGB(40, 120, 255)),
+}
 local flyPool: { FlyNumber } = {}
 local flyNext = 1
 local flyColor = 1
@@ -13399,6 +14802,7 @@ local function buildFlyPool()
 		})
 		local stroke: UIStroke = UI.Create("UIStroke", { Thickness = 3, Color = BLACK })
 		local scale: UIScale = UI.Create("UIScale", { Scale = 1 })
+		local gradient: UIGradient = UI.Create("UIGradient", { Rotation = 90, Color = FLY_COLORS[1] })
 		local labelObj: TextLabel = UI.Create("TextLabel", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
@@ -13407,18 +14811,20 @@ local function buildFlyPool()
 			Font = Enum.Font.FredokaOne,
 			TextScaled = true,
 			Text = "",
-			TextColor3 = FLY_COLORS[1],
+			TextColor3 = WHITE, -- Farbe kommt aus dem Verlauf
 			Parent = gui,
-		}, { stroke, scale })
+		}, { stroke, scale, gradient })
 		table.insert(flyPool, {
 			Gui = gui,
 			Label = labelObj,
 			Stroke = stroke,
 			Scale = scale,
+			Gradient = gradient,
 			Active = false,
 			Age = 0,
 			X = 0,
 			Y = 0,
+			Tilt = 0,
 		})
 	end
 end
@@ -13457,8 +14863,10 @@ local function showSteps(amount: number)
 	fly.Age = 0
 	fly.X = (math.random() - 0.5) * 5
 	fly.Y = 1.2 + math.random() * 1.6
+	fly.Tilt = (math.random() - 0.5) * 30
 	fly.Label.Text = "+" .. UI.FormatSteps(amount, ctx.Util.FormatNumber) .. " 👟"
-	fly.Label.TextColor3 = FLY_COLORS[flyColor]
+	fly.Gradient.Color = FLY_COLORS[flyColor]
+	fly.Label.Rotation = fly.Tilt
 	fly.Label.TextTransparency = 0
 	fly.Stroke.Transparency = 0
 	fly.Scale.Scale = 0.3
@@ -13478,13 +14886,12 @@ local function stepFlyNumbers(dt: number)
 			else
 				local rise = 1 - (1 - t) * (1 - t) -- schnell hoch, dann langsamer
 				fly.Gui.StudsOffset = Vector3.new(fly.X, fly.Y + rise * FLY_RISE, 0)
-				local scale = 1
-				if t < 0.12 then
-					scale = 0.3 + (t / 0.12) * 1.05
-				elseif t < 0.26 then
-					scale = 1.35 - ((t - 0.12) / 0.14) * 0.35
-				end
-				fly.Scale.Scale = scale
+				-- federnder Bounce: aus 0.3 schnell über die Endgröße hinaus, gedämpft zurück
+				local age = fly.Age
+				local decay = math.exp(-age * 9)
+				fly.Scale.Scale = 1 - 0.7 * decay * math.cos(age * 26)
+				-- kippelt am Anfang hin und her und richtet sich dann auf
+				fly.Label.Rotation = fly.Tilt * math.exp(-age * 5) * math.cos(age * 18)
 				local fade = if t > 0.6 then (t - 0.6) / 0.4 else 0
 				fly.Label.TextTransparency = fade
 				fly.Stroke.Transparency = fade
@@ -13530,6 +14937,112 @@ local function cashPopup(amount: number)
 		popupCount -= 1
 		popup:Destroy()
 	end)
+end
+
+-- ---------------------------------------------------------------------
+-- MÜNZEN fliegen von dir zum Geld-Zähler (fester Vorrat, nur Tweens)
+-- ---------------------------------------------------------------------
+type Coin = { Label: TextLabel, Busy: boolean }
+
+local COIN_COUNT = 16
+local COIN_OUT_INFO = TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local coinPool: { Coin } = {}
+
+local function buildCoins()
+	local gui = overlay
+	if not gui then
+		return
+	end
+	for _ = 1, COIN_COUNT do
+		local coinLabel: TextLabel = UI.Create("TextLabel", {
+			Name = "Coin",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromOffset(34, 34),
+			BackgroundTransparency = 1,
+			Text = "🪙",
+			TextScaled = true,
+			Font = Enum.Font.FredokaOne,
+			Visible = false,
+			ZIndex = 30,
+			Parent = gui,
+		})
+		table.insert(coinPool, { Label = coinLabel, Busy = false })
+	end
+end
+
+local function flyCoins(amount: number)
+	local gui = overlay
+	local camera = workspace.CurrentCamera
+	local hud = ctx.Hud
+	if not gui or hidden or not camera or #coinPool == 0 or not hud or not hud.CashAnchor then
+		return
+	end
+	local target: Vector2? = hud.CashAnchor()
+	if not target then
+		return
+	end
+	local goal = UDim2.fromOffset(target.X, target.Y)
+	local size = gui.AbsoluteSize
+	local start = Vector2.new(size.X / 2, size.Y * 0.55)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		local point, onScreen = camera:WorldToScreenPoint(root.Position)
+		if onScreen then
+			start = Vector2.new(point.X, point.Y)
+		end
+	end
+	local count = math.clamp(math.floor(3 + math.log10(math.max(amount, 1)) * 1.5), 4, 12)
+	local launched = 0
+	for _, coin in ipairs(coinPool) do
+		if launched >= count then
+			break
+		end
+		if not coin.Busy then
+			launched += 1
+			coin.Busy = true
+			local coinLabel = coin.Label
+			-- erst in alle Richtungen aufspritzen, dann im Bogen zum Zähler saugen
+			local angle = math.random() * math.pi * 2
+			local spread = 40 + math.random() * 70
+			local midX = start.X + math.cos(angle) * spread
+			local midY = start.Y + math.sin(angle) * spread * 0.7 - 30
+			coinLabel.Position = UDim2.fromOffset(start.X, start.Y)
+			coinLabel.Size = UDim2.fromOffset(14, 14)
+			coinLabel.Rotation = math.random(-40, 40)
+			coinLabel.Visible = true
+			local out = TweenService:Create(coinLabel, COIN_OUT_INFO, {
+				Position = UDim2.fromOffset(midX, midY),
+				Size = UDim2.fromOffset(34, 34),
+				Rotation = coinLabel.Rotation + math.random(-120, 120),
+			})
+			local delay = launched * 0.04
+			out.Completed:Once(function()
+				local flyInfo = TweenInfo.new(
+					0.4 + math.random() * 0.15,
+					Enum.EasingStyle.Quad,
+					Enum.EasingDirection.In,
+					0,
+					false,
+					delay
+				)
+				local fly = TweenService:Create(coinLabel, flyInfo, {
+					Position = goal,
+					Size = UDim2.fromOffset(20, 20),
+					Rotation = 0,
+				})
+				fly.Completed:Once(function()
+					coinLabel.Visible = false
+					coin.Busy = false
+					if not hidden then
+						hud.PulseCash(0.06) -- jede Münze lässt den Zähler kurz zucken
+					end
+				end)
+				fly:Play()
+			end)
+			out:Play()
+		end
+	end
 end
 
 -- ---------------------------------------------------------------------
@@ -13639,11 +15152,189 @@ local function burst(position: Vector3, color: Color3, amount: number, flash: bo
 	Debris:AddItem(holder, 2)
 end
 
+-- Druckwelle: flacher leuchtender Ring am Boden, wächst und verblasst
+local function ring(position: Vector3, color: Color3, size: number, time: number)
+	local folder = fxFolder
+	local camera = workspace.CurrentCamera
+	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
+		return
+	end
+	local cf = CFrame.new(position) * CFrame.Angles(0, 0, math.pi / 2) -- Zylinder-Achse senkrecht
+	local wave = localPart({
+		Name = "Shockwave",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.15, 1, 1),
+		Material = Enum.Material.Neon,
+		Color = color,
+		Transparency = 0.25,
+		CFrame = cf,
+		Parent = folder,
+	})
+	local info = TweenInfo.new(time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	TweenService:Create(wave, info, { Size = Vector3.new(0.05, size, size), Transparency = 1 }):Play()
+	Debris:AddItem(wave, time + 0.05)
+end
+
+-- Staub-Puff (weiche graue Wolke) beim Aufprall
+local function puff(position: Vector3, color: Color3, amount: number)
+	local folder = fxFolder
+	local camera = workspace.CurrentCamera
+	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
+		return
+	end
+	local holder = localPart({
+		Name = "Puff",
+		Size = Vector3.new(0.2, 0.2, 0.2),
+		Transparency = 1,
+		CFrame = CFrame.new(position),
+		Parent = folder,
+	})
+	local smoke: ParticleEmitter = UI.Create("ParticleEmitter", {
+		Color = ColorSequence.new(color:Lerp(WHITE, 0.6), Color3.fromRGB(150, 145, 140)),
+		LightEmission = 0.2,
+		LightInfluence = 0.6,
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.8),
+			NumberSequenceKeypoint.new(0.4, 2.2),
+			NumberSequenceKeypoint.new(1, 3),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.35),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Lifetime = NumberRange.new(0.5, 0.9),
+		Speed = NumberRange.new(6, 12),
+		SpreadAngle = Vector2.new(80, 10),
+		EmissionDirection = Enum.NormalId.Top,
+		Acceleration = Vector3.new(0, 3, 0),
+		Drag = 5,
+		RotSpeed = NumberRange.new(-60, 60),
+		Rotation = NumberRange.new(0, 360),
+		Rate = 0,
+		Parent = holder,
+	})
+	smoke:Emit(math.clamp(math.floor(amount), 1, 30))
+	Debris:AddItem(holder, 1.2)
+end
+
+-- Schalen-Splitter: kleine Stücke fliegen mit Schwerkraft und Drehung weg (fester Vorrat,
+-- eine Schleife, eine BulkMoveTo-Liste – keine neuen Teile pro Schlüpfen)
+type Shard = {
+	Part: BasePart,
+	Active: boolean,
+	Pos: Vector3,
+	Vel: Vector3,
+	Spin: Vector3,
+	Age: number,
+	Life: number,
+}
+
+local SHARD_COUNT = 40
+local SHARD_GRAVITY = Vector3.new(0, -60, 0)
+local shards: { Shard } = {}
+local shardNext = 1
+local shardsAlive = 0
+local shardParts: { BasePart } = {}
+local shardCFrames: { CFrame } = {}
+local HIDDEN_CF = CFrame.new(0, -5000, 0)
+
+local function buildShards()
+	local folder = fxFolder
+	if not folder then
+		return
+	end
+	for _ = 1, SHARD_COUNT do
+		local part = localPart({
+			Name = "Shard",
+			Size = Vector3.new(0.5, 0.15, 0.4),
+			Material = Enum.Material.Slate,
+			CFrame = HIDDEN_CF,
+			Parent = folder,
+		})
+		table.insert(shards, {
+			Part = part,
+			Active = false,
+			Pos = Vector3.zero,
+			Vel = Vector3.zero,
+			Spin = Vector3.zero,
+			Age = 0,
+			Life = 1,
+		})
+	end
+end
+
+local function spawnShards(position: Vector3, color: Color3, amount: number, scale: number)
+	if #shards == 0 then
+		return
+	end
+	local camera = workspace.CurrentCamera
+	if camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE * 0.5 then
+		return -- weit weg sieht man die kleinen Splitter nicht
+	end
+	for _ = 1, amount do
+		local shard = shards[shardNext]
+		shardNext = shardNext % SHARD_COUNT + 1
+		if not shard.Active then
+			shardsAlive += 1
+		end
+		shard.Active = true
+		shard.Age = 0
+		shard.Life = 0.8 + math.random() * 0.6
+		local angle = math.random() * math.pi * 2
+		local out = 8 + math.random() * 14
+		shard.Pos = position + Vector3.new(0, 0.5 * scale, 0)
+		shard.Vel = Vector3.new(math.cos(angle) * out, 14 + math.random() * 16, math.sin(angle) * out)
+		shard.Spin = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 22
+		local part = shard.Part
+		local size = (0.3 + math.random() * 0.4) * scale
+		part.Size = Vector3.new(size, size * 0.3, size * 0.8)
+		part.Color = color:Lerp(Color3.fromRGB(120, 110, 100), math.random() * 0.5)
+		part.Transparency = 0
+	end
+end
+
+local function stepShards(dt: number)
+	table.clear(shardParts)
+	table.clear(shardCFrames)
+	local count = 0
+	for _, shard in ipairs(shards) do
+		if shard.Active then
+			shard.Age += dt
+			count += 1
+			shardParts[count] = shard.Part
+			if shard.Age >= shard.Life then
+				shard.Active = false
+				shardsAlive -= 1
+				shardCFrames[count] = HIDDEN_CF
+			else
+				shard.Vel += SHARD_GRAVITY * dt
+				local pos = shard.Pos + shard.Vel * dt
+				shard.Pos = pos
+				local a = shard.Age
+				local spin = shard.Spin
+				shardCFrames[count] = CFrame.new(pos) * CFrame.fromEulerAnglesXYZ(spin.X * a, spin.Y * a, spin.Z * a)
+				local fade = shard.Age / shard.Life
+				if fade > 0.6 then
+					shard.Part.Transparency = (fade - 0.6) / 0.4
+				end
+			end
+		end
+	end
+	if count > 0 then
+		workspace:BulkMoveTo(shardParts, shardCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+	end
+end
+
 -- ---------------------------------------------------------------------
--- WACKELN (eine gemeinsame Stärke, nimmt ab)
+-- WACKELN (eine gemeinsame Stärke, nimmt weich ab). Bewusst dezent: weiches Rauschen statt
+-- Zufallssprüngen, gedämpfte Stärke und eine Obergrenze (niemandem soll schlecht werden).
 -- ---------------------------------------------------------------------
-local SHAKE_TIME = 0.35
+local SHAKE_TIME = 0.4
+local SHAKE_SCALE = 0.55 -- Server-Stärke -> Studs Kamera-Versatz
+local SHAKE_MAX = 1.2
+local SHAKE_FREQ = 18 -- wie schnell das Rauschen läuft
 local shakeStrength = 0
+local shakeClock = 0
 local shakeLeft = 0
 local shakeHumanoid: Humanoid? = nil
 
@@ -13651,7 +15342,7 @@ local function shake(strength: number)
 	if type(strength) ~= "number" or strength ~= strength or strength <= 0 then
 		return
 	end
-	strength = math.min(strength, 3)
+	strength = math.min(strength * SHAKE_SCALE, SHAKE_MAX)
 	local current = if shakeLeft > 0 then shakeStrength * (shakeLeft / SHAKE_TIME) else 0
 	if strength >= current then
 		shakeStrength = strength
@@ -13677,8 +15368,10 @@ local function stepShake(dt: number)
 		humanoid.CameraOffset = Vector3.zero
 		return
 	end
-	local power = shakeStrength * (shakeLeft / SHAKE_TIME)
-	humanoid.CameraOffset = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * power
+	local fade = shakeLeft / SHAKE_TIME
+	local power = shakeStrength * fade * fade
+	shakeClock += dt * SHAKE_FREQ
+	humanoid.CameraOffset = Vector3.new(math.noise(shakeClock, 0.5), math.noise(0.5, shakeClock), 0) * power
 end
 
 -- ---------------------------------------------------------------------
@@ -13692,11 +15385,33 @@ type Flight = {
 	Age: number,
 	Color: Color3,
 	Fall: boolean, -- fast senkrecht von oben: beschleunigt fallen statt Bogen
+	Size: number,
 }
 
 local DELIVER_TIME = 0.9 -- gleich lang wie die Fall-Zeit auf dem Server
 local MAX_FLIGHTS = 32 -- Egg Rush: viele Eier fallen fast gleichzeitig
 local flights: { Flight } = {}
+
+local function addSparks(part: BasePart, size: number, color: Color3)
+	UI.Create("ParticleEmitter", {
+		Name = "Sparks",
+		Color = ColorSequence.new(WHITE, color),
+		LightEmission = 1,
+		LightInfluence = 0,
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, math.clamp(size * 0.14, 0.15, 0.6)),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Transparency = NumberSequence.new(0, 1),
+		Lifetime = NumberRange.new(0.3, 0.6),
+		Speed = NumberRange.new(1, 4),
+		SpreadAngle = Vector2.new(180, 180),
+		Acceleration = Vector3.new(0, -18, 0),
+		Drag = 1.5,
+		Rate = 70,
+		Parent = part,
+	})
+end
 
 local function addTrail(part: BasePart, size: number, color: Color3, tail: Color3)
 	local a0: Attachment = UI.Create("Attachment", { Position = Vector3.new(0, size * 0.35, 0), Parent = part })
@@ -13750,6 +15465,7 @@ local function deliver(data: any)
 		Parent = folder,
 	})
 	addTrail(part, size, color, tail)
+	addSparks(part, size, tail)
 	local flat = Vector3.new(to.X - from.X, 0, to.Z - from.Z).Magnitude
 	local fall = from.Y - to.Y > flat * 2
 	table.insert(flights, {
@@ -13760,6 +15476,7 @@ local function deliver(data: any)
 		Age = 0,
 		Color = tail,
 		Fall = fall,
+		Size = size,
 	})
 end
 
@@ -13773,10 +15490,25 @@ local function stepFlights(dt: number)
 		local pos = flight.From:Lerp(flight.To, e) + Vector3.new(0, flight.Height * 4 * e * (1 - e), 0)
 		flight.Part.CFrame = CFrame.Angles(flight.Age * 6, flight.Age * 4, 0) + pos
 		if t >= 1 then
-			flight.Part:Destroy()
+			-- Geist unsichtbar machen, Schweif + Funken noch ausklingen lassen, dann weg
+			local part = flight.Part
+			part.Transparency = 1
+			local sparks = part:FindFirstChild("Sparks")
+			if sparks and sparks:IsA("ParticleEmitter") then
+				sparks.Enabled = false
+			end
+			Debris:AddItem(part, 0.7)
 			flights[i] = flights[#flights]
 			flights[#flights] = nil
+			local ground = flight.To - Vector3.new(0, flight.Size * 0.45, 0)
 			burst(flight.To, flight.Color, if flight.Fall then 22 else 14, false)
+			puff(ground, flight.Color, 10 + flight.Size * 2)
+			ring(ground, flight.Color, 6 + flight.Size * 3, 0.45)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if root and root:IsA("BasePart") and (root.Position - flight.To).Magnitude < 25 then
+				shake(0.2) -- ganz nah: kurzes, leichtes Rumpeln
+			end
 		end
 	end
 end
@@ -13793,6 +15525,11 @@ local function hatch(data: any)
 	local index = Config.RarityIndex[data.Rarity] or 1
 	local color: Color3 = rarity and rarity.Color or WHITE
 	burst(data.Position, color, 24 + index * 7, true)
+	-- Schale platzt: Splitter fliegen weg, Druckwelle am Boden
+	spawnShards(data.Position, color, 6 + math.min(index, 8), math.clamp(0.8 + index * 0.08, 0.8, 1.6))
+	ring(data.Position - Vector3.new(0, 1, 0), color, 12 + index * 1.5, 0.55)
+	-- Alien ploppt in WorldFX mit Overshoot herein
+	WorldFX.NoteHatch(data.Position)
 	-- Ganz nah dran? Kurz wackeln
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -13804,42 +15541,101 @@ end
 -- ---------------------------------------------------------------------
 -- KONFETTI + ALARM
 -- ---------------------------------------------------------------------
-local MAX_CONFETTI = 120
+local MAX_CONFETTI = 140
+local CONFETTI_GRAVITY = 1500 -- Pixel/s² (Konfetti ist leicht: fällt danach langsamer, siehe unten)
 local confettiAlive = 0
 
+-- Ein Stück Konfetti: der Halter fliegt gleichmäßig zur Seite, das Stück darin steigt (Quad Out)
+-- und fällt (Quad In) – zusammen eine echte Wurfparabel. Dazu Drehen und Flattern (Breite pendelt).
+local function confettiPiece(gui: ScreenGui, x: number, y: number, vx: number, vy: number, color: Color3)
+	local screen = gui.AbsoluteSize
+	local tUp = vy / CONFETTI_GRAVITY
+	local peak = y - vy * vy / (2 * CONFETTI_GRAVITY)
+	local fallDistance = screen.Y + 30 - peak
+	local tDown = math.sqrt(2 * fallDistance / CONFETTI_GRAVITY) * 1.9 -- Luftwiderstand: langsamer fallen
+	local life = tUp + tDown
+	local width, height = math.random(8, 14), math.random(10, 16)
+	local holder: Frame = UI.Create("Frame", {
+		Size = UDim2.fromOffset(0, 0),
+		Position = UDim2.fromOffset(x, y),
+		BackgroundTransparency = 1,
+		ZIndex = 25,
+		Parent = gui,
+	})
+	local piece: Frame = UI.Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(width, height),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Rotation = math.random(0, 360),
+		ZIndex = 25,
+		Parent = holder,
+	})
+	if math.random() < 0.35 then
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = piece }) -- runde Plättchen
+	end
+	-- seitlich: am Anfang schnell, dann vom Luftwiderstand gebremst
+	TweenService:Create(
+		holder,
+		TweenInfo.new(life, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = UDim2.fromOffset(x + vx * 0.9, y) }
+	):Play()
+	TweenService
+		:Create(
+			piece,
+			TweenInfo.new(life, Enum.EasingStyle.Linear),
+			{ Rotation = piece.Rotation + math.random(-720, 720) }
+		)
+		:Play()
+	-- Flattern: Breite pendelt (sieht aus wie ein Blättchen, das sich dreht)
+	TweenService:Create(
+		piece,
+		TweenInfo.new(0.18 + math.random() * 0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ Size = UDim2.fromOffset(math.max(2, width * 0.15), height) }
+	):Play()
+	local up = TweenService:Create(
+		piece,
+		TweenInfo.new(tUp, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = UDim2.fromOffset(0, peak - y) }
+	)
+	up.Completed:Once(function()
+		local down = TweenService:Create(
+			piece,
+			TweenInfo.new(tDown, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ Position = UDim2.fromOffset(0, screen.Y + 30 - y) }
+		)
+		down.Completed:Once(function()
+			confettiAlive -= 1
+			holder:Destroy()
+		end)
+		down:Play()
+	end)
+	up:Play()
+end
+
+-- Konfetti-Kanonen links und rechts unten schießen schräg nach oben zur Mitte
 local function confetti(amount: number)
-	local gui = UI.Root
-	if not gui then
+	local gui = overlay
+	if not gui or hidden then
 		return
 	end
 	local colors = { UI.Theme.Yellow, UI.Theme.Green, UI.Theme.Blue, UI.Theme.Purple, UI.Theme.Red, UI.Theme.Pink }
-	local count = math.floor(28 * math.clamp(tonumber(amount) or 1, 0.3, 3))
+	local count = math.floor(32 * math.clamp(tonumber(amount) or 1, 0.3, 3))
 	count = math.min(count, MAX_CONFETTI - confettiAlive)
-	for _ = 1, count do
+	local screen = gui.AbsoluteSize
+	if screen.Y < 10 then
+		return
+	end
+	for i = 1, count do
 		confettiAlive += 1
-		local startX = math.random()
-		local piece: Frame = UI.Create("Frame", {
-			Size = UDim2.fromOffset(math.random(7, 13), math.random(7, 13)),
-			Position = UDim2.new(startX, 0, 0, -20),
-			BackgroundColor3 = colors[math.random(1, #colors)],
-			BorderSizePixel = 0,
-			Rotation = math.random(0, 360),
-			ZIndex = 25,
-			Parent = gui,
-		})
-		local tween = TweenService:Create(
-			piece,
-			TweenInfo.new(math.random(16, 30) / 10, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{
-				Position = UDim2.new(startX + (math.random() - 0.5) * 0.25, 0, 1, 20),
-				Rotation = piece.Rotation + math.random(-400, 400),
-			}
-		)
-		tween.Completed:Connect(function()
-			confettiAlive -= 1
-			piece:Destroy()
-		end)
-		tween:Play()
+		local left = i % 2 == 0
+		local x = if left then screen.X * 0.04 else screen.X * 0.96
+		local y = screen.Y + 10
+		-- Gipfel zwischen 35 % und 85 % der Bildschirmhöhe
+		local rise = screen.Y * (0.35 + math.random() * 0.5)
+		local vy = math.sqrt(2 * CONFETTI_GRAVITY * rise)
+		local vx = (screen.X * (0.12 + math.random() * 0.4)) * (if left then 1 else -1)
+		confettiPiece(gui, x, y, vx, vy, colors[math.random(1, #colors)])
 	end
 end
 
@@ -13870,6 +15666,10 @@ end
 local REVEAL_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local REVEAL_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 local REVEAL_SPIN_INFO = TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+local REVEAL_SPIN2_INFO = TweenInfo.new(9, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+local REVEAL_PULSE_INFO = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local REVEAL_TILT_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+local RAY_COUNT = 12 -- Strahlen im äußeren Kranz (der innere hat halb so viele, dreht andersrum)
 local REVEAL_TIME = 3.2
 local MINI_REVEAL_TIME = 1.8
 local MINI_REVEAL_SCALE = 0.45
@@ -13888,7 +15688,10 @@ type RevealUI = {
 	Holder: Frame,
 	Scale: UIScale,
 	Rays: Frame,
-	RayTween: Tween?,
+	Rays2: Frame,
+	RayScale: UIScale,
+	Glow: Frame,
+	RayTweens: { Tween },
 	Card: Frame,
 	CardGradient: UIGradient,
 	Title: TextLabel,
@@ -13931,28 +15734,73 @@ local function buildReveal(): RevealUI?
 		Parent = gui,
 	})
 	local scale: UIScale = UI.Create("UIScale", { Scale = 0, Parent = holder })
-	-- Strahlen hinter der Karte (drehen sich langsam)
+	-- Strahlenkranz hinter der Karte: zwei Kränze drehen gegeneinander und pulsieren,
+	-- jeder Strahl läuft zu den Spitzen hin weich aus (Verlauf), dazu ein weicher Schein in der Mitte
+	local rayScale: UIScale = UI.Create("UIScale", { Scale = 1 })
+	local glow: Frame = UI.Create("Frame", {
+		Name = "Glow",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(470, 470),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.55,
+		ZIndex = 30,
+		Parent = holder,
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		UI.Create("UIGradient", {
+			Rotation = 90,
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5, 0.2),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
+	})
 	local rays: Frame = UI.Create("Frame", {
 		Name = "Rays",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(560, 560),
+		Size = UDim2.fromOffset(620, 620),
+		BackgroundTransparency = 1,
+		ZIndex = 30,
+		Parent = holder,
+	}, { rayScale })
+	local rays2: Frame = UI.Create("Frame", {
+		Name = "Rays2",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(500, 500),
 		BackgroundTransparency = 1,
 		ZIndex = 30,
 		Parent = holder,
 	})
-	for i = 0, 5 do
+	local rayFade = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.3, 0.55),
+		NumberSequenceKeypoint.new(0.5, 0.35),
+		NumberSequenceKeypoint.new(0.7, 0.55),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	local function addRay(parent: Frame, rotation: number, width: number, transparency: number)
 		UI.Create("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(0, 46, 1, 0),
-			Rotation = i * 30,
+			Size = UDim2.new(0, width, 1, 0),
+			Rotation = rotation,
 			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0.72,
+			BackgroundTransparency = transparency,
 			BorderSizePixel = 0,
 			ZIndex = 30,
-			Parent = rays,
-		})
+			Parent = parent,
+		}, { UI.Create("UIGradient", { Rotation = 90, Transparency = rayFade }) })
+	end
+	-- Ein Strahl geht durch die Mitte (= 2 Strahlen) -> RAY_COUNT / 2 Frames je Kranz
+	for i = 0, RAY_COUNT / 2 - 1 do
+		addRay(rays, i * (360 / RAY_COUNT), if i % 2 == 0 then 54 else 30, 0.45)
+	end
+	for i = 0, RAY_COUNT / 4 - 1 do
+		addRay(rays2, i * (720 / RAY_COUNT) + 15, 22, 0.55)
 	end
 	local cardGradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
 	local card: Frame = UI.Create("Frame", {
@@ -14067,7 +15915,10 @@ local function buildReveal(): RevealUI?
 		Holder = holder,
 		Scale = scale,
 		Rays = rays,
-		RayTween = nil,
+		Rays2 = rays2,
+		RayScale = rayScale,
+		Glow = glow,
+		RayTweens = {},
 		Card = card,
 		CardGradient = cardGradient,
 		Title = title,
@@ -14138,11 +15989,15 @@ local function fillReveal(ui: RevealUI, data: any): boolean
 		* (tonumber(def.IncomeMult) or 1)
 		* (if mut then tonumber(mut.Mult) or 1 else 1)
 	ui.Income.Text = "💵 +" .. ctx.Util.FormatCash(perSecond) .. "/s"
-	for _, ray in ipairs(ui.Rays:GetChildren()) do
-		if ray:IsA("Frame") then
-			ray.BackgroundColor3 = if ultra then UI.Theme.Yellow else rarityColor:Lerp(WHITE, 0.4)
+	local rayColor = if ultra then UI.Theme.Yellow else rarityColor:Lerp(WHITE, 0.4)
+	for _, layer in ipairs({ ui.Rays, ui.Rays2 }) do
+		for _, ray in ipairs(layer:GetChildren()) do
+			if ray:IsA("Frame") then
+				ray.BackgroundColor3 = rayColor
+			end
 		end
 	end
+	ui.Glow.BackgroundColor3 = rayColor
 	return true
 end
 
@@ -14178,12 +16033,27 @@ local function showNextReveal()
 			ui.Holder.AnchorPoint = if big then Vector2.new(0.5, 0.5) else Vector2.new(1, 0)
 			ui.Holder.Position = if big then UDim2.fromScale(0.5, 0.45) else UDim2.new(1, -14, 0, 56)
 			ui.Rays.Visible = big
+			ui.Rays2.Visible = big
+			ui.Glow.Visible = big
 			ui.Holder.Visible = true
 			ui.Scale.Scale = 0.2
 			ui.Rays.Rotation = 0
-			local rayTween = TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 })
-			ui.RayTween = rayTween
-			rayTween:Play()
+			ui.Rays2.Rotation = 0
+			ui.RayScale.Scale = 1
+			ui.Holder.Rotation = if big then -8 else 0
+			if big then
+				-- Strahlen nur bei der großen Karte (die kleine oben rechts bleibt ruhig)
+				local tweens = {
+					TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 }),
+					TweenService:Create(ui.Rays2, REVEAL_SPIN2_INFO, { Rotation = -360 }),
+					TweenService:Create(ui.RayScale, REVEAL_PULSE_INFO, { Scale = 1.12 }),
+				}
+				for _, tween in ipairs(tweens) do
+					tween:Play()
+				end
+				ui.RayTweens = tweens
+				TweenService:Create(ui.Holder, REVEAL_TILT_INFO, { Rotation = 0 }):Play()
+			end
 			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = if big then 1 else MINI_REVEAL_SCALE }):Play()
 			if big then
 				confetti(1.6)
@@ -14197,8 +16067,10 @@ local function showNextReveal()
 			local out = TweenService:Create(ui.Scale, REVEAL_OUT_INFO, { Scale = 0 })
 			out:Play()
 			out.Completed:Wait()
-			rayTween:Cancel()
-			ui.RayTween = nil
+			for _, tween in ipairs(ui.RayTweens) do
+				tween:Cancel()
+			end
+			ui.RayTweens = {}
 			ui.Holder.Visible = false
 		end
 	end
@@ -14306,6 +16178,69 @@ local function buildFrozen()
 end
 
 -- ---------------------------------------------------------------------
+-- 🔥 REBIRTH: Bildschirm blitzt hell auf, großer Schriftzug ploppt, Konfetti
+-- ---------------------------------------------------------------------
+local REBIRTH_FLASH_INFO = TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local REBIRTH_POP_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local REBIRTH_OUT_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 1.1)
+local rebirthBusy = false
+
+function Effects.RebirthFlash()
+	local gui = overlay
+	if not gui or hidden or rebirthBusy then
+		return
+	end
+	rebirthBusy = true
+	local flash: Frame = UI.Create("Frame", {
+		Name = "RebirthFlash",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0,
+		ZIndex = 40,
+		Parent = gui,
+	}, {
+		-- Mitte weiß, Ränder feurig orange
+		UI.Create("UIGradient", {
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, UI.Theme.Orange),
+				ColorSequenceKeypoint.new(0.5, WHITE),
+				ColorSequenceKeypoint.new(1, UI.Theme.Orange),
+			}),
+		}),
+	})
+	local textScale: UIScale = UI.Create("UIScale", { Scale = 0.3 })
+	local text = UI.Label({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromOffset(620, 110),
+		Text = "🔥 REBIRTH! 🔥",
+		TextColor3 = UI.Theme.Yellow,
+		MaxText = 90,
+		Outline = 5,
+		ZIndex = 41,
+		Parent = gui,
+	})
+	textScale.Parent = text
+	text.Rotation = -6
+	TweenService:Create(flash, REBIRTH_FLASH_INFO, { BackgroundTransparency = 1 }):Play()
+	TweenService:Create(textScale, REBIRTH_POP_INFO, { Scale = 1 }):Play()
+	TweenService:Create(text, REVEAL_TILT_INFO, { Rotation = 0 }):Play()
+	local stroke = text:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		TweenService:Create(stroke, REBIRTH_OUT_INFO, { Transparency = 1 }):Play()
+	end
+	local out = TweenService:Create(text, REBIRTH_OUT_INFO, { TextTransparency = 1 })
+	out.Completed:Once(function()
+		flash:Destroy()
+		text:Destroy()
+		rebirthBusy = false
+	end)
+	out:Play()
+	confetti(2.5)
+	shake(0.6)
+end
+
+-- ---------------------------------------------------------------------
 -- ÖFFENTLICH
 -- ---------------------------------------------------------------------
 function Effects.Play(name: any, strength: any, data: any)
@@ -14323,6 +16258,7 @@ function Effects.Play(name: any, strength: any, data: any)
 	elseif name == "Collect" then
 		if amount > 0 then
 			cashPopup(amount)
+			flyCoins(amount)
 			if ctx.Hooks.OnCash then
 				ctx.Hooks.OnCash(amount)
 			end
@@ -14345,6 +16281,9 @@ end
 -- Foto-Modus: fliegende Zahlen + große Karten ausblenden
 function Effects.SetHidden(value: boolean)
 	hidden = value
+	if overlay then
+		overlay.Enabled = not value
+	end
 	if value then
 		for _, fly in ipairs(flyPool) do
 			fly.Active = false
@@ -14357,6 +16296,15 @@ end
 function Effects.Init(context: any)
 	ctx = context
 	fxFolder = UI.Create("Folder", { Name = "MeteorHeistClientFX", Parent = workspace })
+	-- Eigene Ebene über der Oberfläche (ohne deren UIScale -> Pixel = Bildschirm-Pixel)
+	overlay = UI.Create("ScreenGui", {
+		Name = "MeteorHeistFX",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = false,
+		DisplayOrder = 5,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = player:WaitForChild("PlayerGui"),
+	})
 	alarmFrame = UI.Create("Frame", {
 		Name = "Alarm",
 		Size = UDim2.fromScale(1, 1),
@@ -14367,10 +16315,15 @@ function Effects.Init(context: any)
 	})
 	buildFlyPool()
 	buildFrozen()
+	buildCoins()
+	buildShards()
 	RunService.RenderStepped:Connect(function(dt: number)
 		stepFlyNumbers(dt)
 		if #flights > 0 then
 			stepFlights(dt)
+		end
+		if shardsAlive > 0 then
+			stepShards(dt)
 		end
 		stepShake(dt)
 	end)
@@ -14389,7 +16342,7 @@ return Effects
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="34">
+          <Item class="ModuleScript" referent="35">
             <Properties>
               <string name="Name">Fly</string>
               <string name="Source"><![CDATA[-- =====================================================================
@@ -14521,7 +16474,7 @@ return Fly
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="35">
+          <Item class="ModuleScript" referent="36">
             <Properties>
               <string name="Name">Hud</string>
               <string name="Source"><![CDATA[-- =====================================================================
@@ -14568,6 +16521,8 @@ local stepsCounter: UI.Counter
 local cashCounter: UI.Counter
 local stepsScale: UIScale
 local cashScale: UIScale
+local cashLabelRef: TextLabel? = nil
+local lastRebirths: number? = nil
 local incomeLabel: TextLabel
 local infoLabel: TextLabel
 local offerButton: UI.Button? = nil
@@ -14883,6 +16838,7 @@ local function buildStats()
 		Parent = stats,
 	})
 	cashScale.Parent = cashLabel
+	cashLabelRef = cashLabel
 	incomeLabel = UI.Label({
 		Position = UDim2.fromOffset(2, 104),
 		Size = UDim2.new(1, 0, 0, 24),
@@ -15336,6 +17292,13 @@ function Hud.Refresh(state: any)
 	end
 	firstState = false
 
+	-- 🔥 Rebirth geschafft? -> Bildschirm-Blitz (nur wenn die Zahl steigt, nicht beim ersten Laden)
+	local rebirths = tonumber(state.Rebirths) or 0
+	if lastRebirths ~= nil and rebirths > lastRebirths and ctx.Effects and ctx.Effects.RebirthFlash then
+		ctx.Effects.RebirthFlash()
+	end
+	lastRebirths = rebirths
+
 	local income = "+" .. Util.FormatCash(tonumber(state.Income) or 0) .. "/s"
 	local pending = tonumber(state.Pending) or 0
 	local autoCollect = state.Passes and state.Passes.AutoCollect == true
@@ -15468,8 +17431,18 @@ function Hud.PulseSteps()
 	UI.Pulse(stepsScale, 0.08)
 end
 
-function Hud.PulseCash()
-	UI.Pulse(cashScale, 0.14)
+function Hud.PulseCash(amount: number?)
+	UI.Pulse(cashScale, amount or 0.14)
+end
+
+-- Bildschirm-Punkt des 💵-Symbols am Geld-Zähler (Ziel der fliegenden Münzen), nil = nicht sichtbar
+function Hud.CashAnchor(): Vector2?
+	local label = cashLabelRef
+	if not label or not label.Visible or not ctx.Gui.Enabled then
+		return nil
+	end
+	local size = label.AbsoluteSize
+	return label.AbsolutePosition + Vector2.new(size.Y * 0.5, size.Y * 0.5)
 end
 
 function Hud.Init(context: any)
@@ -15490,7 +17463,647 @@ return Hud
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="36">
+          <Item class="ModuleScript" referent="37">
+            <Properties>
+              <string name="Name">MeteorRun</string>
+              <string name="Source"><![CDATA[-- =====================================================================
+--  ☄️ METEOR-RUN (Client)
+--   • Run-HUD oben: ⏱️ Timer, 🚩 Checkpoint x/y, 🏆 Bestzeit (nur während eines Runs)
+--   • rotierende Balken: jeder Client dreht sie selbst (Attribute vom Server, Winkel aus der
+--     Serverzeit -> alle sehen dieselbe Stellung), mit lokaler Kollision
+--   • Warnkreise + fallender Meteor + Einschlag für "RunImpact"
+--   • Checkpoint-Funken + Ton, Ziel-Konfetti, roter Blitz beim Zurücksetzen
+--   • Knopf "☄️ Run" in der rechten Leiste -> Request "GoRun"
+--  Der Server schickt den Zustand als Spieler-Attribute (RunActive, RunStart, RunCP, RunBest,
+--  RunCooldownUntil) und Effekte über Remotes.Effect ("RunImpact", "RunCheckpoint", ...).
+-- =====================================================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+
+local UI = require(script.Parent:WaitForChild("UI"))
+
+local MeteorRun = {}
+
+local player = Players.LocalPlayer
+local ctx: any = nil
+local Theme = UI.Theme
+local BLACK = Color3.new(0, 0, 0)
+
+local TAU = 2 * math.pi
+local ANIM_RANGE = 420 -- weiter weg dreht sich nichts (spart Rechenzeit)
+local IMPACT_POOL = 8 -- so viele Warnkreise gleichzeitig
+local IMPACT_FALL_HEIGHT = 70 -- von hier fällt der Meteor in den Warnkreis
+local IMPACT_WARN = 1 -- Sekunden (wie beim Server)
+local FINISH_SHOW_TIME = 5 -- so lange bleibt die Zielzeit im HUD stehen
+local PING_SOUND = "rbxasset://sounds/electronicpingshort.wav"
+
+local HUD_POP_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local HUD_HIDE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local FLASH_INFO = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local CHECKPOINT_COLOR = Color3.fromRGB(80, 200, 255)
+local CHECKPOINT_DONE_COLOR = Color3.fromRGB(90, 255, 120)
+local WARN_COLOR = Color3.fromRGB(255, 40, 40)
+
+-- 41.27 -> "0:41.3"
+local function formatRunTime(seconds: number): string
+	local tenths = math.floor(math.max(0, seconds) * 10 + 0.5)
+	return string.format("%d:%04.1f", tenths // 600, (tenths % 600) / 10)
+end
+
+local function localPart(props: { [string]: any }): Part
+	local base: { [string]: any } = {
+		Anchored = true,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+		CastShadow = false,
+		TopSurface = Enum.SurfaceType.Smooth,
+		BottomSurface = Enum.SurfaceType.Smooth,
+	}
+	for key, value in pairs(props) do
+		base[key] = value
+	end
+	return UI.Create("Part", base)
+end
+
+-- ---------------------------------------------------------------------
+-- HUD
+-- ---------------------------------------------------------------------
+local hudFrame: Frame
+local hudScale: UIScale
+local timerLabel: TextLabel
+local cpLabel: TextLabel
+local bestLabel: TextLabel
+local subLabel: TextLabel
+local flashFrame: Frame
+local flashTween: Tween
+local hudShown = false
+local hudToken = 0
+local lastTimerKey = -1
+local checkpointCount = 4
+local finishedText: string? = nil
+local finishedUntil = 0
+
+local function buildHud()
+	hudFrame = UI.Create("Frame", {
+		Name = "MeteorRunHud",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 54), -- unter den Bannern (Schauer, Egg Rush)
+		Size = UDim2.fromOffset(420, 66),
+		BackgroundColor3 = Theme.PanelDark,
+		BackgroundTransparency = 0.1,
+		Visible = false,
+		ZIndex = 6,
+		Parent = ctx.Gui,
+	}, {
+		UI.Corner(16),
+		UI.Stroke(BLACK, 3),
+		UI.Create("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new(Color3.fromRGB(255, 170, 120), Color3.fromRGB(150, 110, 255)),
+			Transparency = NumberSequence.new(0.55),
+		}),
+	})
+	hudScale = UI.Create("UIScale", { Scale = 0, Parent = hudFrame })
+	timerLabel = UI.Label({
+		Position = UDim2.fromOffset(12, 4),
+		Size = UDim2.new(0.44, -12, 0, 38),
+		Text = "⏱️ 0:00.0",
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Theme.Yellow,
+		MaxText = 32,
+		Outline = 3,
+		ZIndex = 7,
+		Parent = hudFrame,
+	})
+	cpLabel = UI.Label({
+		Position = UDim2.new(0.44, 0, 0, 8),
+		Size = UDim2.new(0.24, 0, 0, 30),
+		Text = "🚩 0/4",
+		TextColor3 = Color3.fromRGB(140, 230, 255),
+		MaxText = 24,
+		Outline = 2,
+		ZIndex = 7,
+		Parent = hudFrame,
+	})
+	bestLabel = UI.Label({
+		Position = UDim2.new(0.68, 0, 0, 8),
+		Size = UDim2.new(0.32, -12, 0, 30),
+		Text = "🏆 –",
+		TextXAlignment = Enum.TextXAlignment.Right,
+		TextColor3 = Color3.fromRGB(255, 230, 120),
+		MaxText = 24,
+		Outline = 2,
+		ZIndex = 7,
+		Parent = hudFrame,
+	})
+	subLabel = UI.Label({
+		Position = UDim2.fromOffset(12, 42),
+		Size = UDim2.new(1, -24, 0, 20),
+		Text = "",
+		TextColor3 = Theme.SubText,
+		MaxText = 16,
+		Outline = 2,
+		ZIndex = 7,
+		Parent = hudFrame,
+	})
+	-- roter Blitz beim Zurücksetzen (Lava, Runterfallen, Einschlag)
+	flashFrame = UI.Create("Frame", {
+		Name = "MeteorRunFlash",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.fromRGB(255, 60, 30),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 0,
+		Parent = ctx.Gui,
+	})
+	flashTween = TweenService:Create(flashFrame, FLASH_INFO, { BackgroundTransparency = 1 })
+end
+
+local function showHud(show: boolean)
+	if hudShown == show then
+		return
+	end
+	hudShown = show
+	hudToken += 1
+	local token = hudToken
+	if show then
+		hudFrame.Visible = true
+		hudScale.Scale = 0.5
+		TweenService:Create(hudScale, HUD_POP_INFO, { Scale = 1 }):Play()
+	else
+		local tween = TweenService:Create(hudScale, HUD_HIDE_INFO, { Scale = 0 })
+		tween.Completed:Connect(function()
+			if hudToken == token then
+				hudFrame.Visible = false
+			end
+		end)
+		tween:Play()
+	end
+end
+
+local function setText(label: TextLabel, text: string)
+	if label.Text ~= text then
+		label.Text = text
+	end
+end
+
+-- Attribute -> HUD (Checkpoint, Bestzeit, Abklingzeit); der Timer läuft in stepHud
+local function refreshHud()
+	local active = player:GetAttribute("RunActive") == true
+	local cp = tonumber(player:GetAttribute("RunCP")) or 0
+	local best = tonumber(player:GetAttribute("RunBest")) or 0
+	setText(cpLabel, ("🚩 %d/%d"):format(cp, checkpointCount))
+	setText(bestLabel, if best > 0 then "🏆 " .. formatRunTime(best) else "🏆 –")
+	lastTimerKey = -1
+	showHud(active or os.clock() < finishedUntil)
+end
+
+local function subText(now: number): string
+	local cooldown = tonumber(player:GetAttribute("RunCooldownUntil")) or 0
+	if cooldown > now then
+		return "⏳ Nächste Belohnung in " .. ctx.Util.FormatTime(math.ceil(cooldown - now))
+	end
+	return "🥚 Im Ziel wartet ein Gratis-Ei!"
+end
+
+local function stepHud()
+	if not hudShown then
+		return
+	end
+	local now = workspace:GetServerTimeNow()
+	local active = player:GetAttribute("RunActive") == true
+	local start = tonumber(player:GetAttribute("RunStart")) or 0
+	local key: number
+	if active and start > 0 then
+		key = math.floor((now - start) * 10)
+	elseif active then
+		key = -2
+	else
+		key = -3
+	end
+	if key == lastTimerKey then
+		return
+	end
+	lastTimerKey = key
+	if key >= 0 then
+		timerLabel.Text = "⏱️ " .. formatRunTime(now - start)
+		timerLabel.TextColor3 = Theme.Yellow
+	elseif key == -2 then
+		timerLabel.Text = "☄️ BEREIT – los!"
+		timerLabel.TextColor3 = Theme.Green
+	else
+		timerLabel.Text = finishedText or "🏁"
+		timerLabel.TextColor3 = Theme.Gold
+		if os.clock() >= finishedUntil then
+			showHud(false)
+		end
+	end
+	setText(subLabel, subText(now))
+end
+
+-- ---------------------------------------------------------------------
+-- ROTIERENDE BALKEN + SCHWEBENDES BELOHNUNGS-EI
+-- ---------------------------------------------------------------------
+type Spinner = { Pivot: CFrame, Offset: CFrame, Axis: Vector3, Speed: number, T0: number }
+
+local animParts: { BasePart } = {} -- für workspace:BulkMoveTo (Tabellen werden wiederverwendet)
+local animCFrames: { CFrame } = {}
+local spinners: { Spinner } = {}
+local eggPart: BasePart? = nil
+local eggBase = CFrame.new()
+local animCenter = Vector3.zero
+local animRadius = 0
+
+local function addSpinner(bar: BasePart)
+	local pivot = bar:GetAttribute("SpinPivot")
+	local axis = bar:GetAttribute("SpinAxis")
+	local speed = tonumber(bar:GetAttribute("SpinSpeed"))
+	local t0 = tonumber(bar:GetAttribute("SpinT0"))
+	if typeof(pivot) ~= "CFrame" or typeof(axis) ~= "Vector3" or not speed or not t0 then
+		return
+	end
+	local unitAxis = if axis.Magnitude > 0 then axis.Unit else Vector3.yAxis
+	table.insert(spinners, {
+		Pivot = pivot,
+		Offset = pivot:ToObjectSpace(bar.CFrame), -- Stellung zur Zeit T0 (so steht er auf dem Server)
+		Axis = unitAxis,
+		Speed = speed,
+		T0 = t0,
+	})
+	table.insert(animParts, bar)
+	table.insert(animCFrames, bar.CFrame)
+	-- Drehung auch für die Physik: wer getroffen wird, wird mitgeschoben (nur lokal)
+	bar.AssemblyAngularVelocity = pivot:VectorToWorldSpace(unitAxis) * speed
+end
+
+local function setupWorld(runFolder: Instance)
+	checkpointCount = tonumber(runFolder:GetAttribute("CheckpointCount")) or checkpointCount
+	local spinnerFolder = runFolder:WaitForChild("Spinners", 30)
+	if spinnerFolder then
+		for _, child in ipairs(spinnerFolder:GetChildren()) do
+			if child:IsA("BasePart") then
+				addSpinner(child)
+			end
+		end
+	end
+	local deco = runFolder:WaitForChild("Deco", 30)
+	local egg = deco and deco:FindFirstChild("RewardEgg")
+	if egg and egg:IsA("BasePart") then
+		eggPart = egg
+		eggBase = egg.CFrame
+		table.insert(animParts, egg)
+		table.insert(animCFrames, egg.CFrame)
+	end
+	-- grobe Vorab-Prüfung: Kreis um alles, was sich bewegt
+	if #animParts > 0 then
+		local sum = Vector3.zero
+		for _, p in ipairs(animParts) do
+			sum += p.Position
+		end
+		animCenter = sum / #animParts
+		for _, p in ipairs(animParts) do
+			animRadius = math.max(animRadius, (p.Position - animCenter).Magnitude)
+		end
+	end
+	refreshHud()
+end
+
+local function stepSpinners()
+	local count = #animParts
+	if count == 0 then
+		return
+	end
+	local camera = workspace.CurrentCamera
+	if not camera or (camera.CFrame.Position - animCenter).Magnitude > animRadius + ANIM_RANGE then
+		return
+	end
+	local now = workspace:GetServerTimeNow()
+	for i, spin in ipairs(spinners) do
+		animCFrames[i] = spin.Pivot
+			* CFrame.fromAxisAngle(spin.Axis, ((now - spin.T0) * spin.Speed) % TAU)
+			* spin.Offset
+	end
+	if eggPart then
+		animCFrames[count] = eggBase * CFrame.new(0, math.sin(now * 2) * 0.4, 0) * CFrame.Angles(0, now * 1.2, 0)
+	end
+	workspace:BulkMoveTo(animParts, animCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+end
+
+-- ---------------------------------------------------------------------
+-- WARNKREISE + EINSCHLÄGE
+-- ---------------------------------------------------------------------
+type Impact = {
+	Disc: Part,
+	Ring: Part,
+	Rock: Part,
+	Active: boolean,
+	At: number,
+	Position: Vector3,
+	Radius: number,
+}
+
+local fxFolder: Folder
+local impacts: { Impact } = {}
+local activeImpacts = 0
+local DISC_ROTATION = CFrame.Angles(0, 0, math.rad(90))
+local HIDDEN = CFrame.new(0, -500, 0)
+
+local function buildImpactPool()
+	for _ = 1, IMPACT_POOL do
+		local disc = localPart({
+			Name = "RunWarn",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.12, 2, 2),
+			Material = Enum.Material.Neon,
+			Color = WARN_COLOR,
+			Transparency = 1,
+			CFrame = HIDDEN,
+			Parent = fxFolder,
+		})
+		local ring = localPart({
+			Name = "RunWarnRing",
+			Shape = Enum.PartType.Cylinder,
+			Size = Vector3.new(0.08, 2, 2),
+			Material = Enum.Material.Neon,
+			Color = Color3.fromRGB(255, 220, 60),
+			Transparency = 1,
+			CFrame = HIDDEN,
+			Parent = fxFolder,
+		})
+		local rock = localPart({
+			Name = "RunMeteor",
+			Shape = Enum.PartType.Ball,
+			Size = Vector3.new(3.4, 3.4, 3.4),
+			Material = Enum.Material.CrackedLava,
+			Color = Color3.fromRGB(255, 110, 40),
+			Transparency = 1,
+			CFrame = HIDDEN,
+			Parent = fxFolder,
+		})
+		UI.Create("Trail", {
+			Attachment0 = UI.Create("Attachment", { Position = Vector3.new(0, 1.2, 0), Parent = rock }),
+			Attachment1 = UI.Create("Attachment", { Position = Vector3.new(0, -1.2, 0), Parent = rock }),
+			Color = ColorSequence.new(Color3.fromRGB(255, 220, 90), Color3.fromRGB(255, 60, 20)),
+			Transparency = NumberSequence.new(0.1, 1),
+			Lifetime = 0.25,
+			LightEmission = 1,
+			Parent = rock,
+		})
+		table.insert(impacts, {
+			Disc = disc,
+			Ring = ring,
+			Rock = rock,
+			Active = false,
+			At = 0,
+			Position = Vector3.zero,
+			Radius = 6,
+		})
+	end
+end
+
+local function hideImpact(impact: Impact)
+	impact.Active = false
+	activeImpacts -= 1
+	impact.Disc.Transparency = 1
+	impact.Ring.Transparency = 1
+	impact.Rock.Transparency = 1
+	impact.Disc.CFrame = HIDDEN
+	impact.Ring.CFrame = HIDDEN
+	impact.Rock.CFrame = HIDDEN
+end
+
+local function startImpact(data: any)
+	if type(data) ~= "table" or typeof(data.Position) ~= "Vector3" then
+		return
+	end
+	local camera = workspace.CurrentCamera
+	if camera and (camera.CFrame.Position - data.Position).Magnitude > ANIM_RANGE + 100 then
+		return -- viel zu weit weg
+	end
+	-- freien Platz im Pool nehmen, sonst den ältesten
+	local slot: Impact? = nil
+	for _, impact in ipairs(impacts) do
+		if not impact.Active then
+			slot = impact
+			break
+		end
+		if not slot or impact.At < slot.At then
+			slot = impact
+		end
+	end
+	if not slot then
+		return
+	end
+	if slot.Active then
+		hideImpact(slot)
+	end
+	slot.Active = true
+	activeImpacts += 1
+	slot.At = tonumber(data.At) or (workspace:GetServerTimeNow() + IMPACT_WARN)
+	slot.Position = data.Position
+	slot.Radius = tonumber(data.Radius) or 6
+	local diameter = slot.Radius * 2
+	slot.Ring.Size = Vector3.new(0.08, diameter, diameter)
+	slot.Ring.CFrame = CFrame.new(data.Position + Vector3.new(0, 0.06, 0)) * DISC_ROTATION
+	slot.Ring.Transparency = 0.2
+	slot.Rock.Transparency = 0
+end
+
+local function stepImpacts()
+	if activeImpacts <= 0 then
+		return
+	end
+	local now = workspace:GetServerTimeNow()
+	for _, impact in ipairs(impacts) do
+		if impact.Active then
+			local left = impact.At - now
+			if left <= 0 then
+				hideImpact(impact)
+				local position = impact.Position
+				ctx.Effects.Play("Hatch", 0, { Position = position + Vector3.new(0, 1, 0), Rarity = "Mythic" })
+				local character = player.Character
+				local root = character and character:FindFirstChild("HumanoidRootPart")
+				if root and root:IsA("BasePart") and (root.Position - position).Magnitude < impact.Radius * 3 then
+					ctx.Effects.Play("Shake", 0.7)
+				end
+			else
+				local progress = math.clamp(1 - left / IMPACT_WARN, 0, 1)
+				local diameter = impact.Radius * 2 * (0.25 + 0.75 * progress)
+				impact.Disc.Size = Vector3.new(0.12, diameter, diameter)
+				impact.Disc.CFrame = CFrame.new(impact.Position + Vector3.new(0, 0.08, 0)) * DISC_ROTATION
+				impact.Disc.Transparency = 0.25 + 0.25 * math.abs(math.sin(progress * math.pi * 4))
+				local fall = (1 - progress) * (1 - progress)
+				impact.Rock.CFrame =
+					CFrame.new(impact.Position + Vector3.new(fall * 18, 1.7 + fall * IMPACT_FALL_HEIGHT, 0))
+			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- CHECKPOINT-, START-, ZIEL- UND RESET-EFFEKTE
+-- ---------------------------------------------------------------------
+local sparkHolder: Part
+local sparkEmitter: ParticleEmitter
+local pingSound: Sound
+local checkpointPads: { [number]: BasePart } = {}
+
+local function buildEffects()
+	sparkHolder = localPart({
+		Name = "RunSparks",
+		Size = Vector3.new(0.2, 0.2, 0.2),
+		Transparency = 1,
+		CFrame = HIDDEN,
+		Parent = fxFolder,
+	})
+	sparkEmitter = UI.Create("ParticleEmitter", {
+		Color = ColorSequence.new(CHECKPOINT_COLOR, CHECKPOINT_DONE_COLOR),
+		LightEmission = 1,
+		LightInfluence = 0,
+		Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 0) }),
+		Transparency = NumberSequence.new(0, 1),
+		Lifetime = NumberRange.new(0.6, 1.1),
+		Speed = NumberRange.new(14, 28),
+		SpreadAngle = Vector2.new(60, 60),
+		EmissionDirection = Enum.NormalId.Top,
+		Acceleration = Vector3.new(0, -30, 0),
+		Drag = 1.5,
+		Rate = 0,
+		Parent = sparkHolder,
+	})
+	-- Sound direkt im Ordner (nicht in einem Part) = überall gleich laut
+	pingSound = UI.Create("Sound", { SoundId = PING_SOUND, Volume = 0.6, Parent = fxFolder })
+end
+
+local function ping(pitch: number)
+	pingSound.PlaybackSpeed = pitch
+	pingSound.TimePosition = 0
+	pingSound:Play()
+end
+
+local function sparks(position: Vector3, amount: number)
+	sparkHolder.CFrame = CFrame.new(position)
+	sparkEmitter:Emit(amount)
+end
+
+-- Erreichte Checkpoints leuchten lokal grün
+local function colorPads()
+	local active = player:GetAttribute("RunActive") == true
+	local cp = if active then tonumber(player:GetAttribute("RunCP")) or 0 else 0
+	for index, pad in pairs(checkpointPads) do
+		local color = if index <= cp then CHECKPOINT_DONE_COLOR else CHECKPOINT_COLOR
+		if pad.Color ~= color then
+			pad.Color = color
+		end
+	end
+end
+
+local function onEffect(name: any, strength: any, data: any)
+	if name == "RunImpact" then
+		startImpact(data)
+	elseif name == "RunCheckpoint" then
+		local position = type(data) == "table" and typeof(data.Position) == "Vector3" and data.Position or nil
+		if position then
+			sparks(position, 60)
+		end
+		ping(1.2)
+		UI.Pulse(hudScale, 0.12)
+		local time = type(data) == "table" and tonumber(data.Time)
+		ctx.Toast(
+			"🚩 Checkpoint "
+				.. tostring(tonumber(strength) or 0)
+				.. "/"
+				.. checkpointCount
+				.. (if time then "  ⏱️ " .. formatRunTime(time) else ""),
+			"Success"
+		)
+	elseif name == "RunStart" then
+		ping(1.5)
+		UI.Pulse(hudScale, 0.15)
+	elseif name == "RunReset" then
+		ping(0.6)
+		flashFrame.BackgroundTransparency = 0.55
+		flashTween:Play()
+		ctx.Effects.Play("Shake", 0.5)
+	elseif name == "RunFinish" then
+		local info = if type(data) == "table" then data else {}
+		local time = tonumber(info.Time) or tonumber(strength) or 0
+		finishedText = "🏁 " .. formatRunTime(time) .. (if info.NewBest == true then "  🏆 NEU!" else "")
+		finishedUntil = os.clock() + FINISH_SHOW_TIME
+		ping(1.8)
+		task.delay(0.15, ping, 2.2)
+		ctx.Effects.Play("Confetti", if info.Reward == true then 2.5 else 1.2)
+		local egg = eggPart
+		if egg then
+			ctx.Effects.Play("Hatch", 0, { Position = egg.Position, Rarity = "Legendary" })
+			sparks(egg.Position, 80)
+		end
+		refreshHud()
+		task.delay(FINISH_SHOW_TIME + 0.1, refreshHud)
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- START
+-- ---------------------------------------------------------------------
+function MeteorRun.Start(context: any)
+	ctx = context
+	buildHud()
+	fxFolder = UI.Create("Folder", { Name = "MeteorRunClientFX", Parent = workspace })
+	buildImpactPool()
+	buildEffects()
+
+	-- Knopf rechts (gleicher Stil wie die anderen): zum Start-Tor
+	ctx.Hud.AddRightButton("☄️", "Run", Theme.Orange, 7, function()
+		ctx.Request("GoRun")
+	end)
+
+	for _, attribute in ipairs({ "RunActive", "RunStart", "RunCP", "RunBest", "RunCooldownUntil" }) do
+		player:GetAttributeChangedSignal(attribute):Connect(function()
+			refreshHud()
+			colorPads()
+		end)
+	end
+	ctx.Remotes.Effect.OnClientEvent:Connect(onEffect)
+
+	RunService.RenderStepped:Connect(function()
+		stepSpinners()
+		stepImpacts()
+		stepHud()
+	end)
+
+	-- Welt-Teile kommen vom Server (Map wird beim Serverstart gebaut)
+	task.spawn(function()
+		local map = workspace:WaitForChild("MeteorHeistMap", 120)
+		local runFolder = map and map:WaitForChild("MeteorRun", 60)
+		if not runFolder then
+			warn("[MeteorRun] Strecke nicht gefunden – Run-Animationen aus")
+			return
+		end
+		local pads = runFolder:WaitForChild("Checkpoints", 30)
+		if pads then
+			for _, pad in ipairs(pads:GetChildren()) do
+				local index = pad:GetAttribute("CheckpointIndex")
+				if pad:IsA("BasePart") and type(index) == "number" then
+					checkpointPads[index] = pad
+				end
+			end
+		end
+		setupWorld(runFolder)
+		colorPads()
+	end)
+	refreshHud()
+end
+
+return MeteorRun
+]]></string>
+            </Properties>
+          </Item>
+          <Item class="ModuleScript" referent="38">
             <Properties>
               <string name="Name">PhotoMode</string>
               <string name="Source"><![CDATA[-- =====================================================================
@@ -15622,7 +18235,7 @@ return PhotoMode
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="37">
+          <Item class="ModuleScript" referent="39">
             <Properties>
               <string name="Name">Prompts</string>
               <string name="Source"><![CDATA[-- =====================================================================
@@ -15999,7 +18612,7 @@ return Prompts
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="38">
+          <Item class="ModuleScript" referent="40">
             <Properties>
               <string name="Name">Rewards</string>
               <string name="Source"><![CDATA[-- =====================================================================
@@ -16008,7 +18621,10 @@ return Prompts
 --  ("ClaimGift", "Spin", "ClaimQuest", "RerollQuest"). Countdowns laufen lokal weiter – ohne dass
 --  der Server jede Sekunde senden muss: FreeSpinIn gilt ab der Ankunft des States (ctx.StateTime),
 --  die Geschenke kommen nur bei Änderung und zählen ab GiftsAt (Serverzeit).
---  Das Glücksrad dreht flüssig mit Ease-Out genau auf das Feld, das der Server gewürfelt hat.
+--  Das Glücksrad holt kurz Schwung (dreht ein Stück zurück), läuft realistisch aus, rollt einen
+--  Hauch über das Ziel hinaus und pendelt zurück – genau auf das Feld, das der Server gewürfelt hat.
+--  Der Zeiger schnippt an jedem Feld und wackelt gedämpft nach (Feder), die Lämpchen blinken
+--  passend zum Tempo.
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -16280,9 +18896,15 @@ local SPOKES_PER_SEGMENT = 12
 local SPIN_TIME = 4.4
 local SPIN_TURNS = 5
 local SPIN_INFO = TweenInfo.new(SPIN_TIME, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local WINDUP_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local SETTLE_INFO = TweenInfo.new(0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 local WIN_POP_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 2, true)
-local POINTER_KICK = 22 -- so weit schnippt der Zeiger, wenn ein Feld vorbeisaust
-local POINTER_BACK = 0.12 -- Sekunden bis er wieder gerade steht
+local WINDUP_ANGLE = 9 -- so weit holt das Rad vor dem Drehen Schwung (Grad zurück)
+local OVERSHOOT = 0.14 -- rollt so viel (Anteil eines Felds) übers Ziel und pendelt zurück
+local POINTER_KICK = 26 -- so weit schnippt der Zeiger höchstens, wenn ein Feld vorbeisaust
+local POINTER_STIFFNESS = 700 -- Feder des Zeigers (höher = schneller zurück)
+local POINTER_DAMPING = 13 -- Dämpfung (niedriger = wackelt länger nach)
+local POINTER_STEP = 1 / 240 -- Rechenschritt der Zeiger-Feder (stabil bei jeder Bildrate)
 local LIGHT_COUNT = 16
 local LIGHT_ON = Color3.fromRGB(255, 245, 160)
 local LIGHT_OFF = Color3.fromRGB(255, 120, 40)
@@ -16649,39 +19271,64 @@ function Rewards.RefreshWheel(state: any)
 	end
 end
 
--- Dreht den Rotor flüssig (Ease-Out) auf das Feld "segment" (1 = oben, im Uhrzeigersinn).
--- Wartet, bis das Rad steht.
+-- Dreht den Rotor auf das Feld "segment" (1 = oben, im Uhrzeigersinn): Schwung holen, auslaufen,
+-- leicht drüberrollen, zurückpendeln. Wartet, bis das Rad steht.
 local function spinTo(segment: number)
 	local count = segmentCount()
 	local segAngle = 360 / count
 	local start = wheelRotor.Rotation % 360
 	wheelRotor.Rotation = start
 	-- Der Zeiger oben zeigt auf den Rad-Winkel -Rotation -> Feld i steht oben bei -(i-1)*segAngle
-	local target = (360 - (segment - 1) * segAngle) % 360 + (math.random() - 0.5) * segAngle * 0.6
+	local target = (360 - (segment - 1) * segAngle) % 360 + (math.random() - 0.5) * segAngle * 0.5
 	local final = start + 360 * SPIN_TURNS + (target - start) % 360
-	local tween = TweenService:Create(wheelRotor, SPIN_INFO, { Rotation = final })
 	local lastIndex = math.floor((start + segAngle / 2) / segAngle)
-	local kickAge = POINTER_BACK
+	local lastRotation = start
+	local pointerAngle, pointerVelocity = 0, 0
+	local pointerClock = 0
 	local lightClock = 0
 	local connection = RunService.RenderStepped:Connect(function(dt: number)
-		-- Zeiger schnippt bei jedem vorbeisausenden Feld (ohne neue Tweens pro Frame)
-		local index = math.floor((wheelRotor.Rotation + segAngle / 2) / segAngle)
+		local rotation = wheelRotor.Rotation
+		local speed = if dt > 0 then math.abs(rotation - lastRotation) / dt else 0 -- Grad/s
+		lastRotation = rotation
+		-- Zeiger schnippt bei jedem vorbeisausenden Feld (je schneller, desto weiter)
+		local index = math.floor((rotation + segAngle / 2) / segAngle)
 		if index ~= lastIndex then
 			lastIndex = index
-			kickAge = 0
-		else
-			kickAge += dt
+			local kick = POINTER_KICK * math.clamp(speed / 500, 0.35, 1)
+			pointerAngle = math.min(pointerAngle, -kick)
+			pointerVelocity = math.min(pointerVelocity, 0)
 		end
-		local kick = math.max(0, 1 - kickAge / POINTER_BACK)
-		wheelPointer.Rotation = -POINTER_KICK * kick
+		-- Feder zurück in die Mitte (gedämpftes Nachwackeln), in kleinen festen Schritten
+		pointerClock += math.min(dt, 0.1)
+		while pointerClock >= POINTER_STEP do
+			pointerClock -= POINTER_STEP
+			local accel = -POINTER_STIFFNESS * pointerAngle - POINTER_DAMPING * pointerVelocity
+			pointerVelocity += accel * POINTER_STEP
+			pointerAngle += pointerVelocity * POINTER_STEP
+		end
+		wheelPointer.Rotation = math.clamp(pointerAngle, -POINTER_KICK - 6, 10)
+		-- Lämpchen blinken schnell, solange das Rad schnell ist, und werden mit ihm langsamer
 		lightClock += dt
-		if lightClock >= 0.09 then
+		local interval = math.clamp(18 / math.max(speed, 1), 0.06, 0.35)
+		if lightClock >= interval then
 			lightClock = 0
 			setLights(not lightsFlipped)
 		end
 	end)
+	-- 1) Schwung holen
+	local windup = TweenService:Create(wheelRotor, WINDUP_INFO, { Rotation = start - WINDUP_ANGLE })
+	windup:Play()
+	windup.Completed:Wait()
+	-- 2) auslaufen (etwas über das Ziel hinaus) 3) zurückpendeln
+	local over = final + segAngle * OVERSHOOT
+	local tween = TweenService:Create(wheelRotor, SPIN_INFO, { Rotation = over })
 	tween:Play()
 	tween.Completed:Wait()
+	local settle = TweenService:Create(wheelRotor, SETTLE_INFO, { Rotation = final })
+	settle:Play()
+	settle.Completed:Wait()
+	-- Zeiger noch kurz auspendeln lassen
+	task.wait(0.25)
 	connection:Disconnect()
 	wheelRotor.Rotation = final % 360
 	wheelPointer.Rotation = 0
@@ -16694,6 +19341,14 @@ local function celebrate(segment: number)
 		scale.Scale = 1
 		TweenService:Create(scale, WIN_POP_INFO, { Scale = 1.7 }):Play()
 	end
+	-- Lämpchen blinken zur Feier ein paar Mal schnell
+	task.spawn(function()
+		for _ = 1, 8 do
+			setLights(not lightsFlipped)
+			task.wait(0.09)
+		end
+		setLights(false)
+	end)
 end
 
 function Rewards.Spin()
@@ -16941,18 +19596,20 @@ return Rewards
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="39">
+          <Item class="ModuleScript" referent="41">
             <Properties>
               <string name="Name">UI</string>
               <string name="Source"><![CDATA[-- =====================================================================
 --  UI-BAUKASTEN im knalligen Simulator-Stil
---  Knöpfe mit Farbverlauf, dicker schwarzer Kontur und Feder-Effekt,
---  Fenster, die weich auf- und zugehen, Toasts, die hereingleiten,
---  flüssig hochzählende Zahlen und getweente Fortschrittsbalken.
+--  Knöpfe mit Farbverlauf, dicker schwarzer Kontur und Feder-Effekt (Hover-Glühen,
+--  Stauchen beim Drücken, Klick-Welle), Fenster, die federnd aufgehen und die Welt dahinter
+--  weichzeichnen (BlurEffect, beim Schließen wieder weg), Toasts, die mit Feder hereingleiten,
+--  flüssig hochzählende Zahlen (kurzes Aufploppen + Farbblitz bei Zuwachs) und getweente Balken.
 --  Alle anderen Client-Module bauen ihre Oberfläche hiermit.
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
+local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local PolicyService = game:GetService("PolicyService")
 local RunService = game:GetService("RunService")
@@ -16987,17 +19644,29 @@ UI.Theme = {
 local HOVER_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local PRESS_INFO = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local RELEASE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local SQUASH_RELEASE_INFO = TweenInfo.new(0.45, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+local GLOW_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local RIPPLE_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local OPEN_FADE_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local OPEN_POP_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local CLOSE_INFO = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local OPEN_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local CLOSE_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local BLUR_IN_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local BLUR_OUT_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local COUNTER_FLASH_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true)
 local BAR_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local PULSE_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local TOAST_GROW_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local TOAST_SLIDE_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_SLIDE_INFO = TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_POP_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
 local TOAST_FADE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local TOAST_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 local COUNTER_INTERVAL = 1 / 30 -- Zahlen höchstens 30x pro Sekunde neu schreiben
+local COUNTER_POP_GAP = 0.15 -- so oft höchstens ein Aufploppen pro Zähler
+local BUTTON_SQUASH = UDim2.fromScale(1.07, 0.86) -- gedrückter Knopf: breiter + flacher
+local BUTTON_NORMAL = UDim2.fromScale(1, 1)
+local BLUR_SIZE = 14 -- Weichzeichner hinter offenen Fenstern
+local WINDOW_SLIDE = 36 -- Fenster gleiten aus so vielen Pixeln von unten herein
 local TOAST_HEIGHT = 40
 local MAX_TOASTS = 5
 local MAX_TOAST_POOL = 8 -- so viele fertige Toasts werden zum Wiederverwenden aufgehoben
@@ -17186,6 +19855,25 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 		Parent = btn,
 	}, { UI.Corner(math.max(2, cornerRadius - 3)) })
 
+	-- Hover-Glühen: weiße Fläche über dem Knopf, beim Drüberfahren leicht sichtbar
+	local glow: Frame = UI.Create("Frame", {
+		Name = "Glow",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 1,
+		ZIndex = z,
+		Parent = btn,
+	}, { UI.Corner(cornerRadius) })
+	-- Klick-Wellen (abgeschnitten auf die Knopffläche)
+	local rippleBox: Frame = UI.Create("Frame", {
+		Name = "Ripples",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		ZIndex = z,
+		Parent = btn,
+	})
+
 	local hasSub = props.Sub ~= nil
 	local main = UI.Label({
 		Name = "Label",
@@ -17214,28 +19902,66 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 		})
 	end
 
-	-- Feder-Effekt: Maus drüber = etwas größer, drücken = kleiner, loslassen = federt zurück
+	-- Feder-Effekt: Maus drüber = etwas größer + Glühen, drücken = kleiner + gestaucht (breit/flach)
+	-- + Welle ab dem Klickpunkt, loslassen = federt elastisch zurück
 	local hovering = false
 	local function spring(target: number, info: TweenInfo)
 		TweenService:Create(scale, info, { Scale = target }):Play()
+	end
+	local function setGlow(transparency: number)
+		TweenService:Create(glow, GLOW_INFO, { BackgroundTransparency = transparency }):Play()
+	end
+	local function ripple(position: Vector3)
+		local absPos, absSize = btn.AbsolutePosition, btn.AbsoluteSize
+		if absSize.X < 1 or absSize.Y < 1 then
+			return
+		end
+		local x = math.clamp((position.X - absPos.X) / absSize.X, 0, 1)
+		local y = math.clamp((position.Y - absPos.Y) / absSize.Y, 0, 1)
+		local wave: Frame = UI.Create("Frame", {
+			Name = "Ripple",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(x, y),
+			Size = UDim2.fromScale(0, 0),
+			SizeConstraint = Enum.SizeConstraint.RelativeXX, -- rund bleiben (Höhe = Breite)
+			BackgroundColor3 = WHITE,
+			BackgroundTransparency = 0.55,
+			ZIndex = z,
+			Parent = rippleBox,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+		local grow =
+			TweenService:Create(wave, RIPPLE_INFO, { Size = UDim2.fromScale(2.4, 2.4), BackgroundTransparency = 1 })
+		grow.Completed:Once(function()
+			wave:Destroy()
+		end)
+		grow:Play()
 	end
 	btn.InputBegan:Connect(function(input)
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.MouseMovement then
 			hovering = true
 			spring(1.06, HOVER_INFO)
+			setGlow(0.82)
 		elseif kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
-			spring(0.9, PRESS_INFO)
+			spring(0.93, PRESS_INFO)
+			TweenService:Create(btn, PRESS_INFO, { Size = BUTTON_SQUASH }):Play()
+			setGlow(0.7)
+			ripple(input.Position)
 		end
 	end)
 	btn.InputEnded:Connect(function(input)
 		local kind = input.UserInputType
+		if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+			TweenService:Create(btn, SQUASH_RELEASE_INFO, { Size = BUTTON_NORMAL }):Play()
+		end
 		if kind == Enum.UserInputType.MouseButton1 then
 			spring(if hovering then 1.06 else 1, RELEASE_INFO)
+			setGlow(if hovering then 0.82 else 1)
 		elseif kind == Enum.UserInputType.MouseMovement or kind == Enum.UserInputType.Touch then
 			-- Maus raus bzw. Finger weg: zurück auf normale Größe
 			hovering = false
 			spring(1, RELEASE_INFO)
+			setGlow(1)
 		end
 	end)
 
@@ -17469,22 +20195,56 @@ export type Counter = {
 	Target: number,
 	Shown: number,
 	Text: string,
+	Scale: UIScale?, -- UIScale am Label (falls vorhanden): ploppt bei Zuwachs kurz auf
+	Color: Color3, -- eigentliche Schriftfarbe (Farbblitz kehrt dahin zurück)
+	PopAt: number,
 }
 
 local counters: { Counter } = {}
 local counterClock = 0
+local COUNTER_UP_COLOR = Color3.fromRGB(255, 255, 255)
+local COUNTER_DOWN_COLOR = Color3.fromRGB(255, 110, 110)
 
 function UI.Counter(target: TextLabel, format: (number) -> string): Counter
-	local counter: Counter = { Label = target, Format = format, Target = 0, Shown = 0, Text = format(0) }
+	local counter: Counter = {
+		Label = target,
+		Format = format,
+		Target = 0,
+		Shown = 0,
+		Text = format(0),
+		Scale = target:FindFirstChildOfClass("UIScale"),
+		Color = target.TextColor3,
+		PopAt = 0,
+	}
 	target.Text = counter.Text
 	table.insert(counters, counter)
 	return counter
+end
+
+-- Kurzer Farbblitz (weiß bei Zuwachs, rot bei Abnahme) + Aufploppen bei Zuwachs
+local function popCounter(counter: Counter, up: boolean)
+	local now = os.clock()
+	if now - counter.PopAt < COUNTER_POP_GAP then
+		return
+	end
+	counter.PopAt = now
+	local label = counter.Label
+	label.TextColor3 = counter.Color
+	TweenService:Create(label, COUNTER_FLASH_INFO, { TextColor3 = if up then COUNTER_UP_COLOR else COUNTER_DOWN_COLOR })
+		:Play()
+	local scale = counter.Scale
+	if up and scale then
+		UI.Pulse(scale, 0.1)
+	end
 end
 
 -- instant = true: sofort anzeigen (z.B. beim ersten Laden)
 function UI.SetCounter(counter: Counter, value: number, instant: boolean?)
 	if type(value) ~= "number" or value ~= value then
 		return
+	end
+	if not instant and value ~= counter.Target then
+		popCounter(counter, value > counter.Target)
 	end
 	counter.Target = value
 	if instant then
@@ -17543,6 +20303,44 @@ export type Window = {
 }
 
 local windows: { Window } = {}
+local blur: BlurEffect? = nil
+
+local function anyWindowOpen(): boolean
+	for _, win in ipairs(windows) do
+		if win.IsOpen then
+			return true
+		end
+	end
+	return false
+end
+
+-- Welt hinter offenen Fenstern weichzeichnen (lokaler BlurEffect, nach dem Schließen wieder weg)
+local function updateBlur()
+	if anyWindowOpen() then
+		local effect = blur
+		if not effect or effect.Parent == nil then
+			effect = UI.Create("BlurEffect", { Name = "MeteorHeistWindowBlur", Size = 0, Parent = Lighting })
+			blur = effect
+		end
+		if effect then
+			TweenService:Create(effect, BLUR_IN_INFO, { Size = BLUR_SIZE }):Play()
+		end
+	else
+		local effect = blur
+		if not effect then
+			return
+		end
+		local fade = TweenService:Create(effect, BLUR_OUT_INFO, { Size = 0 })
+		fade.Completed:Once(function()
+			-- inzwischen wieder ein Fenster offen? Dann bleibt er
+			if blur == effect and not anyWindowOpen() then
+				blur = nil
+				effect:Destroy()
+			end
+		end)
+		fade:Play()
+	end
+end
 
 -- Inhalt für die Animation in die CanvasGroup hängen
 local function beginFade(win: Window)
@@ -17566,7 +20364,8 @@ function UI.CloseWindow(win: Window)
 	win.Token += 1
 	local token = win.Token
 	beginFade(win)
-	TweenService:Create(win.Scale, CLOSE_INFO, { Scale = 0.9 }):Play()
+	TweenService:Create(win.Scale, CLOSE_INFO, { Scale = 0.86 }):Play()
+	TweenService:Create(win.Group, CLOSE_INFO, { Position = UDim2.new(0.5, 0, 0.5, WINDOW_SLIDE * 0.6) }):Play()
 	local fade = TweenService:Create(win.Fader, CLOSE_INFO, { GroupTransparency = 1 })
 	fade.Completed:Connect(function()
 		if win.Token == token then
@@ -17575,6 +20374,7 @@ function UI.CloseWindow(win: Window)
 		end
 	end)
 	fade:Play()
+	updateBlur()
 end
 
 function UI.OpenWindow(win: Window)
@@ -17592,7 +20392,8 @@ function UI.OpenWindow(win: Window)
 	beginFade(win)
 	if not win.Group.Visible then
 		win.Fader.GroupTransparency = 1
-		win.Scale.Scale = 0.86
+		win.Scale.Scale = 0.7
+		win.Group.Position = UDim2.new(0.5, 0, 0.5, WINDOW_SLIDE)
 		win.Group.Visible = true
 	end
 	local fade = TweenService:Create(win.Fader, OPEN_FADE_INFO, { GroupTransparency = 0 })
@@ -17602,7 +20403,10 @@ function UI.OpenWindow(win: Window)
 		end
 	end)
 	fade:Play()
+	-- federnd aufgehen (Back-Easing schießt etwas über 1 hinaus) und von unten hereingleiten
 	TweenService:Create(win.Scale, OPEN_POP_INFO, { Scale = 1 }):Play()
+	TweenService:Create(win.Group, OPEN_POP_INFO, { Position = UDim2.fromScale(0.5, 0.5) }):Play()
+	updateBlur()
 	if win.OnOpen then
 		task.spawn(win.OnOpen)
 	end
@@ -17728,6 +20532,7 @@ end
 type ToastEntry = {
 	Container: Frame,
 	Inner: Frame,
+	Scale: UIScale,
 	Panel: Frame,
 	PanelStroke: UIStroke,
 	Gradient: UIGradient,
@@ -17769,12 +20574,13 @@ local function newToastEntry(): ToastEntry
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundTransparency = 1,
 	})
+	local toastScale: UIScale = UI.Create("UIScale", { Scale = 1 })
 	local inner: Frame = UI.Create("Frame", {
 		Name = "Inner",
 		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
 		BackgroundTransparency = 1,
 		Parent = container,
-	})
+	}, { toastScale })
 	local panelStroke = UI.Stroke(BLACK, 3)
 	local gradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
 	local panel: Frame = UI.Create("Frame", {
@@ -17794,6 +20600,7 @@ local function newToastEntry(): ToastEntry
 	return {
 		Container = container,
 		Inner = inner,
+		Scale = toastScale,
 		Panel = panel,
 		PanelStroke = panelStroke,
 		Gradient = gradient,
@@ -17888,12 +20695,15 @@ function UI.Toast(text: string, kind: string?)
 	entry.Label.Text = text
 	entry.Container.Size = UDim2.new(1, 0, 0, 0)
 	entry.Container.LayoutOrder = toastCount
-	entry.Inner.Position = UDim2.fromOffset(70, 0)
+	entry.Inner.Position = UDim2.fromOffset(170, 0)
+	entry.Scale.Scale = 0.8
 	setToastTransparency(entry, 1)
 	entry.Container.Parent = holder
 	table.insert(activeToasts, entry)
 	TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
+	-- gleitet mit Feder herein (schießt etwas über die Mitte und federt zurück) + ploppt elastisch auf
 	TweenService:Create(entry.Inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
+	TweenService:Create(entry.Scale, TOAST_POP_INFO, { Scale = 1 }):Play()
 	fadeToast(entry, TOAST_FADE_INFO, 0)
 	while #activeToasts > MAX_TOASTS do
 		removeToast(toastToDrop())
@@ -18029,7 +20839,7 @@ return UI
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="40">
+          <Item class="ModuleScript" referent="42">
             <Properties>
               <string name="Name">Windows</string>
               <string name="Source"><![CDATA[-- =====================================================================
@@ -19306,22 +22116,29 @@ return Windows
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="41">
+          <Item class="ModuleScript" referent="43">
             <Properties>
               <string name="Name">WorldFX</string>
               <string name="Source"><![CDATA[-- =====================================================================
 --  WELT-ANIMATIONEN (alles lokal auf deinem Gerät -> butterweich, kein Server-Lag)
---   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start)
+--   • Meteore auf dem großen Laufband: Position = Start + Richtung * Tempo * (Zeit seit Start),
+--     dazu sanftes Wippen + Taumeln + Drehen, leuchtende Meteore pulsieren
 --     (sichtbare in der Nähe jedes Frame, weit weg seltener, außerhalb des Sichtfelds noch seltener)
---   • Streifen auf dem Laufband und auf den Treadmills laufen mit
---   • Aliens wippen sanft, Regenbogen-Teile färben sich durch
+--   • Streifen auf dem Laufband und auf den Treadmills laufen gleichmäßig durch und tauchen an den
+--     Enden unter die Lauffläche (kein Aufploppen)
+--   • Aliens leben: Atmen mit Squash & Stretch, kleine Hüpfer, Blinzeln, drehen sich zu Spielern
+--   • Eier wackeln die letzten Sekunden immer stärker, Risse leuchten auf; frisch geschlüpfte
+--     Aliens ploppen mit Overshoot herein
+--   • Regenbogen-Teile färben sich durch
 --   • Umrisse (Highlights): nur die nächsten paar sind an (Roblox zeigt max. 31, jeder kostet Leistung)
 --   • Lava-Feuer an Band-Meteoren (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
---  Arbeit pro Frame ist begrenzt: weit entfernte Dinge werden seltener oder gar nicht bewegt.
+--  Arbeit pro Frame ist begrenzt: höchstens MAX_ANIM Aliens in ANIM_RANGE Studs werden animiert
+--  (jedes ca. 30x pro Sekunde), weit entfernte Dinge werden seltener oder gar nicht bewegt.
 -- =====================================================================
 
+local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
@@ -19336,12 +22153,12 @@ local FAR_FRAME_SKIP = 4 -- weiter weg: nur jedes 4. Frame
 local BEHIND_FRAME_SKIP = 8 -- außerhalb des Sichtfelds (nicht zu sehen): nur jedes 8. Frame
 local CLOSE_DISTANCE = 40 -- so nah immer jedes Frame (auch knapp hinter/neben der Kamera sichtbar)
 local VIEW_MARGIN = math.rad(12) -- Sichtfeld etwas größer rechnen (große Meteore am Bildrand)
-local STRIPE_NEAR = 100 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
+local MAX_NEAR_BELT = 60 -- mehr nahe Band-Meteore pro Frame -> der Rest nur jedes 2. Frame
+local STRIPE_NEAR = 140 -- Hauptband-Streifen weiter weg nur jedes 4. Frame (dünn, fällt nicht auf)
 local STRIPE_RANGE = 320 -- Streifen auf Treadmills nur in der Nähe bewegen
-local BOB_RANGE = 100 -- Aliens nur in der Nähe wippen lassen
-local MAX_BOB = 24 -- höchstens so viele (die nächsten) wippen gleichzeitig
-local SLOW_INTERVAL = 1 / 30 -- Wippen + Regenbogen höchstens 30x pro Sekunde
-local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens wippen / welche Umrisse an sind
+local STRIPE_SINK = 0.14 -- so tief tauchen die Streifen an den Enden unter die Lauffläche
+local SLOW_INTERVAL = 1 / 30 -- Alien-Animation + Regenbogen höchstens 30x pro Sekunde
+local SCAN_INTERVAL = 0.5 -- so oft wird neu gewählt, welche Aliens leben / welche Umrisse an sind
 local CLEANUP_INTERVAL = 1 -- so oft fliegen zerstörte Objekte aus den Listen
 local MAX_HIGHLIGHTS = 12 -- so viele Umrisse höchstens gleichzeitig (die nächsten)
 local HIGHLIGHT_RANGE = 150
@@ -19351,6 +22168,34 @@ local HATCH_INTERVAL = 0.2 -- Schlüpf-Countdown 5x pro Sekunde
 local HATCH_RANGE = 170
 local RAINBOW_RANGE = 400
 local BELT_SPIN = 0.6 -- sanfte Drehung der Meteore auf dem Band (rad/s)
+local BELT_BOB_SPEED = 2.2 -- Wippen der Band-Meteore (rad/s)
+local BELT_TILT = 0.12 -- Taumeln der Band-Meteore (rad)
+
+-- Aliens
+local ANIM_RANGE = 120 -- nur Aliens in Kameranähe animieren
+local MAX_ANIM = 60 -- höchstens so viele (die nächsten) gleichzeitig
+local MAX_SQUASH = 20 -- so viele (die nächsten) werden zusätzlich gestaucht/gestreckt
+local SQUASH_RANGE = 70
+local LOOK_RANGE = 35 -- Spieler so nah -> Alien dreht sich zu ihm
+local MAX_TURN = math.rad(65) -- höchstens so weit aus der Ruhe-Richtung drehen
+local TURN_SPEED = 3.5 -- wie schnell es sich dreht (1/s)
+local HOP_TIME = 0.62 -- Dauer eines Hüpfers
+local HOP_MIN = 3 -- Pause zwischen zwei Hüpfern: HOP_MIN + 0..HOP_RANGE Sekunden
+local HOP_RANGE = 6
+local BLINK_TIME = 0.14
+
+-- Schlüpfen
+local WOBBLE_TIME = 3 -- so viele Sekunden vor dem Schlüpfen wackelt das Ei
+local WOBBLE_GRACE = 4 -- so lange nach HatchAt weiterwackeln (bis der Server schlüpfen lässt)
+local MAX_WOBBLE = 8 -- höchstens so viele Eier wackeln gleichzeitig
+local CRACKS_PER_EGG = 3
+local EGG_DUE_WINDOW = 2.5 -- Ei verschwindet so kurz vor/nach HatchAt -> zählt als geschlüpft
+local POP_TIME = 0.5 -- Dauer des Reinploppens
+local POP_DELAY = 0.06 -- kurz klein bleiben (Lichtblitz)
+local POP_OVERSHOOT = 2.4 -- wie weit es über die Endgröße hinaus federt
+local POP_MIN = 0.02
+local POP_MATCH_DISTANCE = 6 -- Ei/Effekt und neues Alien höchstens so weit auseinander
+local RECENT_TIME = 1.5 -- so lange werden neue Aliens / verschwundene Eier gemerkt
 
 local HATCH_COLOR = Color3.fromRGB(255, 225, 120)
 
@@ -19372,6 +22217,9 @@ type BeltRecord = {
 	Phase: number,
 	Slot: number,
 	Fresh: boolean, -- gerade angekommen -> sofort an die richtige Stelle (steht sonst am Bandstart)
+	Bob: number, -- Wipp-Höhe (nach Größe)
+	Light: PointLight?, -- leuchtende Meteore pulsieren
+	LightBase: number,
 }
 
 local beltRecords: { BeltRecord } = {}
@@ -19413,7 +22261,15 @@ local function addBeltMeteor(inst: Instance): boolean
 		Phase = math.random() * math.pi * 2,
 		Slot = math.random(0, BEHIND_FRAME_SKIP - 1),
 		Fresh = true,
+		Bob = math.clamp(inst.Size.Y * 0.07, 0.08, 0.4),
+		Light = nil,
+		LightBase = 0,
 	}
+	local light = inst:FindFirstChildOfClass("PointLight")
+	if light then
+		record.Light = light
+		record.LightBase = light.Brightness
+	end
 	beltByPart[inst] = record
 	table.insert(beltRecords, record)
 	return true
@@ -19448,6 +22304,7 @@ end
 -- weit weg jedes 4., außerhalb des Sichtfelds nur jedes 8. Frame (dreht man sich, sind sie
 -- spätestens nach 8 Frames richtig).
 local function stepBelt(now: number, camPos: Vector3, look: Vector3, cosLimit: number, count: number): number
+	local near = 0
 	for i = #beltRecords, 1, -1 do
 		local record = beltRecords[i]
 		local part = record.Part
@@ -19469,15 +22326,31 @@ local function stepBelt(now: number, camPos: Vector3, look: Vector3, cosLimit: n
 					due = slot % BEHIND_FRAME_SKIP == 0 -- außerhalb des Sichtfelds
 				elseif distance >= NEAR_DISTANCE then
 					due = slot % FAR_FRAME_SKIP == 0 -- sichtbar, aber weit weg
+				else
+					near += 1
+					if near > MAX_NEAR_BELT then
+						due = slot % 2 == 0 -- sehr viele nahe (Schauer): Rest jedes 2. Frame
+					end
 				end
 			end
 			if due then
-				local angle = elapsed * BELT_SPIN + record.Phase
+				local phase = record.Phase
+				local angle = elapsed * BELT_SPIN + phase
 				local c, s = math.cos(angle), math.sin(angle)
+				-- sanftes Taumeln (Kippen um die eigene X-Achse) + Wippen
+				local tilt = math.sin(elapsed * 1.3 + phase) * BELT_TILT
+				local ct, st = math.cos(tilt), math.sin(tilt)
+				local bob = math.sin(elapsed * BELT_BOB_SPEED + phase) * record.Bob
 				count += 1
 				moveParts[count] = part
-				-- Drehung um die Hochachse, direkt als Matrix (nur EIN neues CFrame)
-				moveCFrames[count] = CFrame.new(pos.X, pos.Y, pos.Z, c, 0, s, 0, 1, 0, -s, 0, c)
+				-- Drehung um die Hochachse * Kippen, direkt als Matrix (nur EIN neues CFrame)
+				moveCFrames[count] =
+					CFrame.new(pos.X, pos.Y + bob, pos.Z, c, s * st, s * ct, 0, ct, -st, -s, c * st, c * ct)
+				local light = record.Light
+				if light and distance < NEAR_DISTANCE then
+					-- Glühen pulsiert leicht
+					light.Brightness = record.LightBase * (0.8 + 0.3 * math.sin(elapsed * 3.1 + phase))
+				end
 			end
 		end
 	end
@@ -19568,9 +22441,18 @@ local function stepStripes(now: number, camPos: Vector3, look: Vector3, cosLimit
 				rot[1], rot[2], rot[3], rot[4], rot[5], rot[6], rot[7], rot[8], rot[9]
 			local shift = (now * set.Speed) % set.Length
 			local thin = set.Always -- langes Hauptband: weit entfernte Streifen seltener bewegen
+			-- Hochachse der Streifen (2. Spalte der Drehmatrix): an den Enden darunter wegtauchen,
+			-- statt am Ende zu verschwinden und am Anfang aufzuploppen
+			local up = Vector3.new(r01, r11, r21)
+			local length, edge = set.Length, set.Spacing * 0.6
 			for i, stripe in ipairs(set.Parts) do
-				local s = ((i - 0.5) * set.Spacing + shift) % set.Length
+				local s = ((i - 0.5) * set.Spacing + shift) % length
 				local pos = set.Origin + set.Dir * s
+				local toEnd = math.min(s, length - s)
+				if toEnd < edge then
+					local k = 1 - toEnd / edge
+					pos -= up * (k * k * STRIPE_SINK)
+				end
 				local rel = pos - camPos
 				local distance = rel.Magnitude
 				local due = true
@@ -19739,77 +22621,174 @@ function WorldFX.UpdateTreadmills(steps: number, best: string?)
 end
 
 -- ---------------------------------------------------------------------
--- WIPPENDE ALIENS
--- Pro Alien werden die Teile + ihr Abstand zum Ruhe-Pivot EINMAL gemerkt, dann alle wippenden
--- Teile mit EINEM workspace:BulkMoveTo bewegt. Jedes Frame kommt nur ein Teil der Aliens dran
--- (gleichmäßig verteilt, jedes ca. 30x pro Sekunde) – keine Lastspitzen jedes zweite Frame.
+-- LEBENDIGE ALIENS (Idle-Animation, alles lokal)
+--  • Atmen mit Squash & Stretch (Body wird lokal gestaucht/gestreckt, Volumen bleibt gleich)
+--  • ab und zu ein kleiner Hüpfer: Anlauf (stauchen) -> Sprung (strecken) -> Landung (federn)
+--  • Augen blinzeln (Teile mit Attribut "Eye" sinken kurz in den Kopf)
+--  • drehen sich sanft zum nächsten Spieler in der Nähe (Ziel nur alle SCAN_INTERVAL s neu)
+--  • Geister/Kristalle schweben statt zu hüpfen, Roboter hüpfen steif (ohne Stauchen)
+-- Pro Alien werden die Teile + ihre Lage zum Ruhe-Pivot EINMAL gemerkt (Position + Drehmatrix als
+-- Zahlen). Jedes Frame kommt nur ein Teil der Aliens dran (jedes ca. 30x pro Sekunde), alle Teile
+-- werden mit EINEM workspace:BulkMoveTo bewegt – pro Teil entsteht genau ein neues CFrame.
 -- ---------------------------------------------------------------------
-type BobRecord = {
+type AnimRecord = {
 	Model: Model,
 	Primary: BasePart?,
 	PrimaryIndex: number,
 	Base: CFrame?, -- Ruhe-Pivot (wie vom Server gesetzt)
 	Parts: { BasePart },
-	Offsets: { CFrame }, -- Teil relativ zum Ruhe-Pivot
+	Pos: { Vector3 }, -- Teil-Position relativ zum Ruhe-Pivot
+	Rot: { number }, -- Teil-Drehung relativ zum Ruhe-Pivot (9 Zahlen je Teil)
+	EyeIn: { Vector3 }, -- Augen: Richtung + Weg ins Gesicht beim Blinzeln (sonst 0)
+	HasEyes: boolean,
 	LastPrimary: CFrame?, -- zuletzt von uns gesetzte Lage des PrimaryPart
 	Rev: any, -- Attribut "Rev" (ändert der Server nach dem Wachsen)
+	BodySize: Vector3?, -- echte Body-Größe (Attribut "BaseSize" vom Server)
+	CanSquash: boolean,
+	Style: string, -- "Hop" | "Float" | "Stiff"
 	Phase: number,
-	Amp: number,
+	Height: number,
+	HopHeight: number,
 	Slot: number,
 	Dist: number,
 	Moved: boolean,
+	Squash: boolean, -- darf gerade gestaucht werden (nur die nächsten MAX_SQUASH)
+	Resized: boolean, -- Body-Größe gerade lokal verändert
+	Yaw: number,
+	YawTarget: number,
+	HopAt: number,
+	HopStart: number,
+	BlinkAt: number,
+	BlinkStart: number,
+	Last: number,
 }
 
-local bobRecords: { BobRecord } = {}
-local bobSeen: { [Instance]: boolean } = {}
-local bobCandidates: { BobRecord } = {} -- wiederverwendet (keine neuen Tabellen pro Durchlauf)
-local activeBobs: { BobRecord } = {}
-local bobParts: { BasePart } = {}
-local bobCFrames: { CFrame } = {}
+local ANIM_STYLES: { [string]: string } = { Ghost = "Float", Crystal = "Float", Robot = "Stiff" }
+local NO_SQUASH: { [string]: boolean } = { Crystal = true, Robot = true }
+local EYE_NAMES: { [string]: boolean } = { Eye = true, Pupil = true, Iris = true }
 
-local function addBob(inst: Instance)
-	if not inst:IsA("Model") or bobSeen[inst] or inst:GetAttribute("Bob") ~= true then
-		return
+local animRecords: { AnimRecord } = {}
+local animSeen: { [Instance]: AnimRecord } = {}
+local animCandidates: { AnimRecord } = {} -- wiederverwendet (keine neuen Tabellen pro Durchlauf)
+local activeAnims: { AnimRecord } = {}
+local animParts: { BasePart } = {}
+local animCFrames: { CFrame } = {}
+local resetParts: { BasePart } = {}
+local resetCFrames: { CFrame } = {}
+local playerRoots: { Vector3 } = {}
+local popping: { [Instance]: boolean } = {} -- Aliens, die gerade "reinploppen" (nicht wippen)
+
+local function addAnim(inst: Instance): AnimRecord?
+	if not inst:IsA("Model") or inst:GetAttribute("Bob") ~= true then
+		return nil
 	end
-	bobSeen[inst] = true
-	local top = tonumber(inst:GetAttribute("TopHeight"))
-	table.insert(bobRecords, {
+	local existing = animSeen[inst]
+	if existing then
+		return existing
+	end
+	local top = tonumber(inst:GetAttribute("TopHeight")) or 3
+	local archetype = inst:GetAttribute("Archetype")
+	local style = if type(archetype) == "string" then ANIM_STYLES[archetype] or "Hop" else "Hop"
+	local record: AnimRecord = {
 		Model = inst,
 		Primary = nil,
 		PrimaryIndex = 0,
 		Base = nil,
 		Parts = {},
-		Offsets = {},
+		Pos = {},
+		Rot = {},
+		EyeIn = {},
+		HasEyes = false,
 		LastPrimary = nil,
 		Rev = nil,
+		BodySize = nil,
+		CanSquash = not (type(archetype) == "string" and NO_SQUASH[archetype] == true),
+		Style = style,
 		Phase = math.random() * math.pi * 2,
-		Amp = if top then math.clamp(top * 0.06, 0.15, 0.6) else 0.3,
+		Height = top,
+		HopHeight = math.clamp(top * (if style == "Stiff" then 0.06 else 0.12), 0.25, 1.1),
 		Slot = math.random(0, 7),
 		Dist = math.huge,
 		Moved = false,
-	})
+		Squash = false,
+		Resized = false,
+		Yaw = 0,
+		YawTarget = 0,
+		HopAt = 0,
+		HopStart = -1,
+		BlinkAt = 0,
+		BlinkStart = -1,
+		Last = 0,
+	}
+	animSeen[inst] = record
+	table.insert(animRecords, record)
+	return record
+end
+
+-- Echte Body-Größe (der Server schreibt sie als Attribut "BaseSize", auch nach dem Wachsen)
+local function realBodySize(record: AnimRecord, primary: BasePart): Vector3?
+	local size = primary:GetAttribute("BaseSize")
+	if typeof(size) == "Vector3" then
+		return size
+	end
+	if not record.Resized then
+		return primary.Size
+	end
+	return record.BodySize
 end
 
 -- Ruhe-Lage neu merken (erstes Mal, oder der Server hat das Alien verschoben/vergrößert)
-local function rebaseBob(record: BobRecord): boolean
+local function rebaseAnim(record: AnimRecord): boolean
 	local model = record.Model
 	local primary = model.PrimaryPart
 	if not primary then
 		return false
 	end
+	-- Body zuerst auf seine echte Größe (falls wir ihn gerade gestaucht hatten)
+	local bodySize = realBodySize(record, primary)
+	if bodySize and record.Resized and primary.Size ~= bodySize then
+		primary.Size = bodySize
+	end
+	record.Resized = false
+	record.BodySize = bodySize
 	local base = model:GetPivot()
 	local inverse = base:Inverse()
 	table.clear(record.Parts)
-	table.clear(record.Offsets)
+	table.clear(record.Pos)
+	table.clear(record.Rot)
+	table.clear(record.EyeIn)
 	record.PrimaryIndex = 0
+	record.HasEyes = false
+	local rot = record.Rot
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
+			local rel = inverse * d.CFrame
+			local _, _, _, r00, r01, r02, r10, r11, r12, r20, r21, r22 = rel:GetComponents()
 			table.insert(record.Parts, d)
-			table.insert(record.Offsets, inverse * d.CFrame)
+			table.insert(record.Pos, rel.Position)
+			local k = #rot
+			rot[k + 1], rot[k + 2], rot[k + 3] = r00, r01, r02
+			rot[k + 4], rot[k + 5], rot[k + 6] = r10, r11, r12
+			rot[k + 7], rot[k + 8], rot[k + 9] = r20, r21, r22
+			local eyeIn = Vector3.zero
+			if d:GetAttribute("Eye") == true or EYE_NAMES[d.Name] then
+				-- lokale +Z-Achse des Auges = nach innen (Augen schauen nach -Z)
+				local depth = math.max(d.Size.X, d.Size.Y) * 0.6
+				eyeIn = Vector3.new(r02, r12, r22) * depth
+				record.HasEyes = true
+			end
+			table.insert(record.EyeIn, eyeIn)
 			if d == primary then
 				record.PrimaryIndex = #record.Parts
 			end
 		end
+	end
+	-- Stauchen nur bei aufrechtem Body, der kein Ball ist (Bälle lassen sich nicht verzerren)
+	local relPrimary = inverse * primary.CFrame
+	local upright = relPrimary.UpVector.Y > 0.995
+	local isBall = primary:IsA("Part") and primary.Shape == Enum.PartType.Ball
+	if not upright or isBall or bodySize == nil then
+		record.CanSquash = false
 	end
 	record.Primary = primary
 	record.Base = base
@@ -19819,67 +22798,253 @@ local function rebaseBob(record: BobRecord): boolean
 	return record.PrimaryIndex > 0
 end
 
--- Einmal zurück auf die Ruhe-Position (z.B. zu weit weg)
-local function resetBob(record: BobRecord)
-	local base = record.Base
-	local primary = record.Primary
-	if base and primary and record.Moved then
-		record.Model:PivotTo(base)
-		record.LastPrimary = primary.CFrame
+-- Pose eines Aliens in die Listen eintragen (Gibt die neue Anzahl zurück).
+-- yaw = Drehung um die Hochachse, lift = Anheben, sy = Stauchung (1 = normal), blink = 0..1
+local function poseAnim(
+	record: AnimRecord,
+	base: CFrame,
+	yaw: number,
+	lift: number,
+	sy: number,
+	blink: number,
+	parts: { BasePart },
+	cframes: { CFrame },
+	count: number
+): number
+	local px, py, pz, b00, b01, b02, b10, b11, b12, b20, b21, b22 = base:GetComponents()
+	local c, s = math.cos(yaw), math.sin(yaw)
+	-- M = Basis-Drehung * Drehung um Y (Spalten 0 und 2 ändern sich, Spalte 1 bleibt)
+	local m00, m10, m20 = b00 * c - b02 * s, b10 * c - b12 * s, b20 * c - b22 * s
+	local m01, m11, m21 = b01, b11, b21
+	local m02, m12, m22 = b00 * s + b02 * c, b10 * s + b12 * c, b20 * s + b22 * c
+	local sx = 1 / math.sqrt(sy)
+	local pos, rot, eyeIn = record.Pos, record.Rot, record.EyeIn
+	local primaryIndex = record.PrimaryIndex
+	for i, part in ipairs(record.Parts) do
+		local p = pos[i]
+		local vx, vy, vz = p.X * sx, p.Y * sy + lift, p.Z * sx
+		if blink > 0 then
+			local e = eyeIn[i]
+			vx += e.X * blink
+			vy += e.Y * blink
+			vz += e.Z * blink
+		end
+		local k = (i - 1) * 9
+		local r00, r01, r02 = rot[k + 1], rot[k + 2], rot[k + 3]
+		local r10, r11, r12 = rot[k + 4], rot[k + 5], rot[k + 6]
+		local r20, r21, r22 = rot[k + 7], rot[k + 8], rot[k + 9]
+		local cf = CFrame.new(
+			px + m00 * vx + m01 * vy + m02 * vz,
+			py + m10 * vx + m11 * vy + m12 * vz,
+			pz + m20 * vx + m21 * vy + m22 * vz,
+			m00 * r00 + m01 * r10 + m02 * r20,
+			m00 * r01 + m01 * r11 + m02 * r21,
+			m00 * r02 + m01 * r12 + m02 * r22,
+			m10 * r00 + m11 * r10 + m12 * r20,
+			m10 * r01 + m11 * r11 + m12 * r21,
+			m10 * r02 + m11 * r12 + m12 * r22,
+			m20 * r00 + m21 * r10 + m22 * r20,
+			m20 * r01 + m21 * r11 + m22 * r21,
+			m20 * r02 + m21 * r12 + m22 * r22
+		)
+		count += 1
+		parts[count] = part
+		cframes[count] = cf
+		if i == primaryIndex then
+			record.LastPrimary = cf
+		end
 	end
-	record.Moved = false
+	return count
 end
 
-local function byDistance(a: BobRecord, b: BobRecord): boolean
+-- Einmal zurück auf die Ruhe-Lage (z.B. zu weit weg): Teile exakt an ihren Platz, Body-Größe zurück
+local function resetAnim(record: AnimRecord)
+	local base = record.Base
+	local primary = record.Primary
+	if record.Resized and primary and record.BodySize and primary.Parent then
+		primary.Size = record.BodySize
+	end
+	record.Resized = false
+	if base and primary and record.Moved and primary:IsDescendantOf(workspace) and not popping[record.Model] then
+		table.clear(resetParts)
+		table.clear(resetCFrames)
+		local count = poseAnim(record, base, 0, 0, 1, 0, resetParts, resetCFrames, 0)
+		if count > 0 then
+			workspace:BulkMoveTo(resetParts, resetCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+		end
+	end
+	record.Moved = false
+	record.Yaw = 0
+	record.HopStart = -1
+	record.BlinkStart = -1
+end
+
+local function byDistance(a: AnimRecord, b: AnimRecord): boolean
 	return a.Dist < b.Dist
 end
 
--- Alle SCAN_INTERVAL Sekunden: die nächsten MAX_BOB Aliens in Reichweite wippen lassen
-local function scanBob(camPos: Vector3)
-	local count = 0
-	for i = #bobRecords, 1, -1 do
-		local record = bobRecords[i]
-		local model = record.Model
-		if model.Parent == nil or not model:IsDescendantOf(workspace) then
-			-- zerstört (auch wenn nur der Ordner darüber weg ist, z.B. Foto-Deko)
-			bobSeen[model] = nil
-			bobRecords[i] = bobRecords[#bobRecords]
-			bobRecords[#bobRecords] = nil
-		else
-			local pivot = record.Base or model:GetPivot()
-			record.Dist = (pivot.Position - camPos).Magnitude
-			if record.Dist <= BOB_RANGE then
-				count += 1
-				bobCandidates[count] = record
-			else
-				resetBob(record)
-			end
+-- Positionen aller Spieler-Charaktere (für "zum Spieler drehen"), nur alle SCAN_INTERVAL s
+local function gatherPlayerRoots()
+	table.clear(playerRoots)
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local character = plr.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if root and root:IsA("BasePart") then
+			table.insert(playerRoots, root.Position)
 		end
-	end
-	for i = #bobCandidates, count + 1, -1 do
-		bobCandidates[i] = nil
-	end
-	if count > MAX_BOB then
-		table.sort(bobCandidates, byDistance)
-		for i = MAX_BOB + 1, count do
-			resetBob(bobCandidates[i])
-		end
-	end
-	table.clear(activeBobs)
-	for i = 1, math.min(count, MAX_BOB) do
-		activeBobs[i] = bobCandidates[i]
 	end
 end
 
--- stride = jedes wievielte Frame ein Alien drankommt (60 FPS -> 2 = 30x pro Sekunde)
-local function stepBob(now: number, stride: number): number
+-- Blickrichtung: zum nächsten Spieler in LOOK_RANGE (begrenzt), sonst ab und zu umschauen
+local function chooseYaw(record: AnimRecord, base: CFrame)
+	local basePos = base.Position
+	local best = LOOK_RANGE
+	local target: Vector3? = nil
+	for _, rootPos in ipairs(playerRoots) do
+		local d = (rootPos - basePos).Magnitude
+		if d < best and d > 1 then
+			best = d
+			target = rootPos
+		end
+	end
+	if target then
+		local rel = base:PointToObjectSpace(target)
+		record.YawTarget = math.clamp(math.atan2(-rel.X, -rel.Z), -MAX_TURN, MAX_TURN)
+	elseif math.random() < 0.12 then
+		record.YawTarget = (math.random() - 0.5) * 0.7
+	end
+end
+
+-- Alle SCAN_INTERVAL Sekunden: die nächsten MAX_ANIM Aliens in Reichweite animieren
+local function scanAnim(camPos: Vector3)
+	gatherPlayerRoots()
 	local count = 0
-	for _, record in ipairs(activeBobs) do
-		if (frameNumber + record.Slot) % stride == 0 then
-			local model = record.Model
+	for i = #animRecords, 1, -1 do
+		local record = animRecords[i]
+		local model = record.Model
+		if model.Parent == nil or not model:IsDescendantOf(workspace) then
+			-- zerstört (auch wenn nur der Ordner darüber weg ist, z.B. Foto-Deko)
+			animSeen[model] = nil
+			popping[model] = nil
+			animRecords[i] = animRecords[#animRecords]
+			animRecords[#animRecords] = nil
+		else
+			local pivot = record.Base or model:GetPivot()
+			record.Dist = (pivot.Position - camPos).Magnitude
+			if record.Dist <= ANIM_RANGE then
+				count += 1
+				animCandidates[count] = record
+			else
+				resetAnim(record)
+			end
+		end
+	end
+	for i = #animCandidates, count + 1, -1 do
+		animCandidates[i] = nil
+	end
+	table.sort(animCandidates, byDistance)
+	for i = MAX_ANIM + 1, count do
+		resetAnim(animCandidates[i])
+	end
+	table.clear(activeAnims)
+	for i = 1, math.min(count, MAX_ANIM) do
+		local record = animCandidates[i]
+		activeAnims[i] = record
+		local squash = i <= MAX_SQUASH and record.Dist <= SQUASH_RANGE
+		if not squash and record.Resized and record.Primary and record.BodySize then
+			record.Primary.Size = record.BodySize
+			record.Resized = false
+		end
+		record.Squash = squash
+		local base = record.Base
+		if base then
+			chooseYaw(record, base)
+		end
+	end
+end
+
+-- Hüpfer: u = 0..1 -> (Anheben, Stauchung)
+local function hopShape(u: number, height: number): (number, number)
+	if u < 0.18 then -- Anlauf: in die Knie gehen
+		local k = u / 0.18
+		return 0, 1 - 0.17 * math.sin(k * math.pi * 0.5)
+	elseif u < 0.7 then -- Flug: gestreckt hoch, leicht gestaucht runter
+		local k = (u - 0.18) / 0.52
+		return height * 4 * k * (1 - k), 1 + 0.13 * (1 - 2 * k)
+	end
+	-- Landung: federt gedämpft aus
+	local k = (u - 0.7) / 0.3
+	return 0, 1 - 0.15 * (1 - k) * math.cos(k * math.pi * 2.5)
+end
+
+local function animateRecord(record: AnimRecord, base: CFrame, now: number, count: number): number
+	local dt = math.clamp(now - record.Last, 0, 0.25)
+	record.Last = now
+	record.Yaw += (record.YawTarget - record.Yaw) * (1 - math.exp(-dt * TURN_SPEED))
+	local t = now + record.Phase
+	local lift, sy = 0, 1
+	if record.Style == "Float" then
+		lift = record.Height * 0.07 * (0.5 + 0.5 * math.sin(t * 1.7))
+		sy = 1 + 0.03 * math.sin(t * 1.7 + 1.2)
+	else
+		sy = 1 + 0.035 * math.sin(t * 2.3)
+		if record.HopStart >= 0 then
+			local u = (now - record.HopStart) / HOP_TIME
+			if u >= 1 then
+				record.HopStart = -1
+				record.HopAt = now + HOP_MIN + math.random() * HOP_RANGE
+			else
+				local hopLift, hopSquash = hopShape(u, record.HopHeight)
+				lift = hopLift
+				sy *= hopSquash
+			end
+		elseif record.HopAt == 0 then
+			record.HopAt = now + math.random() * HOP_RANGE
+		elseif now >= record.HopAt then
+			record.HopStart = now
+		end
+	end
+	local squash = record.Squash and record.CanSquash
+	if not squash then
+		sy = 1
+	end
+	local blink = 0
+	if record.HasEyes then
+		if record.BlinkStart >= 0 then
+			local u = (now - record.BlinkStart) / BLINK_TIME
+			if u >= 1 then
+				record.BlinkStart = -1
+				-- manchmal doppelt blinzeln
+				record.BlinkAt = now + (if math.random() < 0.2 then 0.12 else 1.8 + math.random() * 3.5)
+			else
+				blink = math.sin(u * math.pi)
+			end
+		elseif record.BlinkAt == 0 then
+			record.BlinkAt = now + math.random() * 4
+		elseif now >= record.BlinkAt then
+			record.BlinkStart = now
+		end
+	end
+	local primary = record.Primary
+	local bodySize = record.BodySize
+	if squash and primary and bodySize then
+		local sx = 1 / math.sqrt(sy)
+		primary.Size = Vector3.new(bodySize.X * sx, bodySize.Y * sy, bodySize.Z * sx)
+		record.Resized = true
+	end
+	record.Moved = true
+	return poseAnim(record, base, record.Yaw, lift, sy, blink, animParts, animCFrames, count)
+end
+
+-- stride = jedes wievielte Frame ein Alien drankommt (60 FPS -> 2 = 30x pro Sekunde)
+local function stepAnim(now: number, stride: number): number
+	local count = 0
+	for _, record in ipairs(activeAnims) do
+		local model = record.Model
+		if (frameNumber + record.Slot) % stride == 0 and not popping[model] then
 			local primary = model.PrimaryPart
 			-- Getragene Aliens (nicht verankert, am Spieler) nie bewegen; gelöschte (auch wenn nur der
-			-- Ordner darüber weg ist) ebenfalls nicht – die fliegen beim nächsten scanBob raus
+			-- Ordner darüber weg ist) ebenfalls nicht – die fliegen beim nächsten scanAnim raus
 			if
 				primary
 				and primary.Anchored
@@ -19894,25 +23059,82 @@ local function stepBob(now: number, stride: number): number
 					or (primary.Position - last.Position).Magnitude > 0.02
 					or model:GetAttribute("Rev") ~= record.Rev
 				then
-					ready = rebaseBob(record)
+					ready = rebaseAnim(record)
+					local newBase = record.Base
+					if ready and newBase then
+						chooseYaw(record, newBase)
+					end
 				end
 				local base = record.Base
 				if ready and base then
-					local wave = math.sin(now * 2.4 + record.Phase) * 0.5 + 0.5
-					local target = base + Vector3.new(0, wave * record.Amp, 0)
-					local offsets = record.Offsets
-					for i, part in ipairs(record.Parts) do
-						count += 1
-						bobParts[count] = part
-						bobCFrames[count] = target * offsets[i]
-					end
-					record.LastPrimary = target * offsets[record.PrimaryIndex]
-					record.Moved = true
+					count = animateRecord(record, base, now, count)
 				end
 			end
 		end
 	end
 	return count
+end
+
+-- ---------------------------------------------------------------------
+-- SCHLÜPFEN: Alien "ploppt" mit Overshoot rein (Model:ScaleTo lokal, danach exakt zurück)
+-- Erkannt wird ein Schlüpfen, wenn ein neues Alien dort auftaucht, wo gerade ein fälliges Ei
+-- verschwunden ist – oder wenn der Server-Effekt "Hatch" in der Nähe eines neuen Aliens kommt.
+-- ---------------------------------------------------------------------
+type PopRecord = { Model: Model, Start: number, Scale: number }
+type RecentAlien = { Model: Model, Time: number, Pos: Vector3? }
+type RecentEgg = { Pos: Vector3, Time: number }
+
+local pops: { PopRecord } = {}
+local recentAliens: { RecentAlien } = {} -- neu aufgetauchte Aliens (kurz gemerkt)
+local recentEggs: { RecentEgg } = {} -- gerade verschwundene, fällige Eier (kurz gemerkt)
+local animClockNow = 0 -- aktuelle Animations-Uhr (für Ereignisse außerhalb der Frame-Schleife)
+
+local function backOut(t: number): number
+	local s = POP_OVERSHOOT
+	local u = t - 1
+	return 1 + (s + 1) * u * u * u + s * u * u
+end
+
+local function startPop(model: Model)
+	if popping[model] or not model.PrimaryPart then
+		return
+	end
+	local ok, scale = pcall(model.GetScale, model)
+	if not ok or type(scale) ~= "number" or scale <= 0 then
+		return
+	end
+	local record = animSeen[model]
+	if record then
+		resetAnim(record)
+		record.Base = nil -- nach dem Ploppen neu einmessen
+	end
+	popping[model] = true
+	pcall(model.ScaleTo, model, scale * POP_MIN)
+	table.insert(pops, { Model = model, Start = animClockNow, Scale = scale })
+end
+
+local function stepPops(now: number)
+	for i = #pops, 1, -1 do
+		local pop = pops[i]
+		local model = pop.Model
+		local u = (now - pop.Start - POP_DELAY) / POP_TIME
+		local alive = model.Parent ~= nil and model.PrimaryPart ~= nil
+		if not alive or u >= 1 then
+			if alive then
+				pcall(model.ScaleTo, model, pop.Scale)
+			end
+			popping[model] = nil
+			pops[i] = pops[#pops]
+			pops[#pops] = nil
+		elseif u > 0 then
+			pcall(model.ScaleTo, model, pop.Scale * math.max(POP_MIN, backOut(u)))
+		end
+	end
+end
+
+local function flatDistance(a: Vector3, b: Vector3): number
+	local dx, dz = a.X - b.X, a.Z - b.Z
+	return math.sqrt(dx * dx + dz * dz)
 end
 
 -- ---------------------------------------------------------------------
@@ -20089,11 +23311,25 @@ end
 
 -- ---------------------------------------------------------------------
 -- SCHLÜPF-COUNTDOWN an unschlüpften Meteoren in den Basen
+-- + die letzten WOBBLE_TIME Sekunden: Ei wackelt immer stärker, leuchtende Risse brechen auf
+--   (alles lokal anhand von HatchAt; die Risse sind lokale Neon-Teilchen, die mitwackeln)
 -- ---------------------------------------------------------------------
-type HatchRecord = { Part: BasePart, Label: TextLabel? }
+type HatchRecord = {
+	Part: BasePart,
+	Label: TextLabel?,
+	HatchAt: number?,
+	Wobble: boolean,
+	BaseCF: CFrame?, -- Lage vom Server
+	LastCF: CFrame?, -- zuletzt von uns gesetzt
+	Cracks: { BasePart },
+	CrackOffsets: { CFrame },
+	Light: PointLight?,
+	Progress: number, -- 0..1 (wie weit das Schlüpfen ist)
+}
 
 local hatchRecords: { HatchRecord } = {}
 local hatchSeen: { [Instance]: boolean } = {}
+local wobbling: { HatchRecord } = {}
 
 local function addHatchCandidate(inst: Instance)
 	if not inst:IsA("BasePart") or hatchSeen[inst] then
@@ -20103,7 +23339,18 @@ local function addHatchCandidate(inst: Instance)
 		return
 	end
 	hatchSeen[inst] = true
-	table.insert(hatchRecords, { Part = inst, Label = nil })
+	table.insert(hatchRecords, {
+		Part = inst,
+		Label = nil,
+		HatchAt = nil,
+		Wobble = false,
+		BaseCF = nil,
+		LastCF = nil,
+		Cracks = {},
+		CrackOffsets = {},
+		Light = nil,
+		Progress = 0,
+	})
 end
 
 local function findValueLabel(part: BasePart): TextLabel?
@@ -20116,41 +23363,215 @@ local function findValueLabel(part: BasePart): TextLabel?
 	return nil
 end
 
+-- Farbe der Risse: Seltenheits-Farbe des Eis, aufgehellt
+local function crackColor(part: BasePart): Color3
+	local rarityName = part:GetAttribute("Rarity")
+	local rarities = ctx and ctx.Config.RaritiesByName
+	local rarity = rarities and type(rarityName) == "string" and rarities[rarityName]
+	local color: Color3 = if rarity and typeof(rarity.Color) == "Color3" then rarity.Color else HATCH_COLOR
+	return color:Lerp(Color3.new(1, 1, 1), 0.35)
+end
+
+-- Ei fängt an zu wackeln: Risse anlegen (3 Zickzack-Risse aus je 2 Stücken) + Licht im Inneren
+local function startWobble(record: HatchRecord)
+	local folder = fxFolder
+	local part = record.Part
+	if not folder then
+		return
+	end
+	record.Wobble = true
+	record.BaseCF = part.CFrame
+	record.LastCF = part.CFrame
+	local radius = part.Size.Y / 2
+	local color = crackColor(part)
+	local width = math.clamp(radius * 0.09, 0.06, 0.3)
+	for _ = 1, CRACKS_PER_EGG do
+		-- zufällige Stelle in der oberen 3/4-Kugel, Riss liegt tangential auf der Schale
+		local dir = Vector3.new(math.random() - 0.5, math.random() * 0.9 - 0.25, math.random() - 0.5)
+		dir = if dir.Magnitude > 0.05 then dir.Unit else Vector3.yAxis
+		local surface = CFrame.lookAt(dir * radius * 0.97, dir * (radius + 1))
+			* CFrame.Angles(0, 0, math.random() * math.pi * 2)
+		local length = radius * (0.35 + math.random() * 0.3)
+		for segment = 0, 1 do
+			local bend = if segment == 0 then 0.5 else -0.6
+			local offset = surface * CFrame.new(0, length * (segment - 0.5) * 0.9, 0) * CFrame.Angles(0, 0, bend)
+			local crack = UI.Create("Part", {
+				Name = "EggCrack",
+				Anchored = true,
+				CanCollide = false,
+				CanQuery = false,
+				CanTouch = false,
+				CastShadow = false,
+				Material = Enum.Material.Neon,
+				Color = color,
+				Transparency = 1,
+				Size = Vector3.new(width, length * 0.6, width * 0.6),
+				CFrame = record.BaseCF * offset,
+				Parent = folder,
+			})
+			table.insert(record.Cracks, crack)
+			table.insert(record.CrackOffsets, offset)
+		end
+	end
+	local first = record.Cracks[1]
+	if first then
+		record.Light = UI.Create("PointLight", {
+			Color = color,
+			Brightness = 0,
+			Range = math.clamp(radius * 5, 6, 20),
+			Shadows = false,
+			Parent = first,
+		})
+	end
+end
+
+-- Wackeln aus: Risse weg, Ei (falls noch da und nicht vom Server bewegt) zurück an seinen Platz
+local function stopWobble(record: HatchRecord)
+	record.Wobble = false
+	for _, crack in ipairs(record.Cracks) do
+		crack:Destroy()
+	end
+	table.clear(record.Cracks)
+	table.clear(record.CrackOffsets)
+	record.Light = nil
+	local part = record.Part
+	local base, last = record.BaseCF, record.LastCF
+	if base and last and part.Parent and (part.Position - last.Position).Magnitude < 0.01 then
+		part.CFrame = base
+	end
+	record.BaseCF = nil
+	record.LastCF = nil
+end
+
+-- Ei ist verschwunden: war es fällig, kurz merken (das neue Alien an dieser Stelle ploppt dann rein)
+local function eggGone(record: HatchRecord, now: number)
+	local hatchAt = record.HatchAt
+	if hatchAt and hatchAt - now < EGG_DUE_WINDOW then
+		table.insert(recentEggs, { Pos = record.Part.Position, Time = animClockNow })
+	end
+	if record.Wobble then
+		stopWobble(record)
+	end
+end
+
+local function removeHatchRecord(i: number, now: number)
+	local record = hatchRecords[i]
+	hatchSeen[record.Part] = nil
+	eggGone(record, now)
+	hatchRecords[i] = hatchRecords[#hatchRecords]
+	hatchRecords[#hatchRecords] = nil
+end
+
 local function stepHatch(now: number, camPos: Vector3)
 	local Util = ctx.Util
+	table.clear(wobbling)
 	for i = #hatchRecords, 1, -1 do
 		local record = hatchRecords[i]
 		local part = record.Part
 		if part.Parent == nil then
-			hatchSeen[part] = nil
-			hatchRecords[i] = hatchRecords[#hatchRecords]
-			hatchRecords[#hatchRecords] = nil
+			removeHatchRecord(i, now)
 		else
 			local hatchAt = part:GetAttribute("HatchAt")
-			if type(hatchAt) == "number" and (part.Position - camPos).Magnitude < HATCH_RANGE then
+			record.HatchAt = if type(hatchAt) == "number" then hatchAt else nil
+			local distance = (part.Position - camPos).Magnitude
+			local wantWobble = false
+			if type(hatchAt) == "number" and distance < HATCH_RANGE then
+				local left = hatchAt - now
 				local labelObj = record.Label
 				if not labelObj or labelObj.Parent == nil then
 					labelObj = findValueLabel(part)
 					record.Label = labelObj
 				end
 				if labelObj then
-					local left = hatchAt - now
 					local text = if left > 0.5
 						then "🐣 Schlüpft in " .. Util.FormatTime(math.ceil(left))
 						else "🐣 Schlüpft..."
+					-- letzte Sekunden: Schrift blinkt zwischen Gold und Weiß
+					local color = HATCH_COLOR
+					if left < WOBBLE_TIME and math.floor(now * 5) % 2 == 0 then
+						color = Color3.new(1, 1, 1)
+					end
 					if labelObj.Text ~= text then
 						labelObj.Text = text
-						labelObj.TextColor3 = HATCH_COLOR
+					end
+					if labelObj.TextColor3 ~= color then
+						labelObj.TextColor3 = color
 					end
 				end
+				wantWobble = left < WOBBLE_TIME
+					and left > -WOBBLE_GRACE
+					and distance < ANIM_RANGE
+					and part.Anchored
+					and #wobbling < MAX_WOBBLE
+			end
+			if wantWobble then
+				if not record.Wobble then
+					startWobble(record)
+				end
+				if record.Wobble then
+					table.insert(wobbling, record)
+				end
+			elseif record.Wobble then
+				stopWobble(record)
 			end
 		end
 	end
 end
 
+-- Jedes Frame: wackelnde Eier + ihre Risse bewegen (in die gemeinsame BulkMoveTo-Liste)
+local function stepEggs(now: number, count: number): number
+	for _, record in ipairs(wobbling) do
+		local part = record.Part
+		local hatchAt = record.HatchAt
+		if record.Wobble and hatchAt and part.Parent then
+			-- Der Server hat das Ei bewegt/vergrößert? -> neue Ruhe-Lage
+			local last = record.LastCF
+			if not last or (part.Position - last.Position).Magnitude > 0.01 then
+				record.BaseCF = part.CFrame
+			end
+			local base = record.BaseCF
+			if base then
+				local left = hatchAt - now
+				local u = math.clamp(1 - left / WOBBLE_TIME, 0, 1)
+				record.Progress = u
+				local amp = math.rad(3 + 17 * u * u)
+				local speed = 9 + 24 * u
+				local a = math.sin(now * speed) * amp
+				local b = math.sin(now * speed * 0.77 + 1.3) * amp * 0.55
+				local radius = part.Size.Y / 2
+				-- kurz vor dem Schlüpfen hüpft das Ei
+				local hop = if u > 0.75 then math.abs(math.sin(now * speed * 0.5)) * radius * 0.25 * (u - 0.75) else 0
+				local cf = base * CFrame.new(0, hop - radius, 0) * CFrame.Angles(b, 0, a) * CFrame.new(0, radius, 0)
+				count += 1
+				moveParts[count] = part
+				moveCFrames[count] = cf
+				record.LastCF = cf
+				local glow = math.clamp(u * 1.25, 0, 1)
+				local transparency = 1 - glow * 0.95
+				for j, crack in ipairs(record.Cracks) do
+					count += 1
+					moveParts[count] = crack
+					moveCFrames[count] = cf * record.CrackOffsets[j]
+					-- Risse brechen nacheinander auf
+					local own = math.clamp(glow * 1.6 - (j - 1) * 0.12, 0, 1)
+					local wanted = 1 - own * (1 - transparency)
+					if math.abs(crack.Transparency - wanted) > 0.02 then
+						crack.Transparency = wanted
+					end
+				end
+				local light = record.Light
+				if light then
+					light.Brightness = glow * glow * (4 + math.sin(now * 23) * 1.2)
+				end
+			end
+		end
+	end
+	return count
+end
+
 -- Zerstörte Objekte aus den Listen werfen. Je nach Destroy-Replikation behalten Teile in einem
 -- zerstörten Model ihren Parent – deshalb (selten) prüfen, ob sie noch in der Welt hängen.
-local function cleanupDead()
+local function cleanupDead(now: number)
 	for i = #rainbowRecords, 1, -1 do
 		local inst = rainbowRecords[i].Inst
 		if not inst:IsDescendantOf(workspace) then
@@ -20160,13 +23581,90 @@ local function cleanupDead()
 		end
 	end
 	for i = #hatchRecords, 1, -1 do
-		local part = hatchRecords[i].Part
-		if not part:IsDescendantOf(workspace) then
-			hatchSeen[part] = nil
-			hatchRecords[i] = hatchRecords[#hatchRecords]
-			hatchRecords[#hatchRecords] = nil
+		if not hatchRecords[i].Part:IsDescendantOf(workspace) then
+			removeHatchRecord(i, now)
 		end
 	end
+end
+
+-- ---------------------------------------------------------------------
+-- NEUE ALIENS: kurz merken und prüfen, ob sie gerade geschlüpft sind (-> reinploppen)
+-- ---------------------------------------------------------------------
+local pendingAliens: { RecentAlien } = {}
+local initDone = false
+
+local function onAlienAdded(inst: Instance)
+	if initDone and inst:IsA("Model") and inst:GetAttribute("Bob") == true then
+		table.insert(pendingAliens, { Model = inst, Time = animClockNow, Pos = nil })
+	end
+end
+
+-- Passendes verschwundenes Ei (oder "Hatch"-Effekt) an dieser Stelle? -> verbrauchen
+local function matchEgg(pos: Vector3): boolean
+	for i = #recentEggs, 1, -1 do
+		if flatDistance(recentEggs[i].Pos, pos) < POP_MATCH_DISTANCE then
+			table.remove(recentEggs, i)
+			return true
+		end
+	end
+	return false
+end
+
+local function stepPendingAliens(now: number)
+	local clock = animClockNow
+	for i = #recentEggs, 1, -1 do
+		if clock - recentEggs[i].Time > RECENT_TIME then
+			table.remove(recentEggs, i)
+		end
+	end
+	for i = #recentAliens, 1, -1 do
+		if clock - recentAliens[i].Time > RECENT_TIME or recentAliens[i].Model.Parent == nil then
+			table.remove(recentAliens, i)
+		end
+	end
+	if #pendingAliens == 0 then
+		return
+	end
+	-- Eier, die gerade verschwunden sind, sofort einsammeln (nicht erst beim nächsten Countdown-Takt)
+	for i = #hatchRecords, 1, -1 do
+		if hatchRecords[i].Part.Parent == nil then
+			removeHatchRecord(i, now)
+		end
+	end
+	for i = #pendingAliens, 1, -1 do
+		local entry = pendingAliens[i]
+		local model = entry.Model
+		if model.Parent == nil or clock - entry.Time > RECENT_TIME then
+			table.remove(pendingAliens, i)
+		elseif model.PrimaryPart then
+			table.remove(pendingAliens, i)
+			local pos = model:GetPivot().Position
+			entry.Pos = pos
+			if matchEgg(pos) then
+				startPop(model)
+			else
+				table.insert(recentAliens, entry)
+			end
+		end
+	end
+end
+
+-- Der Server meldet ein Schlüpfen (Effekt "Hatch"): neues Alien dort -> reinploppen lassen
+function WorldFX.NoteHatch(position: Vector3)
+	if typeof(position) ~= "Vector3" then
+		return
+	end
+	for i = #recentAliens, 1, -1 do
+		local entry = recentAliens[i]
+		local pos = entry.Pos
+		if pos and flatDistance(pos, position) < POP_MATCH_DISTANCE then
+			table.remove(recentAliens, i)
+			startPop(entry.Model)
+			return
+		end
+	end
+	-- Alien ist evtl. noch unterwegs -> wie ein verschwundenes Ei merken
+	table.insert(recentEggs, { Pos = position, Time = animClockNow })
 end
 
 -- ---------------------------------------------------------------------
@@ -20202,14 +23700,17 @@ function WorldFX.Init(context: any, map: Instance)
 
 	-- Aliens, Regenbogen und Schlüpf-Meteore: einmal alles durchsehen, danach nur Neues
 	for _, inst in ipairs(map:GetDescendants()) do
-		addBob(inst)
+		addAnim(inst)
 		local parent = inst.Parent
 		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
 			addHatchCandidate(inst)
 		end
 	end
+	initDone = true
 	map.DescendantAdded:Connect(function(inst)
-		addBob(inst)
+		if addAnim(inst) then
+			onAlienAdded(inst)
+		end
 		local parent = inst.Parent
 		-- Meteore auf dem Band / am Boden schlüpfen nie -> gar nicht erst beobachten
 		if parent and parent.Name ~= "BeltMeteors" and parent.Name ~= "GroundMeteors" then
@@ -20227,10 +23728,11 @@ function WorldFX.Init(context: any, map: Instance)
 	workspace.DescendantAdded:Connect(onWorldDescendant)
 
 	local slowClock = 0
-	local hatchClock = 0
+	local hatchClock = HATCH_INTERVAL
 	local scanClock = SCAN_INTERVAL -- gleich im ersten Frame auswählen
 	local cleanupClock = 0
 	local animClock = 0 -- eigene Animations-Uhr (läuft mit dt, auch bei Rucklern gleichmäßig)
+	local stripeClock = 0 -- eigene Uhr für die Streifen (Serverzeit wird nachgeregelt -> ruckelt)
 	RunService.RenderStepped:Connect(function(dt: number)
 		local camera = workspace.CurrentCamera
 		if not camera then
@@ -20240,37 +23742,57 @@ function WorldFX.Init(context: any, map: Instance)
 		local camCFrame = camera.CFrame
 		local camPos = camCFrame.Position
 		local now = workspace:GetServerTimeNow()
+		animClock += dt
+		stripeClock += dt
+		animClockNow = animClock
+
+		-- Schlüpf-Countdown zuerst (wählt die wackelnden Eier für dieses Frame)
+		hatchClock += dt
+		if hatchClock >= HATCH_INTERVAL then
+			hatchClock = math.min(hatchClock - HATCH_INTERVAL, HATCH_INTERVAL)
+			stepHatch(now, camPos)
+		end
 
 		table.clear(moveParts)
 		table.clear(moveCFrames)
 		local look = camCFrame.LookVector
 		local cosLimit = viewCos(camera)
 		local count = stepBelt(now, camPos, look, cosLimit, 0)
-		count = stepStripes(now, camPos, look, cosLimit, count)
+		count = stepStripes(stripeClock, camPos, look, cosLimit, count)
+		if #wobbling > 0 then
+			count = stepEggs(now, count)
+		end
 		if count > 0 then
 			workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end
 
-		animClock += dt
 		scanClock += dt
 		if scanClock >= SCAN_INTERVAL then
 			scanClock = 0
-			scanBob(camPos)
+			scanAnim(camPos)
 			scanHighlights(camPos)
 		end
 		cleanupClock += dt
 		if cleanupClock >= CLEANUP_INTERVAL then
 			cleanupClock = 0
-			cleanupDead()
+			cleanupDead(now)
 		end
 
-		-- Wippen: jedes Frame ein Teil der Aliens, jedes einzelne ca. 30x pro Sekunde
+		-- Neue Aliens: geschlüpft? -> reinploppen (Overshoot)
+		if #pendingAliens > 0 or #recentEggs > 0 or #recentAliens > 0 then
+			stepPendingAliens(now)
+		end
+		if #pops > 0 then
+			stepPops(animClock)
+		end
+
+		-- Aliens: jedes Frame ein Teil, jedes einzelne ca. 30x pro Sekunde
 		local stride = math.max(1, math.floor(SLOW_INTERVAL / math.max(dt, 1 / 240) + 0.5))
-		table.clear(bobParts)
-		table.clear(bobCFrames)
-		local bobCount = stepBob(animClock, stride)
-		if bobCount > 0 then
-			workspace:BulkMoveTo(bobParts, bobCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+		table.clear(animParts)
+		table.clear(animCFrames)
+		local animCount = stepAnim(animClock, stride)
+		if animCount > 0 then
+			workspace:BulkMoveTo(animParts, animCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 		end
 
 		slowClock += dt
@@ -20278,11 +23800,6 @@ function WorldFX.Init(context: any, map: Instance)
 			-- abziehen statt auf 0 setzen -> gleichmäßiger Takt (nach Rucklern nicht nachholen)
 			slowClock = math.min(slowClock - SLOW_INTERVAL, SLOW_INTERVAL)
 			stepRainbow(animClock, camPos)
-		end
-		hatchClock += dt
-		if hatchClock >= HATCH_INTERVAL then
-			hatchClock = math.min(hatchClock - HATCH_INTERVAL, HATCH_INTERVAL)
-			stepHatch(now, camPos)
 		end
 	end)
 end
@@ -20295,7 +23812,7 @@ return WorldFX
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="42">
+  <Item class="Workspace" referent="44">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>

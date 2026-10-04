@@ -149,6 +149,20 @@ Das Maximum ist **80** (ab ca. 47 Mrd. Schritten). Mit der **🌀 Speed Coil** i
 **Beim Tragen** hast du nur 70 % davon, mit seltener (schwerer) Beute nur 45 bis 60 %. Mit dem Pass **„🏃 Volle Speed beim Tragen“** bleibt es bei 100 %.
 Der Pass **„👟 2x Schritte“** verdoppelt die Schritte. Jeder Rebirth gibt +25 %.
 
+### ☄️ Meteor-Run
+
+Ein langer **Lauf-Parcours** (ca. 420 Studs) rechts neben dem Spawn-Platz, erhöht hinter den rechten Basen.
+Knopf **☄️ Run** rechts = Teleport zum Start-Tor (nicht mit Beute). Wer etwas trägt, kann nicht starten.
+
+1. Durchs **Start-Tor** gehen → „☄️ BEREIT“. Über die **Startlinie** → der Timer läuft (oben im Bild: ⏱️ Zeit, 🚩 Checkpoint, 🏆 Bestzeit).
+2. Fünf Abschnitte: **🔥 Lava-Felder**, **🦘 Sprünge über Lücken**, **🌀 rotierende Balken**, **☄️ Meteor-Einschläge** (roter Kreis = 1 Sekunde später schlägt es ein) und **🔥 Lava-Steine**.
+3. Dazwischen 4 **🚩 Checkpoints**. Lava, Runterfallen oder ein Einschlag = zurück zum letzten Checkpoint (niemand stirbt, der Timer läuft weiter). Zurück durchs Start-Tor = Neustart.
+4. Im **🏁 Ziel**: Cash (mind. $2.500, sonst 90 Sekunden Einkommen, bei neuer Bestzeit x1,5) und ein **Gratis-Ei** (meist Epic, oft Legendary, manchmal Mythic, selten Celestial, ab 3 Rebirths ganz selten Divine). Schnelle Zeiten, Rebirths und eine neue Bestzeit geben mehr Glück. **Das Ei musst du nach Hause tragen** – wie ein geklautes Ei (60 Sekunden, Bonk = Ei fällt runter). Base voll = Verkaufswert als Geld.
+5. Belohnung höchstens alle **3 Minuten** (die Zeit zählt trotzdem). Die **Bestzeit wird gespeichert**, das Schild am Start zeigt den Rekord des Servers.
+
+Schummeln geht nicht: Checkpoints zählen nur der Reihe nach, und zu schnelle Zeiten (schneller als Tempo 104 über die ganze Strecke) werden nicht gewertet.
+Einstellungen (Abklingzeit, Ei-Chancen, Cash) stehen oben in `src/server/Services/RunService.luau`.
+
 ---
 
 ## 🚀 SCHRITT 1 – Spiel in Roblox Studio öffnen
@@ -421,8 +435,8 @@ roblox-meteor-heist/
     │   ├── Main.server.luau
     │   └── Services/          Data, Graphics, Plot + MapBuilder, Meteor, Carry, Economy, Treadmill,
     │                          Reward (Geschenke, Glücksrad, Aufgaben), Gadget, Monetization, Admin,
-    │                          Leaderboard, MeteorFactory, AlienFactory …
+    │                          Run (☄️ Meteor-Run), Leaderboard, MeteorFactory, AlienFactory …
     └── client/   (StarterPlayerScripts.Client)
         ├── Main.client.luau   ← startet die Oberfläche
-        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, Prompts, Fly, PhotoMode, AdminPanel
+        └── Modules/           UI, Hud, Windows, Rewards, Effects, WorldFX, Prompts, MeteorRun, Fly, PhotoMode, AdminPanel
 ```

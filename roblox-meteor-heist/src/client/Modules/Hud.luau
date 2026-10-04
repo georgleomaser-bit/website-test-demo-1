@@ -42,6 +42,8 @@ local stepsCounter: UI.Counter
 local cashCounter: UI.Counter
 local stepsScale: UIScale
 local cashScale: UIScale
+local cashLabelRef: TextLabel? = nil
+local lastRebirths: number? = nil
 local incomeLabel: TextLabel
 local infoLabel: TextLabel
 local offerButton: UI.Button? = nil
@@ -357,6 +359,7 @@ local function buildStats()
 		Parent = stats,
 	})
 	cashScale.Parent = cashLabel
+	cashLabelRef = cashLabel
 	incomeLabel = UI.Label({
 		Position = UDim2.fromOffset(2, 104),
 		Size = UDim2.new(1, 0, 0, 24),
@@ -810,6 +813,13 @@ function Hud.Refresh(state: any)
 	end
 	firstState = false
 
+	-- 🔥 Rebirth geschafft? -> Bildschirm-Blitz (nur wenn die Zahl steigt, nicht beim ersten Laden)
+	local rebirths = tonumber(state.Rebirths) or 0
+	if lastRebirths ~= nil and rebirths > lastRebirths and ctx.Effects and ctx.Effects.RebirthFlash then
+		ctx.Effects.RebirthFlash()
+	end
+	lastRebirths = rebirths
+
 	local income = "+" .. Util.FormatCash(tonumber(state.Income) or 0) .. "/s"
 	local pending = tonumber(state.Pending) or 0
 	local autoCollect = state.Passes and state.Passes.AutoCollect == true
@@ -942,8 +952,18 @@ function Hud.PulseSteps()
 	UI.Pulse(stepsScale, 0.08)
 end
 
-function Hud.PulseCash()
-	UI.Pulse(cashScale, 0.14)
+function Hud.PulseCash(amount: number?)
+	UI.Pulse(cashScale, amount or 0.14)
+end
+
+-- Bildschirm-Punkt des 💵-Symbols am Geld-Zähler (Ziel der fliegenden Münzen), nil = nicht sichtbar
+function Hud.CashAnchor(): Vector2?
+	local label = cashLabelRef
+	if not label or not label.Visible or not ctx.Gui.Enabled then
+		return nil
+	end
+	local size = label.AbsoluteSize
+	return label.AbsolutePosition + Vector2.new(size.Y * 0.5, size.Y * 0.5)
 end
 
 function Hud.Init(context: any)

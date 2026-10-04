@@ -1,12 +1,14 @@
 -- =====================================================================
 --  UI-BAUKASTEN im knalligen Simulator-Stil
---  Knöpfe mit Farbverlauf, dicker schwarzer Kontur und Feder-Effekt,
---  Fenster, die weich auf- und zugehen, Toasts, die hereingleiten,
---  flüssig hochzählende Zahlen und getweente Fortschrittsbalken.
+--  Knöpfe mit Farbverlauf, dicker schwarzer Kontur und Feder-Effekt (Hover-Glühen,
+--  Stauchen beim Drücken, Klick-Welle), Fenster, die federnd aufgehen und die Welt dahinter
+--  weichzeichnen (BlurEffect, beim Schließen wieder weg), Toasts, die mit Feder hereingleiten,
+--  flüssig hochzählende Zahlen (kurzes Aufploppen + Farbblitz bei Zuwachs) und getweente Balken.
 --  Alle anderen Client-Module bauen ihre Oberfläche hiermit.
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
+local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local PolicyService = game:GetService("PolicyService")
 local RunService = game:GetService("RunService")
@@ -41,17 +43,29 @@ UI.Theme = {
 local HOVER_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local PRESS_INFO = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local RELEASE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local SQUASH_RELEASE_INFO = TweenInfo.new(0.45, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+local GLOW_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local RIPPLE_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local OPEN_FADE_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local OPEN_POP_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local CLOSE_INFO = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local OPEN_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local CLOSE_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local BLUR_IN_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local BLUR_OUT_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local COUNTER_FLASH_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, 0, true)
 local BAR_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local PULSE_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local TOAST_GROW_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local TOAST_SLIDE_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_SLIDE_INFO = TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_POP_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
 local TOAST_FADE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local TOAST_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 local COUNTER_INTERVAL = 1 / 30 -- Zahlen höchstens 30x pro Sekunde neu schreiben
+local COUNTER_POP_GAP = 0.15 -- so oft höchstens ein Aufploppen pro Zähler
+local BUTTON_SQUASH = UDim2.fromScale(1.07, 0.86) -- gedrückter Knopf: breiter + flacher
+local BUTTON_NORMAL = UDim2.fromScale(1, 1)
+local BLUR_SIZE = 14 -- Weichzeichner hinter offenen Fenstern
+local WINDOW_SLIDE = 36 -- Fenster gleiten aus so vielen Pixeln von unten herein
 local TOAST_HEIGHT = 40
 local MAX_TOASTS = 5
 local MAX_TOAST_POOL = 8 -- so viele fertige Toasts werden zum Wiederverwenden aufgehoben
@@ -240,6 +254,25 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 		Parent = btn,
 	}, { UI.Corner(math.max(2, cornerRadius - 3)) })
 
+	-- Hover-Glühen: weiße Fläche über dem Knopf, beim Drüberfahren leicht sichtbar
+	local glow: Frame = UI.Create("Frame", {
+		Name = "Glow",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 1,
+		ZIndex = z,
+		Parent = btn,
+	}, { UI.Corner(cornerRadius) })
+	-- Klick-Wellen (abgeschnitten auf die Knopffläche)
+	local rippleBox: Frame = UI.Create("Frame", {
+		Name = "Ripples",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		ClipsDescendants = true,
+		ZIndex = z,
+		Parent = btn,
+	})
+
 	local hasSub = props.Sub ~= nil
 	local main = UI.Label({
 		Name = "Label",
@@ -268,28 +301,66 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 		})
 	end
 
-	-- Feder-Effekt: Maus drüber = etwas größer, drücken = kleiner, loslassen = federt zurück
+	-- Feder-Effekt: Maus drüber = etwas größer + Glühen, drücken = kleiner + gestaucht (breit/flach)
+	-- + Welle ab dem Klickpunkt, loslassen = federt elastisch zurück
 	local hovering = false
 	local function spring(target: number, info: TweenInfo)
 		TweenService:Create(scale, info, { Scale = target }):Play()
+	end
+	local function setGlow(transparency: number)
+		TweenService:Create(glow, GLOW_INFO, { BackgroundTransparency = transparency }):Play()
+	end
+	local function ripple(position: Vector3)
+		local absPos, absSize = btn.AbsolutePosition, btn.AbsoluteSize
+		if absSize.X < 1 or absSize.Y < 1 then
+			return
+		end
+		local x = math.clamp((position.X - absPos.X) / absSize.X, 0, 1)
+		local y = math.clamp((position.Y - absPos.Y) / absSize.Y, 0, 1)
+		local wave: Frame = UI.Create("Frame", {
+			Name = "Ripple",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(x, y),
+			Size = UDim2.fromScale(0, 0),
+			SizeConstraint = Enum.SizeConstraint.RelativeXX, -- rund bleiben (Höhe = Breite)
+			BackgroundColor3 = WHITE,
+			BackgroundTransparency = 0.55,
+			ZIndex = z,
+			Parent = rippleBox,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+		local grow =
+			TweenService:Create(wave, RIPPLE_INFO, { Size = UDim2.fromScale(2.4, 2.4), BackgroundTransparency = 1 })
+		grow.Completed:Once(function()
+			wave:Destroy()
+		end)
+		grow:Play()
 	end
 	btn.InputBegan:Connect(function(input)
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.MouseMovement then
 			hovering = true
 			spring(1.06, HOVER_INFO)
+			setGlow(0.82)
 		elseif kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
-			spring(0.9, PRESS_INFO)
+			spring(0.93, PRESS_INFO)
+			TweenService:Create(btn, PRESS_INFO, { Size = BUTTON_SQUASH }):Play()
+			setGlow(0.7)
+			ripple(input.Position)
 		end
 	end)
 	btn.InputEnded:Connect(function(input)
 		local kind = input.UserInputType
+		if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
+			TweenService:Create(btn, SQUASH_RELEASE_INFO, { Size = BUTTON_NORMAL }):Play()
+		end
 		if kind == Enum.UserInputType.MouseButton1 then
 			spring(if hovering then 1.06 else 1, RELEASE_INFO)
+			setGlow(if hovering then 0.82 else 1)
 		elseif kind == Enum.UserInputType.MouseMovement or kind == Enum.UserInputType.Touch then
 			-- Maus raus bzw. Finger weg: zurück auf normale Größe
 			hovering = false
 			spring(1, RELEASE_INFO)
+			setGlow(1)
 		end
 	end)
 
@@ -523,22 +594,56 @@ export type Counter = {
 	Target: number,
 	Shown: number,
 	Text: string,
+	Scale: UIScale?, -- UIScale am Label (falls vorhanden): ploppt bei Zuwachs kurz auf
+	Color: Color3, -- eigentliche Schriftfarbe (Farbblitz kehrt dahin zurück)
+	PopAt: number,
 }
 
 local counters: { Counter } = {}
 local counterClock = 0
+local COUNTER_UP_COLOR = Color3.fromRGB(255, 255, 255)
+local COUNTER_DOWN_COLOR = Color3.fromRGB(255, 110, 110)
 
 function UI.Counter(target: TextLabel, format: (number) -> string): Counter
-	local counter: Counter = { Label = target, Format = format, Target = 0, Shown = 0, Text = format(0) }
+	local counter: Counter = {
+		Label = target,
+		Format = format,
+		Target = 0,
+		Shown = 0,
+		Text = format(0),
+		Scale = target:FindFirstChildOfClass("UIScale"),
+		Color = target.TextColor3,
+		PopAt = 0,
+	}
 	target.Text = counter.Text
 	table.insert(counters, counter)
 	return counter
+end
+
+-- Kurzer Farbblitz (weiß bei Zuwachs, rot bei Abnahme) + Aufploppen bei Zuwachs
+local function popCounter(counter: Counter, up: boolean)
+	local now = os.clock()
+	if now - counter.PopAt < COUNTER_POP_GAP then
+		return
+	end
+	counter.PopAt = now
+	local label = counter.Label
+	label.TextColor3 = counter.Color
+	TweenService:Create(label, COUNTER_FLASH_INFO, { TextColor3 = if up then COUNTER_UP_COLOR else COUNTER_DOWN_COLOR })
+		:Play()
+	local scale = counter.Scale
+	if up and scale then
+		UI.Pulse(scale, 0.1)
+	end
 end
 
 -- instant = true: sofort anzeigen (z.B. beim ersten Laden)
 function UI.SetCounter(counter: Counter, value: number, instant: boolean?)
 	if type(value) ~= "number" or value ~= value then
 		return
+	end
+	if not instant and value ~= counter.Target then
+		popCounter(counter, value > counter.Target)
 	end
 	counter.Target = value
 	if instant then
@@ -597,6 +702,44 @@ export type Window = {
 }
 
 local windows: { Window } = {}
+local blur: BlurEffect? = nil
+
+local function anyWindowOpen(): boolean
+	for _, win in ipairs(windows) do
+		if win.IsOpen then
+			return true
+		end
+	end
+	return false
+end
+
+-- Welt hinter offenen Fenstern weichzeichnen (lokaler BlurEffect, nach dem Schließen wieder weg)
+local function updateBlur()
+	if anyWindowOpen() then
+		local effect = blur
+		if not effect or effect.Parent == nil then
+			effect = UI.Create("BlurEffect", { Name = "MeteorHeistWindowBlur", Size = 0, Parent = Lighting })
+			blur = effect
+		end
+		if effect then
+			TweenService:Create(effect, BLUR_IN_INFO, { Size = BLUR_SIZE }):Play()
+		end
+	else
+		local effect = blur
+		if not effect then
+			return
+		end
+		local fade = TweenService:Create(effect, BLUR_OUT_INFO, { Size = 0 })
+		fade.Completed:Once(function()
+			-- inzwischen wieder ein Fenster offen? Dann bleibt er
+			if blur == effect and not anyWindowOpen() then
+				blur = nil
+				effect:Destroy()
+			end
+		end)
+		fade:Play()
+	end
+end
 
 -- Inhalt für die Animation in die CanvasGroup hängen
 local function beginFade(win: Window)
@@ -620,7 +763,8 @@ function UI.CloseWindow(win: Window)
 	win.Token += 1
 	local token = win.Token
 	beginFade(win)
-	TweenService:Create(win.Scale, CLOSE_INFO, { Scale = 0.9 }):Play()
+	TweenService:Create(win.Scale, CLOSE_INFO, { Scale = 0.86 }):Play()
+	TweenService:Create(win.Group, CLOSE_INFO, { Position = UDim2.new(0.5, 0, 0.5, WINDOW_SLIDE * 0.6) }):Play()
 	local fade = TweenService:Create(win.Fader, CLOSE_INFO, { GroupTransparency = 1 })
 	fade.Completed:Connect(function()
 		if win.Token == token then
@@ -629,6 +773,7 @@ function UI.CloseWindow(win: Window)
 		end
 	end)
 	fade:Play()
+	updateBlur()
 end
 
 function UI.OpenWindow(win: Window)
@@ -646,7 +791,8 @@ function UI.OpenWindow(win: Window)
 	beginFade(win)
 	if not win.Group.Visible then
 		win.Fader.GroupTransparency = 1
-		win.Scale.Scale = 0.86
+		win.Scale.Scale = 0.7
+		win.Group.Position = UDim2.new(0.5, 0, 0.5, WINDOW_SLIDE)
 		win.Group.Visible = true
 	end
 	local fade = TweenService:Create(win.Fader, OPEN_FADE_INFO, { GroupTransparency = 0 })
@@ -656,7 +802,10 @@ function UI.OpenWindow(win: Window)
 		end
 	end)
 	fade:Play()
+	-- federnd aufgehen (Back-Easing schießt etwas über 1 hinaus) und von unten hereingleiten
 	TweenService:Create(win.Scale, OPEN_POP_INFO, { Scale = 1 }):Play()
+	TweenService:Create(win.Group, OPEN_POP_INFO, { Position = UDim2.fromScale(0.5, 0.5) }):Play()
+	updateBlur()
 	if win.OnOpen then
 		task.spawn(win.OnOpen)
 	end
@@ -782,6 +931,7 @@ end
 type ToastEntry = {
 	Container: Frame,
 	Inner: Frame,
+	Scale: UIScale,
 	Panel: Frame,
 	PanelStroke: UIStroke,
 	Gradient: UIGradient,
@@ -823,12 +973,13 @@ local function newToastEntry(): ToastEntry
 		Size = UDim2.new(1, 0, 0, 0),
 		BackgroundTransparency = 1,
 	})
+	local toastScale: UIScale = UI.Create("UIScale", { Scale = 1 })
 	local inner: Frame = UI.Create("Frame", {
 		Name = "Inner",
 		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
 		BackgroundTransparency = 1,
 		Parent = container,
-	})
+	}, { toastScale })
 	local panelStroke = UI.Stroke(BLACK, 3)
 	local gradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
 	local panel: Frame = UI.Create("Frame", {
@@ -848,6 +999,7 @@ local function newToastEntry(): ToastEntry
 	return {
 		Container = container,
 		Inner = inner,
+		Scale = toastScale,
 		Panel = panel,
 		PanelStroke = panelStroke,
 		Gradient = gradient,
@@ -942,12 +1094,15 @@ function UI.Toast(text: string, kind: string?)
 	entry.Label.Text = text
 	entry.Container.Size = UDim2.new(1, 0, 0, 0)
 	entry.Container.LayoutOrder = toastCount
-	entry.Inner.Position = UDim2.fromOffset(70, 0)
+	entry.Inner.Position = UDim2.fromOffset(170, 0)
+	entry.Scale.Scale = 0.8
 	setToastTransparency(entry, 1)
 	entry.Container.Parent = holder
 	table.insert(activeToasts, entry)
 	TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
+	-- gleitet mit Feder herein (schießt etwas über die Mitte und federt zurück) + ploppt elastisch auf
 	TweenService:Create(entry.Inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
+	TweenService:Create(entry.Scale, TOAST_POP_INFO, { Scale = 1 }):Play()
 	fadeToast(entry, TOAST_FADE_INFO, 0)
 	while #activeToasts > MAX_TOASTS do
 		removeToast(toastToDrop())

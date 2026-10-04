@@ -4,7 +4,10 @@
 --  ("ClaimGift", "Spin", "ClaimQuest", "RerollQuest"). Countdowns laufen lokal weiter – ohne dass
 --  der Server jede Sekunde senden muss: FreeSpinIn gilt ab der Ankunft des States (ctx.StateTime),
 --  die Geschenke kommen nur bei Änderung und zählen ab GiftsAt (Serverzeit).
---  Das Glücksrad dreht flüssig mit Ease-Out genau auf das Feld, das der Server gewürfelt hat.
+--  Das Glücksrad holt kurz Schwung (dreht ein Stück zurück), läuft realistisch aus, rollt einen
+--  Hauch über das Ziel hinaus und pendelt zurück – genau auf das Feld, das der Server gewürfelt hat.
+--  Der Zeiger schnippt an jedem Feld und wackelt gedämpft nach (Feder), die Lämpchen blinken
+--  passend zum Tempo.
 -- =====================================================================
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -276,9 +279,15 @@ local SPOKES_PER_SEGMENT = 12
 local SPIN_TIME = 4.4
 local SPIN_TURNS = 5
 local SPIN_INFO = TweenInfo.new(SPIN_TIME, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local WINDUP_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local SETTLE_INFO = TweenInfo.new(0.55, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
 local WIN_POP_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out, 2, true)
-local POINTER_KICK = 22 -- so weit schnippt der Zeiger, wenn ein Feld vorbeisaust
-local POINTER_BACK = 0.12 -- Sekunden bis er wieder gerade steht
+local WINDUP_ANGLE = 9 -- so weit holt das Rad vor dem Drehen Schwung (Grad zurück)
+local OVERSHOOT = 0.14 -- rollt so viel (Anteil eines Felds) übers Ziel und pendelt zurück
+local POINTER_KICK = 26 -- so weit schnippt der Zeiger höchstens, wenn ein Feld vorbeisaust
+local POINTER_STIFFNESS = 700 -- Feder des Zeigers (höher = schneller zurück)
+local POINTER_DAMPING = 13 -- Dämpfung (niedriger = wackelt länger nach)
+local POINTER_STEP = 1 / 240 -- Rechenschritt der Zeiger-Feder (stabil bei jeder Bildrate)
 local LIGHT_COUNT = 16
 local LIGHT_ON = Color3.fromRGB(255, 245, 160)
 local LIGHT_OFF = Color3.fromRGB(255, 120, 40)
@@ -645,39 +654,64 @@ function Rewards.RefreshWheel(state: any)
 	end
 end
 
--- Dreht den Rotor flüssig (Ease-Out) auf das Feld "segment" (1 = oben, im Uhrzeigersinn).
--- Wartet, bis das Rad steht.
+-- Dreht den Rotor auf das Feld "segment" (1 = oben, im Uhrzeigersinn): Schwung holen, auslaufen,
+-- leicht drüberrollen, zurückpendeln. Wartet, bis das Rad steht.
 local function spinTo(segment: number)
 	local count = segmentCount()
 	local segAngle = 360 / count
 	local start = wheelRotor.Rotation % 360
 	wheelRotor.Rotation = start
 	-- Der Zeiger oben zeigt auf den Rad-Winkel -Rotation -> Feld i steht oben bei -(i-1)*segAngle
-	local target = (360 - (segment - 1) * segAngle) % 360 + (math.random() - 0.5) * segAngle * 0.6
+	local target = (360 - (segment - 1) * segAngle) % 360 + (math.random() - 0.5) * segAngle * 0.5
 	local final = start + 360 * SPIN_TURNS + (target - start) % 360
-	local tween = TweenService:Create(wheelRotor, SPIN_INFO, { Rotation = final })
 	local lastIndex = math.floor((start + segAngle / 2) / segAngle)
-	local kickAge = POINTER_BACK
+	local lastRotation = start
+	local pointerAngle, pointerVelocity = 0, 0
+	local pointerClock = 0
 	local lightClock = 0
 	local connection = RunService.RenderStepped:Connect(function(dt: number)
-		-- Zeiger schnippt bei jedem vorbeisausenden Feld (ohne neue Tweens pro Frame)
-		local index = math.floor((wheelRotor.Rotation + segAngle / 2) / segAngle)
+		local rotation = wheelRotor.Rotation
+		local speed = if dt > 0 then math.abs(rotation - lastRotation) / dt else 0 -- Grad/s
+		lastRotation = rotation
+		-- Zeiger schnippt bei jedem vorbeisausenden Feld (je schneller, desto weiter)
+		local index = math.floor((rotation + segAngle / 2) / segAngle)
 		if index ~= lastIndex then
 			lastIndex = index
-			kickAge = 0
-		else
-			kickAge += dt
+			local kick = POINTER_KICK * math.clamp(speed / 500, 0.35, 1)
+			pointerAngle = math.min(pointerAngle, -kick)
+			pointerVelocity = math.min(pointerVelocity, 0)
 		end
-		local kick = math.max(0, 1 - kickAge / POINTER_BACK)
-		wheelPointer.Rotation = -POINTER_KICK * kick
+		-- Feder zurück in die Mitte (gedämpftes Nachwackeln), in kleinen festen Schritten
+		pointerClock += math.min(dt, 0.1)
+		while pointerClock >= POINTER_STEP do
+			pointerClock -= POINTER_STEP
+			local accel = -POINTER_STIFFNESS * pointerAngle - POINTER_DAMPING * pointerVelocity
+			pointerVelocity += accel * POINTER_STEP
+			pointerAngle += pointerVelocity * POINTER_STEP
+		end
+		wheelPointer.Rotation = math.clamp(pointerAngle, -POINTER_KICK - 6, 10)
+		-- Lämpchen blinken schnell, solange das Rad schnell ist, und werden mit ihm langsamer
 		lightClock += dt
-		if lightClock >= 0.09 then
+		local interval = math.clamp(18 / math.max(speed, 1), 0.06, 0.35)
+		if lightClock >= interval then
 			lightClock = 0
 			setLights(not lightsFlipped)
 		end
 	end)
+	-- 1) Schwung holen
+	local windup = TweenService:Create(wheelRotor, WINDUP_INFO, { Rotation = start - WINDUP_ANGLE })
+	windup:Play()
+	windup.Completed:Wait()
+	-- 2) auslaufen (etwas über das Ziel hinaus) 3) zurückpendeln
+	local over = final + segAngle * OVERSHOOT
+	local tween = TweenService:Create(wheelRotor, SPIN_INFO, { Rotation = over })
 	tween:Play()
 	tween.Completed:Wait()
+	local settle = TweenService:Create(wheelRotor, SETTLE_INFO, { Rotation = final })
+	settle:Play()
+	settle.Completed:Wait()
+	-- Zeiger noch kurz auspendeln lassen
+	task.wait(0.25)
 	connection:Disconnect()
 	wheelRotor.Rotation = final % 360
 	wheelPointer.Rotation = 0
@@ -690,6 +724,14 @@ local function celebrate(segment: number)
 		scale.Scale = 1
 		TweenService:Create(scale, WIN_POP_INFO, { Scale = 1.7 }):Play()
 	end
+	-- Lämpchen blinken zur Feier ein paar Mal schnell
+	task.spawn(function()
+		for _ = 1, 8 do
+			setLights(not lightsFlipped)
+			task.wait(0.09)
+		end
+		setLights(false)
+	end)
 end
 
 function Rewards.Spin()

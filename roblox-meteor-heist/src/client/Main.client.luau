@@ -33,6 +33,7 @@ local Prompts = require(Modules:WaitForChild("Prompts"))
 local Fly = require(Modules:WaitForChild("Fly"))
 local PhotoMode = require(Modules:WaitForChild("PhotoMode"))
 local AdminPanel = require(Modules:WaitForChild("AdminPanel"))
+local MeteorRun = require(Modules:WaitForChild("MeteorRun"))
 
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local Remotes = {
@@ -119,6 +120,7 @@ Rewards.Init(ctx)
 Hud.Init(ctx)
 Fly.Init(UI.Toast)
 PhotoMode.Init(ctx)
+MeteorRun.Start(ctx) -- ☄️ Meteor-Run: HUD, Balken, Einschläge, Knopf "☄️ Run"
 
 -- Welt-Sachen brauchen die Map (wird vom Server gebaut) -> im Hintergrund warten
 task.spawn(function()

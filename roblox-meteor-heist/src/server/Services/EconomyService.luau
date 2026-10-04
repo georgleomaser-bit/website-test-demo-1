@@ -913,6 +913,14 @@ function EconomyService.Start()
 			else
 				ok, message = false, "Kein Charakter"
 			end
+		elseif action == "GoRun" then
+			-- ☄️ Meteor-Run: zum Start-Tor (RunService prüft Tragen, Einfrieren, Charakter)
+			local run = Services.RunService
+			if run then
+				ok, message = run.Teleport(player)
+			else
+				ok, message = false, "☄️ Der Meteor-Run kommt bald!"
+			end
 		end
 		dirty[player] = true
 		local response: { [string]: any } = { Ok = ok, Message = message }

@@ -4,6 +4,7 @@
 --  Öffnen: Knopf "🛠️ Admin" rechts oder Taste P
 -- =====================================================================
 
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
@@ -12,6 +13,7 @@ local AdminPanel = {}
 
 local Theme = UI.Theme
 local built = false
+local STATUS_POP_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local function darker(color: Color3, amount: number): Color3
 	return color:Lerp(Color3.new(0, 0, 0), amount)
@@ -45,6 +47,12 @@ function AdminPanel.Build(ctx: any)
 		MaxText = 16,
 		Parent = content,
 	})
+	local statusScale: UIScale = UI.Create("UIScale", { Scale = 1, Parent = status })
+	-- Antwort vom Server: Statuszeile ploppt kurz auf (man sieht sofort, dass etwas passiert ist)
+	local function popStatus()
+		statusScale.Scale = 1.12
+		TweenService:Create(statusScale, STATUS_POP_INFO, { Scale = 1 }):Play()
+	end
 
 	local function admin(action: string, args: { [string]: any }?): any
 		local ok, result = pcall(function()
@@ -53,10 +61,12 @@ function AdminPanel.Build(ctx: any)
 		if ok and type(result) == "table" then
 			status.Text = (if result.Ok then "✅ " else "❌ ") .. tostring(result.Message)
 			status.TextColor3 = if result.Ok then Theme.Cash else Theme.Red
+			popStatus()
 			return result
 		end
 		status.Text = "❌ Keine Antwort vom Server"
 		status.TextColor3 = Theme.Red
+		popStatus()
 		return nil
 	end
 

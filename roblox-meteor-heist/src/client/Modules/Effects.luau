@@ -1,13 +1,17 @@
 -- =====================================================================
 --  EFFEKTE vom Server (Remote "Effect": name, strength, data)
---   "Steps"    -> fliegende "+X 👟"-Zahl über deinem Charakter (wie im Speed-Simulator)
---   "Collect"  -> großes "+$X" in der Bildschirmmitte
---   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base
---                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter)
---   "Hatch"    -> Funken-Explosion + Lichtblitz, wenn ein Alien schlüpft
---   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) + Konfetti,
+--   "Steps"    -> fliegende "+X 👟"-Zahl über deinem Charakter (federt, Farbverlauf, kippelt)
+--   "Collect"  -> großes "+$X" in der Bildschirmmitte + Münzen fliegen von dir zum Geld-Zähler
+--   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Laufband in die Base, mit Funkenschweif
+--                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter),
+--                 beim Aufprall: Staub-Puff + Druckwelle
+--   "Hatch"    -> Funken-Explosion + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
+--                 (das Alien selbst ploppt in WorldFX mit Overshoot herein)
+--   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) mit Strahlenkranz + Konfetti,
 --                    sonst bzw. beim Tragen kleine Karte oben rechts
---   "Shake", "Confetti", "Alarm" wie bisher
+--   "Shake" (weich und dezent), "Confetti" (fliegt aus zwei Kanonen hoch, fällt mit Schwerkraft,
+--   dreht und flattert), "Alarm" wie bisher
+--  Dazu: Rebirth-Bildschirmblitz (Effects.RebirthFlash, vom HUD aufgerufen).
 --  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
 -- =====================================================================
@@ -18,12 +22,14 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
+local WorldFX = require(script.Parent:WaitForChild("WorldFX"))
 
 local Effects = {}
 
 local player = Players.LocalPlayer
 local ctx: any = nil
 local fxFolder: Folder? = nil
+local overlay: ScreenGui? = nil -- eigene Ebene für Münzen, Konfetti, Blitze (ohne UI-Skalierung)
 local hidden = false -- Foto-Modus: fliegende Zahlen aus
 
 local WHITE = Color3.new(1, 1, 1)
@@ -37,16 +43,22 @@ type FlyNumber = {
 	Label: TextLabel,
 	Stroke: UIStroke,
 	Scale: UIScale,
+	Gradient: UIGradient,
 	Active: boolean,
 	Age: number,
 	X: number,
 	Y: number,
+	Tilt: number,
 }
 
 local FLY_COUNT = 12
-local FLY_LIFE = 1.1
+local FLY_LIFE = 1.15
 local FLY_RISE = 3.6
-local FLY_COLORS = { Color3.fromRGB(255, 225, 40), Color3.fromRGB(70, 190, 255) }
+-- Farbverläufe (oben hell -> unten kräftig), abwechselnd Gold und Himmelblau
+local FLY_COLORS = {
+	ColorSequence.new(Color3.fromRGB(255, 250, 170), Color3.fromRGB(255, 150, 20)),
+	ColorSequence.new(Color3.fromRGB(190, 245, 255), Color3.fromRGB(40, 120, 255)),
+}
 local flyPool: { FlyNumber } = {}
 local flyNext = 1
 local flyColor = 1
@@ -66,6 +78,7 @@ local function buildFlyPool()
 		})
 		local stroke: UIStroke = UI.Create("UIStroke", { Thickness = 3, Color = BLACK })
 		local scale: UIScale = UI.Create("UIScale", { Scale = 1 })
+		local gradient: UIGradient = UI.Create("UIGradient", { Rotation = 90, Color = FLY_COLORS[1] })
 		local labelObj: TextLabel = UI.Create("TextLabel", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
@@ -74,18 +87,20 @@ local function buildFlyPool()
 			Font = Enum.Font.FredokaOne,
 			TextScaled = true,
 			Text = "",
-			TextColor3 = FLY_COLORS[1],
+			TextColor3 = WHITE, -- Farbe kommt aus dem Verlauf
 			Parent = gui,
-		}, { stroke, scale })
+		}, { stroke, scale, gradient })
 		table.insert(flyPool, {
 			Gui = gui,
 			Label = labelObj,
 			Stroke = stroke,
 			Scale = scale,
+			Gradient = gradient,
 			Active = false,
 			Age = 0,
 			X = 0,
 			Y = 0,
+			Tilt = 0,
 		})
 	end
 end
@@ -124,8 +139,10 @@ local function showSteps(amount: number)
 	fly.Age = 0
 	fly.X = (math.random() - 0.5) * 5
 	fly.Y = 1.2 + math.random() * 1.6
+	fly.Tilt = (math.random() - 0.5) * 30
 	fly.Label.Text = "+" .. UI.FormatSteps(amount, ctx.Util.FormatNumber) .. " 👟"
-	fly.Label.TextColor3 = FLY_COLORS[flyColor]
+	fly.Gradient.Color = FLY_COLORS[flyColor]
+	fly.Label.Rotation = fly.Tilt
 	fly.Label.TextTransparency = 0
 	fly.Stroke.Transparency = 0
 	fly.Scale.Scale = 0.3
@@ -145,13 +162,12 @@ local function stepFlyNumbers(dt: number)
 			else
 				local rise = 1 - (1 - t) * (1 - t) -- schnell hoch, dann langsamer
 				fly.Gui.StudsOffset = Vector3.new(fly.X, fly.Y + rise * FLY_RISE, 0)
-				local scale = 1
-				if t < 0.12 then
-					scale = 0.3 + (t / 0.12) * 1.05
-				elseif t < 0.26 then
-					scale = 1.35 - ((t - 0.12) / 0.14) * 0.35
-				end
-				fly.Scale.Scale = scale
+				-- federnder Bounce: aus 0.3 schnell über die Endgröße hinaus, gedämpft zurück
+				local age = fly.Age
+				local decay = math.exp(-age * 9)
+				fly.Scale.Scale = 1 - 0.7 * decay * math.cos(age * 26)
+				-- kippelt am Anfang hin und her und richtet sich dann auf
+				fly.Label.Rotation = fly.Tilt * math.exp(-age * 5) * math.cos(age * 18)
 				local fade = if t > 0.6 then (t - 0.6) / 0.4 else 0
 				fly.Label.TextTransparency = fade
 				fly.Stroke.Transparency = fade
@@ -197,6 +213,112 @@ local function cashPopup(amount: number)
 		popupCount -= 1
 		popup:Destroy()
 	end)
+end
+
+-- ---------------------------------------------------------------------
+-- MÜNZEN fliegen von dir zum Geld-Zähler (fester Vorrat, nur Tweens)
+-- ---------------------------------------------------------------------
+type Coin = { Label: TextLabel, Busy: boolean }
+
+local COIN_COUNT = 16
+local COIN_OUT_INFO = TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local coinPool: { Coin } = {}
+
+local function buildCoins()
+	local gui = overlay
+	if not gui then
+		return
+	end
+	for _ = 1, COIN_COUNT do
+		local coinLabel: TextLabel = UI.Create("TextLabel", {
+			Name = "Coin",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Size = UDim2.fromOffset(34, 34),
+			BackgroundTransparency = 1,
+			Text = "🪙",
+			TextScaled = true,
+			Font = Enum.Font.FredokaOne,
+			Visible = false,
+			ZIndex = 30,
+			Parent = gui,
+		})
+		table.insert(coinPool, { Label = coinLabel, Busy = false })
+	end
+end
+
+local function flyCoins(amount: number)
+	local gui = overlay
+	local camera = workspace.CurrentCamera
+	local hud = ctx.Hud
+	if not gui or hidden or not camera or #coinPool == 0 or not hud or not hud.CashAnchor then
+		return
+	end
+	local target: Vector2? = hud.CashAnchor()
+	if not target then
+		return
+	end
+	local goal = UDim2.fromOffset(target.X, target.Y)
+	local size = gui.AbsoluteSize
+	local start = Vector2.new(size.X / 2, size.Y * 0.55)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
+		local point, onScreen = camera:WorldToScreenPoint(root.Position)
+		if onScreen then
+			start = Vector2.new(point.X, point.Y)
+		end
+	end
+	local count = math.clamp(math.floor(3 + math.log10(math.max(amount, 1)) * 1.5), 4, 12)
+	local launched = 0
+	for _, coin in ipairs(coinPool) do
+		if launched >= count then
+			break
+		end
+		if not coin.Busy then
+			launched += 1
+			coin.Busy = true
+			local coinLabel = coin.Label
+			-- erst in alle Richtungen aufspritzen, dann im Bogen zum Zähler saugen
+			local angle = math.random() * math.pi * 2
+			local spread = 40 + math.random() * 70
+			local midX = start.X + math.cos(angle) * spread
+			local midY = start.Y + math.sin(angle) * spread * 0.7 - 30
+			coinLabel.Position = UDim2.fromOffset(start.X, start.Y)
+			coinLabel.Size = UDim2.fromOffset(14, 14)
+			coinLabel.Rotation = math.random(-40, 40)
+			coinLabel.Visible = true
+			local out = TweenService:Create(coinLabel, COIN_OUT_INFO, {
+				Position = UDim2.fromOffset(midX, midY),
+				Size = UDim2.fromOffset(34, 34),
+				Rotation = coinLabel.Rotation + math.random(-120, 120),
+			})
+			local delay = launched * 0.04
+			out.Completed:Once(function()
+				local flyInfo = TweenInfo.new(
+					0.4 + math.random() * 0.15,
+					Enum.EasingStyle.Quad,
+					Enum.EasingDirection.In,
+					0,
+					false,
+					delay
+				)
+				local fly = TweenService:Create(coinLabel, flyInfo, {
+					Position = goal,
+					Size = UDim2.fromOffset(20, 20),
+					Rotation = 0,
+				})
+				fly.Completed:Once(function()
+					coinLabel.Visible = false
+					coin.Busy = false
+					if not hidden then
+						hud.PulseCash(0.06) -- jede Münze lässt den Zähler kurz zucken
+					end
+				end)
+				fly:Play()
+			end)
+			out:Play()
+		end
+	end
 end
 
 -- ---------------------------------------------------------------------
@@ -306,11 +428,189 @@ local function burst(position: Vector3, color: Color3, amount: number, flash: bo
 	Debris:AddItem(holder, 2)
 end
 
+-- Druckwelle: flacher leuchtender Ring am Boden, wächst und verblasst
+local function ring(position: Vector3, color: Color3, size: number, time: number)
+	local folder = fxFolder
+	local camera = workspace.CurrentCamera
+	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
+		return
+	end
+	local cf = CFrame.new(position) * CFrame.Angles(0, 0, math.pi / 2) -- Zylinder-Achse senkrecht
+	local wave = localPart({
+		Name = "Shockwave",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.15, 1, 1),
+		Material = Enum.Material.Neon,
+		Color = color,
+		Transparency = 0.25,
+		CFrame = cf,
+		Parent = folder,
+	})
+	local info = TweenInfo.new(time, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	TweenService:Create(wave, info, { Size = Vector3.new(0.05, size, size), Transparency = 1 }):Play()
+	Debris:AddItem(wave, time + 0.05)
+end
+
+-- Staub-Puff (weiche graue Wolke) beim Aufprall
+local function puff(position: Vector3, color: Color3, amount: number)
+	local folder = fxFolder
+	local camera = workspace.CurrentCamera
+	if not folder or (camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE) then
+		return
+	end
+	local holder = localPart({
+		Name = "Puff",
+		Size = Vector3.new(0.2, 0.2, 0.2),
+		Transparency = 1,
+		CFrame = CFrame.new(position),
+		Parent = folder,
+	})
+	local smoke: ParticleEmitter = UI.Create("ParticleEmitter", {
+		Color = ColorSequence.new(color:Lerp(WHITE, 0.6), Color3.fromRGB(150, 145, 140)),
+		LightEmission = 0.2,
+		LightInfluence = 0.6,
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.8),
+			NumberSequenceKeypoint.new(0.4, 2.2),
+			NumberSequenceKeypoint.new(1, 3),
+		}),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.35),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Lifetime = NumberRange.new(0.5, 0.9),
+		Speed = NumberRange.new(6, 12),
+		SpreadAngle = Vector2.new(80, 10),
+		EmissionDirection = Enum.NormalId.Top,
+		Acceleration = Vector3.new(0, 3, 0),
+		Drag = 5,
+		RotSpeed = NumberRange.new(-60, 60),
+		Rotation = NumberRange.new(0, 360),
+		Rate = 0,
+		Parent = holder,
+	})
+	smoke:Emit(math.clamp(math.floor(amount), 1, 30))
+	Debris:AddItem(holder, 1.2)
+end
+
+-- Schalen-Splitter: kleine Stücke fliegen mit Schwerkraft und Drehung weg (fester Vorrat,
+-- eine Schleife, eine BulkMoveTo-Liste – keine neuen Teile pro Schlüpfen)
+type Shard = {
+	Part: BasePart,
+	Active: boolean,
+	Pos: Vector3,
+	Vel: Vector3,
+	Spin: Vector3,
+	Age: number,
+	Life: number,
+}
+
+local SHARD_COUNT = 40
+local SHARD_GRAVITY = Vector3.new(0, -60, 0)
+local shards: { Shard } = {}
+local shardNext = 1
+local shardsAlive = 0
+local shardParts: { BasePart } = {}
+local shardCFrames: { CFrame } = {}
+local HIDDEN_CF = CFrame.new(0, -5000, 0)
+
+local function buildShards()
+	local folder = fxFolder
+	if not folder then
+		return
+	end
+	for _ = 1, SHARD_COUNT do
+		local part = localPart({
+			Name = "Shard",
+			Size = Vector3.new(0.5, 0.15, 0.4),
+			Material = Enum.Material.Slate,
+			CFrame = HIDDEN_CF,
+			Parent = folder,
+		})
+		table.insert(shards, {
+			Part = part,
+			Active = false,
+			Pos = Vector3.zero,
+			Vel = Vector3.zero,
+			Spin = Vector3.zero,
+			Age = 0,
+			Life = 1,
+		})
+	end
+end
+
+local function spawnShards(position: Vector3, color: Color3, amount: number, scale: number)
+	if #shards == 0 then
+		return
+	end
+	local camera = workspace.CurrentCamera
+	if camera and (camera.CFrame.Position - position).Magnitude > BURST_RANGE * 0.5 then
+		return -- weit weg sieht man die kleinen Splitter nicht
+	end
+	for _ = 1, amount do
+		local shard = shards[shardNext]
+		shardNext = shardNext % SHARD_COUNT + 1
+		if not shard.Active then
+			shardsAlive += 1
+		end
+		shard.Active = true
+		shard.Age = 0
+		shard.Life = 0.8 + math.random() * 0.6
+		local angle = math.random() * math.pi * 2
+		local out = 8 + math.random() * 14
+		shard.Pos = position + Vector3.new(0, 0.5 * scale, 0)
+		shard.Vel = Vector3.new(math.cos(angle) * out, 14 + math.random() * 16, math.sin(angle) * out)
+		shard.Spin = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 22
+		local part = shard.Part
+		local size = (0.3 + math.random() * 0.4) * scale
+		part.Size = Vector3.new(size, size * 0.3, size * 0.8)
+		part.Color = color:Lerp(Color3.fromRGB(120, 110, 100), math.random() * 0.5)
+		part.Transparency = 0
+	end
+end
+
+local function stepShards(dt: number)
+	table.clear(shardParts)
+	table.clear(shardCFrames)
+	local count = 0
+	for _, shard in ipairs(shards) do
+		if shard.Active then
+			shard.Age += dt
+			count += 1
+			shardParts[count] = shard.Part
+			if shard.Age >= shard.Life then
+				shard.Active = false
+				shardsAlive -= 1
+				shardCFrames[count] = HIDDEN_CF
+			else
+				shard.Vel += SHARD_GRAVITY * dt
+				local pos = shard.Pos + shard.Vel * dt
+				shard.Pos = pos
+				local a = shard.Age
+				local spin = shard.Spin
+				shardCFrames[count] = CFrame.new(pos) * CFrame.fromEulerAnglesXYZ(spin.X * a, spin.Y * a, spin.Z * a)
+				local fade = shard.Age / shard.Life
+				if fade > 0.6 then
+					shard.Part.Transparency = (fade - 0.6) / 0.4
+				end
+			end
+		end
+	end
+	if count > 0 then
+		workspace:BulkMoveTo(shardParts, shardCFrames, Enum.BulkMoveMode.FireCFrameChanged)
+	end
+end
+
 -- ---------------------------------------------------------------------
--- WACKELN (eine gemeinsame Stärke, nimmt ab)
+-- WACKELN (eine gemeinsame Stärke, nimmt weich ab). Bewusst dezent: weiches Rauschen statt
+-- Zufallssprüngen, gedämpfte Stärke und eine Obergrenze (niemandem soll schlecht werden).
 -- ---------------------------------------------------------------------
-local SHAKE_TIME = 0.35
+local SHAKE_TIME = 0.4
+local SHAKE_SCALE = 0.55 -- Server-Stärke -> Studs Kamera-Versatz
+local SHAKE_MAX = 1.2
+local SHAKE_FREQ = 18 -- wie schnell das Rauschen läuft
 local shakeStrength = 0
+local shakeClock = 0
 local shakeLeft = 0
 local shakeHumanoid: Humanoid? = nil
 
@@ -318,7 +618,7 @@ local function shake(strength: number)
 	if type(strength) ~= "number" or strength ~= strength or strength <= 0 then
 		return
 	end
-	strength = math.min(strength, 3)
+	strength = math.min(strength * SHAKE_SCALE, SHAKE_MAX)
 	local current = if shakeLeft > 0 then shakeStrength * (shakeLeft / SHAKE_TIME) else 0
 	if strength >= current then
 		shakeStrength = strength
@@ -344,8 +644,10 @@ local function stepShake(dt: number)
 		humanoid.CameraOffset = Vector3.zero
 		return
 	end
-	local power = shakeStrength * (shakeLeft / SHAKE_TIME)
-	humanoid.CameraOffset = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * power
+	local fade = shakeLeft / SHAKE_TIME
+	local power = shakeStrength * fade * fade
+	shakeClock += dt * SHAKE_FREQ
+	humanoid.CameraOffset = Vector3.new(math.noise(shakeClock, 0.5), math.noise(0.5, shakeClock), 0) * power
 end
 
 -- ---------------------------------------------------------------------
@@ -359,11 +661,33 @@ type Flight = {
 	Age: number,
 	Color: Color3,
 	Fall: boolean, -- fast senkrecht von oben: beschleunigt fallen statt Bogen
+	Size: number,
 }
 
 local DELIVER_TIME = 0.9 -- gleich lang wie die Fall-Zeit auf dem Server
 local MAX_FLIGHTS = 32 -- Egg Rush: viele Eier fallen fast gleichzeitig
 local flights: { Flight } = {}
+
+local function addSparks(part: BasePart, size: number, color: Color3)
+	UI.Create("ParticleEmitter", {
+		Name = "Sparks",
+		Color = ColorSequence.new(WHITE, color),
+		LightEmission = 1,
+		LightInfluence = 0,
+		Size = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, math.clamp(size * 0.14, 0.15, 0.6)),
+			NumberSequenceKeypoint.new(1, 0),
+		}),
+		Transparency = NumberSequence.new(0, 1),
+		Lifetime = NumberRange.new(0.3, 0.6),
+		Speed = NumberRange.new(1, 4),
+		SpreadAngle = Vector2.new(180, 180),
+		Acceleration = Vector3.new(0, -18, 0),
+		Drag = 1.5,
+		Rate = 70,
+		Parent = part,
+	})
+end
 
 local function addTrail(part: BasePart, size: number, color: Color3, tail: Color3)
 	local a0: Attachment = UI.Create("Attachment", { Position = Vector3.new(0, size * 0.35, 0), Parent = part })
@@ -417,6 +741,7 @@ local function deliver(data: any)
 		Parent = folder,
 	})
 	addTrail(part, size, color, tail)
+	addSparks(part, size, tail)
 	local flat = Vector3.new(to.X - from.X, 0, to.Z - from.Z).Magnitude
 	local fall = from.Y - to.Y > flat * 2
 	table.insert(flights, {
@@ -427,6 +752,7 @@ local function deliver(data: any)
 		Age = 0,
 		Color = tail,
 		Fall = fall,
+		Size = size,
 	})
 end
 
@@ -440,10 +766,25 @@ local function stepFlights(dt: number)
 		local pos = flight.From:Lerp(flight.To, e) + Vector3.new(0, flight.Height * 4 * e * (1 - e), 0)
 		flight.Part.CFrame = CFrame.Angles(flight.Age * 6, flight.Age * 4, 0) + pos
 		if t >= 1 then
-			flight.Part:Destroy()
+			-- Geist unsichtbar machen, Schweif + Funken noch ausklingen lassen, dann weg
+			local part = flight.Part
+			part.Transparency = 1
+			local sparks = part:FindFirstChild("Sparks")
+			if sparks and sparks:IsA("ParticleEmitter") then
+				sparks.Enabled = false
+			end
+			Debris:AddItem(part, 0.7)
 			flights[i] = flights[#flights]
 			flights[#flights] = nil
+			local ground = flight.To - Vector3.new(0, flight.Size * 0.45, 0)
 			burst(flight.To, flight.Color, if flight.Fall then 22 else 14, false)
+			puff(ground, flight.Color, 10 + flight.Size * 2)
+			ring(ground, flight.Color, 6 + flight.Size * 3, 0.45)
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if root and root:IsA("BasePart") and (root.Position - flight.To).Magnitude < 25 then
+				shake(0.2) -- ganz nah: kurzes, leichtes Rumpeln
+			end
 		end
 	end
 end
@@ -460,6 +801,11 @@ local function hatch(data: any)
 	local index = Config.RarityIndex[data.Rarity] or 1
 	local color: Color3 = rarity and rarity.Color or WHITE
 	burst(data.Position, color, 24 + index * 7, true)
+	-- Schale platzt: Splitter fliegen weg, Druckwelle am Boden
+	spawnShards(data.Position, color, 6 + math.min(index, 8), math.clamp(0.8 + index * 0.08, 0.8, 1.6))
+	ring(data.Position - Vector3.new(0, 1, 0), color, 12 + index * 1.5, 0.55)
+	-- Alien ploppt in WorldFX mit Overshoot herein
+	WorldFX.NoteHatch(data.Position)
 	-- Ganz nah dran? Kurz wackeln
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -471,42 +817,101 @@ end
 -- ---------------------------------------------------------------------
 -- KONFETTI + ALARM
 -- ---------------------------------------------------------------------
-local MAX_CONFETTI = 120
+local MAX_CONFETTI = 140
+local CONFETTI_GRAVITY = 1500 -- Pixel/s² (Konfetti ist leicht: fällt danach langsamer, siehe unten)
 local confettiAlive = 0
 
+-- Ein Stück Konfetti: der Halter fliegt gleichmäßig zur Seite, das Stück darin steigt (Quad Out)
+-- und fällt (Quad In) – zusammen eine echte Wurfparabel. Dazu Drehen und Flattern (Breite pendelt).
+local function confettiPiece(gui: ScreenGui, x: number, y: number, vx: number, vy: number, color: Color3)
+	local screen = gui.AbsoluteSize
+	local tUp = vy / CONFETTI_GRAVITY
+	local peak = y - vy * vy / (2 * CONFETTI_GRAVITY)
+	local fallDistance = screen.Y + 30 - peak
+	local tDown = math.sqrt(2 * fallDistance / CONFETTI_GRAVITY) * 1.9 -- Luftwiderstand: langsamer fallen
+	local life = tUp + tDown
+	local width, height = math.random(8, 14), math.random(10, 16)
+	local holder: Frame = UI.Create("Frame", {
+		Size = UDim2.fromOffset(0, 0),
+		Position = UDim2.fromOffset(x, y),
+		BackgroundTransparency = 1,
+		ZIndex = 25,
+		Parent = gui,
+	})
+	local piece: Frame = UI.Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(width, height),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Rotation = math.random(0, 360),
+		ZIndex = 25,
+		Parent = holder,
+	})
+	if math.random() < 0.35 then
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = piece }) -- runde Plättchen
+	end
+	-- seitlich: am Anfang schnell, dann vom Luftwiderstand gebremst
+	TweenService:Create(
+		holder,
+		TweenInfo.new(life, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = UDim2.fromOffset(x + vx * 0.9, y) }
+	):Play()
+	TweenService
+		:Create(
+			piece,
+			TweenInfo.new(life, Enum.EasingStyle.Linear),
+			{ Rotation = piece.Rotation + math.random(-720, 720) }
+		)
+		:Play()
+	-- Flattern: Breite pendelt (sieht aus wie ein Blättchen, das sich dreht)
+	TweenService:Create(
+		piece,
+		TweenInfo.new(0.18 + math.random() * 0.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ Size = UDim2.fromOffset(math.max(2, width * 0.15), height) }
+	):Play()
+	local up = TweenService:Create(
+		piece,
+		TweenInfo.new(tUp, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Position = UDim2.fromOffset(0, peak - y) }
+	)
+	up.Completed:Once(function()
+		local down = TweenService:Create(
+			piece,
+			TweenInfo.new(tDown, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ Position = UDim2.fromOffset(0, screen.Y + 30 - y) }
+		)
+		down.Completed:Once(function()
+			confettiAlive -= 1
+			holder:Destroy()
+		end)
+		down:Play()
+	end)
+	up:Play()
+end
+
+-- Konfetti-Kanonen links und rechts unten schießen schräg nach oben zur Mitte
 local function confetti(amount: number)
-	local gui = UI.Root
-	if not gui then
+	local gui = overlay
+	if not gui or hidden then
 		return
 	end
 	local colors = { UI.Theme.Yellow, UI.Theme.Green, UI.Theme.Blue, UI.Theme.Purple, UI.Theme.Red, UI.Theme.Pink }
-	local count = math.floor(28 * math.clamp(tonumber(amount) or 1, 0.3, 3))
+	local count = math.floor(32 * math.clamp(tonumber(amount) or 1, 0.3, 3))
 	count = math.min(count, MAX_CONFETTI - confettiAlive)
-	for _ = 1, count do
+	local screen = gui.AbsoluteSize
+	if screen.Y < 10 then
+		return
+	end
+	for i = 1, count do
 		confettiAlive += 1
-		local startX = math.random()
-		local piece: Frame = UI.Create("Frame", {
-			Size = UDim2.fromOffset(math.random(7, 13), math.random(7, 13)),
-			Position = UDim2.new(startX, 0, 0, -20),
-			BackgroundColor3 = colors[math.random(1, #colors)],
-			BorderSizePixel = 0,
-			Rotation = math.random(0, 360),
-			ZIndex = 25,
-			Parent = gui,
-		})
-		local tween = TweenService:Create(
-			piece,
-			TweenInfo.new(math.random(16, 30) / 10, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{
-				Position = UDim2.new(startX + (math.random() - 0.5) * 0.25, 0, 1, 20),
-				Rotation = piece.Rotation + math.random(-400, 400),
-			}
-		)
-		tween.Completed:Connect(function()
-			confettiAlive -= 1
-			piece:Destroy()
-		end)
-		tween:Play()
+		local left = i % 2 == 0
+		local x = if left then screen.X * 0.04 else screen.X * 0.96
+		local y = screen.Y + 10
+		-- Gipfel zwischen 35 % und 85 % der Bildschirmhöhe
+		local rise = screen.Y * (0.35 + math.random() * 0.5)
+		local vy = math.sqrt(2 * CONFETTI_GRAVITY * rise)
+		local vx = (screen.X * (0.12 + math.random() * 0.4)) * (if left then 1 else -1)
+		confettiPiece(gui, x, y, vx, vy, colors[math.random(1, #colors)])
 	end
 end
 
@@ -537,6 +942,10 @@ end
 local REVEAL_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local REVEAL_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 local REVEAL_SPIN_INFO = TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+local REVEAL_SPIN2_INFO = TweenInfo.new(9, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+local REVEAL_PULSE_INFO = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local REVEAL_TILT_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
+local RAY_COUNT = 12 -- Strahlen im äußeren Kranz (der innere hat halb so viele, dreht andersrum)
 local REVEAL_TIME = 3.2
 local MINI_REVEAL_TIME = 1.8
 local MINI_REVEAL_SCALE = 0.45
@@ -555,7 +964,10 @@ type RevealUI = {
 	Holder: Frame,
 	Scale: UIScale,
 	Rays: Frame,
-	RayTween: Tween?,
+	Rays2: Frame,
+	RayScale: UIScale,
+	Glow: Frame,
+	RayTweens: { Tween },
 	Card: Frame,
 	CardGradient: UIGradient,
 	Title: TextLabel,
@@ -598,28 +1010,73 @@ local function buildReveal(): RevealUI?
 		Parent = gui,
 	})
 	local scale: UIScale = UI.Create("UIScale", { Scale = 0, Parent = holder })
-	-- Strahlen hinter der Karte (drehen sich langsam)
+	-- Strahlenkranz hinter der Karte: zwei Kränze drehen gegeneinander und pulsieren,
+	-- jeder Strahl läuft zu den Spitzen hin weich aus (Verlauf), dazu ein weicher Schein in der Mitte
+	local rayScale: UIScale = UI.Create("UIScale", { Scale = 1 })
+	local glow: Frame = UI.Create("Frame", {
+		Name = "Glow",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(470, 470),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.55,
+		ZIndex = 30,
+		Parent = holder,
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		UI.Create("UIGradient", {
+			Rotation = 90,
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5, 0.2),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+		}),
+	})
 	local rays: Frame = UI.Create("Frame", {
 		Name = "Rays",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(560, 560),
+		Size = UDim2.fromOffset(620, 620),
+		BackgroundTransparency = 1,
+		ZIndex = 30,
+		Parent = holder,
+	}, { rayScale })
+	local rays2: Frame = UI.Create("Frame", {
+		Name = "Rays2",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(500, 500),
 		BackgroundTransparency = 1,
 		ZIndex = 30,
 		Parent = holder,
 	})
-	for i = 0, 5 do
+	local rayFade = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.3, 0.55),
+		NumberSequenceKeypoint.new(0.5, 0.35),
+		NumberSequenceKeypoint.new(0.7, 0.55),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	local function addRay(parent: Frame, rotation: number, width: number, transparency: number)
 		UI.Create("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(0, 46, 1, 0),
-			Rotation = i * 30,
+			Size = UDim2.new(0, width, 1, 0),
+			Rotation = rotation,
 			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0.72,
+			BackgroundTransparency = transparency,
 			BorderSizePixel = 0,
 			ZIndex = 30,
-			Parent = rays,
-		})
+			Parent = parent,
+		}, { UI.Create("UIGradient", { Rotation = 90, Transparency = rayFade }) })
+	end
+	-- Ein Strahl geht durch die Mitte (= 2 Strahlen) -> RAY_COUNT / 2 Frames je Kranz
+	for i = 0, RAY_COUNT / 2 - 1 do
+		addRay(rays, i * (360 / RAY_COUNT), if i % 2 == 0 then 54 else 30, 0.45)
+	end
+	for i = 0, RAY_COUNT / 4 - 1 do
+		addRay(rays2, i * (720 / RAY_COUNT) + 15, 22, 0.55)
 	end
 	local cardGradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
 	local card: Frame = UI.Create("Frame", {
@@ -734,7 +1191,10 @@ local function buildReveal(): RevealUI?
 		Holder = holder,
 		Scale = scale,
 		Rays = rays,
-		RayTween = nil,
+		Rays2 = rays2,
+		RayScale = rayScale,
+		Glow = glow,
+		RayTweens = {},
 		Card = card,
 		CardGradient = cardGradient,
 		Title = title,
@@ -805,11 +1265,15 @@ local function fillReveal(ui: RevealUI, data: any): boolean
 		* (tonumber(def.IncomeMult) or 1)
 		* (if mut then tonumber(mut.Mult) or 1 else 1)
 	ui.Income.Text = "💵 +" .. ctx.Util.FormatCash(perSecond) .. "/s"
-	for _, ray in ipairs(ui.Rays:GetChildren()) do
-		if ray:IsA("Frame") then
-			ray.BackgroundColor3 = if ultra then UI.Theme.Yellow else rarityColor:Lerp(WHITE, 0.4)
+	local rayColor = if ultra then UI.Theme.Yellow else rarityColor:Lerp(WHITE, 0.4)
+	for _, layer in ipairs({ ui.Rays, ui.Rays2 }) do
+		for _, ray in ipairs(layer:GetChildren()) do
+			if ray:IsA("Frame") then
+				ray.BackgroundColor3 = rayColor
+			end
 		end
 	end
+	ui.Glow.BackgroundColor3 = rayColor
 	return true
 end
 
@@ -845,12 +1309,27 @@ local function showNextReveal()
 			ui.Holder.AnchorPoint = if big then Vector2.new(0.5, 0.5) else Vector2.new(1, 0)
 			ui.Holder.Position = if big then UDim2.fromScale(0.5, 0.45) else UDim2.new(1, -14, 0, 56)
 			ui.Rays.Visible = big
+			ui.Rays2.Visible = big
+			ui.Glow.Visible = big
 			ui.Holder.Visible = true
 			ui.Scale.Scale = 0.2
 			ui.Rays.Rotation = 0
-			local rayTween = TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 })
-			ui.RayTween = rayTween
-			rayTween:Play()
+			ui.Rays2.Rotation = 0
+			ui.RayScale.Scale = 1
+			ui.Holder.Rotation = if big then -8 else 0
+			if big then
+				-- Strahlen nur bei der großen Karte (die kleine oben rechts bleibt ruhig)
+				local tweens = {
+					TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 }),
+					TweenService:Create(ui.Rays2, REVEAL_SPIN2_INFO, { Rotation = -360 }),
+					TweenService:Create(ui.RayScale, REVEAL_PULSE_INFO, { Scale = 1.12 }),
+				}
+				for _, tween in ipairs(tweens) do
+					tween:Play()
+				end
+				ui.RayTweens = tweens
+				TweenService:Create(ui.Holder, REVEAL_TILT_INFO, { Rotation = 0 }):Play()
+			end
 			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = if big then 1 else MINI_REVEAL_SCALE }):Play()
 			if big then
 				confetti(1.6)
@@ -864,8 +1343,10 @@ local function showNextReveal()
 			local out = TweenService:Create(ui.Scale, REVEAL_OUT_INFO, { Scale = 0 })
 			out:Play()
 			out.Completed:Wait()
-			rayTween:Cancel()
-			ui.RayTween = nil
+			for _, tween in ipairs(ui.RayTweens) do
+				tween:Cancel()
+			end
+			ui.RayTweens = {}
 			ui.Holder.Visible = false
 		end
 	end
@@ -973,6 +1454,69 @@ local function buildFrozen()
 end
 
 -- ---------------------------------------------------------------------
+-- 🔥 REBIRTH: Bildschirm blitzt hell auf, großer Schriftzug ploppt, Konfetti
+-- ---------------------------------------------------------------------
+local REBIRTH_FLASH_INFO = TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local REBIRTH_POP_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local REBIRTH_OUT_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 1.1)
+local rebirthBusy = false
+
+function Effects.RebirthFlash()
+	local gui = overlay
+	if not gui or hidden or rebirthBusy then
+		return
+	end
+	rebirthBusy = true
+	local flash: Frame = UI.Create("Frame", {
+		Name = "RebirthFlash",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0,
+		ZIndex = 40,
+		Parent = gui,
+	}, {
+		-- Mitte weiß, Ränder feurig orange
+		UI.Create("UIGradient", {
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, UI.Theme.Orange),
+				ColorSequenceKeypoint.new(0.5, WHITE),
+				ColorSequenceKeypoint.new(1, UI.Theme.Orange),
+			}),
+		}),
+	})
+	local textScale: UIScale = UI.Create("UIScale", { Scale = 0.3 })
+	local text = UI.Label({
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.fromOffset(620, 110),
+		Text = "🔥 REBIRTH! 🔥",
+		TextColor3 = UI.Theme.Yellow,
+		MaxText = 90,
+		Outline = 5,
+		ZIndex = 41,
+		Parent = gui,
+	})
+	textScale.Parent = text
+	text.Rotation = -6
+	TweenService:Create(flash, REBIRTH_FLASH_INFO, { BackgroundTransparency = 1 }):Play()
+	TweenService:Create(textScale, REBIRTH_POP_INFO, { Scale = 1 }):Play()
+	TweenService:Create(text, REVEAL_TILT_INFO, { Rotation = 0 }):Play()
+	local stroke = text:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		TweenService:Create(stroke, REBIRTH_OUT_INFO, { Transparency = 1 }):Play()
+	end
+	local out = TweenService:Create(text, REBIRTH_OUT_INFO, { TextTransparency = 1 })
+	out.Completed:Once(function()
+		flash:Destroy()
+		text:Destroy()
+		rebirthBusy = false
+	end)
+	out:Play()
+	confetti(2.5)
+	shake(0.6)
+end
+
+-- ---------------------------------------------------------------------
 -- ÖFFENTLICH
 -- ---------------------------------------------------------------------
 function Effects.Play(name: any, strength: any, data: any)
@@ -990,6 +1534,7 @@ function Effects.Play(name: any, strength: any, data: any)
 	elseif name == "Collect" then
 		if amount > 0 then
 			cashPopup(amount)
+			flyCoins(amount)
 			if ctx.Hooks.OnCash then
 				ctx.Hooks.OnCash(amount)
 			end
@@ -1012,6 +1557,9 @@ end
 -- Foto-Modus: fliegende Zahlen + große Karten ausblenden
 function Effects.SetHidden(value: boolean)
 	hidden = value
+	if overlay then
+		overlay.Enabled = not value
+	end
 	if value then
 		for _, fly in ipairs(flyPool) do
 			fly.Active = false
@@ -1024,6 +1572,15 @@ end
 function Effects.Init(context: any)
 	ctx = context
 	fxFolder = UI.Create("Folder", { Name = "MeteorHeistClientFX", Parent = workspace })
+	-- Eigene Ebene über der Oberfläche (ohne deren UIScale -> Pixel = Bildschirm-Pixel)
+	overlay = UI.Create("ScreenGui", {
+		Name = "MeteorHeistFX",
+		ResetOnSpawn = false,
+		IgnoreGuiInset = false,
+		DisplayOrder = 5,
+		ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = player:WaitForChild("PlayerGui"),
+	})
 	alarmFrame = UI.Create("Frame", {
 		Name = "Alarm",
 		Size = UDim2.fromScale(1, 1),
@@ -1034,10 +1591,15 @@ function Effects.Init(context: any)
 	})
 	buildFlyPool()
 	buildFrozen()
+	buildCoins()
+	buildShards()
 	RunService.RenderStepped:Connect(function(dt: number)
 		stepFlyNumbers(dt)
 		if #flights > 0 then
 			stepFlights(dt)
+		end
+		if shardsAlive > 0 then
+			stepShards(dt)
 		end
 		stepShake(dt)
 	end)

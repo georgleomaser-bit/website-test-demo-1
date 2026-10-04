@@ -82,6 +82,9 @@ local HIGHLIGHT_RARITY = "Admin"
 
 local SHADE_ALPHA = 0.35 -- Shade-Teile: so viel dunkler als der Körper
 
+-- Teile, die der Client als Augen erkennt (Attribut "Eye" -> lokales Blinzeln)
+local EYE_PARTS: { [string]: boolean } = { Eye = true, Pupil = true, Iris = true }
+
 local MUT_STYLES: { [string]: MutStyle } = {
 	Gold = { Material = Enum.Material.Foil },
 	Diamond = { Material = Enum.Material.Glass, Transparency = 0.15 },
@@ -349,6 +352,9 @@ local function makePart(ctx: Ctx, name: string, role: string, size: Vector3, cf:
 		part.Massless = true
 	end
 	styleRole(ctx, part, role)
+	if EYE_PARTS[name] then
+		part:SetAttribute("Eye", true) -- Client: Augen blinzeln lokal (rein optisch)
+	end
 	ctx.top = math.max(ctx.top, cf.Position.Y + halfHeight(cf, size))
 	part.Parent = ctx.model
 	return part
@@ -1184,6 +1190,9 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 	model:SetAttribute("PivotHeight", bodyY * s)
 	model:SetAttribute("TopHeight", ctx.top * s)
 	model:SetAttribute("BuiltLevelScale", lvScale)
+	-- nur für Client-Animationen (Squash & Stretch, Bewegungsstil): Body-Größe beim Bauen, Körperform
+	model:SetAttribute("Archetype", look.Archetype)
+	body:SetAttribute("BaseSize", body.Size)
 
 	addEffects(model, body, alien, mut, s, carry)
 
@@ -1234,6 +1243,7 @@ function AlienFactory.Refresh(model: Model, entry: Entry)
 		local scaledRel = CFrame.new(rel.Position * (target / current)) * rel.Rotation
 		body.PivotOffset = scaledRel:Inverse()
 		model:PivotTo(pivot)
+		body:SetAttribute("BaseSize", body.Size) -- Client-Squash rechnet mit der neuen Größe
 		-- Zähler: der Client (Wippen) merkt daran, dass sich die Teile verändert haben
 		model:SetAttribute("Rev", (tonumber(model:GetAttribute("Rev")) or 0) + 1)
 	end

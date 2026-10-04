@@ -17,6 +17,7 @@ local order = {
 	"EconomyService",
 	"RewardService", -- Spielzeit-Geschenke, Glücksrad, Tagesaufgaben
 	"TreadmillService", -- Laufbänder: Schritte farmen
+	"RunService", -- ☄️ Meteor-Run: Lauf-Parcours mit Gratis-Ei als Belohnung
 	"AdminService",
 	"LeaderboardService",
 }
