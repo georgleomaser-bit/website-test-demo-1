@@ -12,7 +12,7 @@
 --   • Lava-Feuer an Parade-Eiern (Attribut "LavaFire"): nur die nächsten paar brennen
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Laufband-Schilder zeigen, welche Laufbänder DU schon freigeschaltet hast
---   • Krasse Eier (Attribut "RareFX", ab Legendary): Ring dreht sich, Licht pulsiert, Partikel nur
+--   • Krasse Eier (Attribut "RareFX", ab Legendary; 4 = Infinity, Ring doppelt so schnell): Ring dreht sich, Licht pulsiert, Partikel nur
 --     in Kameranähe, ab Mythic Blitze (nur die nächsten MAX_RINGS)
 --  Arbeit pro Frame ist begrenzt: höchstens MAX_ANIM Aliens in ANIM_RANGE Studs werden animiert
 --  (jedes ca. 30x pro Sekunde), weit entfernte Dinge werden seltener oder gar nicht bewegt.
@@ -1657,7 +1657,7 @@ local function stepRare(now: number)
 			if #ring > 0 then
 				local center = part.Position
 				local radius = part.Size.X * 0.5 + 1
-				local spin = t * RING_SPEED
+				local spin = t * RING_SPEED * (if record.Tier >= 4 then 2 else 1) -- Infinity: doppelt so schnell
 				for i, segment in ipairs(ring) do
 					local second = i > RING_SEGMENTS
 					local k = if second then i - RING_SEGMENTS else i

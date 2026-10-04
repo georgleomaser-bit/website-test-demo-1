@@ -7,7 +7,7 @@
 --    müssen aber auch nach Hause getragen werden (Source = "Ground"). Klappt das nicht,
 --    fällt das Ei an Ort und Stelle auf den Boden – und JEDER kann es schnappen.
 --  * Gekaufte Meteore (F) muss man NICHT tragen – sie fliegen automatisch in die Base.
---  * Bonk-Schläger (bzw. Super-Bonk-Gadget) zum Verteidigen.
+--  * Schläger zum Verteidigen (Stufe nach Index, Config.Bats; Super-Bonk-Gadget = Boost).
 --  * Seltene Beute ist schwer (Config.HeavyCarry, Tempo rechnet EconomyService), wer klaut, verliert
 --    den Umhang (sonst wäre jeder Diebstahl unbonkbar), Eingefrorene können nicht klauen.
 
@@ -35,7 +35,9 @@ local CARRY_HEIGHT = 2.6 -- Abstand über dem HumanoidRootPart (Unterkante der B
 local MIN_CARRY_SPEED_FACTOR = 1.5
 -- Laufbänder (Treadmills) schieben mit (wer mit Beute auf dem Band mitfährt, ist schneller)
 local CONVEYOR_EXTRA_SPEED = 14
-local SUPER_BONK_NAME = "Super-Bonk" -- Werkzeug-Name im Rucksack (normaler Schläger: "Bonk")
+-- Schläger in Ruhe: Griff in der Hand, Schläger zeigt nach oben und lehnt etwas nach hinten
+-- (der Client schwingt ihn beim Schlagen über Tool.Grip, siehe Client-Modul "Bat")
+local BAT_REST_GRIP = CFrame.new(0, -0.4, 0) * CFrame.Angles(math.rad(-15), 0, 0)
 -- Lange Heimwege (info.ScaleTimeout, z.B. das Ei vom Meteor-Run): Trage-Zeit = Weg / Trage-Tempo * TRIP_SLACK
 -- + TRIP_EXTRA, mindestens Config.CarryTimeout. Der Weg wird großzügig gerechnet (|dx| + |dz| bis zum
 -- Eingang der eigenen Base – Umwege um Basen und Parade sind darin enthalten).
@@ -103,6 +105,8 @@ type MoveTrack = {
 	FlaggedUntil: number,
 	GraceUntil: number,
 	Anchor: Vector3?, -- Ziel des letzten Server-Teleports
+	Extra: number?, -- Zusatz-Weg nach einem Schläger-Treffer (Rückstoß ist kein Cheat)
+	ExtraUntil: number?,
 }
 local moveTrack: { [Player]: MoveTrack } = {}
 
@@ -123,6 +127,18 @@ function CarryService.NoteTeleport(player: Player, destination: Vector3?)
 	if info then
 		info.MinTime = 0 -- vom Server versetzt -> Mindest-Tragezeit gilt nicht mehr
 	end
+end
+
+-- Rückstoß vom Schläger: der Getroffene darf kurz weiter "fliegen", ohne als Teleport zu gelten
+local function allowKnockback(player: Player, studs: number)
+	local track = moveTrack[player]
+	if not track then
+		return
+	end
+	local now = os.clock()
+	track.Extra = studs
+	track.ExtraUntil = now + 1.5
+	track.Budget += studs
 end
 
 -- Misst die Bewegung seit der letzten Messung:
@@ -172,7 +188,8 @@ function CarryService.MoveStatus(player: Player): string
 	end
 	local dx, dz = pos.X - last.X, pos.Z - last.Z
 	local distance = math.sqrt(dx * dx + dz * dz)
-	local budget = math.min(cap, track.Budget + rate * math.max(0, now - track.Time)) - distance
+	local extra = if now < (track.ExtraUntil or 0) then track.Extra or 0 else 0
+	local budget = math.min(cap + extra, track.Budget + rate * math.max(0, now - track.Time)) - distance
 	track.Pos = pos
 	track.Time = now
 	if budget < 0 then
@@ -583,6 +600,10 @@ function CarryService.TrySteal(thief: Player, plot, slot: number)
 		Services.EconomyService.Notify(thief, "🔒 Diese Base ist gesperrt!", "Error")
 		return
 	end
+	if owner:GetAttribute("AdminGod") == true then
+		Services.EconomyService.Notify(thief, "Diese Base ist geschützt.", "Error")
+		return
+	end
 	if CarryService.IsSlotBeingStolen(plot, slot) or carrying[thief] then
 		return
 	end
@@ -654,17 +675,105 @@ function CarryService.CancelStealsFromPlot(plot, reason: string?)
 end
 
 -- -------------------------------------------------------------------
--- BONK-SCHLÄGER (normal bzw. Super-Bonk-Gadget: doppelte Reichweite + Wucht, schneller)
+-- SCHLÄGER (wie in Steal-Spielen): jeder hat automatisch den besten Schläger, den sein Index freischaltet
+-- (Config.Bats). Super-Bonk-Gadget = Boost (mehr Reichweite + Wucht, schneller), kein eigenes Werkzeug.
+-- Der Klick kommt vom Client – Reichweite, Abklingzeit, Blickrichtung, Umhang und Gott-Modus prüft der Server.
 -- -------------------------------------------------------------------
-local function bonk(player: Player, tool: Tool, super: boolean)
+local BAT_ATTRIBUTE = "Bat" -- Werkzeug-Attribut: Id des Schlägers (Config.Bats)
+local LEGACY_TOOL_NAMES = { "Bonk", "Super-Bonk" } -- alte Werkzeuge (vor den Schlägern) wegräumen
+local HIT_SOUND = "rbxasset://sounds/action_jump_land.mp3" -- hoch abgespielt = dumpfes "Bonk"
+local KNOCKBACK_TIME = 0.22 -- so lange schiebt der Rückstoß
+local STUN_IMMUNE_EXTRA = 0.4 -- nach dem Taumeln kurz kein neuer Rückstoß (kein Dauer-Wegschlagen)
+local FACING_DOT = 0.1 -- Ziel muss grob vor dem Schläger stehen
+
+local batTemplates: { [string]: Tool } = {}
+local batTier: { [Player]: string } = {} -- zuletzt gegebener Schläger (für die Freischalt-Meldung)
+local stunnedUntil: { [Player]: number } = {}
+
+local function batIndex(id: string?): number
+	for i, bat in ipairs(Config.Bats) do
+		if bat.Id == id then
+			return i
+		end
+	end
+	return 0
+end
+
+-- Bester erlaubter Schläger und ob der Spielstand schon geladen ist
+local function allowedBat(player: Player): (any, boolean)
+	local data = Services.DataService.Get(player)
+	if not data then
+		return Config.Bats[1], false
+	end
+	local bat = Config.BestBat(Services.EconomyService.IndexCount(data))
+	return bat, true
+end
+
+-- Reichweite, Wucht, Abklingzeit – mit Super-Bonk-Boost
+local function batStats(player: Player, bat): (number, number, number)
+	local range, force, cooldown = bat.Range, bat.Force, bat.Cooldown
+	if ownsGadget(player, "SuperBonk") then
+		range *= Config.SuperBonkRangeMult
+		force *= Config.SuperBonkForceMult
+		cooldown *= Config.SuperBonkCooldownMult
+	end
+	return range, force, cooldown
+end
+
+local function playHitSound(root: BasePart)
+	local sound = Instance.new("Sound")
+	sound.Name = "BonkHit"
+	sound.SoundId = HIT_SOUND
+	sound.Volume = 1
+	sound.PlaybackSpeed = 1.5
+	sound.RollOffMaxDistance = 120
+	sound.Parent = root
+	sound:Play()
+	Debris:AddItem(sound, 2)
+end
+
+-- Ziel fliegt weg (läuft beim Getroffenen, weil er seine Physik besitzt) und taumelt kurz (Client).
+-- Getötet wird niemand: nur Schub + kurzes Umfallen (PlatformStand beim Client).
+local function knockback(target: Player, targetRoot: BasePart, direction: Vector3, force: number, super: boolean)
+	local now = os.clock()
+	if now < (stunnedUntil[target] or 0) or targetRoot.Anchored then
+		return -- taumelt noch / eingefroren -> kein neuer Rückstoß
+	end
+	stunnedUntil[target] = now + Config.BonkStunTime + STUN_IMMUNE_EXTRA
+	allowKnockback(target, force * 0.8 + 20) -- (fliegt nach dem Schub noch etwas weiter)
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "BonkAttachment"
+	attachment.Parent = targetRoot
+	local velocity = Instance.new("LinearVelocity")
+	velocity.Name = "BonkVelocity"
+	velocity.Attachment0 = attachment
+	velocity.MaxForce = 1e6
+	velocity.RelativeTo = Enum.ActuatorRelativeTo.World
+	velocity.VectorVelocity = direction * force + Vector3.new(0, Config.BonkLift + (super and 10 or 0), 0)
+	velocity.Parent = targetRoot
+	Debris:AddItem(velocity, KNOCKBACK_TIME)
+	Debris:AddItem(attachment, KNOCKBACK_TIME)
+	Services.EconomyService.Effect(target, "Bonked", 1, { Dir = direction, Time = Config.BonkStunTime })
+end
+
+local function swing(player: Player, tool: Tool)
+	local bat = Config.BatsById[tool:GetAttribute(BAT_ATTRIBUTE)]
+	if not bat then
+		return
+	end
+	-- nie besser als erlaubt (z.B. nach einem Reset mit altem Werkzeug in der Hand)
+	local allowed = allowedBat(player)
+	if batIndex(bat.Id) > batIndex(allowed.Id) then
+		bat = allowed
+	end
+	local range, force, cooldown = batStats(player, bat)
 	local t = os.clock()
-	local cooldown = super and Config.SuperBonkCooldown or Config.BonkCooldown
 	if t - (lastBonk[player] or 0) < cooldown then
 		return
 	end
 	lastBonk[player] = t
 
-	-- Schlag-Animation über das Standard-Animate-Skript
+	-- Schlag-Animation für alle über das Standard-Animate-Skript (der Besitzer schwingt zusätzlich lokal)
 	local anim = Instance.new("StringValue")
 	anim.Name = "toolanim"
 	anim.Value = "Slash"
@@ -673,24 +782,24 @@ local function bonk(player: Player, tool: Tool, super: boolean)
 
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	if not root or tool.Parent ~= character then
-		return -- nur mit dem Schläger in der Hand
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or tool.Parent ~= character or root.Anchored then
+		return -- nur mit dem Schläger in der Hand, lebendig und nicht eingefroren
 	end
-	local range = super and Config.BonkRange * Config.SuperBonkRangeMult or Config.BonkRange
-	local force = super and Config.BonkForce * Config.SuperBonkForceMult or Config.BonkForce
 	local gadgets = Services.GadgetService
 	local best, bestDist = nil, range
 	for _, other in ipairs(Players:GetPlayers()) do
-		-- Unsichtbare (Umhang) kann man nicht bonken – wer Beute trägt, aber schon
+		-- Unsichtbare (Umhang) kann man nicht treffen – wer Beute trägt, aber schon
 		-- (Klauen beendet den Umhang sowieso, das hier ist nur das Sicherheitsnetz)
 		local cloaked = gadgets ~= nil and gadgets.IsCloaked(other) and not carrying[other]
-		if other ~= player and not cloaked then
+		local god = other:GetAttribute("AdminGod") == true -- Admin-Gott-Modus
+		if other ~= player and not cloaked and not god then
 			local otherRoot = other.Character and other.Character:FindFirstChild("HumanoidRootPart") :: BasePart?
 			local otherHum = other.Character and other.Character:FindFirstChildOfClass("Humanoid")
 			if otherRoot and otherHum and otherHum.Health > 0 then
 				local offset = otherRoot.Position - root.Position
 				local dist = offset.Magnitude
-				local facing = dist < 3 or root.CFrame.LookVector:Dot(offset.Unit) > 0.1
+				local facing = dist < 3 or root.CFrame.LookVector:Dot(offset.Unit) > FACING_DOT
 				if dist <= bestDist and facing then
 					best, bestDist = other, dist
 				end
@@ -707,94 +816,82 @@ local function bonk(player: Player, tool: Tool, super: boolean)
 	local direction = targetRoot.Position - root.Position
 	direction = Vector3.new(direction.X, 0, direction.Z)
 	direction = direction.Magnitude > 0.01 and direction.Unit or root.CFrame.LookVector
+	local super = ownsGadget(player, "SuperBonk")
 
-	-- Rückstoß (läuft beim getroffenen Spieler, weil der seine Physik besitzt)
-	if not targetRoot.Anchored then
-		local attachment = Instance.new("Attachment")
-		attachment.Parent = targetRoot
-		local velocity = Instance.new("LinearVelocity")
-		velocity.Attachment0 = attachment
-		velocity.MaxForce = 1e6
-		velocity.RelativeTo = Enum.ActuatorRelativeTo.World
-		velocity.VectorVelocity = direction * force + Vector3.new(0, super and 45 or 30, 0)
-		velocity.Parent = targetRoot
-		Debris:AddItem(velocity, 0.18)
-		Debris:AddItem(attachment, 0.18)
-	end
-
-	Services.EconomyService.Effect(best, "Shake", super and 1 or 0.6)
+	playHitSound(targetRoot)
+	knockback(best, targetRoot, direction, force, super)
+	Services.EconomyService.Effect(best, "Shake", super and 1 or 0.7)
+	Services.EconomyService.Effect(player, "Shake", 0.25)
 	if carrying[best] then
 		CarryService.Fail(best, "bonked")
 		trackReward(player, "Bonk", 1)
-		Services.EconomyService.Notify(
-			player,
-			"💥 Treffer! " .. best.DisplayName .. " hat die Beute verloren!",
-			"Success"
-		)
+		Services.EconomyService.Notify(player, "Treffer! " .. best.DisplayName .. " hat die Beute verloren!", "Success")
 	end
 end
 
-local function createBonkTool(super: boolean): Tool
+local function batPart(tool: Tool, name: string, size: Vector3, color: Color3, material: Enum.Material): Part
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Massless = true
+	p.CastShadow = false
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	p.Parent = tool
+	return p
+end
+
+-- Blockiger Baseballschläger aus wenigen Teilen, alles entlang +Y des Griffs (Handle):
+-- Knauf unten, Griff (Handle), Hals, dicker Schlagteil, Kappe. Hohe Stufen: Leucht-Ringe, König: Krone.
+local function createBatTool(bat): Tool
 	local tool = Instance.new("Tool")
-	tool.Name = super and SUPER_BONK_NAME or "Bonk"
-	tool.ToolTip = super and "Klick = SUPER-BONK! Doppelte Reichweite und Wucht."
-		or "Klick = Bonk! Diebe verlieren ihre Beute."
+	tool.Name = bat.Name
+	tool.ToolTip = "Klick = Schlagen! Diebe verlieren ihre Beute."
 	tool.CanBeDropped = false
 	tool.RequiresHandle = true
-	local length = super and 5.2 or 4.2
-	tool.Grip = CFrame.new(0, 0, -length * 0.38) * CFrame.Angles(math.rad(-90), 0, 0)
-	tool:SetAttribute("Gadget", super and "SuperBonk" or nil)
+	tool.Grip = BAT_REST_GRIP
+	tool:SetAttribute(BAT_ATTRIBUTE, bat.Id)
 
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.6, 0.6, length)
-	handle.Color = super and Color3.fromRGB(60, 60, 70) or Color3.fromRGB(255, 170, 60)
-	handle.Material = super and Enum.Material.Metal or Enum.Material.SmoothPlastic
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
-
-	local head = Instance.new("Part")
-	head.Name = "Head"
-	head.CanCollide = false
-	head.Massless = true
-	if super then
-		-- großer goldener Hammerkopf mit Leuchtring
-		head.Size = Vector3.new(2.4, 2.4, 3.4)
-		head.Color = Color3.fromRGB(255, 200, 40)
-		head.Material = Enum.Material.Foil
-		head.CFrame = handle.CFrame * CFrame.new(0, 0, -length / 2 - 0.4) * CFrame.Angles(0, math.rad(90), 0)
-		local glow = Instance.new("Part")
-		glow.Name = "Glow"
-		glow.Shape = Enum.PartType.Cylinder
-		glow.Size = Vector3.new(0.5, 2.8, 2.8)
-		glow.Color = Color3.fromRGB(255, 90, 40)
-		glow.Material = Enum.Material.Neon
-		glow.CanCollide = false
-		glow.Massless = true
-		glow.CFrame = head.CFrame
-		local glowWeld = Instance.new("WeldConstraint")
-		glowWeld.Part0 = head
-		glowWeld.Part1 = glow
-		glowWeld.Parent = glow
-		glow.Parent = tool
-	else
-		head.Shape = Enum.PartType.Ball
-		head.Size = Vector3.new(1.6, 1.6, 1.6)
-		head.Color = Color3.fromRGB(255, 90, 60)
-		head.Material = Enum.Material.SmoothPlastic
-		head.CFrame = handle.CFrame * CFrame.new(0, 0, -2.2)
+	local color: Color3 = bat.Color
+	local material: Enum.Material = bat.Material or Enum.Material.SmoothPlastic
+	local gripColor: Color3 = bat.Grip or Color3.fromRGB(50, 40, 35)
+	local handle = batPart(tool, "Handle", Vector3.new(0.4, 1.8, 0.4), gripColor, Enum.Material.SmoothPlastic)
+	local function attach(name: string, size: Vector3, y: number, partColor: Color3, partMaterial: Enum.Material): Part
+		local p = batPart(tool, name, size, partColor, partMaterial)
+		p.CFrame = handle.CFrame * CFrame.new(0, y, 0)
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = handle
+		weld.Part1 = p
+		weld.Parent = p
+		return p
 	end
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = handle
-	weld.Part1 = head
-	weld.Parent = head
-	head.Parent = tool
+	attach("Knob", Vector3.new(0.6, 0.25, 0.6), -1.02, gripColor, Enum.Material.SmoothPlastic)
+	attach("Neck", Vector3.new(0.55, 0.8, 0.55), 1.3, color, material)
+	attach("Barrel", Vector3.new(0.85, 2.4, 0.85), 2.9, color, material)
+	attach("Cap", Vector3.new(0.95, 0.22, 0.95), 4.2, color:Lerp(Color3.new(0, 0, 0), 0.25), material)
+	local accent: Color3? = bat.Accent
+	if accent then
+		attach("Ring", Vector3.new(0.95, 0.22, 0.95), 2.1, accent, Enum.Material.Neon)
+		attach("Ring", Vector3.new(0.95, 0.22, 0.95), 3.7, accent, Enum.Material.Neon)
+	end
+	if bat.Crown and accent then
+		for _, offset in ipairs({
+			Vector3.new(0.3, 0, 0.3),
+			Vector3.new(-0.3, 0, 0.3),
+			Vector3.new(0.3, 0, -0.3),
+			Vector3.new(-0.3, 0, -0.3),
+		}) do
+			local spike = attach("Crown", Vector3.new(0.25, 0.45, 0.25), 4.5, accent, Enum.Material.Neon)
+			spike.CFrame = handle.CFrame * CFrame.new(offset.X, 4.5, offset.Z)
+		end
+	end
 	return tool
 end
-
-local bonkTemplate: Tool
-local superBonkTemplate: Tool
 
 local function findTool(container: Instance?, name: string): Tool?
 	local found = container and container:FindFirstChild(name)
@@ -804,43 +901,88 @@ local function findTool(container: Instance?, name: string): Tool?
 	return nil
 end
 
--- Gibt den passenden Schläger (Bonk oder Super-Bonk) – ohne Doppelte, alter Schläger fliegt raus.
--- Wird beim Spawnen und nach dem Kauf/Geschenk des Super-Bonks aufgerufen.
-function CarryService.GiveBonk(player: Player)
+-- Gibt den besten erlaubten Schläger – ohne Doppelte; ein schlechterer fliegt raus (war er in der
+-- Hand, kommt der neue gleich in die Hand). Beim Spawnen, bei neuem Index, nach dem Laden.
+function CarryService.GiveBat(player: Player)
 	local backpack = player:FindFirstChildOfClass("Backpack")
-	if not backpack or not bonkTemplate then
+	if not backpack then
 		return
 	end
 	local character = player.Character
-	local super = ownsGadget(player, "SuperBonk")
-	local wanted = super and SUPER_BONK_NAME or "Bonk"
-	local unwanted = super and "Bonk" or SUPER_BONK_NAME
-	for _, container in ipairs({ backpack, character }) do
-		local old = findTool(container, unwanted)
-		if old then
-			old:Destroy()
-		end
-	end
-	if findTool(backpack, wanted) or findTool(character, wanted) then
+	local bat, loaded = allowedBat(player)
+	local template = batTemplates[bat.Id]
+	if not template then
 		return
 	end
-	local tool = (super and superBonkTemplate or bonkTemplate):Clone()
+	-- Freischalt-Meldung (nur wenn der Spielstand geladen ist und es wirklich besser wurde)
+	if loaded then
+		local known = batTier[player]
+		if known and batIndex(bat.Id) > batIndex(known) then
+			Services.EconomyService.Notify(
+				player,
+				"Neuer Schläger: " .. bat.Name .. "! Mehr Reichweite und Wucht.",
+				"Success"
+			)
+			Services.EconomyService.Effect(player, "Confetti", 2)
+		end
+		batTier[player] = bat.Id
+	end
+	local have = false
+	local wasEquipped = false
+	for _, container in ipairs({ backpack, character }) do
+		if container then
+			for _, name in ipairs(LEGACY_TOOL_NAMES) do
+				local old = findTool(container, name)
+				if old and old:GetAttribute(BAT_ATTRIBUTE) == nil then
+					wasEquipped = wasEquipped or old.Parent == character
+					old:Destroy()
+				end
+			end
+			for _, child in ipairs(container:GetChildren()) do
+				if child:IsA("Tool") and child:GetAttribute(BAT_ATTRIBUTE) ~= nil then
+					if child:GetAttribute(BAT_ATTRIBUTE) == bat.Id and not have then
+						have = true
+					else
+						wasEquipped = wasEquipped or child.Parent == character
+						child:Destroy()
+					end
+				end
+			end
+		end
+	end
+	if have then
+		return
+	end
+	local tool = template:Clone()
 	tool.Activated:Connect(function()
-		bonk(player, tool, super)
+		swing(player, tool)
 	end)
 	tool.Parent = backpack
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if wasEquipped and humanoid and humanoid.Health > 0 then
+		humanoid:EquipTool(tool)
+	end
+end
+CarryService.GiveBonk = CarryService.GiveBat -- alter Name (GadgetService)
+
+-- Index hat sich geändert -> passt der Schläger noch? (EconomyService.Discover)
+function CarryService.CheckBat(player: Player)
+	if player.Parent then
+		CarryService.GiveBat(player)
+	end
 end
 
 local function giveTool(player: Player)
 	if player:WaitForChild("Backpack", 10) then
-		CarryService.GiveBonk(player)
+		CarryService.GiveBat(player)
 	end
 end
 
 function CarryService.Init(services)
 	Services = services
-	bonkTemplate = createBonkTool(false)
-	superBonkTemplate = createBonkTool(true)
+	for _, bat in ipairs(Config.Bats) do
+		batTemplates[bat.Id] = createBatTool(bat)
+	end
 end
 
 function CarryService.Start()
@@ -873,6 +1015,8 @@ function CarryService.Start()
 	-- Kann zweimal aufgerufen werden (PlayerRemoving + Speichern) – ist harmlos.
 	local function onLeaving(player: Player)
 		lastBonk[player] = nil
+		batTier[player] = nil
+		stunnedUntil[player] = nil
 		moveTrack[player] = nil
 		stealLimiter.Clear(player)
 		if carrying[player] then

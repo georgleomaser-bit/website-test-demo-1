@@ -56,13 +56,22 @@ local function meteorsOfRarity(rarityName: string): { any }
 	return result
 end
 
--- Bestes freigeschaltetes Laufband (für Schritte-Paket-Anzeige)
-local function bestTreadmill(steps: number): any
+-- Gehört dir das Laufband? (State.Treadmills = Liste gekaufter Ids, gratis = immer)
+local function ownsTreadmill(state: any, def: any): boolean
+	if (tonumber(def.Price) or 0) <= 0 then
+		return true
+	end
+	local owned = state and state.Treadmills
+	return type(owned) == "table" and table.find(owned, def.Id) ~= nil
+end
+
+-- Bestes gekauftes Laufband (für Schritte-Paket-Anzeige)
+local function bestTreadmill(state: any): any
 	local best = nil
 	local treadmills = ctx.Config.Treadmills
 	if type(treadmills) == "table" then
 		for _, def in ipairs(treadmills) do
-			if steps >= (tonumber(def.Required) or 0) then
+			if ownsTreadmill(state, def) then
 				best = def
 			end
 		end
@@ -174,9 +183,8 @@ local function productInfoText(product: any, state: any): string
 		local amount = math.max(tonumber(product.Min) or 0, income * 60 * (tonumber(product.Minutes) or 0))
 		return ("%s Min. Einkommen  ≈ %s"):format(tostring(product.Minutes or 0), Util.FormatCash(amount))
 	elseif kind == "Steps" then
-		local steps = state and tonumber(state.Steps) or 0
 		local mult = state and tonumber(state.StepsMult) or 1
-		local best = bestTreadmill(steps)
+		local best = bestTreadmill(state)
 		local rate = best and tonumber(best.Rate) or 1
 		local minutes = tonumber(product.Minutes) or 10
 		local amount = math.max(tonumber(product.Min) or 0, rate * 2 * 60 * minutes * mult)
@@ -481,7 +489,7 @@ local function buildGadgetPage(page: Frame)
 	UI.Section(page, "🛠️ Gadgets – mit 💵 Cash, gehören dir für immer!", 1)
 	UI.Label({
 		Size = UDim2.new(1, 0, 0, 36),
-		Text = "Liegen nach jedem Spawn in deinem Rucksack – auch nach Rebirth. Super-Bonk ersetzt den normalen Bonk.",
+		Text = "Liegen nach jedem Spawn in deinem Rucksack – auch nach Rebirth. Super-Bonk macht deinen Schläger stärker.",
 		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		TextWrapped = true,
@@ -578,7 +586,7 @@ type TreadmillRow = {
 	Card: Frame,
 	Stroke: UIStroke,
 	Rate: TextLabel,
-	Status: TextLabel,
+	Buy: UI.Button,
 }
 
 local treadmillRows: { TreadmillRow } = {}
@@ -633,7 +641,7 @@ local function buildTreadmills()
 	end)
 	UI.Label({
 		Size = UDim2.new(1, 0, 0, 36),
-		Text = "Drauf laufen = Schritte 👟 sammeln = schneller rennen! Mehr Schritte schalten bessere Laufbänder frei.",
+		Text = "Laufband kaufen, drauf laufen = Schritte sammeln = schneller rennen! Bessere Laufbänder geben viel mehr Schritte.",
 		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		TextWrapped = true,
@@ -679,17 +687,20 @@ local function buildTreadmills()
 			MaxText = 15,
 			Parent = card,
 		})
-		local status = UI.Label({
+		local buy = UI.Button({
 			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, -12, 0.5, 0),
-			Size = UDim2.fromOffset(150, 40),
-			Text = "",
-			TextXAlignment = Enum.TextXAlignment.Right,
+			Position = UDim2.new(1, -10, 0.5, 0),
+			Size = UDim2.fromOffset(150, 44),
+			Text = "...",
+			Color = GRAY,
 			MaxText = 18,
-			Outline = 2,
 			Parent = card,
-		})
-		table.insert(treadmillRows, { Def = def, Card = card, Stroke = stroke, Rate = rate, Status = status })
+		}, function()
+			if not ownsTreadmill(ctx.State, def) then
+				ctx.Request("BuyTreadmill", def.Id)
+			end
+		end)
+		table.insert(treadmillRows, { Def = def, Card = card, Stroke = stroke, Rate = rate, Buy = buy })
 	end
 
 	UI.Section(content, "💎 Schneller farmen", 100)
@@ -800,56 +811,58 @@ function Windows.RefreshTreadmills(state: any)
 		)
 		else ("🚀 Maximales Tempo erreicht!  •  Bonus x%s"):format(UI.FormatMult(mult))
 
-	-- Fortschritt bis zum nächsten Laufband
-	local previous = 0
+	-- Sparen fürs nächste Laufband (Cash / Preis)
+	local cash = tonumber(state.Cash) or 0
 	local nextDef = nil
 	for _, row in ipairs(treadmillRows) do
-		local required = tonumber(row.Def.Required) or 0
-		if steps >= required then
-			previous = required
-		elseif not nextDef then
+		if not ownsTreadmill(state, row.Def) then
 			nextDef = row.Def
+			break
 		end
 	end
 	if nextDef then
-		local required = tonumber(nextDef.Required) or 1
+		local price = math.max(1, tonumber(nextDef.Price) or 1)
 		UI.SetBar(
 			treadmillBar,
-			(steps - previous) / math.max(1, required - previous),
-			("🔓 %s: %s / %s 👟"):format(
-				tostring(nextDef.Name),
-				Util.FormatNumber(steps),
-				Util.FormatNumber(required)
-			)
+			cash / price,
+			("Nächstes: %s  %s / %s"):format(tostring(nextDef.Name), Util.FormatCash(cash), Util.FormatCash(price))
 		)
 	else
-		UI.SetBar(treadmillBar, 1, "🌈 Alle Laufbänder freigeschaltet!")
+		UI.SetBar(treadmillBar, 1, "Alle Laufbänder gekauft!")
 	end
 
 	for _, row in ipairs(treadmillRows) do
 		local def = row.Def
-		local required = tonumber(def.Required) or 0
+		local price = tonumber(def.Price) or 0
+		local owned = ownsTreadmill(state, def)
 		local rateText = ("+%s 👟 alle 0,5 s"):format(
 			UI.FormatSteps((tonumber(def.Rate) or 0) * mult, Util.FormatNumber)
 		)
 		if row.Rate.Text ~= rateText then
 			row.Rate.Text = rateText
 		end
-		local statusText, statusColor, strokeColor
+		local strokeColor = Color3.new(0, 0, 0)
 		if state.BestTreadmill == def.Id then
-			statusText, statusColor, strokeColor = "⭐ Dein bestes", Theme.Yellow, Theme.Gold
-		elseif steps >= required then
-			statusText, statusColor, strokeColor = "✅ Frei", Theme.Cash, Color3.new(0, 0, 0)
+			row.Buy.SetText("Dein bestes")
+			row.Buy.SetColor(Theme.Gold)
+			strokeColor = Theme.Gold
+		elseif owned then
+			row.Buy.SetText("Gekauft")
+			row.Buy.SetColor(GRAY)
+		elseif def == nextDef then
+			row.Buy.SetText(Util.FormatCash(price))
+			row.Buy.SetColor(if cash >= price then Theme.Green else GRAY)
 		else
-			statusText = "🔒 " .. Util.FormatNumber(required) .. " 👟"
-			statusColor, strokeColor = Color3.fromRGB(255, 130, 130), Color3.new(0, 0, 0)
+			row.Buy.SetText("🔒 " .. Util.FormatCash(price))
+			row.Buy.SetColor(GRAY)
 		end
-		if row.Status.Text ~= statusText then
-			row.Status.Text = statusText
-			row.Status.TextColor3 = statusColor
+		if row.Stroke.Color ~= strokeColor then
 			row.Stroke.Color = strokeColor
 			row.Stroke.Thickness = if strokeColor == Theme.Gold then 4 else 2
-			row.Card.BackgroundTransparency = if steps >= required then 0 else 0.35
+		end
+		local transparency = if owned then 0 else 0.3
+		if row.Card.BackgroundTransparency ~= transparency then
+			row.Card.BackgroundTransparency = transparency
 		end
 	end
 
@@ -924,7 +937,7 @@ function Windows.RefreshRebirth(state: any)
 	local unlock = nextUnlock(rebirths)
 	local detail = (
 		"Belohnung:\n• +%d%% Einkommen für immer\n• +%d%% Schritte auf jedem Laufband%s\n\n"
-		.. "Du verlierst: Cash, Meteore + Aliens.\nDu behältst: Schritte 👟, Index, Gamepasses."
+		.. "Du verlierst: Cash, Meteore + Aliens.\nDu behältst: Schritte, Laufbänder, Gadgets, Index, Gamepasses."
 	):format(
 		math.floor((tonumber(Config.RebirthMultPerLevel) or 0) * 100 + 0.5),
 		math.floor((tonumber(Config.StepsPerRebirth) or 0.25) * 100 + 0.5),
@@ -997,6 +1010,7 @@ type IndexGroup = { Title: string, Header: TextLabel, Cards: { IndexCard }, Colo
 
 local indexHeader: TextLabel
 local indexBar: UI.Bar
+local batLabel: TextLabel
 local indexGroups: { IndexGroup } = {}
 local indexSignature = ""
 local SPECIAL_TITLE = "👑 Admin & Spezial (Bonus)"
@@ -1026,6 +1040,16 @@ local function buildIndex()
 		Parent = content,
 	})
 	indexBar = UI.Bar({ LayoutOrder = 2, Color = Theme.Green, MaxText = 16, Parent = content })
+	-- Schläger-Stufe: mehr entdeckte Aliens = besserer Schläger
+	batLabel = UI.Label({
+		Size = UDim2.new(1, 0, 0, 24),
+		Text = "",
+		Font = Enum.Font.GothamBold,
+		TextColor3 = Theme.SubText,
+		LayoutOrder = 3,
+		MaxText = 16,
+		Parent = content,
+	})
 
 	-- Aliens nach Seltenheit sortieren (Reihenfolge wie Config.Rarities),
 	-- Admin- und Spezial-Aliens zum Schluss in einer eigenen Bonus-Gruppe
@@ -1118,6 +1142,17 @@ function Windows.RefreshIndex(state: any)
 		return
 	end
 	local index = if type(state.Index) == "table" then state.Index else {}
+	local bats = ctx.Config.BatsById or {}
+	local bat, nextBat = bats[state.Bat], bats[state.NextBat]
+	local batText = if bat then ("Dein Schläger: " .. tostring(bat.Name)) else ""
+	if nextBat then
+		batText ..= ("  •  %s ab %d Aliens"):format(tostring(nextBat.Name), tonumber(nextBat.IndexRequired) or 0)
+	elseif bat then
+		batText ..= "  •  bester Schläger!"
+	end
+	if batLabel.Text ~= batText then
+		batLabel.Text = batText
+	end
 	-- Nur neu zeichnen, wenn sich etwas geändert hat
 	local signature = #index .. ":" .. tostring(index[#index])
 	if signature == indexSignature then

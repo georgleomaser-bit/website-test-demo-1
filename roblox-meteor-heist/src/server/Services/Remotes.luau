@@ -24,7 +24,7 @@ return {
 	State = make("RemoteEvent", "State") :: RemoteEvent, -- Server -> Client: Cash, Einkommen, ...
 	-- Server -> Client: Effekte (name, strength, data) – z.B. "Shake", "Steps", "Deliver", "Hatch"
 	Effect = make("RemoteEvent", "Effect") :: RemoteEvent,
-	-- Client -> Server: "Rebirth", "Daily", "Collect", "Home", "Treadmills"
+	-- Client -> Server: "Rebirth", "Daily", "Collect", "Home", "Treadmills", "BuyTreadmill", "BuyGadget" ...
 	Request = make("RemoteFunction", "Request") :: RemoteFunction,
 	Admin = make("RemoteFunction", "Admin") :: RemoteFunction, -- Client -> Server: Admin-Aktionen (geprüft!)
 }

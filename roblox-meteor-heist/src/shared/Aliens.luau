@@ -96,7 +96,10 @@ local Aliens = {
 		Celestial = 7,
 		Divine = 8,
 		Secret = 9,
-		Admin = 10,
+		Godly = 10,
+		Cosmic = 11,
+		Infinity = 12,
+		Admin = 13,
 	} :: { [string]: number },
 }
 
@@ -111,6 +114,9 @@ local RARITY_SCALE: { [string]: number } = {
 	Celestial = 1.32,
 	Divine = 1.4,
 	Secret = 1.5,
+	Godly = 1.58,
+	Cosmic = 1.66,
+	Infinity = 1.75,
 	Admin = 2.0,
 }
 local TIER_SCALE = { 1, 1.06, 1.12 }
@@ -132,9 +138,11 @@ local namesTaken: { [string]: string } = {}
 
 -- Effekte automatisch nach Seltenheit + Stufe (sparsam, damit nichts laggt).
 -- Umriss (Highlight) nur bei Ultra + Admin: Roblox zeigt höchstens ~31 Highlights gleichzeitig.
+-- Godly+ (über Secret): Selten bekommt starkes Licht, Infinity-Ultra leuchtet in Regenbogenfarben.
 local function autoEffects(rank: number, tierIndex: number): AlienEffects
 	local fx: AlienEffects = {}
-	if rank >= 10 then
+	local ranks = Aliens.RarityRank
+	if rank >= ranks.Admin then
 		-- Admin: alles krass
 		fx.Aura = true
 		fx.BigLight = true
@@ -149,9 +157,15 @@ local function autoEffects(rank: number, tierIndex: number): AlienEffects
 		if rank >= 8 then
 			fx.BigLight = true
 		end
+		if rank >= ranks.Infinity then
+			fx.Rainbow = true
+		end
 	elseif tierIndex == 2 then
 		if rank >= 7 then
 			fx.Aura = true
+		end
+		if rank >= ranks.Godly then
+			fx.BigLight = true
 		end
 	elseif rank >= 9 then
 		fx.Aura = true
@@ -395,6 +409,161 @@ add("Omega", "Secret", {
 	{ "OmegaRobot", "Omega-Wächter", "Robot", rgb(255, 0, 80), rgb(255, 220, 220), 2, 1 },
 	{ "OmegaBlob", "Endboss-Schleim", "Blob", rgb(230, 0, 70), rgb(255, 230, 60), 3, 2 },
 	{ "OmegaKing", "Omega-Imperator Rex", "King", rgb(255, 20, 90), rgb(40, 0, 20), 2, 0 },
+})
+
+-- MEHR AUSWAHL (Common .. Secret) -----------------------------------
+add("Clay", "Common", {
+	{ "ClayBlob", "Lehm-Lümmel", "Blob", rgb(190, 120, 90), rgb(255, 210, 160), 2, 1 },
+	{ "ClayMushroom", "Ton-Töpfchen", "Mushroom", rgb(200, 130, 95), rgb(255, 235, 200), 2, 0 },
+	{ "ClayKing", "Töpferkönig Tonius", "King", rgb(185, 115, 85), rgb(90, 160, 220), 2, 0 },
+})
+add("Coral", "Uncommon", {
+	{ "CoralSquid", "Korallen-Kalle", "Squid", rgb(255, 120, 110), rgb(255, 220, 180), 2, 0 },
+	{ "CoralBug", "Riff-Krabbler", "Bug", rgb(240, 100, 100), rgb(255, 200, 120), 4, 2 },
+	{ "CoralCrystal", "Perlen-Prinzessin", "Crystal", rgb(255, 140, 130), rgb(255, 255, 255), 2, 0 },
+})
+add("Jade", "Rare", {
+	{ "JadeRobot", "Jade-Bot J-7", "Robot", rgb(60, 190, 120), rgb(220, 255, 220), 2, 1 },
+	{ "JadeGhost", "Grünschimmer-Geist", "Ghost", rgb(80, 200, 140), rgb(255, 240, 160), 2, 0 },
+	{ "JadeKing", "Jadekaiser Jun", "King", rgb(50, 170, 110), rgb(255, 210, 80), 2, 0 },
+})
+add("Amethyst", "Rare", {
+	{ "AmethystCrystal", "Amethyst-Andi", "Crystal", rgb(160, 90, 220), rgb(230, 200, 255), 2, 0 },
+	{ "AmethystSpiky", "Drusen-Dorni", "Spiky", rgb(150, 80, 210), rgb(255, 220, 255), 2, 0 },
+	{ "AmethystCyclops", "Violett-Visor", "Cyclops", rgb(170, 100, 230), rgb(255, 255, 255), 1, 2 },
+})
+add("Prism", "Epic", {
+	{ "PrismCrystal", "Prisma-Pixi", "Crystal", rgb(180, 255, 250), rgb(255, 150, 255), 2, 0 },
+	{ "PrismBlob", "Licht-Lolli", "Blob", rgb(170, 245, 240), rgb(255, 230, 120), 3, 2 },
+	{ "PrismSquid", "Spektral-Spektakel", "Squid", rgb(190, 255, 250), rgb(120, 140, 255), 3, 0 },
+})
+add("Phoenix", "Legendary", {
+	{ "PhoenixSpiky", "Flammen-Flitzer", "Spiky", rgb(255, 90, 40), rgb(255, 220, 60), 2, 0 },
+	{ "PhoenixBug", "Glutflügel-Gina", "Bug", rgb(255, 110, 40), rgb(255, 240, 120), 4, 2 },
+	{ "PhoenixKing", "Phönix-König Ignis", "King", rgb(255, 80, 30), rgb(255, 230, 80), 2, 0 },
+})
+add("Dragon", "Legendary", {
+	{ "DragonBlob", "Schuppen-Schorschi", "Blob", rgb(40, 160, 90), rgb(255, 210, 60), 2, 2 },
+	{ "DragonCyclops", "Drachenauge Draxx", "Cyclops", rgb(30, 140, 80), rgb(255, 120, 40), 1, 2 },
+	{ "DragonKing", "Drachenfürst Smaragdus", "King", rgb(40, 170, 95), rgb(255, 200, 40), 2, 0 },
+})
+add("Vortex", "Mythic", {
+	{ "VortexGhost", "Wirbel-Willi", "Ghost", rgb(90, 60, 255), rgb(140, 255, 255), 2, 0 },
+	{ "VortexSquid", "Strudel-Krake", "Squid", rgb(80, 50, 240), rgb(255, 120, 255), 3, 0 },
+	{ "VortexRobot", "Tornado-Tron 9000", "Robot", rgb(100, 70, 255), rgb(120, 255, 230), 3, 2 },
+})
+add("Starforge", "Celestial", {
+	{ "StarforgeRobot", "Schmiede-Schorsch", "Robot", rgb(255, 180, 90), rgb(255, 90, 30), 2, 1 },
+	{ "StarforgeSpiky", "Amboss-Igel", "Spiky", rgb(255, 170, 80), rgb(255, 250, 200), 2, 0 },
+	{ "StarforgeKing", "Sternenschmied Vulkanus", "King", rgb(255, 190, 100), rgb(120, 60, 30), 2, 0 },
+})
+add("Constellation", "Celestial", {
+	{ "ConstellationBug", "Sternbild-Käfer", "Bug", rgb(120, 150, 255), rgb(255, 255, 200), 4, 2 },
+	{ "ConstellationGhost", "Großer-Wagen-Geist", "Ghost", rgb(130, 160, 255), rgb(255, 255, 255), 3, 0 },
+	{ "ConstellationCrystal", "Orion der Funkelnde", "Crystal", rgb(110, 140, 255), rgb(255, 240, 140), 3, 0 },
+})
+add("Angelic", "Divine", {
+	{ "AngelicBlob", "Federleicht-Flocke", "Blob", rgb(255, 250, 240), rgb(255, 215, 120), 2, 1 },
+	{ "AngelicMushroom", "Wolken-Pilzi", "Mushroom", rgb(250, 245, 235), rgb(180, 220, 255), 2, 0 },
+	{ "AngelicKing", "Seraphina die Strahlende", "King", rgb(255, 252, 245), rgb(255, 200, 90), 2, 0 },
+})
+add("Paradox", "Secret", {
+	{ "ParadoxCyclops", "Zeitschleifen-Zyklop", "Cyclops", rgb(120, 255, 200), rgb(255, 80, 200), 1, 2 },
+	{ "ParadoxRobot", "Widerspruch-Bot", "Robot", rgb(110, 240, 190), rgb(255, 255, 255), 3, 2 },
+	{ "ParadoxSquid", "Paradox-Pulpo Primus", "Squid", rgb(130, 255, 210), rgb(90, 60, 255), 3, 0 },
+})
+add("Cipher", "Secret", {
+	{ "CipherGhost", "Code-Geist 0101", "Ghost", rgb(40, 255, 120), rgb(10, 40, 20), 2, 0 },
+	{ "CipherBug", "Bit-Käfer", "Bug", rgb(30, 230, 110), rgb(200, 255, 200), 4, 2 },
+	{ "CipherKing", "Krypto-König Hex", "King", rgb(40, 255, 130), rgb(0, 60, 30), 2, 0 },
+})
+
+-- GODLY -------------------------------------------------------------
+add("Olympus", "Godly", {
+	{ "OlympusGhost", "Wolken-Zeusi", "Ghost", rgb(255, 220, 90), rgb(255, 255, 255), 2, 0 },
+	{ "OlympusSpiky", "Blitzbart Bolt", "Spiky", rgb(255, 215, 80), rgb(120, 200, 255), 2, 0 },
+	{ "OlympusKing", "Göttervater Olympio", "King", rgb(255, 225, 100), rgb(255, 255, 255), 2, 0 },
+})
+add("Valhalla", "Godly", {
+	{ "ValhallaRobot", "Wikinger-Bot Wotan", "Robot", rgb(200, 220, 255), rgb(255, 200, 60), 2, 2 },
+	{ "ValhallaBlob", "Met-Matsch", "Blob", rgb(210, 225, 255), rgb(255, 170, 60), 2, 2 },
+	{ "ValhallaKing", "Schildkönig Odinus", "King", rgb(190, 215, 255), rgb(255, 210, 80), 1, 0 },
+})
+add("Zenith", "Godly", {
+	{ "ZenithCrystal", "Gipfel-Glitzer", "Crystal", rgb(255, 200, 40), rgb(255, 255, 220), 2, 0 },
+	{ "ZenithBug", "Kronen-Käfer", "Bug", rgb(255, 190, 30), rgb(255, 90, 60), 4, 2 },
+	{ "ZenithKing", "Hoheit Zenithia", "King", rgb(255, 205, 50), rgb(150, 40, 200), 2, 0 },
+})
+add("Ambrosia", "Godly", {
+	{ "AmbrosiaMushroom", "Nektar-Nuckel", "Mushroom", rgb(255, 150, 60), rgb(255, 240, 180), 2, 0 },
+	{ "AmbrosiaSquid", "Honig-Krake Melis", "Squid", rgb(255, 160, 70), rgb(255, 230, 120), 3, 0 },
+	{ "AmbrosiaCyclops", "Ambrosius das Allauge", "Cyclops", rgb(255, 140, 50), rgb(255, 255, 200), 1, 2 },
+})
+
+-- COSMIC ------------------------------------------------------------
+add("Starseed", "Cosmic", {
+	{ "StarseedBlob", "Sternenkeim-Kiki", "Blob", rgb(110, 90, 255), rgb(255, 255, 160), 2, 2 },
+	{ "StarseedMushroom", "Galaxien-Pilz Gloria", "Mushroom", rgb(100, 80, 250), rgb(255, 200, 255), 2, 0 },
+	{ "StarseedKing", "Saatkönig Stellaris", "King", rgb(120, 100, 255), rgb(255, 240, 120), 2, 0 },
+})
+add("Horizon", "Cosmic", {
+	{ "HorizonGhost", "Horizont-Huschi", "Ghost", rgb(40, 20, 90), rgb(255, 140, 40), 2, 0 },
+	{ "HorizonSpiky", "Schwerkraft-Stachel", "Spiky", rgb(35, 15, 80), rgb(200, 120, 255), 2, 0 },
+	{ "HorizonCyclops", "Der Rand des Alls", "Cyclops", rgb(30, 10, 70), rgb(255, 200, 80), 1, 0 },
+})
+add("Astral", "Cosmic", {
+	{ "AstralRobot", "Astral-Antrieb A1", "Robot", rgb(150, 200, 255), rgb(255, 255, 255), 3, 2 },
+	{ "AstralCrystal", "Traumkristall Luma", "Crystal", rgb(160, 210, 255), rgb(255, 180, 255), 3, 0 },
+	{ "AstralKing", "Astralkaiser Nebulon", "King", rgb(140, 190, 255), rgb(90, 40, 200), 2, 0 },
+})
+
+-- INFINITY ----------------------------------------------------------
+add("Endless", "Infinity", {
+	{ "EndlessSquid", "Endlos-Ennie", "Squid", rgb(0, 255, 180), rgb(255, 255, 255), 3, 0 },
+	{ "EndlessBug", "Möbius-Käfer", "Bug", rgb(0, 240, 170), rgb(255, 120, 220), 4, 2 },
+	{ "EndlessKing", "Unendlich-Kaiser Loop", "King", rgb(0, 255, 190), rgb(255, 230, 90), 2, 0 },
+})
+add("InfinityStone", "Infinity", {
+	{ "InfinityStoneCrystal", "Ewigkeits-Edelstein", "Crystal", rgb(255, 230, 120), rgb(120, 255, 220), 2, 0 },
+	{ "InfinityStoneGhost", "Achter-Geist Lemni", "Ghost", rgb(255, 235, 140), rgb(255, 90, 200), 2, 0 },
+	{ "InfinityStoneKing", "Hüter der Steine", "King", rgb(255, 225, 110), rgb(80, 0, 160), 2, 0 },
+})
+add("Origin", "Infinity", {
+	{ "OriginBlob", "Urfunke Ori", "Blob", rgb(255, 255, 255), rgb(0, 255, 200), 2, 2 },
+	{ "OriginSpiky", "Anfangs-Stachel Alpha", "Spiky", rgb(250, 250, 255), rgb(255, 200, 60), 2, 0 },
+	{ "OriginKing", "Origin, Schöpfer aller Eier", "King", rgb(255, 255, 255), rgb(0, 255, 180), 2, 0 },
+})
+
+-- NACHT-EIER (nur nachts in der Parade, Blutmond-Ei nur im Blutmond) ---
+add("Moonstone", "Rare", {
+	{ "MoonstoneBlob", "Mondschein-Mops", "Blob", rgb(200, 210, 255), rgb(255, 255, 200), 2, 1 },
+	{ "MoonstoneGhost", "Nachtgespenst Nuri", "Ghost", rgb(210, 220, 255), rgb(120, 140, 255), 2, 0 },
+	{ "MoonstoneCrystal", "Mondkristall Selene", "Crystal", rgb(190, 205, 255), rgb(255, 255, 255), 2, 0 },
+})
+add("Shadow", "Epic", {
+	{ "ShadowGhost", "Schattenhuscher", "Ghost", rgb(60, 40, 90), rgb(180, 120, 255), 2, 0 },
+	{ "ShadowSpiky", "Dunkel-Dorn", "Spiky", rgb(50, 30, 80), rgb(255, 80, 200), 2, 0 },
+	{ "ShadowCyclops", "Schattenauge Umbra", "Cyclops", rgb(40, 25, 70), rgb(140, 255, 200), 1, 2 },
+})
+add("Lunar", "Legendary", {
+	{ "LunarMushroom", "Mondpilz Luno", "Mushroom", rgb(180, 200, 255), rgb(255, 250, 200), 2, 0 },
+	{ "LunarRobot", "Mondlande-Bot", "Robot", rgb(170, 190, 250), rgb(255, 220, 90), 2, 1 },
+	{ "LunarKing", "Mondkönigin Luna", "King", rgb(190, 205, 255), rgb(120, 100, 255), 2, 0 },
+})
+add("Starfall", "Mythic", {
+	{ "StarfallBug", "Sternschnuppen-Glühwurm", "Bug", rgb(255, 240, 160), rgb(90, 120, 255), 4, 2 },
+	{ "StarfallSquid", "Wunsch-Krake Wishy", "Squid", rgb(255, 235, 150), rgb(255, 150, 220), 3, 0 },
+	{ "StarfallCrystal", "Sternregen-Stella", "Crystal", rgb(255, 245, 170), rgb(255, 255, 255), 3, 0 },
+})
+add("Eclipse", "Celestial", {
+	{ "EclipseBlob", "Finsternis-Flubber", "Blob", rgb(30, 20, 50), rgb(255, 170, 40), 2, 2 },
+	{ "EclipseGhost", "Korona-Geist", "Ghost", rgb(35, 25, 60), rgb(255, 220, 120), 2, 0 },
+	{ "EclipseKing", "Eklipsus der Verdunkler", "King", rgb(25, 15, 45), rgb(255, 150, 30), 2, 0 },
+})
+add("BloodMoon", "Divine", {
+	{ "BloodMoonSpiky", "Blutmond-Biest", "Spiky", rgb(200, 0, 30), rgb(255, 180, 180), 2, 0 },
+	{ "BloodMoonGhost", "Purpur-Phantom", "Ghost", rgb(180, 0, 40), rgb(255, 90, 90), 2, 0 },
+	{ "BloodMoonCyclops", "Blutmond-Auge Sanguis", "Cyclops", rgb(190, 0, 30), rgb(255, 230, 100), 1, 2 },
 })
 
 -- ADMIN (nur per Admin-Panel, spawnen nie von selbst) -------------------

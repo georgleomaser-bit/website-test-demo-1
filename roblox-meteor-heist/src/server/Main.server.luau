@@ -12,6 +12,7 @@ local order = {
 	"GraphicsService", -- Licht & Himmel (vor der Map)
 	"PlotService", -- baut die Map (MapBuilder) + Basen
 	"MeteorService", -- Alien-Parade mit Eiern, Gratis-Zone, Eier am Boden, Schauer, Egg Rush
+	"NightService", -- Tag-Nacht-Zyklus: Blutmond, Sternschnuppen-Eier, leuchtende Kisten
 	"CarryService", -- Klauen & Tragen, Bonk
 	"GadgetService", -- Speed Coil, Falle, Super-Bonk, Umhang
 	"EconomyService",

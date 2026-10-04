@@ -16,6 +16,8 @@
 --   "ParadeBoss" -> Boss-Parade startet: bunte Konfetti-Bursts + Druckwelle am Hangar, drei Trommelschläge
 --   "Announce" -> große Admin-Ansage oben in der Mitte: Kopfbild, Name in Blau + Haken, Text in Weiß
 --                 (ohne Box, federt rein, ~8 s, blendet aus; mehrere nacheinander)
+--   "Warn"     -> großer roter Hinweis vom Admin in der Bildschirmmitte
+--   "Bonked"   -> vom Schläger getroffen: kurz taumeln (macht das Modul Bat)
 --  Dazu: Rebirth-Bildschirmblitz (Effects.RebirthFlash, vom HUD aufgerufen).
 --  Dazu: 🧊 Eingefroren-Anzeige, solange der eigene HumanoidRootPart verankert ist (Falle/Admin).
 --  Alles läuft lokal (nichts davon wird an andere Spieler geschickt).
@@ -1845,6 +1847,89 @@ local function announce(data: any)
 end
 
 -- ---------------------------------------------------------------------
+-- ADMIN-WARNUNG: großer roter Hinweis in der Bildschirmmitte (ca. 7 s)
+-- ---------------------------------------------------------------------
+local WARN_TIME = 7
+local WARN_IN = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local WARN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local warnToken = 0
+local warnFrame: Frame? = nil
+local warnText: TextLabel? = nil
+local warnScale: UIScale? = nil
+
+local function buildWarn()
+	local gui = overlay
+	if not gui or warnFrame then
+		return
+	end
+	local frame: Frame = UI.Create("Frame", {
+		Name = "AdminWarn",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.42),
+		Size = UDim2.new(0.6, 0, 0, 170),
+		BackgroundColor3 = Color3.fromRGB(200, 30, 40),
+		Visible = false,
+		ZIndex = 40,
+		Parent = gui,
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0, 14) }),
+		UI.Create("UIStroke", { Thickness = 4, Color = BLACK }),
+		UI.Create("UISizeConstraint", { MinSize = Vector2.new(300, 0), MaxSize = Vector2.new(760, 400) }),
+	})
+	local scale: UIScale = UI.Create("UIScale", { Scale = 1, Parent = frame })
+	UI.Label({
+		Position = UDim2.fromOffset(16, 10),
+		Size = UDim2.new(1, -32, 0, 46),
+		Text = "WARNUNG VOM ADMIN",
+		MaxText = 40,
+		Outline = 3,
+		ZIndex = 41,
+		Parent = frame,
+	})
+	local text = UI.Label({
+		Position = UDim2.fromOffset(16, 62),
+		Size = UDim2.new(1, -32, 1, -74),
+		Text = "",
+		TextWrapped = true,
+		MaxText = 30,
+		Outline = 2,
+		ZIndex = 41,
+		Parent = frame,
+	})
+	warnFrame, warnText, warnScale = frame, text, scale
+end
+
+local function adminWarn(data: any)
+	if type(data) ~= "table" or type(data.Text) ~= "string" or data.Text == "" then
+		return
+	end
+	buildWarn()
+	local frame, text, scale = warnFrame, warnText, warnScale
+	if not frame or not text or not scale then
+		return
+	end
+	warnToken += 1
+	local token = warnToken
+	text.Text = data.Text
+	frame.Visible = true
+	scale.Scale = 0.6
+	TweenService:Create(scale, WARN_IN, { Scale = 1 }):Play()
+	shake(0.5)
+	task.delay(WARN_TIME, function()
+		if warnToken ~= token then
+			return
+		end
+		local out = TweenService:Create(scale, WARN_OUT, { Scale = 0 })
+		out.Completed:Once(function()
+			if warnToken == token then
+				frame.Visible = false
+			end
+		end)
+		out:Play()
+	end)
+end
+
+-- ---------------------------------------------------------------------
 -- ÖFFENTLICH
 -- ---------------------------------------------------------------------
 function Effects.Play(name: any, strength: any, data: any)
@@ -1883,6 +1968,12 @@ function Effects.Play(name: any, strength: any, data: any)
 		paradeBoss(data)
 	elseif name == "Announce" then
 		announce(data)
+	elseif name == "Warn" then
+		adminWarn(data)
+	elseif name == "Bonked" then
+		if ctx.Bat then
+			ctx.Bat.Bonked(data)
+		end
 	end
 end
 

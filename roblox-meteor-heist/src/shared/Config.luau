@@ -184,33 +184,58 @@ Config.HeavyCarry = {
 }
 
 -- SPEED FARM: Auf den Laufbändern (Treadmills) am Spawn-Platz laufen = Schritte 👟 sammeln.
--- Mehr Schritte = schneller laufen. Höhere Laufbänder geben viel mehr Schritte,
--- brauchen aber erst genug Schritte zum Freischalten.
---   Required = so viele Schritte braucht man für dieses Laufband
---   Rate     = Schritte pro Tick (alle TreadmillTick Sekunden)
+-- Mehr Schritte = schneller laufen. Laufbänder KAUFT man mit Cash (Menü "Laufbänder"),
+-- sie gehören einem für immer (auch nach Rebirth). Man kauft sie der Reihe nach.
+--   Price      = Preis in Cash (0 = gratis, hat jeder)
+--   Rate       = Schritte pro Tick (alle TreadmillTick Sekunden)
+--   LegacySteps = nur für alte Spielstände: wer früher so viele Schritte hatte, bekommt das Laufband geschenkt
 Config.Treadmills = {
-	{ Id = "Holz", Name = "Holz-Laufband", Required = 0, Rate = 1, Color = Color3.fromRGB(170, 115, 60) },
-	{ Id = "Stein", Name = "Stein-Laufband", Required = 500, Rate = 6, Color = Color3.fromRGB(150, 150, 160) },
-	{ Id = "Eisen", Name = "Eisen-Laufband", Required = 15000, Rate = 40, Color = Color3.fromRGB(200, 210, 225) },
-	{ Id = "Gold", Name = "Gold-Laufband", Required = 400000, Rate = 300, Color = Color3.fromRGB(255, 200, 40) },
+	{ Id = "Holz", Name = "Holz-Laufband", Price = 0, LegacySteps = 0, Rate = 1, Color = Color3.fromRGB(170, 115, 60) },
+	{
+		Id = "Stein",
+		Name = "Stein-Laufband",
+		Price = 2500,
+		LegacySteps = 500,
+		Rate = 6,
+		Color = Color3.fromRGB(150, 150, 160),
+	},
+	{
+		Id = "Eisen",
+		Name = "Eisen-Laufband",
+		Price = 75000,
+		LegacySteps = 15000,
+		Rate = 40,
+		Color = Color3.fromRGB(200, 210, 225),
+	},
+	{
+		Id = "Gold",
+		Name = "Gold-Laufband",
+		Price = 2000000,
+		LegacySteps = 400000,
+		Rate = 300,
+		Color = Color3.fromRGB(255, 200, 40),
+	},
 	{
 		Id = "Diamant",
 		Name = "Diamant-Laufband",
-		Required = 1e7,
+		Price = 50000000,
+		LegacySteps = 1e7,
 		Rate = 2500,
 		Color = Color3.fromRGB(90, 225, 255),
 	},
 	{
 		Id = "Galaxie",
 		Name = "Galaxie-Laufband",
-		Required = 3e8,
+		Price = 1.5e9,
+		LegacySteps = 3e8,
 		Rate = 20000,
 		Color = Color3.fromRGB(150, 80, 255),
 	},
 	{
 		Id = "Regenbogen",
 		Name = "Regenbogen-Laufband",
-		Required = 1e10,
+		Price = 5e10,
+		LegacySteps = 1e10,
 		Rate = 180000,
 		Color = Color3.fromRGB(255, 80, 200),
 		Rainbow = true,
@@ -220,9 +245,84 @@ Config.TreadmillTick = 0.5 -- alle 0,5 Sekunden gibt es Schritte
 Config.MaxWalkSpeed = 80 -- schneller geht es nicht (16 normal + max. 64 durch Schritte)
 Config.StepsPerRebirth = 0.25 -- jeder Rebirth: +25% Schritte auf allen Laufbändern
 
-Config.BonkCooldown = 0.8
-Config.BonkRange = 9
-Config.BonkForce = 70
+-- SCHLÄGER: jeder hat immer den besten freigeschalteten Schläger in der Hand (kommt automatisch).
+-- Bessere Schläger schaltet man über den INDEX frei (Anzahl entdeckter Aliens).
+--   IndexRequired = so viele entdeckte Aliens braucht man
+--   Range  = Reichweite in Studs, Force = Wucht (wie weit das Ziel fliegt), Cooldown = Sekunden zwischen Schlägen
+--   Color/Material = Schlagteil, Grip = Farbe vom Griff, Accent = Leucht-Ring (nur hohe Stufen)
+Config.Bats = {
+	{
+		Id = "Holz",
+		Name = "Holzschläger",
+		IndexRequired = 0,
+		Range = 9,
+		Force = 60,
+		Cooldown = 0.8,
+		Color = Color3.fromRGB(190, 135, 80),
+		Material = Enum.Material.Wood,
+		Grip = Color3.fromRGB(60, 40, 30),
+	},
+	{
+		Id = "Metall",
+		Name = "Metallschläger",
+		IndexRequired = 10,
+		Range = 10,
+		Force = 66,
+		Cooldown = 0.75,
+		Color = Color3.fromRGB(175, 180, 190),
+		Material = Enum.Material.Metal,
+		Grip = Color3.fromRGB(40, 40, 45),
+	},
+	{
+		Id = "Gold",
+		Name = "Goldschläger",
+		IndexRequired = 25,
+		Range = 11,
+		Force = 72,
+		Cooldown = 0.7,
+		Color = Color3.fromRGB(255, 195, 40),
+		Material = Enum.Material.Foil,
+		Grip = Color3.fromRGB(90, 50, 20),
+	},
+	{
+		Id = "Diamant",
+		Name = "Diamantschläger",
+		IndexRequired = 45,
+		Range = 12,
+		Force = 79,
+		Cooldown = 0.65,
+		Color = Color3.fromRGB(110, 230, 255),
+		Material = Enum.Material.Glass,
+		Grip = Color3.fromRGB(30, 60, 90),
+	},
+	{
+		Id = "Galaxie",
+		Name = "Galaxieschläger",
+		IndexRequired = 70,
+		Range = 13,
+		Force = 86,
+		Cooldown = 0.6,
+		Color = Color3.fromRGB(90, 40, 170),
+		Material = Enum.Material.SmoothPlastic,
+		Grip = Color3.fromRGB(25, 15, 45),
+		Accent = Color3.fromRGB(255, 90, 230),
+	},
+	{
+		Id = "AlienKing",
+		Name = "Alien-König-Schläger",
+		IndexRequired = 90,
+		Range = 14,
+		Force = 95,
+		Cooldown = 0.55,
+		Color = Color3.fromRGB(70, 220, 90),
+		Material = Enum.Material.SmoothPlastic,
+		Grip = Color3.fromRGB(20, 50, 25),
+		Accent = Color3.fromRGB(255, 220, 60),
+		Crown = true,
+	},
+}
+Config.BonkStunTime = 0.9 -- so lange taumelt ein getroffener Spieler (er stirbt nie davon)
+Config.BonkLift = 32 -- Wucht nach oben (das Ziel fliegt im Bogen)
 
 -- GADGETS: mit Cash im Shop kaufen, gehören dir für immer (auch nach Rebirth).
 -- Sie liegen nach jedem Spawn als Werkzeug in deinem Rucksack.
@@ -246,7 +346,7 @@ Config.Gadgets = {
 		Name = "Super-Bonk",
 		Icon = "🔨",
 		Price = 750000,
-		Description = "Doppelte Reichweite und Wucht, schnellerer Schlag",
+		Description = "Macht deinen Schläger stärker: mehr Reichweite und Wucht, schnellere Schläge",
 	},
 	{
 		Id = "Cloak",
@@ -259,9 +359,9 @@ Config.Gadgets = {
 Config.SpeedCoilBonus = 0.3 -- Speed Coil: +30% Laufgeschwindigkeit
 Config.MaxTrapsPerBase = 2 -- Fallen: so viele gleichzeitig pro Base
 Config.TrapFreezeTime = 3 -- Fallen: so viele Sekunden eingefroren
-Config.SuperBonkRangeMult = 2 -- Super-Bonk: doppelte Reichweite
-Config.SuperBonkForceMult = 2 -- Super-Bonk: doppelte Wucht
-Config.SuperBonkCooldown = 0.5 -- Super-Bonk: schneller schlagen (normal: BonkCooldown)
+Config.SuperBonkRangeMult = 1.5 -- Super-Bonk (Boost für den Schläger): +50% Reichweite
+Config.SuperBonkForceMult = 1.3 -- Super-Bonk: +30% Wucht
+Config.SuperBonkCooldownMult = 0.7 -- Super-Bonk: Abklingzeit des Schlägers x0,7 (schneller schlagen)
 Config.CloakDuration = 10 -- Umhang: Sekunden unsichtbar (in der Zeit kann dich niemand bonken)
 Config.CloakCooldown = 60 -- Umhang: Abklingzeit in Sekunden
 
@@ -444,11 +544,13 @@ Config.VIPBonus = 0.25
 -- ---------------------------------------------------------------------
 -- 4) SELTENHEITEN – Weight = Spawnchance (relativ), Size = Größe des Meteors
 --    Kleine kommen oft, große & seltene kaum -> "erst kleine, dann immer bessere"
---    Jedes Ei in der Parade und im Egg Rush kann man GRATIS klauen (ca. 2 pro Sekunde!) –
---    deshalb sind die seltenen Seltenheiten extra selten, sonst wären Preise und Rebirths egal.
+--    Jedes Ei in der Parade und im Egg Rush kann man GRATIS klauen (ca. 3 pro Sekunde!).
+--    Ungefähre Raten pro Server (Simulation, ohne Events): Legendary+ alle ~18 s,
+--    Mythic+ jede Minute, Secret+ alle ~13 Min, Godly ~1 pro Stunde, Infinity fast nur nachts.
 --    HatchTime = Sekunden bis das Alien schlüpft
 --    RequiredRebirths = so viele Rebirths braucht man, um diese Seltenheit zu KAUFEN
 --    (klauen geht immer!)
+--    NightMult = nachts ist das Gewicht so viel größer (Godly, Cosmic, Infinity)
 --    "Admin" = nur vom Admin spawnbar (Weight 0 -> kommt nie von selbst)
 -- ---------------------------------------------------------------------
 Config.Rarities = {
@@ -456,11 +558,11 @@ Config.Rarities = {
 	{ Name = "Uncommon", Weight = 26, Size = 2.5, Color = Color3.fromRGB(85, 220, 95), HatchTime = 15 },
 	{ Name = "Rare", Weight = 13, Size = 3, Color = Color3.fromRGB(70, 150, 255), HatchTime = 30 },
 	{ Name = "Epic", Weight = 5, Size = 3.6, Color = Color3.fromRGB(180, 80, 255), HatchTime = 50 },
-	{ Name = "Legendary", Weight = 0.8, Size = 4.2, Color = Color3.fromRGB(255, 190, 40), HatchTime = 80 },
-	{ Name = "Mythic", Weight = 0.28, Size = 4.9, Color = Color3.fromRGB(255, 60, 90), HatchTime = 120 },
+	{ Name = "Legendary", Weight = 0.95, Size = 4.2, Color = Color3.fromRGB(255, 190, 40), HatchTime = 80 },
+	{ Name = "Mythic", Weight = 0.24, Size = 4.9, Color = Color3.fromRGB(255, 60, 90), HatchTime = 120 },
 	{
 		Name = "Celestial",
-		Weight = 0.07,
+		Weight = 0.09,
 		Size = 5.6,
 		Color = Color3.fromRGB(90, 230, 255),
 		HatchTime = 180,
@@ -468,7 +570,7 @@ Config.Rarities = {
 	},
 	{
 		Name = "Divine",
-		Weight = 0.018,
+		Weight = 0.045,
 		Size = 6.4,
 		Color = Color3.fromRGB(255, 240, 150),
 		HatchTime = 260,
@@ -476,14 +578,46 @@ Config.Rarities = {
 	},
 	{
 		Name = "Secret",
-		Weight = 0.005,
+		Weight = 0.024,
 		Size = 7.2,
 		Color = Color3.fromRGB(255, 255, 255),
 		HatchTime = 360,
 		RequiredRebirths = 5,
 	},
-	{ Name = "Admin", Weight = 0, Size = 8, Color = Color3.fromRGB(255, 40, 40), HatchTime = 5, AdminOnly = true },
+	{
+		Name = "Godly",
+		Weight = 0.004,
+		NightMult = 2,
+		Size = 7.6,
+		Color = Color3.fromRGB(255, 210, 0),
+		HatchTime = 480,
+		RequiredRebirths = 7,
+	},
+	{
+		Name = "Cosmic",
+		Weight = 0.0015,
+		NightMult = 4,
+		Size = 8,
+		Color = Color3.fromRGB(90, 80, 255),
+		HatchTime = 600,
+		RequiredRebirths = 10,
+	},
+	{
+		Name = "Infinity",
+		Weight = 0.0003,
+		NightMult = 70,
+		Size = 8.4,
+		Color = Color3.fromRGB(0, 255, 180),
+		HatchTime = 780,
+		RequiredRebirths = 15,
+	},
+	{ Name = "Admin", Weight = 0, Size = 8.8, Color = Color3.fromRGB(255, 40, 40), HatchTime = 5, AdminOnly = true },
 }
+
+-- GLÜCKS-ZÄHLER (pro Server): jedes Parade-Ei ohne Legendary+ zählt +1.
+-- Alle "Step" Eier steigt das Glück für Legendary+ um "Bonus" (höchstens "Max"x).
+-- Kommt ein Legendary+ Ei, fängt der Zähler wieder bei 0 an.
+Config.Pity = { Step = 20, Bonus = 0.25, Max = 3, FromRarity = "Legendary" }
 
 -- Mutationen multiplizieren Wert UND Einkommen
 -- (Rainbow = true: Farbe läuft beim Client durch alle Regenbogenfarben;
@@ -508,6 +642,7 @@ Config.Mutations = {
 -- ---------------------------------------------------------------------
 -- 5) METEORE – einfach Zeilen hinzufügen (Id muss einmalig sein!)
 --    Spawnable = false -> kommt nicht von selbst in die Parade (nur Admin-Panel / Produkte)
+--    NightOnly = true  -> kommt nur NACHTS in die Parade (BloodMoonOnly = nur im Blutmond)
 --    Für JEDEN Meteor müssen in Aliens.luau 3 Aliens stehen!
 --    Effects (optional): Rainbow = Regenbogen-Farben, Aura = Partikel, Highlight = Umriss,
 --    BigLight = starkes Licht
@@ -528,6 +663,14 @@ Config.Meteors = {
 		Price = 64,
 		Income = 2,
 		Color = Color3.fromRGB(150, 120, 90),
+	},
+	{
+		Id = "Clay",
+		Name = "Clay Lump",
+		Rarity = "Common",
+		Price = 100,
+		Income = 3,
+		Color = Color3.fromRGB(190, 120, 90),
 	},
 	{
 		Id = "Ember",
@@ -554,6 +697,14 @@ Config.Meteors = {
 		Color = Color3.fromRGB(230, 220, 70),
 	},
 	{
+		Id = "Coral",
+		Name = "Coral Rock",
+		Rarity = "Uncommon",
+		Price = 1700,
+		Income = 42,
+		Color = Color3.fromRGB(255, 120, 110),
+	},
+	{
 		Id = "Moss",
 		Name = "Moss Rock",
 		Rarity = "Uncommon",
@@ -570,12 +721,28 @@ Config.Meteors = {
 		Color = Color3.fromRGB(40, 80, 200),
 	},
 	{
+		Id = "Jade",
+		Name = "Jade Core",
+		Rarity = "Rare",
+		Price = 11000,
+		Income = 240,
+		Color = Color3.fromRGB(60, 190, 120),
+	},
+	{
 		Id = "Magma",
 		Name = "Magma Heart",
 		Rarity = "Rare",
 		Price = 18000,
 		Income = 360,
 		Color = Color3.fromRGB(255, 80, 20),
+	},
+	{
+		Id = "Amethyst",
+		Name = "Amethyst Geode",
+		Rarity = "Rare",
+		Price = 28000,
+		Income = 560,
+		Color = Color3.fromRGB(160, 90, 220),
 	},
 	{
 		Id = "Quartz",
@@ -592,6 +759,14 @@ Config.Meteors = {
 		Price = 110000,
 		Income = 1800,
 		Color = Color3.fromRGB(255, 250, 200),
+	},
+	{
+		Id = "Prism",
+		Name = "Prism Stone",
+		Rarity = "Epic",
+		Price = 180000,
+		Income = 2800,
+		Color = Color3.fromRGB(180, 255, 250),
 	},
 	{
 		Id = "Plasma",
@@ -626,6 +801,14 @@ Config.Meteors = {
 		Color = Color3.fromRGB(80, 255, 180),
 	},
 	{
+		Id = "Phoenix",
+		Name = "Phoenix Ember",
+		Rarity = "Legendary",
+		Price = 7600000,
+		Income = 80000,
+		Color = Color3.fromRGB(255, 90, 40),
+	},
+	{
 		Id = "Titan",
 		Name = "Titan Boulder",
 		Rarity = "Legendary",
@@ -634,12 +817,28 @@ Config.Meteors = {
 		Color = Color3.fromRGB(110, 90, 80),
 	},
 	{
+		Id = "Dragon",
+		Name = "Dragon Scale",
+		Rarity = "Legendary",
+		Price = 19000000,
+		Income = 185000,
+		Color = Color3.fromRGB(40, 160, 90),
+	},
+	{
 		Id = "Nebula",
 		Name = "Nebula Heart",
 		Rarity = "Mythic",
 		Price = 31000000,
 		Income = 280000,
 		Color = Color3.fromRGB(120, 50, 200),
+	},
+	{
+		Id = "Vortex",
+		Name = "Vortex Core",
+		Rarity = "Mythic",
+		Price = 50000000,
+		Income = 430000,
+		Color = Color3.fromRGB(90, 60, 255),
 	},
 	{
 		Id = "BlackHole",
@@ -666,12 +865,28 @@ Config.Meteors = {
 		Color = Color3.fromRGB(255, 120, 40),
 	},
 	{
+		Id = "Starforge",
+		Name = "Star Forge",
+		Rarity = "Celestial",
+		Price = 820000000,
+		Income = 5100000,
+		Color = Color3.fromRGB(255, 180, 90),
+	},
+	{
 		Id = "Quasar",
 		Name = "Quasar Core",
 		Rarity = "Celestial",
 		Price = 1300000000,
 		Income = 7800000,
 		Color = Color3.fromRGB(255, 255, 140),
+	},
+	{
+		Id = "Constellation",
+		Name = "Constellation Gem",
+		Rarity = "Celestial",
+		Price = 2100000000,
+		Income = 12000000,
+		Color = Color3.fromRGB(120, 150, 255),
 	},
 	{
 		Id = "Galaxy",
@@ -688,6 +903,14 @@ Config.Meteors = {
 		Price = 8600000000,
 		Income = 42000000,
 		Color = Color3.fromRGB(255, 245, 210),
+	},
+	{
+		Id = "Angelic",
+		Name = "Angel Feather",
+		Rarity = "Divine",
+		Price = 14000000000,
+		Income = 64000000,
+		Color = Color3.fromRGB(255, 250, 240),
 	},
 	{
 		Id = "Seraph",
@@ -714,12 +937,28 @@ Config.Meteors = {
 		Color = Color3.fromRGB(255, 255, 255),
 	},
 	{
+		Id = "Paradox",
+		Name = "Paradox Cube",
+		Rarity = "Secret",
+		Price = 230000000000,
+		Income = 800000000,
+		Color = Color3.fromRGB(120, 255, 200),
+	},
+	{
 		Id = "Singularity",
 		Name = "Singularity",
 		Rarity = "Secret",
 		Price = 360000000000,
 		Income = 1200000000,
 		Color = Color3.fromRGB(5, 5, 5),
+	},
+	{
+		Id = "Cipher",
+		Name = "Cipher Stone",
+		Rarity = "Secret",
+		Price = 590000000000,
+		Income = 1900000000,
+		Color = Color3.fromRGB(40, 255, 120),
 	},
 	{
 		Id = "Multiverse",
@@ -737,6 +976,145 @@ Config.Meteors = {
 		Income = 15000000000,
 		Color = Color3.fromRGB(255, 0, 80),
 		Spawnable = false,
+	},
+
+	-- GODLY / COSMIC / INFINITY (ab 7 / 10 / 15 Rebirths kaufbar, klauen geht immer)
+	{
+		Id = "Olympus",
+		Name = "Olympus Orb",
+		Rarity = "Godly",
+		Price = 2400000000000,
+		Income = 7000000000,
+		Color = Color3.fromRGB(255, 220, 90),
+	},
+	{
+		Id = "Valhalla",
+		Name = "Valhalla Shield",
+		Rarity = "Godly",
+		Price = 6200000000000,
+		Income = 17000000000,
+		Color = Color3.fromRGB(200, 220, 255),
+	},
+	{
+		Id = "Zenith",
+		Name = "Zenith Crown",
+		Rarity = "Godly",
+		Price = 16000000000000,
+		Income = 42000000000,
+		Color = Color3.fromRGB(255, 200, 40),
+	},
+	{
+		Id = "Ambrosia",
+		Name = "Ambrosia Heart",
+		Rarity = "Godly",
+		Price = 41000000000000,
+		Income = 105000000000,
+		Color = Color3.fromRGB(255, 150, 60),
+	},
+	{
+		Id = "Starseed",
+		Name = "Starseed Core",
+		Rarity = "Cosmic",
+		Price = 110000000000000,
+		Income = 270000000000,
+		Color = Color3.fromRGB(110, 90, 255),
+	},
+	{
+		Id = "Horizon",
+		Name = "Event Horizon",
+		Rarity = "Cosmic",
+		Price = 290000000000000,
+		Income = 700000000000,
+		Color = Color3.fromRGB(40, 20, 90),
+	},
+	{
+		Id = "Astral",
+		Name = "Astral Engine",
+		Rarity = "Cosmic",
+		Price = 760000000000000,
+		Income = 1800000000000,
+		Color = Color3.fromRGB(150, 200, 255),
+	},
+	{
+		Id = "Endless",
+		Name = "Endless Loop",
+		Rarity = "Infinity",
+		Price = 2000000000000000,
+		Income = 4700000000000,
+		Color = Color3.fromRGB(0, 255, 180),
+	},
+	{
+		Id = "InfinityStone",
+		Name = "Infinity Stone",
+		Rarity = "Infinity",
+		Price = 5300000000000000,
+		Income = 12000000000000,
+		Color = Color3.fromRGB(255, 230, 120),
+	},
+	{
+		Id = "Origin",
+		Name = "Origin Spark",
+		Rarity = "Infinity",
+		Price = 14000000000000000,
+		Income = 32000000000000,
+		Color = Color3.fromRGB(255, 255, 255),
+	},
+
+	-- 🌙 NACHT-EIER: kommen NUR nachts in die Parade (NightOnly), Blutmond-Ei nur im Blutmond
+	{
+		Id = "Moonstone",
+		Name = "Moonstone",
+		Rarity = "Rare",
+		Price = 9000,
+		Income = 200,
+		Color = Color3.fromRGB(200, 210, 255),
+		NightOnly = true,
+	},
+	{
+		Id = "Shadow",
+		Name = "Shadow Orb",
+		Rarity = "Epic",
+		Price = 350000,
+		Income = 5200,
+		Color = Color3.fromRGB(60, 40, 90),
+		NightOnly = true,
+	},
+	{
+		Id = "Lunar",
+		Name = "Lunar Core",
+		Rarity = "Legendary",
+		Price = 9500000,
+		Income = 100000,
+		Color = Color3.fromRGB(180, 200, 255),
+		NightOnly = true,
+	},
+	{
+		Id = "Starfall",
+		Name = "Starfall Shard",
+		Rarity = "Mythic",
+		Price = 140000000,
+		Income = 1100000,
+		Color = Color3.fromRGB(255, 240, 160),
+		NightOnly = true,
+	},
+	{
+		Id = "Eclipse",
+		Name = "Eclipse Heart",
+		Rarity = "Celestial",
+		Price = 2600000000,
+		Income = 15000000,
+		Color = Color3.fromRGB(30, 20, 50),
+		NightOnly = true,
+	},
+	{
+		Id = "BloodMoon",
+		Name = "Blood Moon Gem",
+		Rarity = "Divine",
+		Price = 40000000000,
+		Income = 175000000,
+		Color = Color3.fromRGB(200, 0, 30),
+		NightOnly = true,
+		BloodMoonOnly = true,
 	},
 
 	-- 👑 ADMIN-METEORE: nur der Admin kann sie spawnen (Admin-Panel)
@@ -783,6 +1161,34 @@ Config.Meteors = {
 }
 
 -- ---------------------------------------------------------------------
+-- NACHT – Tag-Nacht-Zyklus (GraphicsService + NightService)
+--   Nach "DayLength" Sekunden Tag kommt "NightLength" Sekunden Nacht.
+--   Nachts: Nacht-Eier in der Parade (NightOnly), Sternschnuppen-Eier fallen auf die Wiese,
+--   leuchtende Kisten liegen herum (Geld oder 1 Glücksrad-Dreh).
+--   BLUTMOND: jede Nacht mit Chance "BloodMoonChance": roter Himmel, "BloodMoonLuck"x Glück.
+-- ---------------------------------------------------------------------
+Config.Night = {
+	DayLength = 600, -- 10 Min Tag
+	NightLength = 180, -- 3 Min Nacht
+	FadeTime = 10, -- Sekunden für Sonnenuntergang / Sonnenaufgang
+	BloodMoonChance = 0.2, -- 1 von 5 Nächten
+	BloodMoonLuck = 2,
+	NightEggWeight = 2, -- ein Nacht-Ei wird so oft gewählt wie 2 normale Eier seiner Seltenheit
+	-- Sternschnuppen-Eier (gratis, wie im Egg Rush: schnappen und heimtragen)
+	StarInterval = { 5, 9 }, -- alle 5-9 Sekunden eine Sternschnuppe
+	StarLuck = 2, -- Glück für Sternschnuppen-Eier
+	StarLifetime = 45, -- Sekunden, bis ein Sternschnuppen-Ei verschwindet
+	-- Leuchtende Kisten
+	CrateInterval = 12, -- alle 12 Sekunden eine neue Kiste ...
+	MaxCrates = 6, -- ... höchstens so viele gleichzeitig
+	CrateLifetime = 60,
+	CrateHold = 0.6, -- E halten zum Öffnen
+	CrateSpinChance = 0.25, -- sonst Geld
+	CrateCashSeconds = 120, -- Geld = 2 Min Einkommen ...
+	CrateCashMin = 1000, -- ... mindestens so viel
+}
+
+-- ---------------------------------------------------------------------
 -- 6) TECHNIK (nur ändern, wenn du weißt was du tust)
 --    ACHTUNG: DataStoreName ändern = alle Spielstände sind weg!
 -- ---------------------------------------------------------------------
@@ -801,7 +1207,8 @@ Config.MutationsByName = {}
 Config.GamePassesByKey = {}
 Config.ProductsById = {}
 Config.ProductsByKey = {}
-Config.MeteorsByRarity = {} -- nur Meteore, die von selbst in die Parade kommen
+Config.MeteorsByRarity = {} -- nur Meteore, die von selbst in die Parade kommen (ohne Nacht-Eier)
+Config.NightMeteorsByRarity = {} -- Nacht-Eier (NightOnly), kommen nur nachts dazu
 Config.MeteorsByRarityAll = {} -- alle Meteore (auch Admin / nicht spawnbare)
 Config.AdminMeteors = {} -- alle Meteore mit Rarity "Admin"
 Config.TreadmillsById = {}
@@ -812,6 +1219,7 @@ for i, rarity in ipairs(Config.Rarities) do
 	Config.RarityIndex[rarity.Name] = i
 	Config.MeteorsByRarity[rarity.Name] = {}
 	Config.MeteorsByRarityAll[rarity.Name] = {}
+	Config.NightMeteorsByRarity[rarity.Name] = {}
 end
 for _, meteor in ipairs(Config.Meteors) do
 	assert(Config.MeteorsById[meteor.Id] == nil, "Doppelte Meteor-Id: " .. meteor.Id)
@@ -819,7 +1227,9 @@ for _, meteor in ipairs(Config.Meteors) do
 	assert(rarity, "Unbekannte Rarity bei " .. meteor.Id)
 	Config.MeteorsById[meteor.Id] = meteor
 	table.insert(Config.MeteorsByRarityAll[meteor.Rarity], meteor)
-	if meteor.Spawnable ~= false and not rarity.AdminOnly then
+	if meteor.NightOnly == true and meteor.Spawnable ~= false and not rarity.AdminOnly then
+		table.insert(Config.NightMeteorsByRarity[meteor.Rarity], meteor)
+	elseif meteor.Spawnable ~= false and not rarity.AdminOnly then
 		table.insert(Config.MeteorsByRarity[meteor.Rarity], meteor)
 	end
 	if rarity.AdminOnly then
@@ -860,7 +1270,7 @@ end
 for i, treadmill in ipairs(Config.Treadmills) do
 	assert(Config.TreadmillsById[treadmill.Id] == nil, "Doppelte Laufband-Id: " .. treadmill.Id)
 	if i > 1 then
-		assert(treadmill.Required >= Config.Treadmills[i - 1].Required, "Laufbänder aufsteigend sortieren!")
+		assert(treadmill.Price >= Config.Treadmills[i - 1].Price, "Laufbänder nach Preis aufsteigend sortieren!")
 	end
 	Config.TreadmillsById[treadmill.Id] = treadmill
 end
@@ -952,11 +1362,27 @@ function Config.StepsSpeed(steps: number): number
 	return 16 + math.min(64, math.floor(math.log10(1 + steps) * 6))
 end
 
--- Bestes freigeschaltetes Laufband (Holz ist immer frei)
-function Config.BestTreadmill(steps: number)
+-- Gehört dieses Laufband dem Spieler? owned = { [Id] = true } (Spielstand) oder Liste von Ids (State).
+-- Gratis-Laufbänder (Price 0) hat jeder.
+function Config.OwnsTreadmill(owned: any, id: string): boolean
+	local def = Config.TreadmillsById[id]
+	if not def then
+		return false
+	end
+	if def.Price <= 0 then
+		return true
+	end
+	if type(owned) ~= "table" then
+		return false
+	end
+	return owned[id] == true or table.find(owned, id) ~= nil
+end
+
+-- Bestes gekauftes Laufband (Holz ist immer frei)
+function Config.BestTreadmill(owned: any)
 	local best = Config.Treadmills[1]
 	for _, treadmill in ipairs(Config.Treadmills) do
-		if steps >= treadmill.Required then
+		if Config.OwnsTreadmill(owned, treadmill.Id) then
 			best = treadmill
 		end
 	end
@@ -966,5 +1392,42 @@ end
 function Config.RebirthCost(rebirths: number): number
 	return Config.RebirthBaseCost * Config.RebirthCostGrowth ^ rebirths
 end
+
+-- ---------------------------------------------------------------------
+-- SCHLÄGER (Nachschlagen) – Werte stehen oben bei Config.Bats
+-- ---------------------------------------------------------------------
+Config.BatsById = {}
+for i, bat in ipairs(Config.Bats) do
+	assert(Config.BatsById[bat.Id] == nil, "Doppelte Schläger-Id: " .. bat.Id)
+	if i > 1 then
+		assert(bat.IndexRequired >= Config.Bats[i - 1].IndexRequired, "Schläger nach IndexRequired sortieren!")
+	end
+	Config.BatsById[bat.Id] = bat
+end
+
+-- Bester Schläger für so viele entdeckte Aliens (und der nächste, falls es noch einen gibt)
+function Config.BestBat(indexCount: number)
+	local best, nextBat = Config.Bats[1], nil
+	for _, bat in ipairs(Config.Bats) do
+		if (tonumber(indexCount) or 0) >= bat.IndexRequired then
+			best = bat
+		elseif not nextBat then
+			nextBat = bat
+		end
+	end
+	return best, nextBat
+end
+
+-- ---------------------------------------------------------------------
+-- ADMIN-PANEL (Kräfte, Grenzen)
+-- ---------------------------------------------------------------------
+Config.AdminPowers = {
+	MinSpeed = 8,
+	MaxSpeed = 250, -- Speed-Regler im Admin-Panel
+	MinJump = 20,
+	MaxJump = 300, -- Sprungkraft-Regler (normal 50)
+	DefaultJump = 50,
+	BossParadeCount = 4, -- so viele Boss-Eier bringt "Boss-Parade"
+}
 
 return Config

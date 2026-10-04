@@ -232,8 +232,8 @@ local function grantProduct(player: Player, product): boolean
 		if not data then
 			return false
 		end
-		-- so viele Schritte wie "Minutes" Minuten auf dem besten freigeschalteten Laufband
-		local best = Config.BestTreadmill(data.Steps)
+		-- so viele Schritte wie "Minutes" Minuten auf dem besten gekauften Laufband
+		local best = Config.BestTreadmill(data.Treadmills)
 		local ticksPerMinute = 60 / Config.TreadmillTick
 		local amount = (best and best.Rate or 1) * ticksPerMinute * product.Minutes * Economy.GetStepsMult(player)
 		amount = math.floor(math.max(product.Min, amount))

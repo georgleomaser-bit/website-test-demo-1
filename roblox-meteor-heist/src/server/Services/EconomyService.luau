@@ -1,7 +1,8 @@
 -- Geld & Fortschritt: Einkommen, Schlüpfen (Meteor -> Alien), Aufladen (Level), Einsammeln,
 -- Verkaufen, Schritte/Speed, Rebirth, Tagesbonus, Index, Leaderstats und Daten an den Client.
 -- Verteilt außerdem die Anfragen vom Client (Remotes.Request) – auch für Geschenke, Glücksrad,
--- Tagesaufgaben (RewardService) und Gadgets (GadgetService) – und zählt Fortschritt für die Aufgaben.
+-- Tagesaufgaben (RewardService), Gadgets (GadgetService) und Laufbänder (TreadmillService) –
+-- und zählt Fortschritt für die Aufgaben.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -191,13 +192,27 @@ function EconomyService.GetWalkSpeed(player: Player, carrying: boolean): number
 	return speed
 end
 
+-- Admin-Speed-Regler (Attribut AdminSpeed, nur für echte Admins): ersetzt das normale Tempo
+local function adminSpeed(player: Player): number?
+	local value = tonumber(player:GetAttribute("AdminSpeed"))
+	if not value or value ~= value then
+		return nil
+	end
+	local admin = Services.AdminService
+	if not admin or not admin.IsAdmin(player) then
+		return nil
+	end
+	local powers = Config.AdminPowers or {}
+	return math.clamp(value, tonumber(powers.MinSpeed) or 8, tonumber(powers.MaxSpeed) or 250)
+end
+
 function EconomyService.ApplySpeed(player: Player)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if not humanoid then
 		return
 	end
-	local speed = EconomyService.GetWalkSpeed(player, Services.CarryService.IsCarrying(player))
+	local speed = adminSpeed(player) or EconomyService.GetWalkSpeed(player, Services.CarryService.IsCarrying(player))
 	if humanoid.WalkSpeed ~= speed then
 		humanoid.WalkSpeed = speed
 	end
@@ -257,6 +272,11 @@ function EconomyService.Discover(player: Player, alienId: string?, silent: boole
 		return false
 	end
 	data.Index[alien.Id] = true
+	-- Neuer Index-Stand -> vielleicht ein besserer Schläger (CarryService tauscht ihn aus)
+	local carry = Services.CarryService
+	if carry and carry.CheckBat then
+		task.defer(carry.CheckBat, player)
+	end
 	if not silent then
 		EconomyService.Notify(
 			player,
@@ -569,7 +589,14 @@ local function buildState(player: Player)
 	local plot = Services.PlotService.GetPlot(player)
 	local dailyReady, dailyIn = EconomyService.DailyStatus(data)
 	local indexCount = EconomyService.IndexCount(data)
-	local best = Config.BestTreadmill(data.Steps)
+	local best = Config.BestTreadmill(data.Treadmills)
+	local bat, nextBat = Config.BestBat(indexCount)
+	local treadmills = {}
+	for _, def in ipairs(Config.Treadmills) do
+		if Config.OwnsTreadmill(data.Treadmills, def.Id) then
+			table.insert(treadmills, def.Id)
+		end
+	end
 	local state = {
 		Cash = data.Cash,
 		Pending = data.Pending,
@@ -581,6 +608,10 @@ local function buildState(player: Player)
 		StepsMult = EconomyService.GetStepsMult(player),
 		Speed = EconomyService.GetSpeed(player),
 		BestTreadmill = best and best.Id or nil,
+		Treadmills = treadmills, -- gekaufte Laufbänder (Ids)
+		Bat = bat and bat.Id or nil, -- bester freigeschalteter Schläger
+		NextBat = nextBat and nextBat.Id or nil,
+		IndexCount = indexCount,
 		Slots = Services.PlotService.SlotCount(player),
 		UsedSlots = Services.PlotService.UsedSlots(player),
 		DailyReady = dailyReady,
@@ -879,6 +910,19 @@ function EconomyService.Start()
 			ok, message = rewards.RerollQuest(player, arg)
 		elseif action == "BuyGadget" then
 			ok, message = buyGadget(player, arg)
+		elseif action == "BuyTreadmill" then
+			local treadmill = Services.TreadmillService
+			if treadmill and treadmill.Buy then
+				local called, success, text = pcall(treadmill.Buy, player, arg)
+				if called then
+					ok, message = success == true, type(text) == "string" and text or ""
+				else
+					warn("[EconomyService] Laufband-Kauf fehlgeschlagen: " .. tostring(success))
+					ok, message = false, "Kauf fehlgeschlagen – versuch es nochmal"
+				end
+			else
+				ok, message = false, "Laufbänder kommen bald!"
+			end
 		elseif action == "Rebirth" then
 			ok, message = EconomyService.Rebirth(player)
 		elseif action == "Daily" then

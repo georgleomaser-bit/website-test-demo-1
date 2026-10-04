@@ -159,7 +159,7 @@ end
 type Rates = { Income: number, StepsPerSecond: number }
 
 local function rates(player: Player, data, state: { [string]: any }?): Rates
-	local best = Config.BestTreadmill(data.Steps)
+	local best = Config.BestTreadmill(data.Treadmills)
 	local rate = best and best.Rate or 1
 	local income = state and tonumber(state.Income)
 	local stepsMult = state and tonumber(state.StepsMult)

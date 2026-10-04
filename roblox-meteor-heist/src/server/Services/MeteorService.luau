@@ -1,5 +1,8 @@
 -- Meteore: die ALIEN-PARADE in der Map-Mitte, die Gratis-Zone am Spawn-Platz, Eier am Boden,
--- Meteoritenschauer, EGG RUSH und Server-Glück.
+-- Meteoritenschauer, EGG RUSH, Server-Glück und der GLÜCKS-ZÄHLER (Config.Pity).
+-- NACHT (NightService): Nacht-Eier in der Parade, Sternschnuppen-Eier (SpawnSkyEgg), Blutmond-Glück.
+-- Öffentliche Nacht-API (auch fürs Admin-Panel): MeteorService.StartNight(bloodMoon?, seconds?),
+-- MeteorService.EndNight(), MeteorService.IsNight(), MeteorService.IsBloodMoon().
 --
 -- ALIEN-PARADE: kleine Aliens laufen vom UFO-Hangar zum Ziel-Tor und tragen 1-3 Eier auf dem Kopf.
 -- Jedes Ei hat ZWEI Knöpfe
@@ -121,11 +124,38 @@ local eggRushUntil = 0
 local nextEggRushAt = 0
 local lastRareAnnounce = -math.huge
 
+-- GLÜCKS-ZÄHLER (pro Server): Parade-Eier seit dem letzten Legendary+ (siehe Config.Pity)
+local PITY = Config.Pity or { Step = 20, Bonus = 0.25, Max = 3, FromRarity = "Legendary" }
+local PITY_FROM = Config.RarityIndex[PITY.FromRarity] or 5
+local PITY_FULL = math.ceil((PITY.Max - 1) / PITY.Bonus) * PITY.Step -- ab so vielen Eiern ist das Glück voll
+local pityCount = 0
+local NIGHT = Config.Night or {}
+
 -- -------------------------------------------------------------------
 -- GLÜCK & EVENTS
 -- -------------------------------------------------------------------
 local function now(): number
 	return workspace:GetServerTimeNow()
+end
+
+-- Glück für Legendary+ durch den Glücks-Zähler (1 = kein Bonus)
+local function pityMult(): number
+	return math.min(PITY.Max, 1 + math.floor(pityCount / PITY.Step) * PITY.Bonus)
+end
+
+local function publishPity()
+	ReplicatedStorage:SetAttribute("PityCount", pityCount)
+	ReplicatedStorage:SetAttribute("PityFull", PITY_FULL)
+	ReplicatedStorage:SetAttribute("PityMult", pityMult())
+end
+
+-- Nacht / Blutmond (NightService fehlt -> immer Tag)
+local function nightState(): (boolean, boolean)
+	local night = Services and Services.NightService
+	if night then
+		return night.IsNight(), night.IsBloodMoon()
+	end
+	return false, false
 end
 
 local function publishAttributes()
@@ -164,7 +194,44 @@ function MeteorService.GetLuck(): number
 	if MeteorService.IsShowerActive() then
 		luck *= Config.ShowerLuck
 	end
+	local _, bloodMoon = nightState()
+	if bloodMoon then
+		luck *= tonumber(NIGHT.BloodMoonLuck) or 2
+	end
 	return luck
+end
+
+-- -------------------------------------------------------------------
+-- NACHT-API (die Arbeit macht NightService; hier nur weitergereicht, damit alles an EINER Stelle ist)
+-- -------------------------------------------------------------------
+function MeteorService.IsNight(): boolean
+	local night = nightState()
+	return night
+end
+
+function MeteorService.IsBloodMoon(): boolean
+	local _, bloodMoon = nightState()
+	return bloodMoon
+end
+
+-- Nacht sofort starten (bloodMoon = true -> Blutmond), seconds = Länge (Standard Config.Night.NightLength)
+function MeteorService.StartNight(bloodMoon: boolean?, seconds: number?): boolean
+	local night = Services and Services.NightService
+	if not night then
+		return false
+	end
+	night.StartNight(bloodMoon == true, seconds)
+	return true
+end
+
+-- Nacht sofort beenden (Sonnenaufgang)
+function MeteorService.EndNight(): boolean
+	local night = Services and Services.NightService
+	if not night then
+		return false
+	end
+	night.EndNight()
+	return true
 end
 
 -- Verlängert laufendes Glück, statt es zu überschreiben
@@ -205,13 +272,23 @@ end
 -- -------------------------------------------------------------------
 -- ZUFALL
 -- -------------------------------------------------------------------
-function MeteorService.RollRarity(luck: number)
+-- luck: ab Rare mal Glück. pity: nur Legendary+ mal Glücks-Zähler. Nachts: Godly+ mal NightMult.
+function MeteorService.RollRarity(luck: number, pity: number?)
+	local night = nightState()
+	local pityBonus = pity or 1
 	return Util.WeightedPick(Config.Rarities, function(rarity)
 		if rarity.AdminOnly or #Config.MeteorsByRarity[rarity.Name] == 0 then
 			return 0
 		end
 		local index = Config.RarityIndex[rarity.Name]
-		return index >= 3 and rarity.Weight * luck or rarity.Weight
+		local weight = index >= 3 and rarity.Weight * luck or rarity.Weight
+		if index >= PITY_FROM then
+			weight *= pityBonus
+		end
+		if night and rarity.NightMult then
+			weight *= rarity.NightMult
+		end
+		return weight
 	end, rng)
 end
 
@@ -223,6 +300,7 @@ function MeteorService.RollMutation(luck: number): string
 end
 
 -- Zufälliger Meteor einer Seltenheit (nur Meteore, die von selbst in die Parade kommen; includeAll = auch Admin/nicht spawnbare)
+-- Nachts kommen die Nacht-Eier dazu (je Config.Night.NightEggWeight so oft wie ein normales Ei).
 function MeteorService.RandomOfRarity(rarityName: string, includeAll: boolean?)
 	local list = Config.MeteorsByRarity[rarityName]
 	if (not list or #list == 0) and includeAll then
@@ -230,6 +308,21 @@ function MeteorService.RandomOfRarity(rarityName: string, includeAll: boolean?)
 	end
 	if not list or #list == 0 then
 		return nil
+	end
+	local night, bloodMoon = nightState()
+	local nightList = Config.NightMeteorsByRarity and Config.NightMeteorsByRarity[rarityName]
+	if night and nightList and #nightList > 0 then
+		local nightWeight = tonumber(NIGHT.NightEggWeight) or 2
+		local pool = {}
+		for _, def in ipairs(list) do
+			table.insert(pool, { Def = def, Weight = 1 })
+		end
+		for _, def in ipairs(nightList) do
+			if bloodMoon or def.BloodMoonOnly ~= true then
+				table.insert(pool, { Def = def, Weight = nightWeight })
+			end
+		end
+		return Util.WeightedPick(pool, nil, rng).Def
 	end
 	return list[rng:NextInteger(1, #list)]
 end
@@ -243,11 +336,25 @@ function MeteorService.RandomAdminMeteor()
 end
 
 -- Neuer (noch nicht gekaufter) Eintrag – Hatch/Alien kommen erst in der Base dazu
-function MeteorService.RollEntry(luck: number?)
+-- pity = Glücks-Bonus für Legendary+ (nur natürliche Parade-Eier, siehe rollNatural)
+function MeteorService.RollEntry(luck: number?, pity: number?)
 	local l = luck or MeteorService.GetLuck()
-	local rarity = MeteorService.RollRarity(l)
+	local rarity = MeteorService.RollRarity(l, pity)
 	local def = MeteorService.RandomOfRarity(rarity.Name) or Config.Meteors[1]
 	return { Id = def.Id, Mut = MeteorService.RollMutation(l), Lv = 1, Xp = 0 }
+end
+
+-- Natürliches Parade-Ei: mit Glücks-Zähler. Legendary+ setzt ihn zurück, sonst +1.
+local function rollNatural()
+	local entry = MeteorService.RollEntry(nil, pityMult())
+	local def = Config.MeteorsById[entry.Id]
+	if def and (Config.RarityIndex[def.Rarity] or 1) >= PITY_FROM then
+		pityCount = 0
+	else
+		pityCount += 1
+	end
+	publishPity()
+	return entry
 end
 
 -- opts: { Id?, Mut?, Rarity? } -> Eintrag (oder nil, wenn es die Seltenheit nicht gibt)
@@ -873,7 +980,7 @@ end
 
 -- Nächste natürliche Gruppe: kleine Eier werden oft gestapelt (1-3 auf einem Träger)
 local function rollGroup(): { any }
-	local first = spareEntry or MeteorService.RollEntry()
+	local first = spareEntry or rollNatural()
 	spareEntry = nil
 	local group = { first }
 	if rarityIndexOf(first) <= STACK_MAX_RARITY then
@@ -890,7 +997,7 @@ local function rollGroup(): { any }
 			count = i
 		end
 		for _ = 2, count do
-			local extra = MeteorService.RollEntry()
+			local extra = rollNatural()
 			if rarityIndexOf(extra) <= STACK_MAX_RARITY then
 				table.insert(group, extra)
 			else
@@ -1062,8 +1169,9 @@ end
 -- EIER AM BODEN (fallen gelassen / Egg Rush)
 -- -------------------------------------------------------------------
 -- Legt ein Ei auf den Boden. groundPos = Punkt AUF dem Boden.
--- opts: { From: Vector3?, SkyHeight: number?, Lifetime: number?, EggRush: boolean? }
+-- opts: { From: Vector3?, SkyHeight: number?, Lifetime: number?, EggRush: boolean?, ShootingStar: boolean? }
 --   From/SkyHeight -> fällt sichtbar dorthin (Client-Effekt "Deliver"), sonst liegt es sofort da
+--   ShootingStar -> Attribut am Ei (der Client lässt es funkeln)
 local function spawnDrop(entry, groundPos: Vector3, opts)
 	while #dropRecords >= Config.MaxDroppedMeteors do
 		removeRecord(dropRecords[1]) -- älteste weg
@@ -1072,6 +1180,9 @@ local function spawnDrop(entry, groundPos: Vector3, opts)
 	local position = Vector3.new(groundPos.X, groundPos.Y + size / 2 + 0.1, groundPos.Z)
 	local part = MeteorFactory.Create(entry, "Ground", 0)
 	part.CFrame = CFrame.new(position)
+	if opts.ShootingStar then
+		part:SetAttribute("ShootingStar", true)
+	end
 
 	local record = {
 		Kind = "Drop",
@@ -1290,6 +1401,55 @@ function MeteorService.StartEggRush(duration: number?, count: number?): number
 	return amount
 end
 
+-- Wiesenboden "Ground" der Map (nil = nicht gefunden)
+local function meadowGround(): BasePart?
+	local map = Services.PlotService.MapFolder
+	local groundPart = map and map:FindFirstChild("Ground")
+	if groundPart and groundPart:IsA("BasePart") then
+		return groundPart
+	end
+	return nil
+end
+
+-- Freier Platz auf der Wiese (wie beim Egg Rush) – z.B. für die leuchtenden Kisten der Nacht.
+-- Gibt den Punkt AUF dem Boden zurück oder nil.
+function MeteorService.FindMeadowSpot(radius: number): Vector3?
+	local groundPart = meadowGround()
+	if not groundPart then
+		return nil
+	end
+	return findEggSpot(math.max(0.5, radius), groundPart, rayParams(false))
+end
+
+-- 🌠 STERNSCHNUPPE: ein Gratis-Ei fällt schräg vom Himmel auf die Wiese (wie Egg-Rush-Eier:
+-- schnappen und heimtragen). opts: { Luck: number?, Lifetime: number? } -> Eintrag am Boden oder nil
+function MeteorService.SpawnSkyEgg(opts)
+	opts = opts or {}
+	local groundPart = meadowGround()
+	if not groundPart then
+		return nil
+	end
+	local luck = MeteorService.GetLuck() * (tonumber(opts.Luck) or 1)
+	local entry = MeteorService.RollEntry(luck)
+	local spot = findEggSpot(MeteorFactory.GetSize(entry) / 2, groundPart, rayParams(false))
+	if not spot then
+		return nil
+	end
+	-- schräg von oben: steil genug, dass der Client es als "Fall" (mit Schweif) zeigt
+	local angle = rng:NextNumber() * math.pi * 2
+	local from = spot + Vector3.new(math.cos(angle) * 60, 160, math.sin(angle) * 60)
+	local record = spawnDrop(entry, spot, {
+		From = from,
+		Lifetime = tonumber(opts.Lifetime) or 45,
+		ShootingStar = true,
+	})
+	local def = Config.MeteorsById[entry.Id]
+	if def and (Config.RarityIndex[def.Rarity] or 1) >= RARE_GRAB_ANNOUNCE then
+		announce(entry, "🌠 Eine Sternschnuppe bringt %s auf die Wiese!")
+	end
+	return record
+end
+
 -- -------------------------------------------------------------------
 -- GRATIS-ZONE & STATISCHE METEORE (Admin, Showcase)
 -- -------------------------------------------------------------------
@@ -1486,6 +1646,7 @@ function MeteorService.Start()
 	nextShowerAt = t + Config.ShowerInterval
 	nextEggRushAt = t + Config.EggRushInterval / 2 -- versetzt: erster Egg Rush lange vor dem ersten Schauer
 	publishAttributes()
+	publishPity()
 	Players.PlayerRemoving:Connect(function(player)
 		actionLimiter.Clear(player)
 		pushNotifyAt[player] = nil

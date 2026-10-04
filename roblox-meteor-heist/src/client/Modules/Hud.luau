@@ -948,6 +948,11 @@ function Hud.SetMap(map: Instance)
 	end)
 end
 
+-- Banner-Leiste oben: andere Module (z.B. Night) hängen eigene Pillen an (LayoutOrder = Platz)
+function Hud.TopBar(): Frame?
+	return topBar
+end
+
 -- Kleines Aufploppen, wenn Schritte oder Geld reinkommen
 function Hud.PulseSteps()
 	UI.Pulse(stepsScale, 0.08)

@@ -43,7 +43,7 @@ export type MapResult = {
 type TreadmillDef = {
 	Id: string,
 	Name: string,
-	Required: number,
+	Price: number,
 	Rate: number,
 	Color: Color3,
 	Rainbow: boolean?,
@@ -316,7 +316,7 @@ local function treadmillDefs(): { TreadmillDef }
 			table.insert(result, {
 				Id = def.Id,
 				Name = type(def.Name) == "string" and def.Name or def.Id,
-				Required = tonumber(def.Required) or 0,
+				Price = tonumber(def.Price) or 0,
 				Rate = tonumber(def.Rate) or 1,
 				Color = typeof(def.Color) == "Color3" and def.Color or WHITE,
 				Rainbow = def.Rainbow == true or def.Id == "Regenbogen",
@@ -1019,7 +1019,7 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 	model.Name = def.Id
 	model:SetAttribute("TreadmillId", def.Id)
 	model:SetAttribute("Order", order)
-	model:SetAttribute("Required", def.Required)
+	model:SetAttribute("Price", def.Price)
 	model:SetAttribute("Rate", def.Rate)
 
 	local color = def.Color
@@ -1115,7 +1115,7 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		addLight(beam, color, 18, 1.6)
 	end
 
-	local unlocked = def.Required <= 0
+	local free = def.Price <= 0
 	worldSign(beam, "Sign", 14, 5.2, Vector3.new(0, 3.4, 0), 160, {
 		{ Name = "NameLabel", Text = def.Name, Color = color:Lerp(WHITE, 0.45), Height = 0.42 },
 		{
@@ -1125,9 +1125,10 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 			Height = 0.3,
 		},
 		{
-			Name = "LockLabel",
-			Text = unlocked and "✅ Für alle frei" or ("🔒 ab " .. Util.FormatNumber(def.Required) .. " 👟"),
-			Color = unlocked and Color3.fromRGB(120, 255, 120) or Color3.fromRGB(255, 130, 130),
+			-- Preis (der Client schreibt "Gekauft" / "Dein bestes" darüber, sobald er weiß, was dir gehört)
+			Name = "PriceLabel",
+			Text = free and "Gratis" or Util.FormatCash(def.Price),
+			Color = free and Color3.fromRGB(120, 255, 120) or Color3.fromRGB(255, 220, 90),
 			Height = 0.28,
 		},
 	})
@@ -1159,7 +1160,7 @@ local function buildTreadmills(map: Folder): (Folder, CFrame)
 	local zoneSign = anchorPart("ZoneSign", CFrame.new(0, 30, TREADMILL_DECK_MIN_Z + 4), zone)
 	worldSign(zoneSign, "Sign", 56, 11, Vector3.zero, 500, {
 		{ Name = "Title", Text = "🏃 LAUFBÄNDER 👟", Color = Color3.fromRGB(255, 220, 60), Height = 0.6 },
-		{ Name = "Hint", Text = "Drauf laufen = Schritte = schneller!", Color = WHITE, Height = 0.4 },
+		{ Name = "Hint", Text = "Laufband kaufen, drauf laufen = schneller!", Color = WHITE, Height = 0.4 },
 	})
 
 	for order, def in ipairs(defs) do

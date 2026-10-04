@@ -7,8 +7,10 @@
 --   • Lichtsäule (Beam zwischen zwei Attachments, nach oben verblassend)
 --   • Glitzer-Partikel "RareSparkle" in Seltenheitsfarbe
 --   • Mythic+: Funkenregen "RareSparks" (+ Blitze, die der Client lokal zeichnet)
---   • Secret/Admin: Regenbogen-Aura "RareAura" und Regenbogen-Säule
---   • Attribut "RareFX" = Stufe (1 Legendary, 2 Mythic..Divine, 3 Secret/Admin): der Client (WorldFX)
+--   • Secret..Cosmic/Admin: Regenbogen-Aura "RareAura" und Regenbogen-Säule
+--   • Infinity: dazu kreisende Sterne "RareInfinity", breitere + höhere Säule (stärkster Effekt)
+--   • Attribut "RareFX" = Stufe (1 Legendary, 2 Mythic..Divine, 3 Secret..Cosmic/Admin, 4 Infinity):
+--     der Client (WorldFX)
 --     dreht damit lokal einen Ring ums Ei, lässt das Licht pulsieren und schaltet die Partikel nur in
 --     Kameranähe ein (Emitter starten deshalb AUS).
 
@@ -30,6 +32,7 @@ local FROST_WHITEN = 0.4 -- Frost-Meteore etwas weißer als die Mutationsfarbe (
 local RARE_FROM = Config.RarityIndex.Legendary or 5
 local RARE_MYTHIC = Config.RarityIndex.Mythic or 6
 local RARE_SECRET = Config.RarityIndex.Secret or 9
+local RARE_INFINITY = Config.RarityIndex.Infinity or 12
 local RARE_MODES: { [string]: boolean } = { Parade = true, Ground = true, Base = true }
 local PILLAR_HEIGHT = 28
 
@@ -206,7 +209,11 @@ end
 
 -- Lichtsäule, Glitzern, Funkenregen, Regenbogen-Aura (siehe Kopf der Datei)
 local function addRareEffects(part: BasePart, rarityIndex: number, color: Color3, size: number)
-	local tier = if rarityIndex >= RARE_SECRET then 3 elseif rarityIndex >= RARE_MYTHIC then 2 else 1
+	local tier = if rarityIndex == RARE_INFINITY
+		then 4
+		elseif rarityIndex >= RARE_SECRET then 3
+		elseif rarityIndex >= RARE_MYTHIC then 2
+		else 1
 	local rainbow = tier >= 3
 	part:SetAttribute("RareFX", tier)
 
@@ -229,8 +236,8 @@ local function addRareEffects(part: BasePart, rarityIndex: number, color: Color3
 		NumberSequenceKeypoint.new(0.55, 0.75),
 		NumberSequenceKeypoint.new(1, 1),
 	})
-	beam.Width0 = size * 0.85
-	beam.Width1 = size * 0.45
+	beam.Width0 = size * (if tier >= 4 then 1.2 else 0.85)
+	beam.Width1 = size * (if tier >= 4 then 0.7 else 0.45)
 	beam.LightEmission = 1
 	beam.LightInfluence = 0
 	beam.FaceCamera = true
@@ -288,6 +295,24 @@ local function addRareEffects(part: BasePart, rarityIndex: number, color: Color3
 			Speed = NumberRange.new(size * 0.3, size * 0.6),
 			SpreadAngle = Vector2.new(180, 180),
 			Rate = 10,
+		})
+	end
+	if tier >= 4 then
+		-- Infinity: helle Sterne kreisen um das Ei und steigen langsam auf
+		rareEmitter("RareInfinity", part, {
+			Texture = "rbxasset://textures/particles/sparkles_main.dds",
+			Color = ColorSequence.new(Color3.new(1, 1, 1), color),
+			Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, size * 0.18),
+				NumberSequenceKeypoint.new(1, 0),
+			}),
+			Transparency = NumberSequence.new(0, 0.8),
+			Lifetime = NumberRange.new(1.5, 2.5),
+			Speed = NumberRange.new(1, 2),
+			SpreadAngle = Vector2.new(180, 180),
+			Acceleration = Vector3.new(0, 3, 0),
+			RotSpeed = NumberRange.new(90, 270),
+			Rate = 14,
 		})
 	end
 end
@@ -450,8 +475,9 @@ function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 	end
 	local beam = part:FindFirstChild("RarePillar")
 	if beam and beam:IsA("Beam") then
-		beam.Width0 = size * 0.85
-		beam.Width1 = size * 0.45
+		local wide = part:GetAttribute("RareFX") == 4 -- Infinity: breitere Säule
+		beam.Width0 = size * (if wide then 1.2 else 0.85)
+		beam.Width1 = size * (if wide then 0.7 else 0.45)
 	end
 	local fire = part:FindFirstChildOfClass("Fire")
 	if fire then

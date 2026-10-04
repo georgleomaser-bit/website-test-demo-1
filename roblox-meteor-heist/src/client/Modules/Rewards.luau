@@ -367,9 +367,8 @@ local function prizeAmountText(prize: any, state: any): string
 		local income = state and tonumber(state.Income) or 0
 		return Util.FormatCash(math.max(tonumber(prize.Min) or 0, income * (tonumber(prize.Seconds) or 60)))
 	elseif kind == "Steps" then
-		local steps = state and tonumber(state.Steps) or 0
 		local mult = state and tonumber(state.StepsMult) or 1
-		local best = ctx.Config.BestTreadmill and ctx.Config.BestTreadmill(steps)
+		local best = ctx.Config.BestTreadmill and ctx.Config.BestTreadmill(state and state.Treadmills)
 		local rate = best and tonumber(best.Rate) or 1
 		local perSecond = rate / (tonumber(ctx.Config.TreadmillTick) or 0.5) * mult
 		return Util.FormatNumber(math.max(tonumber(prize.Min) or 0, perSecond * (tonumber(prize.Seconds) or 60)))

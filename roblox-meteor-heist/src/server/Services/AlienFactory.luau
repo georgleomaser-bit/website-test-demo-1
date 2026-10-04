@@ -71,7 +71,8 @@ local AlienFactory = {}
 
 local MAX_PARTS = 18
 local MAX_PARTS_ADMIN = 24
-local ADMIN_RANK = 10
+-- Rang der Seltenheit "Admin" (Godly/Cosmic/Infinity liegen darunter und sind KEINE Admin-Aliens)
+local ADMIN_RANK = (Config.RarityIndex and Config.RarityIndex.Admin) or Aliens.RarityRank.Admin or 13
 local LEVEL_GROWTH = 0.012 -- +1,2% Größe pro Level (Level 20 = +23%)
 local LABEL_GAP = 1.6
 local SHADOW_MIN_VOLUME = 6 -- nur große Teile werfen Schatten (bewegte Schattenwerfer kosten viel)

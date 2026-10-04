@@ -1,7 +1,8 @@
 -- SPEED FARM: Laufbänder (Treadmills) in der Laufband-Zone am Spawn-Platz.
--- Wer auf einem freigeschalteten Laufband läuft, bekommt alle Config.TreadmillTick Sekunden
+-- Wer auf einem GEKAUFTEN Laufband läuft, bekommt alle Config.TreadmillTick Sekunden
 -- Schritte 👟 (+ fliegende Zahl beim Client). Mehr Schritte = schneller laufen (Config.StepsSpeed).
--- Höhere Laufbänder werden durch genug Schritte freigeschaltet (Config.Treadmills -> Required).
+-- Laufbänder kauft man mit Cash (Config.Treadmills -> Price, Request "BuyTreadmill"), der Reihe nach.
+-- Besitz: data.Treadmills = { [Id] = true } – bleibt bei Rebirth.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,7 +14,7 @@ local Remotes = require(script.Parent:WaitForChild("Remotes"))
 local TreadmillService = {}
 local Services
 
--- { Def, Belt, CFrame, HalfX, HalfZ, TopY } – aufsteigend nach Required
+-- { Def, Belt, CFrame, HalfX, HalfZ, TopY } – aufsteigend nach Preis
 local treadmills = {}
 local zoneCenter = Vector3.zero
 local zoneRadius = 0
@@ -62,7 +63,7 @@ local function collect()
 		end
 	end
 	table.sort(treadmills, function(a, b)
-		return a.Def.Required < b.Def.Required
+		return a.Def.Price < b.Def.Price
 	end)
 	if #treadmills > 0 then
 		-- grobe Vorab-Prüfung: Kreis um alle Laufbänder (spart Rechnen, wenn niemand dort ist)
@@ -147,13 +148,13 @@ local function tickPlayer(player: Player)
 		return
 	end
 	local def = treadmill.Def
-	if data.Steps < def.Required then
+	if not Config.OwnsTreadmill(data.Treadmills, def.Id) then
 		local t = os.clock()
 		if t - (lastLockedNotify[player] or 0) >= LOCKED_NOTIFY_COOLDOWN then
 			lastLockedNotify[player] = t
 			Services.EconomyService.Notify(
 				player,
-				"🔒 " .. def.Name .. " braucht " .. Util.FormatNumber(def.Required) .. " 👟",
+				"🔒 Kaufe dieses Laufband im Laufbänder-Menü (" .. Util.FormatCash(def.Price) .. ")",
 				"Error"
 			)
 		end
@@ -170,6 +171,42 @@ local function tickPlayer(player: Player)
 			warn("[TreadmillService] RewardService.Track fehlgeschlagen: " .. tostring(err))
 		end
 	end
+end
+
+-- Laufband mit Cash kaufen (Request "BuyTreadmill"). Gibt (Erfolg, Nachricht) zurück.
+-- Regeln: gibt es, noch nicht gekauft, das vorige Laufband schon gekauft, genug Cash.
+function TreadmillService.Buy(player: Player, id: any): (boolean, string)
+	if type(id) ~= "string" or #id > 40 then
+		return false, "Unbekanntes Laufband"
+	end
+	local def = Config.TreadmillsById[id]
+	local data = Services.DataService.Get(player)
+	if not def then
+		return false, "Unbekanntes Laufband"
+	end
+	if not data or not Services.EconomyService.IsReady(player) then
+		return false, "Lädt noch..."
+	end
+	if type(data.Treadmills) ~= "table" then
+		data.Treadmills = {}
+	end
+	if Config.OwnsTreadmill(data.Treadmills, def.Id) then
+		return false, def.Name .. " hast du schon"
+	end
+	local index = table.find(Config.Treadmills, def)
+	local previous = index and index > 1 and Config.Treadmills[index - 1] or nil
+	if previous and not Config.OwnsTreadmill(data.Treadmills, previous.Id) then
+		return false, "Kaufe zuerst das " .. previous.Name
+	end
+	if data.Cash < def.Price then
+		return false, "Du brauchst " .. Util.FormatCash(def.Price) .. " für das " .. def.Name
+	end
+	data.Cash -= def.Price
+	data.Treadmills[def.Id] = true
+	Services.EconomyService.MarkDirty(player)
+	task.spawn(Services.DataService.Save, player) -- teurer Kauf -> gleich sichern
+	Services.EconomyService.Effect(player, "Confetti", 1)
+	return true, def.Name .. " gekauft! Lauf drauf los."
 end
 
 function TreadmillService.Init(services)

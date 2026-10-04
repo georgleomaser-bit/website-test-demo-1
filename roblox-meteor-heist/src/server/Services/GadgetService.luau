@@ -3,7 +3,8 @@
 --   🌀 Speed Coil – solange in der Hand: +30% Tempo (EconomyService.ApplySpeed fragt SpeedBonus)
 --   🪤 Falle      – Klick in der EIGENEN Base: Falle am Boden (max. Config.MaxTrapsPerBase).
 --                   Fremde frieren Config.TrapFreezeTime Sekunden ein, getragene Beute ist weg.
---   🔨 Super-Bonk – ersetzt den normalen Bonk (Schlag-Logik in CarryService)
+--   🔨 Super-Bonk – kein eigenes Werkzeug: Boost für den Schläger (mehr Reichweite + Wucht, schneller;
+--                   Schlag-Logik in CarryService)
 --   👻 Umhang     – Klick: Config.CloakDuration Sekunden unsichtbar und nicht bonkbar,
 --                   danach Config.CloakCooldown Sekunden Abklingzeit (ab dem Sichtbarwerden).
 --                   Wer klaut, wird sofort sichtbar (CarryService), mit Beute geht er nicht an.
@@ -32,7 +33,7 @@ local TRAP_CHECK_INTERVAL = 0.2 -- so oft prüft der Server selbst, ob jemand au
 local TRAP_REACH = TRAP_SIZE / 2 + 1 -- waagrechter Abstand Fallen-Mitte <-> HumanoidRootPart
 local TRAP_MAX_HEIGHT = 5 -- so hoch über der Falle zählt der HumanoidRootPart noch als "draufgetreten"
 
--- Werkzeug-Namen im Rucksack (Super-Bonk heißt in CarryService "Super-Bonk")
+-- Werkzeug-Namen im Rucksack (Super-Bonk hat kein Werkzeug, er verstärkt den Schläger)
 local TOOL_NAMES = {
 	SpeedCoil = "Speed Coil",
 	Trap = "Falle",
@@ -192,6 +193,9 @@ end
 local function springTrap(owner: Player, trap: BasePart, victim: Player)
 	if trap:GetAttribute("Sprung") == true or not trap.Parent or victim == owner then
 		return
+	end
+	if victim:GetAttribute("AdminGod") == true then
+		return -- Admin-Gott-Modus: Fallen schnappen nicht zu
 	end
 	if os.clock() < (trapImmuneUntil[victim] or 0) then
 		return
@@ -570,10 +574,10 @@ local function buildTemplates()
 	templates.Cloak = cloak
 end
 
--- Gibt das Werkzeug eines Gadgets (ohne Doppelte). Super-Bonk tauscht den normalen Bonk aus.
+-- Gibt das Werkzeug eines Gadgets (ohne Doppelte). Super-Bonk hat keins (Boost für den Schläger).
 local function giveGadgetTool(player: Player, id: string)
 	if id == "SuperBonk" then
-		Services.CarryService.GiveBonk(player)
+		Services.CarryService.GiveBat(player) -- (Schläger bleibt derselbe, schlägt jetzt stärker)
 		return
 	end
 	local template = templates[id]
@@ -615,13 +619,13 @@ function GadgetService.GiveTools(player: Player)
 		else
 			for _, container in ipairs({ backpack, character }) do
 				local tool = findGadgetTool(container, gadget.Id)
-				if tool and gadget.Id ~= "SuperBonk" then
+				if tool then
 					tool:Destroy()
 				end
 			end
 		end
 	end
-	Services.CarryService.GiveBonk(player) -- richtiger Schläger (Bonk / Super-Bonk)
+	Services.CarryService.GiveBat(player) -- bester freigeschalteter Schläger (nie doppelt)
 end
 
 -- -------------------------------------------------------------------
@@ -650,6 +654,9 @@ function GadgetService.Buy(player: Player, id: any): (boolean, string)
 	task.spawn(Services.DataService.Save, player) -- teurer Kauf -> gleich sichern
 	giveGadgetTool(player, gadget.Id)
 	Services.EconomyService.Effect(player, "Confetti", 1)
+	if gadget.Id == "SuperBonk" then
+		return true, gadget.Name .. " gekauft! Dein Schläger ist jetzt stärker."
+	end
 	return true, gadget.Icon .. " " .. gadget.Name .. " gekauft! Liegt in deinem Rucksack."
 end
 

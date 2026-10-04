@@ -68,20 +68,20 @@ Später ändern: **Home → Game Settings → Basic Info**.
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteore sind Alien-Eier! Kleine Aliens tragen sie in einer Parade durch die Map. KLAU sie gratis und renn nach Hause, bevor dich jemand bonkt. Oder kauf sie: Dann fliegen sie von allein in deine Base. Dort schlüpfen ALIENS und bringen dir Geld! 😱
+Meteore sind Alien-Eier! Aliens tragen sie in einer Parade durch die Map. KLAU sie gratis und renn heim, bevor dich jemand bonkt – oder kauf sie. In deiner Base schlüpfen ALIENS und bringen dir Geld! 😱
 
 🦹 Klau Eier aus der Alien-Parade (E halten) oder kauf sie (F)
 👑 Boss-Aliens tragen die seltensten Eier – mit Leibwächtern
 🐣 Aus jedem Ei schlüpft ein Alien: Normal, Selten oder Ultra
-💰 Aliens bringen Geld pro Sekunde
 😈 Klau aus fremden Basen, bonk Diebe weg
-🥚 EGG RUSH: Eier regnen auf die ganze Map. Der Schnellste gewinnt!
+🥚 EGG RUSH: Eier regnen auf die Map – der Schnellste gewinnt!
 🌠 Meteoritenschauer: volle Parade, keine Locks, 3x Glück
+🌙 Nacht: Nacht-Eier, Sternschnuppen, Kisten. Blutmond = 2x Glück!
 🎡 Glücksrad, 🎁 Geschenke und 📜 Tagesaufgaben
-🛠️ Gadgets: Speed Coil, Falle, Super-Bonk, Unsichtbarkeits-Umhang
-👟 7 Laufbänder: sammle Schritte, werde superschnell
-✨ Mutationen: Gold, Frost, Lava, Diamond, Cosmic, Rainbow
-👽 96 Aliens, 28 Meteore, 9 Seltenheiten
+🛠️ Gadgets: Speed Coil, Falle, Super-Bonk, Umhang
+👟 7 Laufbänder, 🏏 6 Schläger bis Alien-König
+✨ Mutationen von Gold bis Rainbow
+👽 183 Aliens, 61 Meteore, 12 Seltenheiten bis Infinity
 🔁 Rebirth, Index und Tagesbonus
 
 Schaffst du es, ein ULTRA-Alien zu klauen? 👀
@@ -95,20 +95,20 @@ Viele Roblox-Spieler sprechen Englisch. Darum gibt es auch eine englische Versio
 
 ```
 ☄️ METEOR HEIST ☄️
-Meteors are alien eggs! Little aliens carry them through the map in a parade. STEAL them for free and run home before someone bonks you. Or buy them and they fly straight into your base. There, ALIENS hatch and earn you cash! 😱
+Meteors are alien eggs! Aliens carry them through the map in a parade. STEAL them for free and run home before someone bonks you – or buy them. In your base, ALIENS hatch and earn you cash! 😱
 
 🦹 Steal eggs from the alien parade (hold E) or buy them (F)
 👑 Boss aliens carry the rarest eggs – with bodyguards
 🐣 Every egg hatches an alien: Normal, Rare or Ultra
-💰 Aliens earn cash every second
 😈 Steal from other bases, bonk thieves away
 🥚 EGG RUSH: eggs rain all over the map. Fastest player wins!
 🌠 Meteor showers: packed parade, no locks, 3x luck
+🌙 Night: night eggs, shooting stars, crates. Blood moon = 2x luck!
 🎡 Lucky wheel, 🎁 gifts and 📜 daily quests
 🛠️ Gadgets: Speed Coil, trap, Super Bonk, invisibility cloak
-👟 7 treadmills: collect steps, get super fast
-✨ Mutations: Gold, Frost, Lava, Diamond, Cosmic, Rainbow
-👽 96 aliens, 28 meteors, 9 rarities
+👟 7 treadmills, 🏏 6 bats up to Alien King
+✨ Mutations from Gold to Rainbow
+👽 183 aliens, 61 meteors, 12 rarities up to Infinity
 🔁 Rebirth, index and daily rewards
 
 Can you steal an ULTRA alien? 👀
@@ -609,7 +609,7 @@ Roblox bestimmt damit, ab welchem Alter das Spiel passt.
 
 **Antworte immer ehrlich.** Das hilft dir bei Meteor Heist:
 
-- **Gewalt:** Es gibt nur einen **Bonk-Schläger** (auch als **Super-Bonk**). Er schubst andere Spieler weg. Die **Falle** friert Diebe 3 Sekunden ein. Es gibt **keinen Schaden**, **kein Blut** und **keine echten Waffen**.
+- **Gewalt:** Es gibt nur einen blockigen **Spielzeug-Schläger** (verschiedene Farben/Stufen, das Gadget **Super-Bonk** macht ihn stärker). Er schubst andere Spieler weg, sie fallen kurz um und stehen sofort wieder auf. Die **Falle** friert Diebe 3 Sekunden ein. Es gibt **keinen Schaden**, **kein Blut** und **keine echten Waffen**.
 - **Paid Random Items** (heißt: Man bezahlt Robux und bekommt etwas Zufälliges): Hier musst du **JA** antworten. Gründe:
   - „Zufälliger Legendary Meteor“ und „Zufälliger Mythic Meteor“ (und welches Alien daraus schlüpft)
   - „1 Glücksrad-Dreh“ und „10+2 Glücksrad-Drehs“ (das Glücksrad ist Zufall)

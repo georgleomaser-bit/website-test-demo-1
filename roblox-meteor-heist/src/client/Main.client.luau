@@ -10,6 +10,8 @@
 --    WorldFX    Treadmill-Streifen, wippende Aliens, Regenbogen, Schlüpf-Countdown, krasse Eier
 --    Parade     Alien-Parade: lokale Träger-Aliens (gepoolt) laufen mit den Eiern über die Straße
 --    Prompts    Klauen/Kaufen/Verkaufen-Prompts passend ein-/ausblenden
+--    Bat        Schläger: Ausholen/Zuschlagen (lokal), kurzes Taumeln nach einem Treffer
+--    Night      Nacht/Blutmond-Banner, Glücks-Zähler-Leiste, Sternschnuppen + leuchtende Kisten
 --    Fly, PhotoMode, AdminPanel (nur für Admins)
 --  Die gesamte Oberfläche wird per Code gebaut – du musst nichts in Studio zusammenklicken.
 -- =====================================================================
@@ -36,6 +38,8 @@ local Fly = require(Modules:WaitForChild("Fly"))
 local PhotoMode = require(Modules:WaitForChild("PhotoMode"))
 local AdminPanel = require(Modules:WaitForChild("AdminPanel"))
 local MeteorRun = require(Modules:WaitForChild("MeteorRun"))
+local Night = require(Modules:WaitForChild("Night"))
+local Bat = require(Modules:WaitForChild("Bat"))
 
 local RemotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local Remotes = {
@@ -80,6 +84,7 @@ local ctx = {
 	Fly = Fly,
 	PhotoMode = PhotoMode,
 	Parade = Parade,
+	Bat = Bat,
 }
 
 -- Anfrage an den Server mit ganzer Antwort: (Erfolg, Antwort-Tabelle oder nil).
@@ -101,7 +106,7 @@ function ctx.RequestFull(action: string, arg: any?, silent: boolean?): (boolean,
 end
 
 -- Anfrage an den Server (Rebirth, Daily, Collect, Home, Treadmills, ClaimGift, ClaimQuest,
--- BuyGadget ...). Gibt true bei Erfolg zurück.
+-- BuyGadget, BuyTreadmill ...). Gibt true bei Erfolg zurück.
 function ctx.Request(action: string, arg: any?): boolean
 	local ok = ctx.RequestFull(action, arg)
 	return ok
@@ -124,6 +129,45 @@ Hud.Init(ctx)
 Fly.Init(UI.Toast)
 PhotoMode.Init(ctx)
 MeteorRun.Start(ctx) -- ☄️ Meteor-Run: HUD, Balken, Einschläge, Knopf "☄️ Run"
+Night.Init(ctx) -- 🌙 Nacht-Banner, Glücks-Zähler, Sternschnuppen + Kisten
+task.spawn(Bat.Init, ctx) -- Schläger-Schwung + Taumeln (wartet kurz auf den Rucksack)
+
+-- Schilder an den Laufbändern: Preis, "Gekauft" oder "Dein bestes" (nur bei Änderung neu schreiben)
+local treadmillMap: Instance? = nil
+local treadmillSignKey = ""
+local function updateTreadmillSigns()
+	local state = ctx.State
+	local folder = treadmillMap and treadmillMap:FindFirstChild("Treadmills")
+	if not state or not folder then
+		return
+	end
+	local owned = if type(state.Treadmills) == "table" then state.Treadmills else {}
+	local key = table.concat(owned, ",") .. "|" .. tostring(state.BestTreadmill) .. "|" .. #folder:GetChildren()
+	if key == treadmillSignKey then
+		return
+	end
+	treadmillSignKey = key
+	for _, model in ipairs(folder:GetChildren()) do
+		local id = model:GetAttribute("TreadmillId")
+		local def = type(id) == "string" and Config.TreadmillsById[id] or nil
+		local sign = model:FindFirstChild("Sign", true)
+		local frame = sign and sign:FindFirstChild("Frame")
+		local label = frame and frame:FindFirstChild("PriceLabel")
+		if def and label and label:IsA("TextLabel") then
+			local isOwned = Config.OwnsTreadmill(owned, def.Id)
+			if state.BestTreadmill == def.Id then
+				label.Text = "Dein bestes Laufband"
+				label.TextColor3 = Color3.fromRGB(255, 220, 60)
+			elseif isOwned then
+				label.Text = "Gekauft"
+				label.TextColor3 = Color3.fromRGB(120, 255, 120)
+			else
+				label.Text = Util.FormatCash(def.Price) .. " – im Menü kaufen"
+				label.TextColor3 = Color3.fromRGB(255, 220, 90)
+			end
+		end
+	end
+end
 
 -- Welt-Sachen brauchen die Map (wird vom Server gebaut) -> im Hintergrund warten
 task.spawn(function()
@@ -137,9 +181,18 @@ task.spawn(function()
 	Parade.Init(ctx, map) -- Alien-Parade: Träger-Aliens + Eier (bewegt von WorldFX, siehe SetPreStep)
 	WorldFX.SetPreStep(Parade.Step)
 	WorldFX.Init(ctx, map)
+	treadmillMap = map
 	if ctx.State then
 		WorldFX.UpdateTreadmills(tonumber(ctx.State.Steps) or 0, ctx.State.BestTreadmill)
 	end
+	-- Laufband-Models kommen evtl. erst nach und nach an -> Schilder dann neu schreiben
+	local folder = map:WaitForChild("Treadmills", 60)
+	if folder then
+		folder.ChildAdded:Connect(function()
+			task.defer(updateTreadmillSigns)
+		end)
+	end
+	updateTreadmillSigns()
 end)
 
 -- ---------------------------------------------------------------------
@@ -154,6 +207,7 @@ local function refreshAll()
 	Windows.Refresh(state)
 	Prompts.OnState(state)
 	WorldFX.UpdateTreadmills(tonumber(state.Steps) or 0, state.BestTreadmill)
+	updateTreadmillSigns()
 end
 
 -- Selten geänderte Teile (Index, Pässe, Statistik, Geschenke + GiftsAt, Aufgaben) schickt der Server

@@ -514,10 +514,10 @@ function PlotService.TeleportHome(player: Player)
 	teleportToPlot(player)
 end
 
--- Hinter das beste freigeschaltete Laufband (Neulinge landen so am Holz-Laufband, nicht vor Gold)
+-- Hinter das beste gekaufte Laufband (Neulinge landen so am Holz-Laufband, nicht vor Gold)
 local function treadmillTarget(player: Player): CFrame
 	local data = Services.DataService.Get(player)
-	local best = Config.BestTreadmill(data and data.Steps or 0)
+	local best = Config.BestTreadmill(data and data.Treadmills)
 	local folder = PlotService.TreadmillsFolder
 	if best and folder then
 		for _, model in ipairs(folder:GetChildren()) do

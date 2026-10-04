@@ -20,6 +20,14 @@ local limiter = Util.RateLimiter(12, 1)
 
 local adminCache: { [Player]: boolean } = {}
 local warnedDenied: { [Player]: boolean } = {} -- "Unerlaubter Zugriff" nur einmal pro Spieler ins Log
+local joinedAt: { [Player]: number } = {} -- für die Spielzeit in der Spielerliste
+local serverStartedAt = os.clock()
+local serverLocked = false -- Server sperren: neue Spieler (außer Admins) werden mit Meldung gekickt
+local LOCKED_KICK_TEXT = "Dieser Server ist gerade gesperrt. Bitte such dir einen anderen Server."
+-- In dieser Sitzung gebannte Spieler (Roblox liefert keine Liste aller Banns – nur den Verlauf je Spieler)
+type BanRecord = { UserId: number, Name: string, Reason: string, Days: number, Time: number, Active: boolean }
+local sessionBans: { BanRecord } = {}
+local MAX_SESSION_BANS = 50
 
 -- Gehört das Spiel diesem Spieler? (Spiel unter dem eigenen Account veröffentlicht)
 -- Bei Gruppen-Spielen: Admins per UserId in Config.AdminUserIds eintragen.
@@ -294,6 +302,83 @@ local function updateTag(p: Player)
 	gui.Parent = head
 end
 
+-- -------------------------------------------------------------------
+-- EVENTS (Nacht / Blutmond kommen vom Nacht-System – defensiv aufrufen, falls es fehlt)
+-- -------------------------------------------------------------------
+-- Ruft service[fnName](...) auf, wenn es die Funktion gibt. true = aufgerufen ohne Fehler
+local function tryCall(serviceName: string, fnName: string, ...: any): boolean
+	local service = Services[serviceName]
+	local fn = type(service) == "table" and service[fnName] or nil
+	if type(fn) ~= "function" then
+		return false
+	end
+	local ok, err = pcall(fn, ...)
+	if not ok then
+		warn("[Admin] " .. serviceName .. "." .. fnName .. " fehlgeschlagen: " .. tostring(err))
+	end
+	return ok
+end
+
+-- Läuft gerade eine Nacht? (fragt das Nacht-System, sonst die Attribute in ReplicatedStorage)
+local function nightStatus(): string?
+	local night = Services.NightService
+	if type(night) == "table" and type(night.IsNight) == "function" then
+		local ok, isNight = pcall(night.IsNight)
+		if ok then
+			if not isNight then
+				return nil
+			end
+			local okBlood, blood = pcall(function()
+				return type(night.IsBloodMoon) == "function" and night.IsBloodMoon()
+			end)
+			return if okBlood and blood then "Blutmond" else "Nacht"
+		end
+	end
+	if ReplicatedStorage:GetAttribute("IsNight") ~= true then
+		return nil
+	end
+	return if ReplicatedStorage:GetAttribute("BloodMoon") == true then "Blutmond" else "Nacht"
+end
+
+-- mode = "Night" | "BloodMoon" | "End". true = das Nacht-System hat reagiert
+-- (NightService direkt, sonst MeteorService/GraphicsService – je nachdem, was es gibt)
+local function runNight(mode: string): boolean
+	if mode == "End" then
+		return tryCall("NightService", "EndNight")
+			or tryCall("MeteorService", "EndNight")
+			or tryCall("GraphicsService", "EndNight")
+	end
+	local blood = mode == "BloodMoon"
+	return tryCall("NightService", "StartNight", blood)
+		or tryCall("MeteorService", "StartNight", blood)
+		or tryCall("GraphicsService", "StartNight", blood)
+end
+
+-- Boss-Parade: mehrere seltene Eier (ab Config.Parade.BossFromRarity) – die trägt je ein Boss mit Leibwächtern
+local function runBossParade(count: number): number
+	if tryCall("MeteorService", "StartBossParade", count) then
+		return count
+	end
+	local from = Config.RarityIndex[Config.Parade.BossFromRarity] or 5
+	local pool: { string } = {}
+	for i, rarity in ipairs(Config.Rarities) do
+		local list = Config.MeteorsByRarity[rarity.Name]
+		if i >= from and not rarity.AdminOnly and list and #list > 0 then
+			table.insert(pool, rarity.Name)
+		end
+	end
+	if #pool == 0 then
+		return 0
+	end
+	for i = 1, count do
+		-- meist die kleinste Boss-Seltenheit, ab und zu eine höhere
+		local pick = math.min(#pool, 1 + math.floor(math.random() ^ 2 * #pool))
+		Services.MeteorService.QueueParade({ Rarity = pool[pick], Announce = i == 1 })
+	end
+	Services.EconomyService.NotifyAll("BOSS-PARADE! Große Bosse tragen seltene Eier – schnapp sie dir!", "Event")
+	return count
+end
+
 -- Große Admin-Ansage oben in der Mitte (Client: Effects "Announce" mit Kopfbild, Name + Haken, Text).
 -- text ist schon gefiltert (TextService), userId/name = Absender.
 local function showAnnouncement(text: string, userId: number, name: string)
@@ -321,6 +406,12 @@ local function handleGlobal(message)
 		runAdminAbuse()
 	elseif message.Type == "Gravity" then
 		setGravity(num(message.Value, DEFAULT_GRAVITY, 5, 500))
+	elseif message.Type == "Night" then
+		runNight(tostring(message.Mode))
+	elseif message.Type == "EggRush" then
+		Services.MeteorService.StartEggRush()
+	elseif message.Type == "BossParade" then
+		runBossParade(num(message.Count, 4, 1, 10))
 	end
 end
 
@@ -413,8 +504,20 @@ end
 -- -------------------------------------------------------------------
 local Actions = {}
 
+-- Ping eines Spielers in Millisekunden (nil = nicht verfügbar)
+local function pingMs(p: Player): number?
+	local ok, seconds = pcall(function()
+		return p:GetNetworkPing()
+	end)
+	if ok and type(seconds) == "number" and seconds == seconds and seconds >= 0 then
+		return math.floor(seconds * 1000 + 0.5)
+	end
+	return nil
+end
+
 function Actions.GetPlayers(_admin)
 	local list = {}
+	local now = os.clock()
 	for _, p in ipairs(Players:GetPlayers()) do
 		local data = Services.DataService.Get(p)
 		table.insert(list, {
@@ -424,9 +527,13 @@ function Actions.GetPlayers(_admin)
 			Cash = data and data.Cash or 0,
 			Rebirths = data and data.Rebirths or 0,
 			Steps = data and data.Steps or 0,
+			Index = data and Services.EconomyService.IndexCount(data) or 0,
+			PlayTime = math.floor(now - (joinedAt[p] or now)),
+			Ping = pingMs(p),
+			IsAdmin = AdminService.IsAdmin(p),
 		})
 	end
-	return true, "OK", list
+	return true, #list .. " Spieler geladen", list
 end
 
 -- Where: "Parade" (Standard, alter Name "Belt"), "Free" (Gratis-Zone) oder "Me" (vor dem Admin)
@@ -715,6 +822,17 @@ function Actions.Ban(admin, args)
 	if not ok then
 		return false, "Bann fehlgeschlagen: " .. tostring(err)
 	end
+	table.insert(sessionBans, {
+		UserId = userId,
+		Name = display,
+		Reason = reason,
+		Days = days,
+		Time = os.time(),
+		Active = true,
+	})
+	while #sessionBans > MAX_SESSION_BANS do
+		table.remove(sessionBans, 1)
+	end
 	return true, display .. " gebannt (" .. (days > 0 and (days .. " Tage") or "für immer") .. ")"
 end
 
@@ -728,6 +846,11 @@ function Actions.Unban(_admin, args)
 	end)
 	if not ok then
 		return false, "Entbannen fehlgeschlagen: " .. tostring(err)
+	end
+	for _, record in ipairs(sessionBans) do
+		if record.UserId == userId then
+			record.Active = false
+		end
 	end
 	return true, userId .. " entbannt"
 end
@@ -803,7 +926,11 @@ function Actions.ClearGround(_admin)
 end
 
 -- 🥚 Egg Rush sofort starten (läuft schon einer: wird verlängert, mehr Eier)
-function Actions.EggRush(_admin)
+function Actions.EggRush(_admin, args)
+	if args.Global then
+		publishGlobal({ Type = "EggRush" })
+		return true, "Egg Rush auf ALLEN Servern"
+	end
 	local count = Services.MeteorService.StartEggRush()
 	if count <= 0 then
 		return false, "Egg Rush fehlgeschlagen (kein Wiesenboden gefunden)"
@@ -977,17 +1104,359 @@ function Actions.PhotoClear(admin)
 end
 
 -- -------------------------------------------------------------------
+-- NEU: SPAWNEN, EVENTS, GESCHENKE, KRÄFTE, MODERATION, SERVER
+-- -------------------------------------------------------------------
+-- 👽 Alien direkt: Meteor + Alien-Variante + Mutation + Level.
+-- Where = "Base" (fertig geschlüpft in die Base der Ziel-Spieler) oder "Ground" (als Ei vor dem Admin;
+-- wer es heimträgt, bekommt genau dieses Alien)
+function Actions.SpawnAlien(admin, args)
+	local def = type(args.MeteorId) == "string" and Config.MeteorsById[args.MeteorId] or nil
+	if not def then
+		return false, "Unbekannter Meteor"
+	end
+	local alien = type(args.AlienId) == "string" and Aliens.ById[args.AlienId] or nil
+	if not alien or alien.Meteor ~= def.Id then
+		return false, "Dieses Alien gehört nicht zu " .. def.Name
+	end
+	local entry = {
+		Id = def.Id,
+		Mut = Config.MutationsByName[args.Mutation] and args.Mutation or "Normal",
+		Lv = math.floor(num(args.Level, 1, 1, Config.MaxLevel)),
+		Alien = alien.Id,
+	}
+	if args.Where == "Ground" then
+		local root = getRoot(admin)
+		if not root then
+			return false, "Kein Charakter"
+		end
+		local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+		look = look.Magnitude > 0.01 and look.Unit or Vector3.new(0, 0, -1)
+		local spot = groundBelow(root.Position + look * 10)
+		local record = Services.MeteorService.DropMeteor(entry, spot, spot + Vector3.new(0, 30, 0))
+		if not record then
+			return false, "Ei konnte nicht abgelegt werden"
+		end
+		return true, alien.Name .. " liegt als Ei vor dir (30 s)"
+	end
+	local targets = resolveTargets(admin, args.Target)
+	local given = 0
+	for _, p in ipairs(targets) do
+		if Services.EconomyService.GiveMeteor(p, table.clone(entry), true) then
+			given += 1
+			if p ~= admin then
+				Services.EconomyService.Notify(p, "Ein Admin hat dir " .. alien.Name .. " geschenkt!", "Success")
+			end
+		end
+	end
+	return given > 0, alien.Name .. " an " .. given .. " Spieler" .. (given < #targets and " (manche Basen voll)" or "")
+end
+
+-- 🌙 Nacht / Blutmond starten, Nacht beenden (Mode = "Night" | "BloodMoon" | "End")
+function Actions.Night(_admin, args)
+	local mode = if args.Mode == "BloodMoon" or args.Mode == "End" then args.Mode else "Night"
+	local label = if mode == "End" then "Nacht beendet" elseif mode == "BloodMoon" then "Blutmond" else "Nacht"
+	if args.Global then
+		publishGlobal({ Type = "Night", Mode = mode })
+		return true, label .. " auf ALLEN Servern"
+	end
+	if not runNight(mode) then
+		return false, "Nacht-System nicht verfügbar"
+	end
+	return true, label .. (if mode == "End" then "" else " gestartet")
+end
+
+function Actions.BossParade(_admin, args)
+	local count = math.floor(num(args.Count, Config.AdminPowers.BossParadeCount or 4, 1, 10))
+	if args.Global then
+		publishGlobal({ Type = "BossParade", Count = count })
+		return true, "Boss-Parade auf ALLEN Servern"
+	end
+	local queued = runBossParade(count)
+	return queued > 0, if queued > 0 then (queued .. " Bosse kommen in die Parade") else "Keine Boss-Eier gefunden"
+end
+
+-- 🥚 Ei einer Seltenheit schenken (Base voll -> voller Wert als Cash)
+function Actions.GiveEgg(admin, args)
+	local rarity = type(args.Rarity) == "string" and Config.RaritiesByName[args.Rarity] or nil
+	if not rarity then
+		return false, "Unbekannte Seltenheit"
+	end
+	local rewards = Services.RewardService
+	if not rewards or not rewards.GiveEgg then
+		return false, "Eier-Geschenke nicht verfügbar"
+	end
+	local targets = resolveTargets(admin, args.Target)
+	local given = 0
+	for _, p in ipairs(targets) do
+		if Services.DataService.Get(p) then
+			local ok, text = rewards.GiveEgg(p, rarity.Name, { FullValue = true })
+			if ok then
+				given += 1
+				Services.EconomyService.Notify(p, "Admin-Geschenk: " .. tostring(text), "Success")
+				Services.EconomyService.Effect(p, "Confetti", 1)
+			end
+		end
+	end
+	return given > 0, rarity.Name .. "-Ei für " .. given .. " Spieler"
+end
+
+-- Kräfte nur für den Admin selbst: Power = "God" (kein Bonk/Klauen/Falle) oder "Noclip" (durch Wände)
+function Actions.SetPower(admin, args)
+	local attribute = if args.Power == "God" then "AdminGod" elseif args.Power == "Noclip" then "AdminNoclip" else nil
+	if not attribute then
+		return false, "Unbekannte Kraft"
+	end
+	local enabled = args.Enabled == true
+	admin:SetAttribute(attribute, if enabled then true else nil)
+	local name = if attribute == "AdminGod" then "Gott-Modus" else "Noclip"
+	return true, name .. (if enabled then " an" else " aus")
+end
+
+-- Speed-Regler (nil/0 = normales Tempo). EconomyService.ApplySpeed nimmt den Wert für Admins.
+function Actions.SetSpeed(admin, args)
+	local powers = Config.AdminPowers
+	local value = tonumber(args.Value)
+	if not value or value <= 0 or value ~= value then
+		admin:SetAttribute("AdminSpeed", nil)
+		Services.EconomyService.ApplySpeed(admin)
+		return true, "Normales Tempo"
+	end
+	value = math.floor(math.clamp(value, powers.MinSpeed, powers.MaxSpeed))
+	admin:SetAttribute("AdminSpeed", value)
+	Services.EconomyService.ApplySpeed(admin)
+	return true, "Tempo " .. value
+end
+
+-- Sprungkraft auf den aktuellen Charakter anwenden (Original wird am Humanoid gemerkt)
+local function applyJump(p: Player)
+	local character = p.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local value = tonumber(p:GetAttribute("AdminJump"))
+	if value then
+		if humanoid:GetAttribute("OrigJumpPower") == nil then
+			humanoid:SetAttribute("OrigUseJumpPower", humanoid.UseJumpPower)
+			humanoid:SetAttribute("OrigJumpPower", humanoid.JumpPower)
+			humanoid:SetAttribute("OrigJumpHeight", humanoid.JumpHeight)
+		end
+		humanoid.UseJumpPower = true
+		humanoid.JumpPower = value
+	elseif humanoid:GetAttribute("OrigJumpPower") ~= nil then
+		humanoid.UseJumpPower = humanoid:GetAttribute("OrigUseJumpPower") == true
+		humanoid.JumpPower = tonumber(humanoid:GetAttribute("OrigJumpPower")) or Config.AdminPowers.DefaultJump
+		humanoid.JumpHeight = tonumber(humanoid:GetAttribute("OrigJumpHeight")) or 7.2
+		humanoid:SetAttribute("OrigUseJumpPower", nil)
+		humanoid:SetAttribute("OrigJumpPower", nil)
+		humanoid:SetAttribute("OrigJumpHeight", nil)
+	end
+end
+
+function Actions.SetJump(admin, args)
+	local powers = Config.AdminPowers
+	local value = tonumber(args.Value)
+	if not value or value <= 0 or value ~= value then
+		admin:SetAttribute("AdminJump", nil)
+		applyJump(admin)
+		return true, "Normale Sprungkraft"
+	end
+	value = math.floor(math.clamp(value, powers.MinJump, powers.MaxJump))
+	admin:SetAttribute("AdminJump", value)
+	applyJump(admin)
+	return true, "Sprungkraft " .. value
+end
+
+-- ⚠️ Großer Hinweis auf dem Bildschirm der Ziel-Spieler (Text wird gefiltert)
+function Actions.Warn(admin, args)
+	if type(args.Text) ~= "string" or #args.Text == 0 or #args.Text > 150 then
+		return false, "Text 1-150 Zeichen"
+	end
+	local filtered = filterBroadcast(args.Text, admin.UserId)
+	if not filtered then
+		return false, "Text-Filter nicht erreichbar"
+	end
+	local warned = {}
+	for _, p in ipairs(resolveTargets(admin, args.Target)) do
+		if p ~= admin or #Players:GetPlayers() == 1 then
+			Services.EconomyService.Effect(p, "Warn", 0, { Text = filtered })
+			table.insert(warned, p.DisplayName)
+		end
+	end
+	return #warned > 0, "Warnung an " .. table.concat(warned, ", ")
+end
+
+function Actions.LockServer(_admin, args)
+	serverLocked = args.Enabled == true
+	workspace:SetAttribute("ServerLocked", if serverLocked then true else nil)
+	return true, if serverLocked then "Server gesperrt (neue Spieler werden gekickt)" else "Server offen"
+end
+
+function Actions.KickAll(admin, args)
+	local reason = type(args.Reason) == "string" and args.Reason ~= "" and args.Reason or "Der Server wird geleert"
+	local count = 0
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= admin and not AdminService.IsAdmin(p) then
+			count += 1
+			p:Kick(reason)
+		end
+	end
+	return true, count .. " Spieler gekickt"
+end
+
+-- In dieser Sitzung gebannte Spieler (neueste zuerst)
+function Actions.BanList(_admin)
+	local list = {}
+	for i = #sessionBans, 1, -1 do
+		local record = sessionBans[i]
+		table.insert(list, {
+			UserId = record.UserId,
+			Name = record.Name,
+			Reason = record.Reason,
+			Days = record.Days,
+			Active = record.Active,
+		})
+	end
+	return true, #list .. " Bann(s) in dieser Sitzung", list
+end
+
+-- Bann-Verlauf eines Spielers von Roblox (Players:GetBanHistoryAsync), neueste zuerst
+function Actions.BanHistory(admin, args)
+	local userId = tonumber(args.Target)
+	if not userId then
+		local target = resolveTargets(admin, args.Target)[1]
+		userId = target and target.UserId
+	end
+	if not userId then
+		return false, "UserId (Zahl) angeben"
+	end
+	local ok, result = pcall(function()
+		local pages = Players:GetBanHistoryAsync(userId)
+		return pages:GetCurrentPage()
+	end)
+	if not ok or type(result) ~= "table" then
+		return false, "Bann-Verlauf nicht verfügbar: " .. tostring(result)
+	end
+	local list = {}
+	for i = #result, math.max(1, #result - 4), -1 do
+		local entry = result[i]
+		if type(entry) == "table" then
+			table.insert(list, {
+				UserId = userId,
+				Name = tostring(userId),
+				Reason = tostring(entry.DisplayReason or ""),
+				Days = if tonumber(entry.Duration) and entry.Duration > 0 then entry.Duration / 86400 else 0,
+				Active = entry.Ban == true,
+				Start = tostring(entry.StartTime or ""),
+			})
+		end
+	end
+	return true, "Verlauf von " .. userId .. ": " .. #result .. " Einträge", list
+end
+
+-- 🐣 Alle Eier im ganzen Server schlüpfen sofort
+function Actions.HatchAllServer(_admin)
+	local total = 0
+	for _, p in ipairs(Players:GetPlayers()) do
+		if Services.EconomyService.IsReady(p) then
+			total += Services.EconomyService.HatchAll(p)
+		end
+	end
+	Services.EconomyService.NotifyAll("Admin: Alle Eier schlüpfen JETZT!", "Event")
+	return true, total .. " Aliens geschlüpft"
+end
+
+function Actions.ConfettiAll(_admin)
+	task.spawn(function()
+		for _ = 1, 4 do
+			Services.EconomyService.EffectAll("Confetti", 3)
+			task.wait(0.8)
+		end
+	end)
+	return true, "Konfetti-Regen für alle"
+end
+
+-- Alle zur Mitte (Spawn-Platz). Getragene Beute fällt dabei herunter bzw. fliegt zurück.
+function Actions.TeleportAllCenter(_admin)
+	local center = Services.PlotService.LobbySpawn
+	local players = Players:GetPlayers()
+	for i, p in ipairs(players) do
+		local character = p.Character
+		if character then
+			if Services.CarryService.IsCarrying(p) then
+				Services.CarryService.Fail(p, "cancelled")
+			end
+			local angle = (i / math.max(1, #players)) * math.pi * 2
+			local target = center * CFrame.new(math.cos(angle) * 6, 0, math.sin(angle) * 6)
+			character:PivotTo(target)
+			Services.CarryService.NoteTeleport(p, target.Position)
+		end
+	end
+	return true, #players .. " Spieler zur Mitte"
+end
+
+-- Server-Info: Spieler, Laufzeit, laufende Events, durchschnittlicher Ping
+function Actions.ServerInfo(_admin)
+	local players = Players:GetPlayers()
+	local pingSum, pingCount = 0, 0
+	for _, p in ipairs(players) do
+		local ms = pingMs(p)
+		if ms then
+			pingSum += ms
+			pingCount += 1
+		end
+	end
+	local events = {}
+	local meteors = Services.MeteorService
+	if meteors.IsShowerActive() then
+		table.insert(events, "Meteoritenschauer")
+	end
+	if meteors.IsEggRushActive() then
+		table.insert(events, "Egg Rush")
+	end
+	local luck = meteors.GetLuck()
+	if luck > 1 then
+		table.insert(events, "Glück x" .. Util.FormatNumber(luck))
+	end
+	local night = nightStatus()
+	if night then
+		table.insert(events, night)
+	end
+	if math.abs(workspace.Gravity - DEFAULT_GRAVITY) > 1 then
+		table.insert(events, "Schwerkraft " .. math.floor(workspace.Gravity))
+	end
+	return true,
+		"Server-Info geladen",
+		{
+			Players = #players,
+			MaxPlayers = Players.MaxPlayers,
+			Uptime = math.floor(os.clock() - serverStartedAt),
+			Events = events,
+			Ping = if pingCount > 0 then math.floor(pingSum / pingCount + 0.5) else nil,
+			Locked = serverLocked,
+		}
+end
+
+-- -------------------------------------------------------------------
 function AdminService.Init(services)
 	Services = services
 end
 
 function AdminService.Start()
 	local function onPlayer(player: Player)
+		joinedAt[player] = joinedAt[player] or os.clock()
 		if AdminService.IsAdmin(player) then
 			player:SetAttribute("IsAdmin", true)
 			player:SetAttribute("CanFly", true)
+		elseif serverLocked then
+			player:Kick(LOCKED_KICK_TEXT) -- Server gesperrt (Admin-Panel)
+			return
 		end
 		player.CharacterAdded:Connect(function(character)
+			if player:GetAttribute("AdminJump") ~= nil then
+				character:WaitForChild("Humanoid", 10)
+				applyJump(player)
+			end
 			character:WaitForChild("Head", 10)
 			updateTag(player)
 		end)
@@ -1006,6 +1475,7 @@ function AdminService.Start()
 		limiter.Clear(player)
 		adminCache[player] = nil
 		warnedDenied[player] = nil
+		joinedAt[player] = nil
 	end)
 
 	Remotes.Admin.OnServerInvoke = function(player: Player, action: any, args: any)

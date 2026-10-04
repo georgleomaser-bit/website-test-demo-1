@@ -44,6 +44,7 @@ local DEFAULT_DATA = {
 	Gifts = { Day = "", Seconds = 0, Claimed = {} },
 	Gadgets = {}, -- ["SpeedCoil"] = true -> besessen (bleibt bei Rebirth)
 	StarterBought = false, -- ⭐ Starter-Paket schon gekauft (nur einmal im Shop)
+	Treadmills = { Holz = true }, -- gekaufte Laufbänder ["Stein"] = true (bleiben bei Rebirth)
 }
 
 local LOCK_EXPIRE = 30 * 60 -- ein Lock älter als 30 Min gilt als verwaist
@@ -158,6 +159,32 @@ local function sanitizeRewards(data)
 	end
 end
 
+-- Laufbänder: früher per Schritte freigeschaltet, jetzt mit Cash gekauft.
+-- Alter Spielstand ohne Treadmills -> alle Laufbänder, die man mit seinen Schritten schon hatte, gelten als gekauft.
+local function migrateTreadmills(data)
+	local owned = data.Treadmills
+	if type(owned) ~= "table" then
+		owned = {}
+		local steps = tonumber(data.Steps) or 0
+		for _, def in ipairs(Config.Treadmills) do
+			if steps >= (tonumber(def.LegacySteps) or math.huge) then
+				owned[def.Id] = true
+			end
+		end
+		data.Treadmills = owned
+	end
+	for id, value in pairs(owned) do
+		if type(id) ~= "string" or value ~= true or not Config.TreadmillsById[id] then
+			owned[id] = nil
+		end
+	end
+	for _, def in ipairs(Config.Treadmills) do
+		if def.Price <= 0 then
+			owned[def.Id] = true -- Gratis-Laufbänder hat jeder
+		end
+	end
+end
+
 function DataService.Migrate(data)
 	local version = tonumber(data.Version) or 1
 	if version < 2 then
@@ -206,6 +233,7 @@ function DataService.Migrate(data)
 	local steps = tonumber(data.Steps) or 0
 	data.Steps = (steps == steps and steps >= 0) and steps or 0
 	sanitizeRewards(data)
+	migrateTreadmills(data)
 end
 
 local function loadData(userId: number): (boolean, any)
