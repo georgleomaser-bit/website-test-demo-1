@@ -148,9 +148,10 @@ Gadgets gehören dir für immer, auch nach einem Rebirth. Nach jedem Spawn liege
 
 **Laufbänder kaufst du mit Geld** (Holz ist gratis). Sie gehören dir für immer, auch nach einem Rebirth.
 Man kauft sie der Reihe nach: Knopf **🏃 Laufbänder** rechts → beim nächsten Laufband auf den Preis klicken.
-Dann **🏃 Zu den Laufbändern!** → drauf stellen → **laufen** (W gedrückt halten).
+Dann **🏃 Zu den Laufbändern!** → du landest direkt auf deinem besten Laufband, Blick zur Konsole → **laufen** (W gedrückt halten).
 Alle 0,5 Sekunden gibt es Schritte. Über deinem Kopf fliegen die „+X 👟“-Zahlen.
-Auf einem Laufband, das dir noch nicht gehört, gibt es keine Schritte („Kaufe dieses Laufband im Laufbänder-Menü“).
+Das Band schiebt dich langsam nach hinten (Tempo 6, du läufst mindestens 8). Wer stehen bleibt, rutscht hinten über die kleine Rampe aufs Deck – Stillstehen gibt keine Schritte.
+Stehst du auf einem Laufband und bekommst keine Schritte, sagt dir ein kurzer Hinweis warum („Lauf los!“, „Kaufe dieses Laufband im Laufbänder-Menü“ oder „Spielstand lädt noch“).
 Das Schild am Laufband zeigt den Preis bzw. „Gekauft“ oder „Dein bestes Laufband“.
 
 | Laufband | Preis | Schritte pro 0,5 s |
@@ -366,7 +367,7 @@ Alles steht kommentiert in `ReplicatedStorage → Shared → Config`:
   Nacht-Eier sind normale Zeilen in `Config.Meteors` mit `NightOnly = true` (nur im Blutmond: `BloodMoonOnly = true`).
   Eier aus Robux-Käufen, Glücksrad und Starter-Paket sind nie Nacht-Eier – so stimmen die im Shop angezeigten Chancen immer.
 - **Mutationen**: `Config.Mutations` (Weight = Chance, Mult = Geld-Faktor).
-- **Laufbänder (Speed Farm)**: `Config.Treadmills` (Name, Preis, Schritte pro Tick, Farbe; `LegacySteps` nur für alte Spielstände).
+- **Laufbänder (Speed Farm)**: `Config.Treadmills` (Name, Preis, Schritte pro Tick, Farbe; `LegacySteps` nur für alte Spielstände). Band-Schub: `Config.TreadmillPush` (Standard 6, höchstens 7 – sonst kommt man beim Tragen nicht mehr gegen das Band an).
 - **Schläger**: `Config.Bats` (Name, ab wie vielen Aliens im Index, Reichweite, Wucht, Abklingzeit, Farben).
   Super-Bonk-Boost: `Config.SuperBonkRangeMult`, `Config.SuperBonkForceMult`, `Config.SuperBonkCooldownMult`.
 - **Admin-Kräfte**: `Config.AdminPowers` (Grenzen für Tempo- und Sprung-Regler, Bosse bei der Boss-Parade).
@@ -446,7 +447,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | Der Umhang geht nicht | Nach dem Sichtbarwerden braucht er 60 Sekunden Pause. Mit Beute geht er nicht an |
 | Geschenke kommen nicht neu nach dem Neubeitreten | Richtig so: Die Spielzeit zählt pro Tag über alle Besuche. Um Mitternacht (UTC) gibt es neue Geschenke |
 | „🎡 Keine Drehs mehr!“ | Alle 4 Stunden gibt es einen Gratis-Dreh. Mehr Drehs gibt es als Geschenk, für Aufgaben oder im Shop |
-| Laufband gibt keine Schritte | Du musst wirklich **laufen** (W gedrückt halten). Und das Laufband muss **dir gehören**: im Menü **🏃 Laufbänder** kaufen |
+| Laufband gibt keine Schritte | Lies den Hinweis unten am Bildschirm. Du musst wirklich **laufen** (W gedrückt halten), mitten auf der dunklen Lauffläche (nicht auf dem leuchtenden Rand). Und das Laufband muss **dir gehören** (Holz ist gratis): im Menü **🏃 Laufbänder** kaufen. Im Studio ohne API-Zugriff startet der Testmodus sofort, Schritte werden dort nur nicht gespeichert |
 | Es ruckelt auf einem alten Handy | In Roblox: Menü → Einstellungen → Grafikqualität etwas runterstellen |
 
 ---

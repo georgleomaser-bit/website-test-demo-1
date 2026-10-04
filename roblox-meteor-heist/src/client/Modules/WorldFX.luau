@@ -229,9 +229,14 @@ local function setupTreadmill(model: Instance)
 	local def = treadmillDef(id)
 	local color: Color3 = if def and typeof(def.Color) == "Color3" then def.Color else Color3.new(1, 1, 1)
 	local dir = belt:GetAttribute("BeltDir")
-	local speed = tonumber(belt:GetAttribute("BeltSpeed")) or 14
+	local speed = tonumber(belt:GetAttribute("BeltSpeed")) or tonumber(ctx.Config.TreadmillPush) or 6
 	local cf = belt.CFrame
 	local worldDir: Vector3 = if typeof(dir) == "Vector3" and dir.Magnitude > 0.001 then dir.Unit else -cf.LookVector
+	-- Band-Schub auch lokal setzen: der eigene Charakter wird auf DIESEM Gerät simuliert. So schiebt das Band
+	-- auch dann, wenn die Geschwindigkeit des verankerten Teils vom Server nicht (rechtzeitig) ankommt.
+	if belt.Anchored and (belt.AssemblyLinearVelocity - worldDir * speed).Magnitude > 0.05 then
+		belt.AssemblyLinearVelocity = worldDir * speed
+	end
 	-- Richtung auf die nächste Achse der Lauffläche legen (Länge/Breite der Fläche bestimmen)
 	local localDir = cf:VectorToObjectSpace(worldDir)
 	local alongZ = math.abs(localDir.Z) >= math.abs(localDir.X)

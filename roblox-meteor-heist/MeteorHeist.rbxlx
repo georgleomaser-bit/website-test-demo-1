@@ -953,6 +953,9 @@ Config.Treadmills = {
 	},
 }
 Config.TreadmillTick = 0.5 -- alle 0,5 Sekunden gibt es Schritte
+-- So schnell schiebt das Band (Studs/s) nach hinten. Deutlich kleiner als das Grund-Tempo 16 und als das
+-- Mindest-Tempo beim Tragen (8) – sonst kommt man nicht gegen das Band an und rutscht ständig runter.
+Config.TreadmillPush = 6
 Config.MaxWalkSpeed = 80 -- schneller geht es nicht (16 normal + max. 64 durch Schritte)
 Config.StepsPerRebirth = 0.25 -- jeder Rebirth: +25% Schritte auf allen Laufbändern
 
@@ -7013,6 +7016,15 @@ function DataService.Migrate(data)
 	migrateTreadmills(data)
 end
 
+-- Fehlermeldungen, die im Studio bedeuten: DataStores sind hier gar nicht erreichbar
+local function isStudioAccessError(err: any): boolean
+	local text = string.lower(tostring(err))
+	return string.find(text, "studio", 1, true) ~= nil
+		or string.find(text, "publish", 1, true) ~= nil
+		or string.find(text, "api services", 1, true) ~= nil
+		or string.find(text, "403", 1, true) ~= nil
+end
+
 local function loadData(userId: number): (boolean, any)
 	if not storeOk or not store then
 		return false, "DataStore nicht verfügbar"
@@ -7045,6 +7057,11 @@ local function loadData(userId: number): (boolean, any)
 		end
 		if not ok then
 			warn("[DataService] Laden fehlgeschlagen (Versuch " .. attempt .. "): " .. tostring(result))
+			-- Studio ohne API-Zugriff / unveröffentlichter Ort: Nochmal-Versuchen bringt nichts. Sofort aufgeben,
+			-- damit der Studio-Testmodus (ohne Speichern) gleich startet statt nach ~30 s Warten.
+			if RunService:IsStudio() and isStudioAccessError(result) then
+				break
+			end
 		end
 		task.wait(lockedByOther and LOCK_WAIT or (attempt * 1.5))
 	end
@@ -9590,7 +9607,9 @@ local TREADMILL_BELT_Z = -366 -- Mitte der Laufflächen
 local TREADMILL_DECK_TOP = 0.7
 local TREADMILL_DECK_MIN_Z = -384
 local TREADMILL_DECK_MAX_Z = -342
-local TREADMILL_PUSH = 14 -- so schnell schiebt das Band den Spieler zurück
+-- so schnell schiebt das Band den Spieler zurück (Config.TreadmillPush; muss deutlich unter Tempo 8 liegen)
+local TREADMILL_PUSH = math.clamp(tonumber((Config :: any).TreadmillPush) or 6, 0, 7)
+local TREADMILL_RAMP = 4 -- Rampe am Einstieg (hinten): vom Deck sanft hoch auf die Lauffläche
 local TREADMILL_MATERIALS: { [string]: Enum.Material } = {
 	Holz = Enum.Material.Wood,
 	Stein = Enum.Material.Slate,
@@ -10499,6 +10518,8 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		CFrame = base * CFrame.new(0, 0.65, 0),
 		Material = Enum.Material.SmoothPlastic,
 		Color = Color3.fromRGB(32, 32, 38),
+		CanCollide = true,
+		CanQuery = true, -- Humanoid findet den Boden per Raycast
 		Parent = model,
 	})
 	local backward = -base.LookVector
@@ -10506,6 +10527,23 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 	belt:SetAttribute("BeltSpeed", TREADMILL_PUSH)
 	table.insert(pendingVelocities, { Part = belt, Velocity = backward * TREADMILL_PUSH })
 	model.PrimaryPart = belt
+
+	-- Einstieg hinten (+Z lokal): Keil-Rampe vom Deck hoch auf die Lauffläche. Wer stehen bleibt, wird vom
+	-- Band hierher geschoben und rutscht sanft aufs Deck (keine Kante, kein Absturz). Die hohe Seite des Keils
+	-- (+Z des Keils) liegt am Band, die flache Kante (-Z des Keils = LookVector) zeigt vom Band weg.
+	local beltTop = 0.8 -- Oberkante Lauffläche über dem Deck (0.65 + 0.3 / 2)
+	local ramp = Instance.new("WedgePart")
+	ramp.Name = "Ramp"
+	ramp.Anchored = true
+	ramp.CanTouch = false
+	ramp.TopSurface = Enum.SurfaceType.Smooth
+	ramp.BottomSurface = Enum.SurfaceType.Smooth
+	ramp.Size = Vector3.new(8, beltTop, TREADMILL_RAMP)
+	local rampCenter = base * CFrame.new(0, beltTop / 2, 10 + TREADMILL_RAMP / 2)
+	ramp.CFrame = CFrame.lookAt(rampCenter.Position, rampCenter.Position + base.LookVector * -1)
+	ramp.Material = Enum.Material.Metal
+	ramp.Color = color:Lerp(Color3.new(0, 0, 0), 0.35)
+	ramp.Parent = model
 
 	-- Leuchtende Seitenrahmen
 	for _, s in ipairs({ -1, 1 }) do
@@ -10538,6 +10576,7 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		CFrame = base * CFrame.new(0, 6, -10.5),
 		Transparency = 1,
 		CastShadow = false,
+		CanQuery = false, -- nur Wand (keine Kamera-/Klick-Treffer), Kollision bleibt
 		Parent = model,
 	})
 
@@ -14333,7 +14372,8 @@ function PlotService.TeleportHome(player: Player)
 	teleportToPlot(player)
 end
 
--- Hinter das beste gekaufte Laufband (Neulinge landen so am Holz-Laufband, nicht vor Gold)
+-- AUF das beste gekaufte Laufband (hinteres Drittel der Lauffläche, Blick zur Konsole).
+-- Neulinge landen so auf dem Holz-Laufband, nicht vor Gold. Lauffläche: lokales -Z (LookVector) = Laufrichtung.
 local function treadmillTarget(player: Player): CFrame
 	local data = Services.DataService.Get(player)
 	local best = Config.BestTreadmill(data and data.Treadmills)
@@ -14341,10 +14381,11 @@ local function treadmillTarget(player: Player): CFrame
 	if best and folder then
 		for _, model in ipairs(folder:GetChildren()) do
 			local belt = model:IsA("Model") and model:GetAttribute("TreadmillId") == best.Id and model.PrimaryPart
-			if belt then
-				-- Lauffläche: lokales -Z (LookVector) = Laufrichtung -> Einstieg von hinten
-				local spot = belt.Position - belt.CFrame.LookVector * (belt.Size.Z / 2 + 4) + Vector3.new(0, 3.5, 0)
-				return CFrame.lookAt(spot, Vector3.new(belt.Position.X, spot.Y, belt.Position.Z))
+			if belt and belt:IsA("BasePart") then
+				local look = belt.CFrame.LookVector
+				local top = belt.Position + belt.CFrame.UpVector * (belt.Size.Y / 2)
+				local spot = top - look * math.max(0, belt.Size.Z / 2 - 4) + Vector3.new(0, 3.5, 0)
+				return CFrame.lookAt(spot, spot + Vector3.new(look.X, 0, look.Z))
 			end
 		end
 	end
@@ -16796,7 +16837,14 @@ return RunService
 -- Wer auf einem GEKAUFTEN Laufband läuft, bekommt alle Config.TreadmillTick Sekunden
 -- Schritte 👟 (+ fliegende Zahl beim Client). Mehr Schritte = schneller laufen (Config.StepsSpeed).
 -- Laufbänder kauft man mit Cash (Config.Treadmills -> Price, Request "BuyTreadmill"), der Reihe nach.
--- Besitz: data.Treadmills = { [Id] = true } – bleibt bei Rebirth.
+-- Besitz: data.Treadmills = { [Id] = true } – bleibt bei Rebirth. Gratis-Laufbänder (Holz) hat jeder.
+--
+-- Erkennung "läuft auf dem Band" (bewusst großzügig – lieber etwas AFK tolerieren als dass es nicht geht):
+--   1. HumanoidRootPart über der Lauffläche (mit etwas Spielraum, egal ob R6/R15/skaliert)
+--   2. Humanoid.MoveDirection zeigt Laufen an  ODER  die Physik zeigt es: der Spieler ist deutlich anders
+--      schnell als das Band (wer stillsteht, fährt mit dem Band mit; wer läuft, nicht).
+-- Steht man auf einem Band und bekommt KEINE Schritte, gibt es einen kurzen Hinweis mit dem Grund (gedrosselt).
+-- Schritte gibt es nur hier im Server-Tick – kein Remote kann Schritte auslösen.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16808,30 +16856,60 @@ local Remotes = require(script.Parent:WaitForChild("Remotes"))
 local TreadmillService = {}
 local Services
 
--- { Def, Belt, CFrame, HalfX, HalfZ, TopY } – aufsteigend nach Preis
-local treadmills = {}
+type Treadmill = {
+	Def: any,
+	Belt: BasePart,
+	CFrame: CFrame,
+	HalfX: number,
+	HalfZ: number,
+	TopY: number,
+	Velocity: Vector3, -- so schnell soll das Band schieben (Welt)
+}
+
+-- aufsteigend nach Preis
+local treadmills: { Treadmill } = {}
 local zoneCenter = Vector3.zero
 local zoneRadius = 0
-local lastLockedNotify: { [Player]: number } = {}
--- true = beim Server kommt Humanoid.MoveDirection an (schon einmal gesehen) -> keine Ersatz-Prüfung nötig
-local moveDirectionWorks: { [Player]: boolean } = {}
+local lastHint: { [Player]: number } = {}
+local idleSince: { [Player]: number } = {}
 
-local MAX_HEIGHT = 8 -- HumanoidRootPart höchstens so hoch über der Lauffläche (Springen zählt mit)
-local LOCKED_NOTIFY_COOLDOWN = 3
-local MIN_MOVE = 0.1 -- Humanoid.MoveDirection muss mindestens so lang sein (= Spieler läuft)
--- Ersatz-Prüfung über die Physik (nur falls MoveDirection beim Server nie ankommt):
--- Wer stillsteht, fährt mit dem Band mit (gleiches Tempo wie das Band). Wer läuft (oder vorne gegen
--- die Konsole läuft), ist entlang der Bandrichtung deutlich langsamer/schneller als das Band.
-local MIN_RELATIVE_SPEED = 4
--- ...und nur, wenn man wirklich AUF dem Band steht: Hüfte in normaler Stehhöhe über der Lauffläche.
--- Auf dem Seitenrahmen (0,7 höher) oder der Konsole steht man höher -> zählt nicht.
-local STAND_TOLERANCE = 0.45
+local MAX_HEIGHT = 10 -- HumanoidRootPart höchstens so hoch über der Lauffläche (Springen, große Avatare)
+local MIN_HEIGHT = -0.5
+-- Spielraum um die Lauffläche (Füße ragen über die Hüfte hinaus; Seitenrahmen innen beginnt direkt am Band)
+local MARGIN_X = 0.5
+local MARGIN_Z = 1
+local MIN_MOVE = 0.05 -- Humanoid.MoveDirection mindestens so lang = Spieler drückt eine Lauf-Taste
+-- Physik-Prüfung: so viel anders schnell als das Band (Studs/s) = läuft. Wer stillsteht, fährt mit (≈ 0).
+local MIN_RELATIVE_SPEED = 3
+local HINT_COOLDOWN = 5 -- Hinweise ("Lauf los", "gehört dir nicht", "lädt") höchstens so oft
+local IDLE_HINT_AFTER = 1.5 -- erst nach so langem Stillstehen auf dem Band "Lauf los!" zeigen
 local RESCAN_INTERVAL = 5
+
+local function treadmillsFolder(): Instance?
+	local plotService = Services and Services.PlotService
+	local folder = plotService and plotService.TreadmillsFolder
+	if folder and folder.Parent then
+		return folder
+	end
+	-- Ersatz: direkt in der Map suchen (z.B. wenn PlotService den Ordner nicht weitergereicht hat)
+	local map = workspace:FindFirstChild("MeteorHeistMap")
+	return map and map:FindFirstChild("Treadmills")
+end
+
+-- Soll-Geschwindigkeit des Bandes (Attribute von MapBuilder, sonst Config)
+local function beltVelocity(belt: BasePart): Vector3
+	local dir = belt:GetAttribute("BeltDir")
+	local speed = tonumber(belt:GetAttribute("BeltSpeed")) or tonumber(Config.TreadmillPush) or 6
+	local worldDir: Vector3 = if typeof(dir) == "Vector3" and dir.Magnitude > 0.001
+		then dir.Unit
+		else -belt.CFrame.LookVector
+	return worldDir * speed
+end
 
 -- Laufbänder aus der Map einlesen (MapBuilder baut je Eintrag in Config.Treadmills ein Model)
 local function collect()
 	table.clear(treadmills)
-	local folder = Services.PlotService.TreadmillsFolder
+	local folder = treadmillsFolder()
 	if not folder then
 		return
 	end
@@ -16846,11 +16924,10 @@ local function collect()
 					Def = def,
 					Belt = belt,
 					CFrame = belt.CFrame,
-					-- Lauffläche OHNE Spielraum: direkt daneben stehen Seitenrahmen, Konsole und Chassis.
-					-- Wer dort stillsteht, darf nicht als "läuft auf dem Band" zählen.
 					HalfX = belt.Size.X / 2,
 					HalfZ = belt.Size.Z / 2,
 					TopY = belt.Size.Y / 2,
+					Velocity = beltVelocity(belt),
 				})
 				sum += belt.Position
 			end
@@ -16865,14 +16942,14 @@ local function collect()
 		zoneRadius = 0
 		for _, treadmill in ipairs(treadmills) do
 			local reach = (treadmill.CFrame.Position - zoneCenter).Magnitude
-				+ math.sqrt(treadmill.HalfX ^ 2 + treadmill.HalfZ ^ 2)
+				+ math.sqrt((treadmill.HalfX + MARGIN_X) ^ 2 + (treadmill.HalfZ + MARGIN_Z) ^ 2)
 			zoneRadius = math.max(zoneRadius, reach + MAX_HEIGHT)
 		end
 	end
 end
 
--- Auf welchem Laufband steht diese Position? (lokale Koordinaten zur Lauffläche)
-function TreadmillService.FindTreadmill(position: Vector3)
+-- Auf welchem Laufband steht diese Position (HumanoidRootPart)?
+function TreadmillService.FindTreadmill(position: Vector3): Treadmill?
 	if #treadmills == 0 or (position - zoneCenter).Magnitude > zoneRadius then
 		return nil
 	end
@@ -16880,9 +16957,9 @@ function TreadmillService.FindTreadmill(position: Vector3)
 		local localPos = treadmill.CFrame:PointToObjectSpace(position)
 		local height = localPos.Y - treadmill.TopY
 		if
-			math.abs(localPos.X) <= treadmill.HalfX
-			and math.abs(localPos.Z) <= treadmill.HalfZ
-			and height > -0.5
+			math.abs(localPos.X) <= treadmill.HalfX + MARGIN_X
+			and math.abs(localPos.Z) <= treadmill.HalfZ + MARGIN_Z
+			and height > MIN_HEIGHT
 			and height < MAX_HEIGHT
 		then
 			return treadmill
@@ -16891,68 +16968,73 @@ function TreadmillService.FindTreadmill(position: Vector3)
 	return nil
 end
 
--- Normale Höhe des HumanoidRootPart über dem Boden, wenn man steht (R15 bzw. R6)
-local function standHeight(humanoid: Humanoid, root: BasePart): number
-	if humanoid.RigType == Enum.HumanoidRigType.R15 then
-		return humanoid.HipHeight + root.Size.Y / 2
-	end
-	return root.Size.Y / 2 + 2 -- R6: Beine sind 2 Studs lang
+-- Steht der Spieler wirklich AUF der Lauffläche? Strahl von der Hüfte nach unten muss das Band treffen
+-- (nicht Seitenrahmen, Rampe oder Konsole). Unabhängig von R6/R15, HipHeight und Avatar-Größe.
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = true
+local function standsOnBelt(treadmill: Treadmill, root: BasePart, character: Model): boolean
+	rayParams.FilterDescendantsInstances = { character }
+	local result = workspace:Raycast(root.Position, Vector3.new(0, -(MAX_HEIGHT + 2), 0), rayParams)
+	return result ~= nil and result.Instance == treadmill.Belt
 end
 
--- Ersatz-Prüfung über die Physik: steht der Spieler auf DIESEM Band und ist er entlang der
--- Bandrichtung deutlich anders schnell als das Band (= er läuft dagegen an)?
-local function walkingByPhysics(treadmill, humanoid: Humanoid, root: BasePart): boolean
-	local belt: BasePart = treadmill.Belt
-	local localPos = treadmill.CFrame:PointToObjectSpace(root.Position)
-	local height = localPos.Y - treadmill.TopY
-	if math.abs(height - standHeight(humanoid, root)) > STAND_TOLERANCE then
-		return false -- springt, oder steht auf Seitenrahmen/Konsole statt auf dem Band
-	end
-	local beltVelocity = belt.AssemblyLinearVelocity
-	local beltSpeed = beltVelocity.Magnitude
-	if beltSpeed < 0.01 then
-		return false
-	end
-	local along = beltVelocity / beltSpeed
-	local relative = beltSpeed - root.AssemblyLinearVelocity:Dot(along)
-	return math.abs(relative) > MIN_RELATIVE_SPEED
+-- Physik: ist der Spieler (waagerecht) deutlich anders schnell als das Band? Stillstehen = mitfahren = nein.
+-- Funktioniert auch, wenn Humanoid.MoveDirection beim Server nicht ankommt.
+local function walkingByPhysics(treadmill: Treadmill, root: BasePart, character: Model): boolean
+	local relative = root.AssemblyLinearVelocity - treadmill.Velocity
+	relative -= Vector3.yAxis * relative.Y
+	return relative.Magnitude > MIN_RELATIVE_SPEED and standsOnBelt(treadmill, root, character)
 end
 
-local function tickPlayer(player: Player)
-	local data = Services.DataService.Get(player)
+local function hint(player: Player, text: string, kind: string?)
+	local t = os.clock()
+	if t - (lastHint[player] or -math.huge) >= HINT_COOLDOWN then
+		lastHint[player] = t
+		Services.EconomyService.Notify(player, text, kind or "Info")
+	end
+end
+
+-- Ein Tick für einen Spieler. Gibt den Grund zurück (für Tests/Fehlersuche):
+-- "steps", "none" (nicht auf einem Band), "dead", "loading", "idle", "locked"
+function TreadmillService.TickPlayer(player: Player): string
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not data or not root or not humanoid or humanoid.Health <= 0 or not Services.EconomyService.IsReady(player) then
-		return
-	end
-	-- nur wer läuft, sammelt Schritte
-	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE
-	if walking then
-		moveDirectionWorks[player] = true
+	if not root or not humanoid then
+		idleSince[player] = nil
+		return "none"
 	end
 	local treadmill = TreadmillService.FindTreadmill(root.Position)
 	if not treadmill then
-		return
+		idleSince[player] = nil
+		return "none"
 	end
-	if not walking and not moveDirectionWorks[player] then
-		walking = walkingByPhysics(treadmill, humanoid, root)
+	if humanoid.Health <= 0 then
+		return "dead"
 	end
+	-- Nur der Spielstand muss da sein (nicht die ganze Einrichtung) – Schritte gehen so ab der ersten Sekunde
+	local data = Services.DataService.Get(player)
+	if not data then
+		hint(player, "⏳ Dein Spielstand lädt noch – gleich gibt's Schritte!")
+		return "loading"
+	end
+	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE or walkingByPhysics(treadmill, root, character :: Model)
 	if not walking then
-		return
+		local now = os.clock()
+		local since = idleSince[player]
+		if not since then
+			idleSince[player] = now
+		elseif now - since >= IDLE_HINT_AFTER then
+			hint(player, "👟 Lauf los! Halte W gedrückt (nach vorne zur Konsole) – nur Laufen gibt Schritte.")
+		end
+		return "idle"
 	end
+	idleSince[player] = nil
 	local def = treadmill.Def
 	if not Config.OwnsTreadmill(data.Treadmills, def.Id) then
-		local t = os.clock()
-		if t - (lastLockedNotify[player] or 0) >= LOCKED_NOTIFY_COOLDOWN then
-			lastLockedNotify[player] = t
-			Services.EconomyService.Notify(
-				player,
-				"🔒 Kaufe dieses Laufband im Laufbänder-Menü (" .. Util.FormatCash(def.Price) .. ")",
-				"Error"
-			)
-		end
-		return
+		hint(player, "🔒 Kaufe dieses Laufband im Laufbänder-Menü (" .. Util.FormatCash(def.Price) .. ")", "Error")
+		return "locked"
 	end
 	local gain = def.Rate * Services.EconomyService.GetStepsMult(player)
 	Services.EconomyService.AddSteps(player, gain) -- passt die Laufgeschwindigkeit an + MarkDirty
@@ -16963,6 +17045,18 @@ local function tickPlayer(player: Player)
 		local ok, err = pcall(rewards.Track, player, "Steps", gain)
 		if not ok then
 			warn("[TreadmillService] RewardService.Track fehlgeschlagen: " .. tostring(err))
+		end
+	end
+	return "steps"
+end
+
+-- Band-Geschwindigkeit sicherstellen: verankerte Teile schieben nur mit gesetzter AssemblyLinearVelocity.
+-- Falls sie irgendwo zurückgesetzt wurde (oder nie ankam), hier wieder setzen.
+local function keepBeltsMoving()
+	for _, treadmill in ipairs(treadmills) do
+		local belt = treadmill.Belt
+		if belt.Parent and (belt.AssemblyLinearVelocity - treadmill.Velocity).Magnitude > 0.05 then
+			belt.AssemblyLinearVelocity = treadmill.Velocity
 		end
 	end
 end
@@ -16992,10 +17086,11 @@ function TreadmillService.Buy(player: Player, id: any): (boolean, string)
 	if previous and not Config.OwnsTreadmill(data.Treadmills, previous.Id) then
 		return false, "Kaufe zuerst das " .. previous.Name
 	end
-	if data.Cash < def.Price then
+	local cash = tonumber(data.Cash) or 0
+	if cash ~= cash or cash < def.Price then
 		return false, "Du brauchst " .. Util.FormatCash(def.Price) .. " für das " .. def.Name
 	end
-	data.Cash -= def.Price
+	data.Cash = cash - def.Price
 	data.Treadmills[def.Id] = true
 	Services.EconomyService.MarkDirty(player)
 	task.spawn(Services.DataService.Save, player) -- teurer Kauf -> gleich sichern
@@ -17007,32 +17102,43 @@ function TreadmillService.Init(services)
 	Services = services
 end
 
+-- Ein Durchlauf der Schleife (für Tests einzeln aufrufbar)
+local lastScan = -math.huge
+function TreadmillService.Step()
+	if #treadmills == 0 and os.clock() - lastScan >= RESCAN_INTERVAL then
+		lastScan = os.clock()
+		collect()
+	end
+	if #treadmills == 0 then
+		return
+	end
+	keepBeltsMoving()
+	for _, player in ipairs(Players:GetPlayers()) do
+		local ok, err = pcall(TreadmillService.TickPlayer, player)
+		if not ok then
+			warn("[TreadmillService] Fehler bei " .. player.Name .. ": " .. tostring(err))
+		end
+	end
+end
+
 function TreadmillService.Start()
+	lastScan = os.clock()
 	collect()
 	if #treadmills == 0 then
 		warn("[TreadmillService] Keine Laufbänder gefunden – suche weiter...")
 	end
 
 	Players.PlayerRemoving:Connect(function(player)
-		lastLockedNotify[player] = nil
-		moveDirectionWorks[player] = nil
+		lastHint[player] = nil
+		idleSince[player] = nil
 	end)
 
 	task.spawn(function()
-		local lastScan = os.clock()
 		while true do
 			task.wait(Config.TreadmillTick)
-			if #treadmills == 0 and os.clock() - lastScan >= RESCAN_INTERVAL then
-				lastScan = os.clock()
-				collect()
-			end
-			if #treadmills > 0 then
-				for _, player in ipairs(Players:GetPlayers()) do
-					local ok, err = pcall(tickPlayer, player)
-					if not ok then
-						warn("[TreadmillService] Fehler bei " .. player.Name .. ": " .. tostring(err))
-					end
-				end
+			local ok, err = pcall(TreadmillService.Step)
+			if not ok then
+				warn("[TreadmillService] Tick-Fehler: " .. tostring(err))
 			end
 		end
 	end)
@@ -28454,9 +28560,14 @@ local function setupTreadmill(model: Instance)
 	local def = treadmillDef(id)
 	local color: Color3 = if def and typeof(def.Color) == "Color3" then def.Color else Color3.new(1, 1, 1)
 	local dir = belt:GetAttribute("BeltDir")
-	local speed = tonumber(belt:GetAttribute("BeltSpeed")) or 14
+	local speed = tonumber(belt:GetAttribute("BeltSpeed")) or tonumber(ctx.Config.TreadmillPush) or 6
 	local cf = belt.CFrame
 	local worldDir: Vector3 = if typeof(dir) == "Vector3" and dir.Magnitude > 0.001 then dir.Unit else -cf.LookVector
+	-- Band-Schub auch lokal setzen: der eigene Charakter wird auf DIESEM Gerät simuliert. So schiebt das Band
+	-- auch dann, wenn die Geschwindigkeit des verankerten Teils vom Server nicht (rechtzeitig) ankommt.
+	if belt.Anchored and (belt.AssemblyLinearVelocity - worldDir * speed).Magnitude > 0.05 then
+		belt.AssemblyLinearVelocity = worldDir * speed
+	end
 	-- Richtung auf die nächste Achse der Lauffläche legen (Länge/Breite der Fläche bestimmen)
 	local localDir = cf:VectorToObjectSpace(worldDir)
 	local alongZ = math.abs(localDir.Z) >= math.abs(localDir.X)

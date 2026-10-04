@@ -243,6 +243,15 @@ function DataService.Migrate(data)
 	migrateTreadmills(data)
 end
 
+-- Fehlermeldungen, die im Studio bedeuten: DataStores sind hier gar nicht erreichbar
+local function isStudioAccessError(err: any): boolean
+	local text = string.lower(tostring(err))
+	return string.find(text, "studio", 1, true) ~= nil
+		or string.find(text, "publish", 1, true) ~= nil
+		or string.find(text, "api services", 1, true) ~= nil
+		or string.find(text, "403", 1, true) ~= nil
+end
+
 local function loadData(userId: number): (boolean, any)
 	if not storeOk or not store then
 		return false, "DataStore nicht verfügbar"
@@ -275,6 +284,11 @@ local function loadData(userId: number): (boolean, any)
 		end
 		if not ok then
 			warn("[DataService] Laden fehlgeschlagen (Versuch " .. attempt .. "): " .. tostring(result))
+			-- Studio ohne API-Zugriff / unveröffentlichter Ort: Nochmal-Versuchen bringt nichts. Sofort aufgeben,
+			-- damit der Studio-Testmodus (ohne Speichern) gleich startet statt nach ~30 s Warten.
+			if RunService:IsStudio() and isStudioAccessError(result) then
+				break
+			end
 		end
 		task.wait(lockedByOther and LOCK_WAIT or (attempt * 1.5))
 	end

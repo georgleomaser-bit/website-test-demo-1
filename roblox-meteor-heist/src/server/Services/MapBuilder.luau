@@ -143,7 +143,9 @@ local TREADMILL_BELT_Z = -366 -- Mitte der Laufflächen
 local TREADMILL_DECK_TOP = 0.7
 local TREADMILL_DECK_MIN_Z = -384
 local TREADMILL_DECK_MAX_Z = -342
-local TREADMILL_PUSH = 14 -- so schnell schiebt das Band den Spieler zurück
+-- so schnell schiebt das Band den Spieler zurück (Config.TreadmillPush; muss deutlich unter Tempo 8 liegen)
+local TREADMILL_PUSH = math.clamp(tonumber((Config :: any).TreadmillPush) or 6, 0, 7)
+local TREADMILL_RAMP = 4 -- Rampe am Einstieg (hinten): vom Deck sanft hoch auf die Lauffläche
 local TREADMILL_MATERIALS: { [string]: Enum.Material } = {
 	Holz = Enum.Material.Wood,
 	Stein = Enum.Material.Slate,
@@ -1052,6 +1054,8 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		CFrame = base * CFrame.new(0, 0.65, 0),
 		Material = Enum.Material.SmoothPlastic,
 		Color = Color3.fromRGB(32, 32, 38),
+		CanCollide = true,
+		CanQuery = true, -- Humanoid findet den Boden per Raycast
 		Parent = model,
 	})
 	local backward = -base.LookVector
@@ -1059,6 +1063,23 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 	belt:SetAttribute("BeltSpeed", TREADMILL_PUSH)
 	table.insert(pendingVelocities, { Part = belt, Velocity = backward * TREADMILL_PUSH })
 	model.PrimaryPart = belt
+
+	-- Einstieg hinten (+Z lokal): Keil-Rampe vom Deck hoch auf die Lauffläche. Wer stehen bleibt, wird vom
+	-- Band hierher geschoben und rutscht sanft aufs Deck (keine Kante, kein Absturz). Die hohe Seite des Keils
+	-- (+Z des Keils) liegt am Band, die flache Kante (-Z des Keils = LookVector) zeigt vom Band weg.
+	local beltTop = 0.8 -- Oberkante Lauffläche über dem Deck (0.65 + 0.3 / 2)
+	local ramp = Instance.new("WedgePart")
+	ramp.Name = "Ramp"
+	ramp.Anchored = true
+	ramp.CanTouch = false
+	ramp.TopSurface = Enum.SurfaceType.Smooth
+	ramp.BottomSurface = Enum.SurfaceType.Smooth
+	ramp.Size = Vector3.new(8, beltTop, TREADMILL_RAMP)
+	local rampCenter = base * CFrame.new(0, beltTop / 2, 10 + TREADMILL_RAMP / 2)
+	ramp.CFrame = CFrame.lookAt(rampCenter.Position, rampCenter.Position + base.LookVector * -1)
+	ramp.Material = Enum.Material.Metal
+	ramp.Color = color:Lerp(Color3.new(0, 0, 0), 0.35)
+	ramp.Parent = model
 
 	-- Leuchtende Seitenrahmen
 	for _, s in ipairs({ -1, 1 }) do
@@ -1091,6 +1112,7 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		CFrame = base * CFrame.new(0, 6, -10.5),
 		Transparency = 1,
 		CastShadow = false,
+		CanQuery = false, -- nur Wand (keine Kamera-/Klick-Treffer), Kollision bleibt
 		Parent = model,
 	})
 

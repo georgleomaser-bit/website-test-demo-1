@@ -514,7 +514,8 @@ function PlotService.TeleportHome(player: Player)
 	teleportToPlot(player)
 end
 
--- Hinter das beste gekaufte Laufband (Neulinge landen so am Holz-Laufband, nicht vor Gold)
+-- AUF das beste gekaufte Laufband (hinteres Drittel der Lauffläche, Blick zur Konsole).
+-- Neulinge landen so auf dem Holz-Laufband, nicht vor Gold. Lauffläche: lokales -Z (LookVector) = Laufrichtung.
 local function treadmillTarget(player: Player): CFrame
 	local data = Services.DataService.Get(player)
 	local best = Config.BestTreadmill(data and data.Treadmills)
@@ -522,10 +523,11 @@ local function treadmillTarget(player: Player): CFrame
 	if best and folder then
 		for _, model in ipairs(folder:GetChildren()) do
 			local belt = model:IsA("Model") and model:GetAttribute("TreadmillId") == best.Id and model.PrimaryPart
-			if belt then
-				-- Lauffläche: lokales -Z (LookVector) = Laufrichtung -> Einstieg von hinten
-				local spot = belt.Position - belt.CFrame.LookVector * (belt.Size.Z / 2 + 4) + Vector3.new(0, 3.5, 0)
-				return CFrame.lookAt(spot, Vector3.new(belt.Position.X, spot.Y, belt.Position.Z))
+			if belt and belt:IsA("BasePart") then
+				local look = belt.CFrame.LookVector
+				local top = belt.Position + belt.CFrame.UpVector * (belt.Size.Y / 2)
+				local spot = top - look * math.max(0, belt.Size.Z / 2 - 4) + Vector3.new(0, 3.5, 0)
+				return CFrame.lookAt(spot, spot + Vector3.new(look.X, 0, look.Z))
 			end
 		end
 	end

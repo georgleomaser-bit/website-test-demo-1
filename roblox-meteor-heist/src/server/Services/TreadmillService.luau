@@ -42,7 +42,7 @@ local MAX_HEIGHT = 10 -- HumanoidRootPart höchstens so hoch über der Lauffläc
 local MIN_HEIGHT = -0.5
 -- Spielraum um die Lauffläche (Füße ragen über die Hüfte hinaus; Seitenrahmen innen beginnt direkt am Band)
 local MARGIN_X = 0.5
-local MARGIN_Z = 1.5
+local MARGIN_Z = 1
 local MIN_MOVE = 0.05 -- Humanoid.MoveDirection mindestens so lang = Spieler drückt eine Lauf-Taste
 -- Physik-Prüfung: so viel anders schnell als das Band (Studs/s) = läuft. Wer stillsteht, fährt mit (≈ 0).
 local MIN_RELATIVE_SPEED = 3
@@ -133,12 +133,23 @@ function TreadmillService.FindTreadmill(position: Vector3): Treadmill?
 	return nil
 end
 
+-- Steht der Spieler wirklich AUF der Lauffläche? Strahl von der Hüfte nach unten muss das Band treffen
+-- (nicht Seitenrahmen, Rampe oder Konsole). Unabhängig von R6/R15, HipHeight und Avatar-Größe.
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = true
+local function standsOnBelt(treadmill: Treadmill, root: BasePart, character: Model): boolean
+	rayParams.FilterDescendantsInstances = { character }
+	local result = workspace:Raycast(root.Position, Vector3.new(0, -(MAX_HEIGHT + 2), 0), rayParams)
+	return result ~= nil and result.Instance == treadmill.Belt
+end
+
 -- Physik: ist der Spieler (waagerecht) deutlich anders schnell als das Band? Stillstehen = mitfahren = nein.
 -- Funktioniert auch, wenn Humanoid.MoveDirection beim Server nicht ankommt.
-local function walkingByPhysics(treadmill: Treadmill, root: BasePart): boolean
+local function walkingByPhysics(treadmill: Treadmill, root: BasePart, character: Model): boolean
 	local relative = root.AssemblyLinearVelocity - treadmill.Velocity
 	relative -= Vector3.yAxis * relative.Y
-	return relative.Magnitude > MIN_RELATIVE_SPEED
+	return relative.Magnitude > MIN_RELATIVE_SPEED and standsOnBelt(treadmill, root, character)
 end
 
 local function hint(player: Player, text: string, kind: string?)
@@ -173,7 +184,7 @@ function TreadmillService.TickPlayer(player: Player): string
 		hint(player, "⏳ Dein Spielstand lädt noch – gleich gibt's Schritte!")
 		return "loading"
 	end
-	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE or walkingByPhysics(treadmill, root)
+	local walking = humanoid.MoveDirection.Magnitude > MIN_MOVE or walkingByPhysics(treadmill, root, character :: Model)
 	if not walking then
 		local now = os.clock()
 		local since = idleSince[player]
