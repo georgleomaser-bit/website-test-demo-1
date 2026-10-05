@@ -1,0 +1,23 @@
+{
+  "name": "Eier-Raub",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "EierRaub": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "EierRaubServer": {
+        "$path": "src/server/Main.server.luau"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "EierRaubClient": {
+          "$path": "src/client/Main.client.luau"
+        }
+      }
+    }
+  }
+}
