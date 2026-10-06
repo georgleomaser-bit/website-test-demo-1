@@ -15,8 +15,67 @@ import { openCapture } from "./capture.js";
 import { askAI } from "./aiui.js";
 import { openInstallHelp, installHint } from "./install.js";
 import { CHECK } from "./icons.js";
+import * as connect from "../connect.js";
 
 const asBag = (x) => (x && typeof x === "object" ? x : x ? store.bag(x) : null);
+
+// ---------- Mail und Kalender ----------
+const hm = (ms) => new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+const extLink = (href) => (/^https:\/\//.test(href || "") ? `href="${esc(href)}" target="_blank" rel="noopener noreferrer"` : "");
+
+function connectSections(now) {
+  const snap = safe(() => connect.snapshot(now), null);
+  if (!snap) return "";
+  let html = "";
+  const loading = snap.loading ? `<span class="spinner conn-spin" aria-label="Lädt"></span>` : "";
+  const relogin = (snap.needsLogin || []).map((p) => `<button type="button" class="pill accent" data-act="connect-relogin" data-p="${esc(p)}">${esc(connect.PROVIDERS[p]?.name || p)} neu verbinden</button>`).join("");
+  const err = (snap.errors || []).length ? `<p class="conn-note">${(snap.errors || []).some((e) => e.text === "offline") ? "Offline – das hier ist der letzte Stand." : "Konnte gerade nicht alles laden. Ich versuche es gleich noch einmal."}</p>` : "";
+
+  // Termine
+  const evs = snap.events || [];
+  const evRows = evs.map((e) => {
+    const past = !e.allDay && e.end < +now;
+    const time = e.allDay ? "ganztägig" : `${hm(e.start)} – ${hm(e.end)}`;
+    const href = extLink(e.link);
+    return `<${href ? "a" : "div"} class="watch conn-row${past ? " past" : ""}" ${href}><span class="conn-time">${esc(e.allDay ? "Tag" : hm(e.start))}</span><span class="watch-t"><b>${esc(e.title)}</b><small>${esc(time)}${e.where ? ` · ${esc(e.where)}` : ""}</small></span></${href ? "a" : "div"}>`;
+  });
+  html += sec({
+    key: "conn-cal", title: "Termine heute", icon: "calendar", tone: "red", count: evs.length || "",
+    actions: loading + relogin,
+    body: evRows.length ? evRows.join("") : `<p class="conn-empty">${snap.loading ? "Ich schaue in deinen Kalender …" : "Heute keine Termine im Kalender."}</p>`,
+  });
+
+  // Mails
+  const mails = snap.mails || [];
+  const mailRows = mails.map((m) => {
+    const href = extLink(m.link);
+    const d = new Date(m.date);
+    const when = localDay(d) === localDay(now) ? hm(m.date) : d.toLocaleDateString("de-DE", { weekday: "short", day: "numeric", month: "numeric" });
+    return `<div class="watch conn-row" data-key="mail-${esc(m.id)}"><a class="conn-open" ${href}><span class="watch-t"><b>${esc(m.subject)}</b><small>${esc(m.from)} · ${esc(when)}</small>${m.preview ? `<small class="conn-prev">${esc(m.preview)}</small>` : ""}</span></a><button type="button" class="pill accent" data-act="connect-task" data-id="${esc(m.id)}" aria-label="Als Aufgabe übernehmen">${icon("plus")}<span>Aufgabe</span></button></div>`;
+  });
+  html += sec({
+    key: "conn-mail", title: "Neue Mails", icon: "mail", tone: "blue", count: mails.length || "",
+    body: mailRows.length ? mailRows.join("") : `<p class="conn-empty">${snap.loading ? "Ich schaue in dein Postfach …" : "Keine ungelesenen Mails. Schön!"}</p>`,
+  });
+  return html + err;
+}
+const localDay = (d) => `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+
+on("click", {
+  "connect-relogin": (el) => connect.start(el.dataset.p, { silent: true }).catch((e) => toastError(e)),
+  "connect-task": (el) => {
+    const m = (connect.snapshot()?.mails || []).find((x) => x.id === el.dataset.id);
+    if (!m) return;
+    try {
+      store.addTask(connect.mailToTask(m));
+      connect.hideMail(m.id);
+      haptic();
+      toast("In den Eingang gelegt", { icon: "tray", sub: m.subject });
+    } catch (e) {
+      toastError(e);
+    }
+  },
+});
 
 // ---------- Briefing (mit Rückfallebene, falls pm.js ausfällt) ----------
 function getBriefing(s, now) {
@@ -123,6 +182,9 @@ ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("spa
   } else if (focus.length || timeline.length) {
     html += `<div class="add-line" data-key="add-line">${addRow(true)}</div>`;
   }
+
+  // Mail und Kalender aus verbundenen Konten
+  html += connectSections(now);
 
   // Installations-Hinweis / Erinnerungs-Karte (nach den Aufgaben – zuerst zählt, was ansteht)
   const inst = installHint();

@@ -25,6 +25,7 @@ const P = {
   calendar: `<rect x="3.5" y="5" width="17" height="15.5" rx="3.6"/><path d="M3.5 10h17M8 3v4M16 3v4"/>${dot(8, 14)}${dot(12, 14)}${dot(16, 14)}${dot(8, 17.3)}${dot(12, 17.3)}`,
   calendarPlus: `<rect x="3.5" y="5" width="17" height="15.5" rx="3.6"/><path d="M3.5 10h17M8 3v4M16 3v4M12 12.6v5.2M9.4 15.2h5.2"/>`,
   calendarCheck: `<rect x="3.5" y="5" width="17" height="15.5" rx="3.6"/><path d="M3.5 10h17M8 3v4M16 3v4M9 15.2l2.1 2.1 4-4.2"/>`,
+  mail: `<rect x="3" y="5.5" width="18" height="13" rx="2.6"/><path d="M3.8 7l8.2 6 8.2-6"/>`,
   tray: `<path d="M3.5 13.5l2.6-7.2A2 2 0 0 1 8 5h8a2 2 0 0 1 1.9 1.3l2.6 7.2V18a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/><path d="M3.5 13.5H8l1.2 2.2h5.6l1.2-2.2h4.5"/>`,
   bag: `<rect x="3" y="7.2" width="18" height="12.8" rx="3.4"/><path d="M8.6 7.2V5.7A1.7 1.7 0 0 1 10.3 4h3.4a1.7 1.7 0 0 1 1.7 1.7v1.5M3 12.6h18"/><path d="M10.6 11.6h2.8v2.2h-2.8z"/>`,
   chart: `<path d="M3.8 20.2h16.4"/><rect x="5.2" y="11.5" width="3.2" height="6.2" rx="1.1"/><rect x="10.4" y="7.5" width="3.2" height="10.2" rx="1.1"/><rect x="15.6" y="4.2" width="3.2" height="13.5" rx="1.1"/>`,

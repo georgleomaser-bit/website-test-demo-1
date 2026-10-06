@@ -44,6 +44,34 @@ Apple lässt Web-Apps im Hintergrund keinen eigenen Code ausführen. Deshalb gib
 
 Der Kalender-Export ist eine Momentaufnahme. Nach größeren Änderungen exportierst du einfach neu.
 
+## Mail und Kalender (Google und Microsoft)
+Unter **Einstellungen → Mail und Kalender** verbindet jeder sein eigenes Postfach. Danach zeigt „Heute“ die **Termine von heute** und die **neuen, ungelesenen Mails**. Ein Tipp auf **＋ Aufgabe** legt die Mail als Aufgabe in den Eingang, mit Absender, Vorschau und einem Link zurück zur Mail.
+
+- **Google:** Gmail und Google Kalender (Hauptkalender).
+- **Microsoft:** Outlook.com, Hotmail und Microsoft 365.
+- Die App **liest nur**. Sie verschickt, verschiebt und löscht nichts. Alles läuft direkt zwischen Gerät und Google bzw. Microsoft, kein eigener Server liest mit. Die Anmeldung gilt nur auf dem Gerät, auf dem sie gemacht wurde.
+- Apple Mail und iCloud-Mail kann keine Web-App lesen (auch keine App aus dem App Store). Für iCloud-Termine gibt es weiterhin den Kalender-Export oben.
+- Die Anmeldung hält bei Google etwa eine Stunde, bei Microsoft etwa einen Tag. Danach erscheint in „Heute“ **„… neu verbinden“**. Ein Tipp genügt meist, weil das Konto schon bekannt ist.
+
+### Einmalig einrichten (nur der Betreiber der App)
+Damit die Knöpfe erscheinen, braucht die App je eine öffentliche App-Kennung. Beide kommen in `js/config.js` bei `CONNECT`. Als Weiterleitungsadresse gilt überall genau die App-Adresse, z. B. `https://georgleomaser-bit.github.io/website-test-demo-1/taschen/` (mit Schrägstrich am Ende).
+
+**Google** (https://console.cloud.google.com):
+1. Neues Projekt anlegen, dann unter „APIs und Dienste → Bibliothek“ die **Gmail API** und die **Google Calendar API** aktivieren.
+2. „OAuth-Zustimmungsbildschirm“: Typ **Extern**, App-Name „Arbeitstaschen“, Bereiche `gmail.readonly` und `calendar.events.readonly` hinzufügen.
+3. „Anmeldedaten → OAuth-Client-ID“: Typ **Webanwendung**. Bei „Autorisierte JavaScript-Quellen“ `https://georgleomaser-bit.github.io` eintragen, bei „Autorisierte Weiterleitungs-URIs“ die App-Adresse.
+4. Die Client-ID (`….apps.googleusercontent.com`) bei `CONNECT.google` eintragen.
+
+Wichtig: Solange die Google-App im **Testmodus** ist, können sich nur bis zu 100 Personen anmelden, die du unter „Testnutzer“ einträgst, und Google zeigt einen Warnhinweis. Für alle Menschen ohne Hinweis verlangt Google eine Prüfung der App, und für Gmail zusätzlich eine kostenpflichtige Sicherheitsprüfung.
+
+**Microsoft** (https://entra.microsoft.com → App-Registrierungen → Neue Registrierung):
+1. Kontotypen: **„Konten in einem beliebigen Organisationsverzeichnis und persönliche Microsoft-Konten“**.
+2. Umleitungs-URI: Plattform **„Single-Page-Anwendung (SPA)“** und die App-Adresse.
+3. Unter „API-Berechtigungen“ für Microsoft Graph (delegiert) `Mail.Read`, `Calendars.Read`, `User.Read` und `offline_access` hinzufügen.
+4. Die „Anwendungs-ID (Client)“ bei `CONNECT.microsoft` eintragen.
+
+Microsoft verlangt keine Prüfung. Ohne bestätigten Herausgeber zeigt die Anmeldung „nicht überprüft“ an; manche Firmen-Konten brauchen die Zustimmung ihres Administrators.
+
 ## Auf allen Geräten: Sync
 Sync gleicht iPhone, iPad und Mac über **deinen eigenen Server** ab, **Ende-zu-Ende-verschlüsselt**. Aus deinem Sync-Code entsteht auf dem Gerät der Schlüssel. Der Server bekommt nur verschlüsselte Daten und kann nichts davon lesen.
 
@@ -91,6 +119,7 @@ Wenn auf dem Server ein Anthropic-Schlüssel hinterlegt ist, erscheinen in der A
 | `js/dates.js` | Datum, Uhrzeit und die deutsche Schnellerfassung |
 | `js/remind.js` | Erinnerungen: Mitteilungen, App-Symbol-Zahl, Kalender (ICS), Kurzbefehl, Push |
 | `js/sync.js` | Ende-zu-Ende-verschlüsselter Sync |
+| `js/connect.js` | Mail und Kalender: Anmeldung bei Google und Microsoft, Termine und Mails lesen |
 | `js/ai.js` | KI-Projektmanager (über den eigenen Server) |
 | `js/seed.js` | deine Projekte als Startdaten |
 | `js/config.js` | Name, Farben, Speicher, Server-Adresse (eine Stelle für alles) |

@@ -14,6 +14,10 @@ export const DB = { name: "arbeitstaschen", version: 1, kv: "kv", files: "files"
 // Leer = automatisch: Läuft die App auf dem eigenen Server, wird er gefunden.
 export const SERVER = { url: "" };
 
+// Mail und Kalender: öffentliche App-Kennungen (Client-IDs) aus Google Cloud und Microsoft Entra.
+// Leer = dieser Anbieter wird in der App nicht angeboten. Einrichtung: siehe TASCHEN.md, Abschnitt „Mail und Kalender“.
+export const CONNECT = { google: "", microsoft: "" };
+
 // Apple-Systemfarben [hell, dunkel]
 export const COLORS = {
   blue: ["#007AFF", "#0A84FF"],
