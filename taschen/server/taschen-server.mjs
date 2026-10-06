@@ -6,7 +6,7 @@
 //   PORT (8082) · HOST · DATA_DIR (taschen/data) · TRUST_PROXY=1 · PROXY_IP_HEADER (x-forwarded-for) · ALLOWED_HOSTS
 //   ALLOWED_ORIGINS     Fremde Herkünfte, die den Server per CORS nutzen dürfen (Standard https://georgleomaser-bit.github.io;
 //                       Komma-Liste, TASCHEN_ORIGINS gilt als Alias). Die eigene Herkunft ist immer erlaubt.
-//   VAPID_SUBJECT       Kontakt für die Push-Dienste (Standard mailto:acytex@outlook.de) – nur mailto: oder https:
+//   VAPID_SUBJECT       Kontakt für die Push-Dienste (Standard https://<erster Eintrag aus ALLOWED_HOSTS>) – nur mailto: oder https:
 //   ANTHROPIC_API_KEY   Schlüssel von console.anthropic.com (oder Datei DATA_DIR/anthropic-key.txt) – ohne ihn keine KI
 //   TASCHEN_MODEL       Modell für den KI-Projektmanager (Standard claude-opus-5-5) · TASCHEN_EFFORT (medium)
 //   TASCHEN_AI_DAILY    Kostenbremse: KI-Anfragen pro Tag für alle zusammen (Standard 100) · TASCHEN_AI_DEVICE (40 pro Gerät)
@@ -362,7 +362,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
   const TICK = Math.max(100, num(env.TASCHEN_TICK_MS, 30000));
   const PUSH_EXTRA = list(env.TASCHEN_PUSH_HOSTS).map((h) => h.toLowerCase().replace(/^\[|\]$/g, ""));
   const MAX_SUBS = num(env.TASCHEN_MAX_DEVICES, 1000);
-  const SUBJECT = /^(mailto:[^\s@]+@[^\s@]+|https:\/\/\S+)$/.test(env.VAPID_SUBJECT || "") ? env.VAPID_SUBJECT : "mailto:acytex@outlook.de";
+  const SUBJECT = /^(mailto:[^\s@]+@[^\s@]+|https:\/\/\S+)$/.test(env.VAPID_SUBJECT || "") ? env.VAPID_SUBJECT : `https://${ALLOWED_HOSTS[0] || "localhost"}`;
   if (env.VAPID_SUBJECT && SUBJECT !== env.VAPID_SUBJECT) warn("⚠️  VAPID_SUBJECT muss mit mailto: oder https: beginnen – nehme", SUBJECT);
   const MODEL = env.TASCHEN_MODEL || "claude-opus-5-5";
   const EFFORT = ["low", "medium", "high", "xhigh", "max"].includes(env.TASCHEN_EFFORT) ? env.TASCHEN_EFFORT : "medium";

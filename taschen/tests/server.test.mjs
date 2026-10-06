@@ -9,6 +9,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
+import { BRAND } from "../js/config.js";
 import { start, vapidJwt, vapidKeys, pushHostAllowed, localParts, normalizeAnswer, validTz } from "../server/taschen-server.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -127,7 +128,7 @@ test("GET /api/health meldet den Taschen-Server", async () => {
   assert.equal(r.status, 200);
   assert.equal(r.data.ok, true);
   assert.equal(r.data.service, "taschen");
-  assert.equal(r.data.version, "1.0.0");
+  assert.equal(r.data.version, BRAND.version);
   assert.equal(r.data.sync, true);
   assert.equal(r.data.push, true);
   assert.equal(r.data.ai, false);
@@ -458,7 +459,7 @@ function checkPushRequest(h, key) {
   const jwt = decodeJwt(m[1]);
   assert.deepEqual(jwt.header, { typ: "JWT", alg: "ES256" });
   assert.equal(jwt.claims.aud, `http://127.0.0.1:${push.port}`);
-  assert.equal(jwt.claims.sub, "mailto:acytex@outlook.de");
+  assert.equal(jwt.claims.sub, "https://taschen.example"); // Standard: eigene Adresse aus ALLOWED_HOSTS
   const now = Math.floor(Date.now() / 1000);
   assert.ok(jwt.claims.exp > now + 3600, "exp in der Zukunft");
   assert.ok(jwt.claims.exp <= now + 12 * 3600 + 5, "exp höchstens 12 Std.");

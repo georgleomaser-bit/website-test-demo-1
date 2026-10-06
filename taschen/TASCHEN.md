@@ -1,8 +1,8 @@
 # Arbeitstaschen – dein persönlicher Projektmanager
 
-Arbeitstaschen ist eine App für alle deine Projekte, mit einer **digitalen Arbeitstasche pro Projekt**. Jede Tasche hält Aufgaben, Notizen, Links, Dateien und Meilensteine zusammen. Jeden Tag sagt sie dir wie ein Projektmanager, was ansteht und womit du anfangen solltest.
+Arbeitstaschen ist eine App, mit der du deine ganze Arbeit verwaltest: eine **digitale Arbeitstasche pro Bereich oder Projekt**, z. B. Kunden, Büro, Team oder eine Baustelle. Jede Tasche hält Aufgaben, Notizen, Links, Dateien und Meilensteine zusammen. Jeden Tag sagt sie dir wie ein Projektmanager, was ansteht und womit du anfangen solltest.
 
-Die App ist für iPhone, iPad und Mac gebaut, funktioniert offline und gehört nur dir. Sie ist komplett getrennt von AKYTEX und NOVA: eigener Ordner, eigene App, eigener Server.
+Die App ist für iPhone, iPad und Mac gebaut, funktioniert offline und gehört nur dir. Sie startet leer – du legst alles selbst an.
 
 **Link:** https://georgleomaser-bit.github.io/website-test-demo-1/taschen/
 
@@ -12,18 +12,18 @@ Die App ist für iPhone, iPad und Mac gebaut, funktioniert offline und gehört n
 
 Wichtig: Auf dem iPhone hat die installierte App einen **eigenen Speicher**, getrennt von Safari. Installiere also zuerst und richte dann alles in der App ein. Mit Sync (siehe unten) sind alle Geräte auf demselben Stand.
 
-Beim ersten Start fragt die App nach deinem Namen und deinem Tagesrhythmus. Mit **„Mit meinen Projekten starten“** lädt sie deine Projekte aus diesem Repo als 7 Taschen: AKYTEX-Plattform & Go-Live, Firma & Beteiligung, Broker-Partner & Echtgeld, Zahlungen & Stripe, Marketing & Clips, Server & Betrieb und NOVA. Darin stecken die offenen Aufgaben aus GO-LIVE, LAUNCH, dem Aktien-Fahrplan, der Broker-Anfrage, MARKETING, PAYMENTS und SERVER, mit Meilensteinen und ein paar eingeplanten nächsten Schritten.
+Beim ersten Start fragt die App nach deinem Namen, nach den **Bereichen deiner Arbeit** (z. B. Kunden, Projekte, Büro & Verwaltung, Team, Termine, Finanzen – oder eigene wie „Baustelle Nord“) und nach deinem Tagesrhythmus. Für jeden Bereich legt sie eine leere Tasche an. Du kannst auch ganz leer starten.
 
 ## So arbeitest du damit
 - **Heute:** Das Tagesbriefing zeigt, was ansteht, deine **Top 3 im Fokus**, einen Zeitplan, Überfälliges und Taschen, die ins Stocken geraten. Dazu kommen „Tag planen“ am Morgen, der Fokus-Timer und der Tagesabschluss am Abend.
 - **Schnell erfassen:** Tippe auf **＋** (auf dem Mac die Taste **N**) und schreib einfach drauflos:
-  - `Logo fertig machen morgen 9 Uhr #AKYTEX !!!` legt die Aufgabe für morgen um 9:00 in die Tasche AKYTEX, mit hoher Priorität.
+  - `Angebot schicken morgen 9 Uhr #Kunden !!!` legt die Aufgabe für morgen um 9:00 in die Tasche „Kunden“, mit hoher Priorität.
   - `Notar anrufen Freitag 14:30 30 min vorher` setzt eine Erinnerung 30 Minuten vor dem Termin.
-  - `Newsletter schreiben jeden Montag ~45m #Marketing` wiederholt die Aufgabe jeden Montag und plant 45 Minuten ein.
-  - `Idee: Liga-Saison 2 irgendwann` kommt in „Irgendwann“.
+  - `Wochenplanung jeden Montag ~45m #Büro` wiederholt die Aufgabe jeden Montag und plant 45 Minuten ein.
+  - `Idee: Lager neu sortieren irgendwann` kommt in „Irgendwann“.
 
   Was die App erkannt hat, siehst du sofort als farbige Chips.
-- **Taschen:** Jede Tasche zeigt Fortschritt, Gesundheit (Gut, Achtung, Kritisch) und den nächsten Schritt. In der Tasche gibt es die Bereiche Übersicht, Aufgaben, Board, Notizen, Links, Dateien, Meilensteine und Verlauf. Neue Taschen kannst du aus Vorlagen anlegen, z. B. Produkt-Launch, Firma/Gründung oder Marketing-Kampagne.
+- **Taschen:** Jede Tasche zeigt Fortschritt, Gesundheit (Gut, Achtung, Kritisch) und den nächsten Schritt. In der Tasche gibt es die Bereiche Übersicht, Aufgaben, Board, Notizen, Links, Dateien, Meilensteine und Verlauf. Neue Taschen kannst du aus Vorlagen anlegen: Kunde/Auftrag, Projekt, Büro & Verwaltung, Team & Personal, Besprechung, Veranstaltung, Weiterbildung oder leer.
 - **Eingang:** Alles ohne Tasche landet hier. Die App schlägt vor, wohin es gehört, und ein Tipp sortiert es ein.
 - **Demnächst:** Hier siehst du Wochenstreifen und Agenda. Ziehst du eine Aufgabe auf einen Tag, wird sie verschoben.
 - **Rückblick:** Ein geführter Wochenrückblick mit Erfolgen, leerem Eingang, Neuplanung, Taschen-Check und Fokus für nächste Woche.
@@ -51,19 +51,19 @@ Sync gleicht iPhone, iPad und Mac über **deinen eigenen Server** ab, **Ende-zu-
 2. Auf dem ersten Gerät: **Einstellungen → Sync auf allen Geräten → Sync einrichten**, die Server-Adresse eintragen und dann **Kopieren**.
 3. Auf jedem weiteren Gerät: **„Ich habe schon einen Code“** wählen und den Code einfügen. Tipp: Auf dem Mac kopieren, auf dem iPhone einfügen; die Universelle Zwischenablage macht das automatisch.
 
-Du kannst die App über GitHub Pages benutzen und den Server nur für Sync, Push und KI eintragen. Oder du installierst die App direkt von der Server-Adresse, dann findet sie den Server von selbst. Wer den Code hat, kann alles lesen. Teile ihn also nur mit Geräten, denen du vertraust, z. B. mit Paul, wenn ihr eine Tasche gemeinsam führt.
+Du kannst die App über GitHub Pages benutzen und den Server nur für Sync, Push und KI eintragen. Oder du installierst die App direkt von der Server-Adresse, dann findet sie den Server von selbst. Wer den Code hat, kann alles lesen. Teile ihn also nur mit Geräten und Menschen, denen du vertraust.
 
 Dateien bis 10 MB werden mit synchronisiert, größere bleiben auf dem Gerät, auf dem sie hochgeladen wurden.
 
-## Server installieren (ein Befehl, läuft neben AKYTEX und NOVA)
-Im Terminal des Servers, zum Beispiel in der Hetzner-Konsole:
+## Server installieren (ein Befehl)
+Im Terminal eines eigenen Linux-Servers (z. B. bei Hetzner):
 ```
 curl -fsSL https://raw.githubusercontent.com/georgleomaser-bit/website-test-demo-1/HEAD/taschen/server/install.sh | sudo bash
 ```
 - **Domain:** optional. Mit Enter bekommst du eine kostenlose Adresse wie `taschen.1-2-3-4.sslip.io`.
 - **Anthropic-Schlüssel:** optional, nur für den KI-Projektmanager. Den Schlüssel `sk-ant-…` holst du dir unter https://console.anthropic.com/settings/keys
 
-Der Server läuft auf Port 8082 (AKYTEX nutzt 8080, NOVA 8081). Danach gilt:
+Der Server läuft auf Port 8082 und verträgt sich mit anderen Diensten auf demselben Rechner. Danach gilt:
 - `taschen-update` holt die neueste Version.
 - `journalctl -u taschen -f` zeigt die Logs.
 - Einstellungen stehen in `/etc/taschen.env`, die Daten in `/var/lib/taschen`, mit täglichem Backup.
@@ -79,7 +79,7 @@ Wenn auf dem Server ein Anthropic-Schlüssel hinterlegt ist, erscheinen in der A
 - Alles liegt zuerst **auf deinem Gerät**, und die App funktioniert offline.
 - **Backup:** Einstellungen → Daten → „Backup exportieren“. Auf dem iPhone landet die Datei über „Teilen“ z. B. in iCloud Drive. Mit „Backup importieren“ holst du sie zurück, als Zusammenführung oder als Ersatz.
 - Der Server speichert nur verschlüsselte Sync-Daten und für Push nur Zeitpunkte, nie Aufgabentexte. Sync-IDs tauchen in keinem Log auf.
-- AKYTEX, NOVA und Arbeitstaschen liegen auf derselben Adresse (github.io), deshalb heißt alles der Taschen-App mit `taschen-` bzw. `arbeitstaschen`. „Alles löschen“ entfernt nur die Daten der Taschen-App.
+- „Alles löschen“ entfernt nur die Daten der Taschen-App (alles beginnt mit `taschen-` bzw. `arbeitstaschen`), sonst nichts auf der Adresse.
 
 ## Dateien
 | Datei | Inhalt |
@@ -92,7 +92,6 @@ Wenn auf dem Server ein Anthropic-Schlüssel hinterlegt ist, erscheinen in der A
 | `js/remind.js` | Erinnerungen: Mitteilungen, App-Symbol-Zahl, Kalender (ICS), Kurzbefehl, Push |
 | `js/sync.js` | Ende-zu-Ende-verschlüsselter Sync |
 | `js/ai.js` | KI-Projektmanager (über den eigenen Server) |
-| `js/seed.js` | deine Projekte als Startdaten |
 | `js/config.js` | Name, Farben, Speicher, Server-Adresse (eine Stelle für alles) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | App-Installation, Offline-Betrieb, Push |
 | `server/taschen-server.mjs`, `server/install.sh` | eigener Server: App, Sync, Push, KI; Installation mit einem Befehl |

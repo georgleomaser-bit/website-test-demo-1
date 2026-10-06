@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://raw.githubusercontent.com/georgleomaser-bit/website-test-demo-1/HEAD/taschen/server/install.sh | sudo bash
 #
-# Läuft neben AKYTEX (Port 8080) und NOVA (Port 8081) auf demselben Server: eigener Dienst, eigener Port 8082, eigene Adresse.
+# Läuft auch neben anderen Diensten auf demselben Server: eigener Dienst, eigener Port 8082, eigene Adresse.
 # Richtet ein: Node.js 22, Arbeitstaschen als abgeschotteter Dienst (Sync zwischen iPhone, iPad und Mac, Erinnerungen per
 # Web Push, optional der KI-Projektmanager mit Claude), Caddy mit automatischem HTTPS, Firewall, fail2ban, automatische
 # Sicherheitsupdates, tägliche Backups und den Befehl „taschen-update“.
@@ -18,7 +18,6 @@ DATA=/var/lib/taschen
 ENVF=/etc/taschen.env
 PORT=8082
 DEFAULT_ORIGINS="https://georgleomaser-bit.github.io"
-DEFAULT_SUBJECT="mailto:acytex@outlook.de"
 
 say() { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
 warn() { printf '  \033[1;33m⚠️  %s\033[0m\n' "$*"; }
@@ -68,6 +67,7 @@ case "$KEY" in "" | sk-ant-*) ;; *) warn "Das sieht nicht nach einem Anthropic-S
 ORIGINS=${ALLOWED_ORIGINS:-${TASCHEN_ORIGINS:-$(getenv ALLOWED_ORIGINS)}}
 ORIGINS=${ORIGINS:-$DEFAULT_ORIGINS}
 SUBJECT=${VAPID_SUBJECT:-$(getenv VAPID_SUBJECT)}
+DEFAULT_SUBJECT="https://$DOMAIN" # Kontakt für die Push-Dienste: die eigene Adresse
 SUBJECT=${SUBJECT:-$DEFAULT_SUBJECT}
 case "$SUBJECT" in mailto:*@* | https://*) ;; *) warn "VAPID_SUBJECT muss mit mailto: oder https: beginnen – nehme $DEFAULT_SUBJECT."; SUBJECT=$DEFAULT_SUBJECT ;; esac
 

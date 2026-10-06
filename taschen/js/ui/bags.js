@@ -49,7 +49,7 @@ export function render() {
       emoji: "👜",
       title: "Pack deine erste Tasche",
       text: "Eine Tasche ist ein Projekt: Aufgaben, Notizen, Links, Dateien und Meilensteine an einem Ort – und ich behalte den Überblick.",
-      action: `<button type="button" class="btn primary" data-act="bag-new">${icon("plus")}<span>Neue Tasche</span></button><button type="button" class="btn" data-act="seed-merge">${icon("sparkle")}<span>Meine Projekte laden</span></button>`,
+      action: `<button type="button" class="btn primary" data-act="bag-new">${icon("plus")}<span>Neue Tasche</span></button>`,
       cls: "big",
     });
     return `<div class="view view-bags" data-key="view-bags">${html}</div>`;
@@ -139,7 +139,7 @@ ${preview}
 ${!ed.id ? `<h3 class="form-h">Vorlage</h3><div class="tpl-row hscroll">${TEMPLATES.map((t) => `<button type="button" class="tpl${ed.tpl === t.id ? " on" : ""}" data-act="be-tpl" data-v="${t.id}" style="${colorVars(t.color)}"><span class="tpl-e">${esc(t.emoji)}</span><b>${esc(t.name)}</b><small>${t.tasks.length ? `${t.tasks.length} Aufgaben` : "Ohne Inhalt"}</small></button>`).join("")}</div>${tpl && tpl.id !== "empty" ? `<p class="fine">${icon("info")} Checkliste als Startpunkt – keine Rechts- oder Steuerberatung.</p>` : ""}` : ""}
 <h3 class="form-h">Name & Ziel</h3>
 <div class="card form">
-<label class="frow input"><span class="frow-l">Name</span><input type="text" class="in-text" value="${esc(ed.name)}" placeholder="z. B. AKYTEX Go-Live" data-input="be-field" data-f="name" maxlength="80" ${ed.id ? "" : "autofocus"} enterkeyhint="next" /></label>
+<label class="frow input"><span class="frow-l">Name</span><input type="text" class="in-text" value="${esc(ed.name)}" placeholder="z. B. Kunde Müller oder Büro" data-input="be-field" data-f="name" maxlength="80" ${ed.id ? "" : "autofocus"} enterkeyhint="next" /></label>
 <label class="frow input col"><span class="frow-l">Ziel</span><textarea class="in-text grow" rows="2" placeholder="Was soll am Ende erreicht sein?" data-input="be-field" data-f="goal" maxlength="400">${esc(ed.goal)}</textarea></label>
 <label class="frow input"><span class="frow-l">Deadline</span><input type="date" class="in-date" value="${esc(ed.deadline)}" data-input="be-field" data-f="deadline" /></label>
 </div>
@@ -171,7 +171,7 @@ function saveBag() {
     const bag = store.addBag({ ...data, sections: [...tpl.sections] });
     const tdy = today();
     for (const t of tpl.tasks) {
-      const task = store.addTask({ bag: bag.id, title: t.title, section: t.section || "", prio: t.prio || 0, due: t.dueIn != null ? dates.addDays(tdy, t.dueIn) : null, repeat: t.repeat || null });
+      const task = store.addTask({ bag: bag.id, title: t.title, section: t.section || "", prio: t.prio || 0, due: t.dueIn != null ? dates.addDays(tdy, t.dueIn) : t.repeat ? tdy : null, repeat: t.repeat || null });
       for (const st of t.subtasks || []) safe(() => store.addSubtask(task.id, st));
     }
     for (const m of tpl.milestones) safe(() => store.addMilestone({ bag: bag.id, title: m.title, date: m.dueIn != null ? dates.addDays(tdy, m.dueIn) : null }));
@@ -229,7 +229,6 @@ on("click", {
     closeSheet(getSheet("bag-edit"));
     deleteBag(id);
   },
-  "seed-merge": () => import("./settings.js").then((m) => m.loadSeed("merge")),
 });
 
 on("input", {

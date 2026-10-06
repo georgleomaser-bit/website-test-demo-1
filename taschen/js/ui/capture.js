@@ -125,10 +125,10 @@ ${cap.last ? `<button type="button" class="cap-last" data-act="cap-open" data-id
 <div class="cap-help${prefs.capHelp === false ? " closed" : ""}">
 <button type="button" class="cap-help-t" data-act="cap-help">${icon("info")}<span>So schreibst du schnell</span>${icon(prefs.capHelp === false ? "chevronDown" : "chevronUp")}</button>
 ${prefs.capHelp === false ? "" : `<ul>
-<li><code>Logo fertig machen morgen 9 Uhr #AKYTEX !!!</code></li>
+<li><code>Angebot schicken morgen 9 Uhr #Kunden !!!</code></li>
 <li><code>Steuerberater anrufen Fr 14:30 erinnere 30 min vorher</code></li>
 <li><code>Kennzahlen prüfen jeden Montag ~15m</code></li>
-<li><code>Podcast-Idee irgendwann @ideen</code> · <code>Angebot schicken heute einplanen</code></li>
+<li><code>Büro neu einrichten irgendwann @ideen</code> · <code>Angebot schicken heute einplanen</code></li>
 </ul>`}
 </div>
 </div>`;
