@@ -569,7 +569,7 @@ async function boot() {
   if (connected) {
     const r = connect.lastReturn();
     if (r?.ok) {
-      toast(`${connect.providerName(r.provider)} ist verbunden`, { icon: "checkCircle", sub: r.email ? `${r.email} · Termine und Mails werden geladen` : "Termine und Mails werden geladen", ms: 4200 });
+      toast(`${connect.providerName(r.provider)} ist verbunden`, { icon: "checkCircle", sub: r.email || "Termine und Mails werden geladen", ms: 4200 });
       haptic();
     } else if (r) {
       setTimeout(() => infoBox({ title: `${r.provider ? connect.providerName(r.provider) : "Konto"} nicht verbunden`, text: r.error || "Die Anmeldung hat nicht geklappt." }), 350);

@@ -978,7 +978,7 @@ export async function createEvent(account, task, profile = {}, { appUrl = "" } =
     web = httpsUrl(d?.webLink);
     id = d?.id || null;
   } else throw new Error("Unbekannter Anbieter.");
-  refresh(ST, { force: true }).catch(() => {});
+  if (hasWin()) refresh(ST, { force: true }).catch(() => {}); // neuer Termin erscheint gleich in Heute/Demnächst
   return { web, id };
 }
 

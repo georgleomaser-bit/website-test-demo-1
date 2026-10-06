@@ -55,6 +55,24 @@ Du kannst die App über GitHub Pages benutzen und den Server nur für Sync, Push
 
 Dateien bis 10 MB werden mit synchronisiert, größere bleiben auf dem Gerät, auf dem sie hochgeladen wurden.
 
+## Google und Outlook verbinden
+Verbinde deine Postfächer und Kalender: Outlook, Microsoft 365 und Outlook.com über **Microsoft**, Gmail, Google Kalender und Google Workspace über **Google**. Du kannst mehrere Konten verbinden, etwa Firma und privat.
+
+1. **Einstellungen → Konten & Kalender → „Mit Microsoft verbinden“** bzw. **„Mit Google verbinden“**.
+2. Melde dich beim Anbieter an und erlaube den Zugriff. Danach bist du automatisch zurück in der App.
+3. Das Konto ist über den Sync auch auf deinen anderen Geräten da. Auf dem iPhone verbindest du am besten einmal am Mac oder in Safari.
+
+Das bekommst du danach:
+- **Heute:** deine Termine des Tages mit **„Beitreten“** für Teams, Meet, Zoom und Webex. Sie stehen auch im Zeitplan, und das Briefing nennt sie.
+- **Demnächst:** Termine der nächsten 30 Tage je Tag und als Punkte im Wochenstreifen.
+- **Eingang:** markierte Mails (Gmail: Stern, Outlook: Fahne). Ein Tipp macht daraus eine Aufgabe mit Link zur Mail.
+- **An jeder Aufgabe:** „In Kalender eintragen“, „E-Mail schreiben“ und „Anrufen“, sobald eine Telefonnummer im Text steht.
+- **Erinnerungen** auch zu deinen Terminen, so viele Minuten vorher wie bei der Standard-Erinnerung eingestellt.
+
+Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät. Der Server vermittelt nur die Anmeldung und bewahrt den Zugang verschlüsselt auf. Wenn deine Firma Microsoft 365 oder Google Workspace sperrt, muss die IT die App einmal freigeben. Ein Backup enthält die Konten ohne Schlüssel. Nach dem Einspielen auf einem neuen Gerät verbindest du sie einfach neu.
+
+Ohne Server gehen „In Kalender eintragen“ (per Link zu Google Kalender oder Outlook oder als Kalender-Datei), „E-Mail schreiben“ und „Anrufen“ trotzdem.
+
 ## Server installieren (ein Befehl)
 Im Terminal eines eigenen Linux-Servers (z. B. bei Hetzner):
 ```

@@ -37,8 +37,15 @@ export function openExternal(url) {
   }
   const s = safeUrl(u);
   if (!s || !/^https?:/i.test(s)) return;
-  const w = window.open(s, "_blank", "noopener,noreferrer");
-  if (!w) location.href = s;
+  // echter Link-Klick statt window.open(…, "noopener") – der liefert immer null und ließe sich nicht prüfen
+  const a = document.createElement("a");
+  a.href = s;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.hidden = true;
+  document.body.append(a);
+  a.click();
+  a.remove();
 }
 
 const extLink = (url, cls, inner, label = "") => {
@@ -51,11 +58,12 @@ const fmtT = (ms) => {
   return `${d.getHours()}:${String(d.getMinutes()).padStart(2, "0")}`;
 };
 const evEnded = (e, now = Date.now()) => e.end <= now;
-const evLive = (e, now = Date.now()) => e.start - 10 * MIN <= now && now < e.end;
+const evLive = (e, now = Date.now()) => !e.allDay && e.start - 10 * MIN <= now && now < e.end;
 
 // Zeit-Spalte: „9:00 / 10:00“, „ganztägig“, bei mehrtägigen „bis 11:00“
 function whenParts(e, iso) {
   if (e.allDay) return { a: "ganztägig", b: "" };
+
   if (e.date !== iso) return { a: "bis", b: fmtT(e.end) };
   return { a: fmtT(e.start), b: dates.toISO(e.end) === iso ? fmtT(e.end) : "" };
 }
@@ -65,10 +73,13 @@ function evMeta(e, { cal = true } = {}) {
   const kind = e.join ? connect.joinKind(e.join) : "";
   const m = [];
   if (kind) m.push(`<span class="m">${icon("video")}${esc(kind)}</span>`);
-  if (e.location && !(kind && /teams|zoom|meet|webex|http/i.test(e.location))) m.push(`<span class="m">${icon("location")}${esc(e.location)}</span>`);
-  if (cal) m.push(`<span class="m evcal"><i class="bdot"></i>${esc(e.calendar && e.calendar !== "Kalender" ? e.calendar : a?.email || e.calendar || "Kalender")}</span>`);
+  if (e.location && !(kind && /teams|zoom|meet|webex|http/i.test(e.location))) m.push(`<span class="m">${icon("location")}<span class="mt">${esc(e.location)}</span></span>`);
+  if (cal) m.push(`<span class="m evcal" title="${esc(a?.email || "")}"><i class="bdot"></i><span class="mt">${esc(calLabel(e))}</span></span>`);
   return m.join("");
 }
+
+// Kalendername kurz: „Familie“, sonst „Google“ bzw. „Outlook“
+const calLabel = (e) => (e.calendar && !/^(kalender|outlook|calendar)$/i.test(e.calendar) && !e.calendar.includes("@") ? e.calendar : e.provider === "google" ? "Google" : "Outlook");
 
 // Terminzeile (Heute: mit Aktionen; Demnächst: kompakt – Antippen öffnet die Details)
 export function eventRow(e, { iso = today(), acts = false, now = Date.now() } = {}) {
@@ -77,9 +88,10 @@ export function eventRow(e, { iso = today(), acts = false, now = Date.now() } = 
   const live = evLive(e, now);
   const tid = connect.takenTask(e.id);
   const k = e.id.length > 60 ? e.id.slice(-60) : e.id;
-  const join = e.join && !ended ? extLink(e.join, `ev-join${live ? " now" : ""}`, `${icon("video")}<span>Beitreten</span>`, `${connect.joinKind(e.join) || "Call"} beitreten: ${e.title}`) : "";
-  const chips = acts
-    ? `<div class="ev-acts">${e.web ? extLink(e.web, "sg ghost", `${icon("arrowUpRight")}<span>Öffnen</span>`, `Im Kalender öffnen: ${e.title}`) : ""}${tid && store.task(tid) ? `<button type="button" class="sg green" data-act="task" data-id="${esc(tid)}">${icon("checkCircle")}<span>Aufgabe</span></button>` : `<button type="button" class="sg ghost" data-act="ev-task" data-id="${esc(e.id)}">${icon("plus")}<span>Als Aufgabe</span></button>`}</div>`
+  const tel = acts && !e.join ? connect.phoneList(`${e.location}\n${e.notes || ""}`)[0] || null : null;
+  const join = e.join && !ended && (acts || e.date === today() || live) ? extLink(e.join, `ev-join${live ? " now" : ""}`, `${icon("video")}<span>Beitreten</span>`, `${connect.joinKind(e.join) || "Call"} beitreten: ${e.title}`) : "";
+  const chips = acts && !ended
+    ? `<div class="ev-acts">${tel ? `<a class="sg green" href="${esc(connect.telHref(tel.tel))}" aria-label="Anrufen: ${esc(tel.label)}">${icon("call")}<span>Anrufen</span></a>` : ""}${e.web ? extLink(e.web, `sg ghost${tel ? " icon-only" : ""}`, tel ? icon("arrowUpRight") : `${icon("arrowUpRight")}<span>Öffnen</span>`, `Im Kalender öffnen: ${e.title}`) : ""}${tid && store.task(tid) ? `<button type="button" class="sg green" data-act="task" data-id="${esc(tid)}">${icon("checkCircle")}<span>Aufgabe</span></button>` : `<button type="button" class="sg ghost" data-act="ev-task" data-id="${esc(e.id)}">${icon("plus")}<span>Als Aufgabe</span></button>`}</div>`
     : "";
   return `<div class="ev${ended ? " past" : ""}${live ? " live" : ""}${e.allDay ? " allday" : ""}${acts ? " with-acts" : ""}" data-key="ev-${esc(k)}" style="${evVars(e)}">
 <button type="button" class="ev-in" data-act="ev-open" data-id="${esc(e.id)}"><span class="ev-when"><b>${esc(w.a)}</b>${w.b ? `<small>${esc(w.b)}</small>` : ""}</span><span class="ev-bar" aria-hidden="true"></span><span class="ev-main"><span class="ev-title">${esc(e.title)}</span><span class="task-meta">${evMeta(e)}</span></span></button>${join}${chips}
@@ -95,7 +107,7 @@ export function timelineEvent(e, now = Date.now()) {
   const sub = [`bis ${fmtT(e.end)}`, kind ? `${kind}-Call` : "", e.location && !kind ? e.location : ""].filter(Boolean).join(" · ");
   return `<div class="tl-item tl-ev${ended ? " past" : ""}${live ? " live" : ""}" data-key="tl-ev-${esc(k)}" style="${evVars(e)}">
 <time>${esc(fmtT(e.start))}</time><span class="tl-dot"></span>
-<div class="tl-body"><span class="tl-evic" aria-hidden="true">${icon(kind ? "video" : "calendar")}</span><button type="button" class="tl-main" data-act="ev-open" data-id="${esc(e.id)}"><b>${esc(e.title)}</b><small>${esc(sub)}</small></button>${e.join && !ended ? extLink(e.join, `tl-join${live ? " now" : ""}`, `${icon("video")}<span>Beitreten</span>`, `Beitreten: ${e.title}`) : ""}</div>
+<div class="tl-body"><span class="tl-evic" aria-hidden="true">${icon(kind ? "video" : "calendar")}</span><button type="button" class="tl-main" data-act="ev-open" data-id="${esc(e.id)}"><b>${esc(e.title)}</b><small>${esc(sub)}</small></button>${e.join && !ended ? extLink(e.join, `tl-join${live ? " now" : ""}`, `${icon("video")}<span class="tl-join-l">Beitreten</span>`, `Beitreten: ${e.title}`) : ""}</div>
 </div>`;
 }
 
@@ -155,7 +167,7 @@ function mailRow(m) {
   const k = m.id.length > 60 ? m.id.slice(-60) : m.id;
   return `<div class="mrow" data-key="m-${esc(k)}" style="${accVars(a)}">
 <div class="mrow-in"><span class="mav" aria-hidden="true">${esc(initial)}${glyph(m.provider, "badge")}</span><div class="mmain"><div class="mtop"><b>${esc(m.from)}</b><time>${esc(relTime(m.date))}</time></div><span class="msubj">${esc(m.subject)}</span>${m.snippet ? `<span class="msnip">${esc(m.snippet)}</span>` : ""}</div></div>
-<div class="in-sug wrap">${sg ? `<button type="button" class="sg" data-act="mail-task" data-id="${esc(m.id)}" data-bag="${esc(sg.id)}" style="${colorVars(sg.color)}">${icon("plus")}<span>Als Aufgabe → ${esc(sg.emoji)} ${esc(sg.name)}</span></button><button type="button" class="sg ghost" data-act="mail-pick" data-id="${esc(m.id)}">${icon("bag")}<span>Andere</span></button>` : `<button type="button" class="sg accent" data-act="mail-task" data-id="${esc(m.id)}">${icon("plus")}<span>Als Aufgabe</span></button><button type="button" class="sg ghost" data-act="mail-pick" data-id="${esc(m.id)}">${icon("bag")}<span>In Tasche</span></button>`}${m.web ? extLink(m.web, "sg ghost", `${icon("arrowUpRight")}<span>Öffnen</span>`, `Mail öffnen: ${m.subject}`) : ""}<button type="button" class="sg ghost icon-only" data-act="mail-hide" data-id="${esc(m.id)}" aria-label="Ausblenden" title="Ausblenden">${icon("x")}</button></div>
+<div class="in-sug m-acts">${sg ? `<button type="button" class="sg" data-act="mail-task" data-id="${esc(m.id)}" data-bag="${esc(sg.id)}" style="${colorVars(sg.color)}" aria-label="Als Aufgabe in ${esc(sg.name)}" title="Als Aufgabe in ${esc(sg.emoji)} ${esc(sg.name)}">${icon("plus")}<span>Als Aufgabe → ${esc(sg.emoji)}</span></button>` : `<button type="button" class="sg accent" data-act="mail-task" data-id="${esc(m.id)}">${icon("plus")}<span>Als Aufgabe</span></button>`}<button type="button" class="sg ghost icon-only" data-act="mail-pick" data-id="${esc(m.id)}" aria-label="Als Aufgabe in eine Tasche …" title="In Tasche …">${icon("bag")}</button>${m.web ? extLink(m.web, "sg ghost icon-only", icon("arrowUpRight"), `Mail öffnen: ${m.subject}`) : ""}<button type="button" class="sg ghost icon-only" data-act="mail-hide" data-id="${esc(m.id)}" aria-label="Ausblenden" title="Ausblenden">${icon("x")}</button></div>
 </div>`;
 }
 
@@ -166,7 +178,7 @@ export function mailsSection() {
   const hasG = accs.some((a) => a.provider === "google"), hasM = accs.some((a) => a.provider === "microsoft");
   const how = hasG && hasM ? "Gmail: Stern · Outlook: Fahne" : hasG ? "In Gmail mit Stern markiert" : "In Outlook mit Fahne markiert";
   const body = list.length ? list.map(mailRow).join("") : `<div class="ev-empty">${icon("mail")}<span><b>Keine markierten Mails</b><small>${esc(how)} – dann erscheinen sie hier.</small></span></div>`;
-  return sec({ key: "mails", title: "Markierte Mails", icon: "mail", tone: "blue", count: list.length || "", note: list.length ? esc(how) : "", body });
+  return sec({ key: "mails", title: "Markierte Mails", icon: "mail", tone: "blue", count: list.length || "", body }) + (list.length ? `<p class="fine m-hint" data-key="m-hint">${esc(how)} · Ausblenden ändert nichts im Postfach.</p>` : "");
 }
 
 // ---------- Aufgaben-Detail: Anrufen, Kalender, E-Mail ----------
@@ -289,7 +301,7 @@ function eventView() {
   const rows = [];
   rows.push(`<div class="frow">${glyph(e.provider)}<span class="frow-l">${esc(e.calendar || "Kalender")}<small>${esc(a?.email || connect.providerName(e.provider))}</small></span></div>`);
   if (e.location) {
-    const placeLike = !/https?:|teams|zoom|webex|meet\b/i.test(e.location);
+    const placeLike = !/https?:|teams|zoom|webex|meet\b|^(telefon\w*|online|virtuell|anruf)$/i.test(e.location.trim()) && (/\d|,/.test(e.location) || e.location.trim().split(/\s+/).length >= 2);
     rows.push(placeLike ? extLink(`https://maps.apple.com/?q=${encodeURIComponent(e.location)}`, "frow btnrow", `${sq("location", "red")}<span class="frow-l">${esc(e.location)}<small>In Karten öffnen</small></span><span class="frow-c">${icon("arrowUpRight")}</span>`) : `<div class="frow">${sq("location", "gray")}<span class="frow-l">${esc(e.location)}</span></div>`);
   }
   for (const p of nums) rows.push(`<a class="frow btnrow call" href="${esc(connect.telHref(p.tel))}">${sq("call", "green")}<span class="frow-l">Anrufen<small>${esc(p.label)}</small></span><span class="frow-c">${icon("chevronRight")}</span></a>`);
@@ -346,7 +358,8 @@ export function settingsGroup() {
   if (!accs.length) rows.push(`<div class="frow cx-intro">${sq("calendar", "red")}<span class="frow-l">Termine, Calls und markierte Mails<small>Outlook, Microsoft 365, Gmail und Google Kalender – direkt in Heute, Demnächst und im Eingang.</small></span></div>`);
   const provBtn = (p) => {
     const off = st ? !st[p.id] : !app.server;
-    return `<button type="button" class="prov-btn${off ? " off" : ""}" data-act="cx-connect" data-p="${p.id}"${off ? ` data-off="1"` : ""}>${glyph(p.id)}<span class="prov-t"><b>Mit ${esc(p.name)} verbinden</b><small>${esc(p.sub)}</small></span>${off ? icon("info") : icon("chevronRight")}</button>`;
+    const more = accs.some((a) => a.provider === p.id);
+    return `<button type="button" class="prov-btn${off ? " off" : ""}${accs.length ? " compact" : ""}" data-act="cx-connect" data-p="${p.id}"${off ? ` data-off="1"` : ""}>${glyph(p.id)}<span class="prov-t"><b>${more ? `Weiteres ${esc(p.name)}-Konto` : `Mit ${esc(p.name)} verbinden`}</b>${accs.length ? "" : `<small>${esc(p.sub)}</small>`}</span>${off ? icon("info") : icon(accs.length ? "plus" : "chevronRight")}</button>`;
   };
   const provs = connect.providers();
   rows.push(`<div class="frow col prov-row"><div class="prov-grid">${provs.filter((p) => p.id === "microsoft").concat(provs.filter((p) => p.id === "google")).map(provBtn).join("")}</div>${!app.server ? `<p class="fine prov-note">${icon("info")} Dafür braucht es den Arbeitstaschen-Server – siehe Anleitung unten. Ohne Server gehen trotzdem: Termine per Link in Google/Outlook eintragen, E-Mails schreiben und Anrufen.</p>` : st && !st.google && !st.microsoft && ui.status ? `<p class="fine prov-note">${icon("info")} Dein Server ist noch nicht für Google/Microsoft eingerichtet – siehe Anleitung unten.</p>` : ""}</div>`);
@@ -357,17 +370,18 @@ export function settingsGroup() {
     const nE = connect.events().length, nM = connect.mails({ all: true }).length;
     rows.push(`<button type="button" class="frow btnrow" data-act="cx-refresh" data-all="1"${info.busy ? " disabled" : ""}>${sq("refresh", "blue")}<span class="frow-l">Jetzt aktualisieren<small>${info.at ? `zuletzt ${esc(relTime(info.at))} · ${nE} ${nE === 1 ? "Termin" : "Termine"} · ${nM} ${nM === 1 ? "Mail" : "Mails"}` : "noch nicht geladen"}</small></span><span class="frow-c">${info.busy ? `<span class="spinner xs"></span>` : icon("chevronRight")}</span></button>`);
   }
-  rows.push(`<div class="frow col guide${prefs.cxGuide ? " open" : ""}"><button type="button" class="guide-t" data-act="cx-guide">${sq("wand", "purple")}<span class="frow-l">Anleitung: Server einrichten<small>einmalig, ca. 15 Minuten – danach verbindest du hier mit einem Tipp</small></span>${icon(prefs.cxGuide ? "chevronUp" : "chevronDown")}</button>${
+  const needGuide = !app.server || (ui.status && (!ui.status.google || !ui.status.microsoft));
+  if (needGuide) rows.push(`<div class="frow col guide${prefs.cxGuide ? " open" : ""}"><button type="button" class="guide-t" data-act="cx-guide">${sq("wand", "purple")}<span class="frow-l">Anleitung: Server einrichten<small>einmalig, ca. 15 Minuten – danach verbindest du hier mit einem Tipp</small></span>${icon(prefs.cxGuide ? "chevronUp" : "chevronDown")}</button>${
     prefs.cxGuide
       ? `<ol class="guide-steps">
 <li>Den <b>Arbeitstaschen-Server</b> installieren (siehe <code>server/install.sh</code>) – er läuft z. B. unter <code>https://taschen.…sslip.io</code>. Unter „Sync“ seine Adresse eintragen.</li>
 <li><b>Microsoft:</b> Im Azure-Portal unter „App-Registrierungen“ eine App anlegen (Konten in allen Organisationen <i>und</i> private Microsoft-Konten), Umleitungs-URI <code>…/api/connect/microsoft/callback</code>, einen geheimen Clientschlüssel erzeugen.</li>
 <li><b>Google:</b> In der Google Cloud Console einen OAuth-Client (Webanwendung) anlegen, Weiterleitungs-URI <code>…/api/connect/google/callback</code>, Kalender- und Gmail-API aktivieren.</li>
 <li>Die Zugangsdaten gibt dir <code>install.sh</code> ein (oder als <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>, <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>). Fertig – oben auf „Verbinden“ tippen.</li>
-</ol><p class="fine">Tipp fürs iPhone: Verbinde am besten am Mac oder in Safari – über den Sync ist das Konto danach auf allen Geräten da.</p>`
+</ol>`
       : ""
   }</div>`);
-  const foot = `${icon("shield")} <b>Privat:</b> Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät – der Server vermittelt nur die Anmeldung und speichert dafür einen verschlüsselten Schlüssel. Firmenkonten (Microsoft 365, Google Workspace): Wenn deine Firma das blockiert, muss die IT die App einmal freigeben.`;
+  const foot = `${accs.length ? "" : "Tipp fürs iPhone: Am besten am Mac oder in Safari verbinden – über den Sync ist das Konto danach auf allen Geräten da. "}${icon("shield")} <b>Privat:</b> Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät – der Server vermittelt nur die Anmeldung und speichert dafür einen verschlüsselten Schlüssel. Firmenkonten (Microsoft 365, Google Workspace): Wenn deine Firma das blockiert, muss die IT die App einmal freigeben.`;
   return `<section class="set" id="set-konten" data-key="set-konten"><h3 class="set-h">Konten & Kalender</h3><div class="card form">${rows.join("")}</div><p class="set-foot">${foot}</p></section>`;
 }
 

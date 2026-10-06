@@ -187,16 +187,16 @@ function focusCard(t, i) {
 </article>`;
 }
 
-// Briefing-Zusatz: „Dazu 3 Termine – der nächste um 14:00: „Call mit Müller“.“
+// Briefing-Zusatz: „Im Kalender: 3 Termine, der nächste um 14:00: „Call mit Müller“.“
 function eventLine(list, next, nowMs) {
   if (!list.length) return "";
   const n = list.length === 1 ? "1 Termin" : `${list.length} Termine`;
-  if (!next) return `Dazu ${n} im Kalender.`;
+  if (!next) return `Im Kalender: ${n}.`;
   const at = new Date(next.start);
   const hm = `${at.getHours()}:${String(at.getMinutes()).padStart(2, "0")}`;
   const live = next.start <= nowMs;
   const t = next.title.length > 40 ? next.title.slice(0, 39) + "…" : next.title;
-  return live ? `Dazu ${n} – gerade läuft „${t}“.` : `Dazu ${n} – ${list.length === 1 ? "um" : "der nächste um"} ${hm}: „${t}“.`;
+  return live ? `Im Kalender: ${n}, gerade läuft „${t}“.` : `Im Kalender: ${n}, ${list.length === 1 ? "um" : "der nächste um"} ${hm}: „${t}“.`;
 }
 
 function timelineHTML(list, now, evs = []) {
