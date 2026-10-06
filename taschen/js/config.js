@@ -4,7 +4,7 @@ export const BRAND = {
   name: "Arbeitstaschen",
   short: "Taschen",
   tagline: "Dein persönlicher Projektmanager",
-  version: "1.2.1",
+  version: "1.3.0",
 };
 
 // IndexedDB: dieselben Namen benutzt auch sw.js (dort von Hand gespiegelt)

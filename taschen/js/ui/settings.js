@@ -13,7 +13,8 @@ import { confirmBox, chooseBox } from "./sheet.js";
 import { haptic, toast, toastError, confetti } from "./fx.js";
 import { exportCalendar } from "./today.js";
 import { platform } from "./install.js";
-import { settingsGroup as accountsGroup, checkAvail } from "./connectui.js";
+import { checkAvail } from "./connectui.js";
+import { isPage, renderPage, settingsEntry } from "./integrationsui.js";
 
 const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const WD_LONG = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -22,8 +23,8 @@ const SHORTCUT = "Taschen → Erinnerungen";
 // Zustand nur für diese Ansicht
 const ui = { code: "", codeShown: false, joining: false, joinCode: "", server: "", busy: "", push: null, persisted: null, estimate: null, aiAvail: false, aiOn: false, checked: false };
 
-export function title() {
-  return "Einstellungen";
+export function title(r) {
+  return isPage(r) ? "Verbindungen" : "Einstellungen";
 }
 
 // Asynchrone Infos einmal pro Öffnen nachladen
@@ -75,6 +76,7 @@ const opt = (v, l, sel) => `<option value="${esc(v)}"${sel ? " selected" : ""}>$
 
 // ---------- Ansicht ----------
 export function render(r) {
+  if (isPage(r)) return renderPage(r); // Unterseite „Verbindungen“ (#einstellungen/verbindungen)
   const s = store.get();
   const p = s.profile;
   const env = safe(() => remind.env(), {});
@@ -84,11 +86,12 @@ export function render(r) {
   const pf = platform();
   let h = largeTitle("Einstellungen", { sub: `${esc(BRAND.name)} · Version ${esc(BRAND.version)}`, key: "lt-set" });
 
+  // Verbindungen: Kalender, E-Mail, Nachrichten, Siri & Zapier, Excel – ganz oben
+  h += safe(() => settingsEntry(), "");
+
   // Profil
   h += group("profil", "Profil", [inputRow("person", "blue", "Name", `<input type="text" class="in-text" value="${esc(p.name || "")}" placeholder="Wie soll ich dich nennen?" data-change="set-name" data-key-act="blur-enter" autocomplete="given-name" enterkeyhint="done" />`)]);
 
-  // Konten & Kalender (Google, Microsoft)
-  h += safe(() => accountsGroup(), "");
 
   // Tagesrhythmus
   h += group("rhythmus", "Tagesrhythmus", [
@@ -187,13 +190,14 @@ export function render(r) {
     "daten",
     "Daten",
     [
+      `<a class="frow btnrow" href="#einstellungen/verbindungen/datenx">${sq("table", "teal")}<span class="frow-l">Excel & CSV<small>Aufgaben als Tabelle exportieren oder aus Excel, Todoist, Trello, Asana holen</small></span><span class="frow-c">${icon("chevronRight")}</span></a>`,
       btnRow("download", "green", "Backup exportieren", "set-backup", { sub: s.meta?.lastBackup ? `zuletzt ${esc(relTime(s.meta.lastBackup))} · in iCloud Drive sichern` : "Noch nie – am besten jetzt in iCloud Drive sichern" }),
       `<label class="frow btnrow">${sq("upload", "blue")}<span class="frow-l">Backup importieren<small>JSON-Datei aus einem Export</small></span><span class="frow-c">${icon("chevronRight")}</span><input type="file" accept=".json,application/json" class="hidden-file" data-change="set-import" /></label>`,
       ctlRow("lock", ui.persisted ? "green" : "orange", "Dauerhafter Speicher", ui.persisted ? `<span class="status green">Geschützt</span>` : `<button type="button" class="pill accent" data-act="set-persist">Anfordern</button>`, ui.persisted ? "Safari löscht deine Daten nicht automatisch" : isStandalone() ? "Schützt vor automatischem Löschen" : "Installiere die App, damit deine Daten sicher bleiben"),
       est && est.usage != null ? ctlRow("archive", "gray", "Belegter Speicher", `<span class="status gray">${esc(fmtSize(est.usage))}</span>`, `${store.tasks().length} Aufgaben · ${store.files().length} Dateien`) : "",
       btnRow("trash", "red", "Alles löschen", "set-reset", { sub: "Alle Taschen, Aufgaben und Dateien auf diesem Gerät", danger: true }),
     ],
-    `Deine Daten liegen lokal auf diesem Gerät (IndexedDB). Ein Backup ist eine JSON-Datei mit allem – auch Dateien.${store.accounts().length ? " Verbundene Konten kommen aus Sicherheitsgründen ohne Schlüssel hinein – nach einem Import auf einem neuen Gerät einfach neu verbinden." : ""}`,
+    `Deine Daten liegen lokal auf diesem Gerät (IndexedDB). Ein Backup ist eine JSON-Datei mit allem – auch Dateien.${store.accounts().length ? " Verbindungen kommen aus Sicherheitsgründen ohne Schlüssel hinein (Konten, Kalender-Links, Webhooks) – nach einem Import auf einem neuen Gerät einfach neu verbinden." : ""}`,
   );
 
   // Über

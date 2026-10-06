@@ -11,7 +11,8 @@ import { openSheet, closeSheet, getSheet, promptBox, openMenu } from "./sheet.js
 import { haptic, toast, toastError } from "./fx.js";
 import { confirmDelete, duplicateTask } from "./actions.js";
 import { askAI } from "./aiui.js";
-import { taskActions } from "./connectui.js";
+import { contactBlock } from "./integrationsui.js";
+import { shareTask as shareTaskText } from "../integrations.js";
 
 let currentId = null; // Aufgabe im Sheet
 
@@ -177,7 +178,7 @@ ${quick.map((q) => `<button type="button" class="chip${t.due === q.iso ? " on" :
 ${t.due ? `<button type="button" class="chip ghost" data-act="td-due" data-id="${t.id}" data-iso="">${icon("x")}<span>Kein Datum</span></button>` : ""}
 </div>
 
-${safe(() => taskActions(t), "")}
+${safe(() => contactBlock(t), "")}
 
 <section class="td-block">
 <h3 class="td-h">Unteraufgaben${subs.length ? ` <span>${subDone}/${subs.length}</span>` : ""}</h3>
@@ -425,28 +426,11 @@ export function exportTaskIcs(id) {
 async function shareTask(id) {
   const t = store.task(id);
   if (!t) return;
-  const bag = t.bag ? store.bag(t.bag) : null;
-  const lines = [t.title];
-  if (t.due) lines.push(`📅 ${safe(() => dates.fmtDay(t.due), t.due)}${t.time ? ", " + t.time + " Uhr" : ""}`);
-  if (bag) lines.push(`${bag.emoji} ${bag.name}`);
-  if (t.notes) lines.push("", t.notes);
-  if ((t.subtasks || []).length) lines.push("", ...t.subtasks.map((x) => `${x.done ? "✓" : "○"} ${x.title}`));
-  const text = lines.join("\n");
   try {
-    if (navigator.share) await navigator.share({ title: t.title, text });
-    else {
-      await navigator.clipboard.writeText(text);
-      toast("Kopiert", { icon: "copy" });
-    }
+    const how = await shareTaskText(t, { bag: t.bag ? store.bag(t.bag) : null });
+    if (how === "copied") toast("Kopiert", { icon: "copy", sub: "Jetzt einfügen, wo du willst" });
   } catch (e) {
-    if (e?.name !== "AbortError") {
-      try {
-        await navigator.clipboard.writeText(text);
-        toast("Kopiert", { icon: "copy" });
-      } catch (_) {
-        toastError(e);
-      }
-    }
+    toastError(e);
   }
 }
 

@@ -753,8 +753,8 @@ export const PUBLIC_FEEDS = [{ id: "de-feiertage", name: "Feiertage Deutschland"
 // E-Mail per IMAP (markierte Mails)
 // =====================================================================================================================
 export const MAIL_PROVIDERS = [
-  { id: "gmx", name: "GMX", short: "GMX", color: "#1C449B", fg: "#fff", host: "imap.gmx.net", port: 993, web: "https://www.gmx.net/", domains: ["gmx.de", "gmx.net", "gmx.at", "gmx.ch", "gmx.com"], flag: "„Wichtig“ (Fahne)", hint: "Einmal in GMX erlauben: E-Mail → Einstellungen → POP3/IMAP Abruf → „E-Mails per POP3 und IMAP senden und empfangen“ einschalten. Dann hier deine GMX-Adresse und dein normales Passwort." },
-  { id: "webde", name: "WEB.DE", short: "WEB", color: "#FFD800", fg: "#1d1d1f", host: "imap.web.de", port: 993, web: "https://web.de/", domains: ["web.de"], flag: "„Wichtig“ (Fahne)", hint: "Einmal in WEB.DE erlauben: E-Mail → Einstellungen → POP3/IMAP Abruf → „E-Mails per POP3 und IMAP senden und empfangen“ einschalten. Dann deine WEB.DE-Adresse und dein normales Passwort." },
+  { id: "gmx", name: "GMX", short: "GMX", color: "#1C449B", fg: "#fff", host: "imap.gmx.net", port: 993, web: "https://www.gmx.net/", domains: ["gmx.de", "gmx.net", "gmx.at", "gmx.ch", "gmx.com"], flag: "Fahne „Wichtig“", hint: "Einmal in GMX erlauben: E-Mail → Einstellungen → POP3/IMAP Abruf → „E-Mails per POP3 und IMAP senden und empfangen“ einschalten. Dann hier deine GMX-Adresse und dein normales Passwort." },
+  { id: "webde", name: "WEB.DE", short: "WEB", color: "#FFD800", fg: "#1d1d1f", host: "imap.web.de", port: 993, web: "https://web.de/", domains: ["web.de"], flag: "Fahne „Wichtig“", hint: "Einmal in WEB.DE erlauben: E-Mail → Einstellungen → POP3/IMAP Abruf → „E-Mails per POP3 und IMAP senden und empfangen“ einschalten. Dann deine WEB.DE-Adresse und dein normales Passwort." },
   { id: "tonline", name: "T-Online", short: "T", color: "#E20074", fg: "#fff", host: "secureimap.t-online.de", port: 993, web: "https://email.t-online.de/", domains: ["t-online.de", "magenta.de"], flag: "Markierung (Fahne)", hint: "Du brauchst das E-Mail-Passwort – nicht das Passwort fürs Telekom-Login. Anlegen: Telekom Kundencenter → E-Mail → E-Mail-Passwort." },
   { id: "icloud", name: "iCloud", short: "iC", color: "#3693F3", fg: "#fff", host: "imap.mail.me.com", port: 993, web: "https://www.icloud.com/mail", domains: ["icloud.com", "me.com", "mac.com"], flag: "Fahne", hint: "Apple verlangt ein app-spezifisches Passwort: account.apple.com → Anmeldung und Sicherheit → App-spezifische Passwörter → „+“. Als Anmeldename deine @icloud.com-Adresse." },
   { id: "yahoo", name: "Yahoo", short: "Y!", color: "#6001D2", fg: "#fff", host: "imap.mail.yahoo.com", port: 993, web: "https://mail.yahoo.com/", domains: ["yahoo.com", "yahoo.de", "ymail.com", "rocketmail.com"], flag: "Stern", hint: "Yahoo verlangt ein App-Passwort: Kontoinfo → Kontosicherheit → „App-Passwort generieren“." },
@@ -840,7 +840,8 @@ export async function loadImap(a, { limit = 25 } = {}) {
     if (a.broken) safe(() => connect.storeRef()?.updateAccount(a.id, { broken: false }));
     return r.data.mails.map((m) => normImapMail(m, a)).filter(Boolean);
   }
-  if (r.status === 403 || r.status === 404 || r.status === 410) {
+  // 401: Anmeldung beim Anbieter klappt nicht mehr (Passwort geändert) · 403/410: Schlüssel falsch bzw. Zugang gelöscht
+  if (r.status === 401 || r.status === 403 || r.status === 404 || r.status === 410) {
     if (!a.broken) safe(() => connect.storeRef()?.updateAccount(a.id, { broken: true }));
     throw expired(clean(r.data?.msg, 240) || `Der Zugang zu ${connect.accountName(a)} gilt nicht mehr – bitte neu verbinden.`);
   }
@@ -1128,6 +1129,15 @@ export function pullInbox(store = ST, { force = false } = {}) {
         } catch (e) {
           errors.push(e);
           continue; // nichts quittieren – beim nächsten Mal noch einmal
+        }
+        // Erst sicher speichern, dann beim Server quittieren – sonst gingen Aufgaben verloren, wenn die App genau dazwischen beendet wird
+        if (made.length) {
+          try {
+            await store.flush?.();
+          } catch (e) {
+            errors.push(e);
+            continue; // nicht quittieren – beim nächsten Abholen kommen sie wieder (src.id verhindert Doppelte)
+          }
         }
         try {
           await hookAck(a, items.map((x) => str(x.id)));
@@ -1536,6 +1546,7 @@ export function csvTasks(parsed, map, { bagMode = "inbox", bagId = null, bags = 
       .map((x) => clean(x, 40).replace(/^[#@]+/, "").replace(/\s*\(.*\)$/, ""))
       .filter(Boolean)
       .slice(0, 12);
+    if (connect.isCall(title) && !tags.includes("anruf")) tags.push("anruf"); // wie in der Schnellerfassung
     let bag = null;
     let bagName = "";
     if (bagMode === "fixed") bag = bagId || null;

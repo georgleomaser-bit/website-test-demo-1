@@ -29,6 +29,7 @@ import * as vBag from "./ui/bag.js";
 import * as vReview from "./ui/review.js";
 import * as vSettings from "./ui/settings.js";
 import { openEvent, openExternal, checkAvail } from "./ui/connectui.js";
+import * as integrationsUI from "./ui/integrationsui.js";
 
 // ---------- Ansichten ----------
 const VIEWS = {
@@ -38,8 +39,10 @@ const VIEWS = {
   taschen: { mod: vBags },
   tasche: { mod: vBag, back: ["Taschen", "#taschen"] },
   rueckblick: { mod: vReview, back: ["Heute", "#heute"] },
-  einstellungen: { mod: vSettings, back: ["Heute", "#heute"] },
+  einstellungen: { mod: vSettings, back: (r) => (r?.id === "verbindungen" || r?.id === "konten" ? ["Einstellungen", "#einstellungen"] : ["Heute", "#heute"]) },
 };
+// Zurück-Ziel einer Ansicht (Unterseiten wie „Verbindungen“ führen zu den Einstellungen)
+const backOf = (v, r) => (typeof v?.back === "function" ? v.back(r) : v?.back) || null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -106,7 +109,7 @@ function parseHash() {
   const [view, id, tab] = h.split("/");
   if (view === "suche") return { view: "suche" };
   if (!VIEWS[view]) return { view: "heute", id: null, tab: null };
-  if (view === "einstellungen") return { view, id: id || null, tab: null };
+  if (view === "einstellungen") return { view, id: id || null, tab: id === "verbindungen" ? tab || null : null };
   return { view, id: id || null, tab: tab || null };
 }
 
@@ -138,7 +141,9 @@ function route({ transition = true } = {}) {
     updateScroll();
   };
   if (transition && app.booted && document.startViewTransition && !reducedMotion() && prevKey) {
-    document.documentElement.dataset.vt = r.view === "tasche" || (VIEWS[r.view]?.back && !VIEWS[parseKeyView(prevKey)]?.back) ? "push" : VIEWS[parseKeyView(prevKey)]?.back && !VIEWS[r.view]?.back ? "pop" : "fade";
+    const prevView = parseKeyView(prevKey);
+    const sub = r.view === "einstellungen" && prevView === "einstellungen";
+    document.documentElement.dataset.vt = sub ? (r.id ? "push" : "pop") : r.view === "tasche" || (VIEWS[r.view]?.back && !VIEWS[prevView]?.back) ? "push" : VIEWS[prevView]?.back && !VIEWS[r.view]?.back ? "pop" : "fade";
     try {
       const vt = document.startViewTransition(doPaint);
       vt.finished.finally(() => delete document.documentElement.dataset.vt).catch(() => {});
@@ -166,9 +171,9 @@ app.go = (hash, { replace = false } = {}) => {
 };
 
 app.back = () => {
-  const v = VIEWS[app.route.view];
+  const b = backOf(VIEWS[app.route.view], app.route);
   if (history.length > 1 && document.referrer !== undefined && app.navCount > 0) history.back();
-  else app.go(v?.back?.[1] || "#heute");
+  else app.go(b?.[1] || "#heute");
 };
 
 // ---------- Zeichnen ----------
@@ -196,7 +201,10 @@ function paint() {
   // Kopfzeile
   const title = safe(() => v.mod.title(r), "");
   const acts = safe(() => (v.mod.actions ? v.mod.actions(r) : ""), "");
-  render($("topbar"), topbar(title, { back: !app.wide && v.back ? v.back[0] : app.wide && r.view === "tasche" ? "Taschen" : null, actions: acts }));
+  const bk = backOf(v, r);
+  const sub = r.view === "einstellungen" && !!r.id && bk?.[1] === "#einstellungen";
+  // iPhone: „‹ Einstellungen“ passt neben dem Titel nicht → wie iOS kurz „Zurück“
+  render($("topbar"), topbar(title, { back: !app.wide && bk ? (sub ? "Zurück" : bk[0]) : app.wide && (r.view === "tasche" || sub) ? bk?.[0] || "Taschen" : null, actions: acts }));
   // Navigation
   if (app.wide) render($("sidebar"), sidebar());
   else render($("tabbar"), tabbar());
@@ -600,6 +608,11 @@ async function boot() {
     connect.start(store);
   } catch (e) {
     console.warn("[taschen] Konten", e);
+  }
+  try {
+    integrationsUI.start(); // Briefkasten (Siri, Zapier …) abholen, ausgehende Webhooks
+  } catch (e) {
+    console.warn("[taschen] Verbindungen", e);
   }
   if (connected) {
     const r = connect.lastReturn();

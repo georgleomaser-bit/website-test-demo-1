@@ -9,7 +9,7 @@ import { availability, mailStyle } from "../integrations.js";
 import { esc, safeUrl } from "../util.js";
 import { icon } from "./icons.js";
 import { app, on, today, safe, colorVars, relTime, appUrl, prefs, setPref, slug } from "./core.js";
-import { sec, sq, toggle } from "./components.js";
+import { sec, sq } from "./components.js";
 import { openSheet, sheetHead, getSheet, openMenu, confirmBox, infoBox } from "./sheet.js";
 import { toast, toastError, haptic } from "./fx.js";
 
@@ -149,7 +149,7 @@ export function eventsSection(iso = today(), now = Date.now()) {
 // Hinweis auf Heute, solange noch kein Konto verbunden ist (nur wenn der Server es anbietet)
 export function connectBanner() {
   const av = app.connectAvail;
-  if (!av || !(av.google || av.microsoft) || connect.accounts().length || prefs.cxBanner === "hidden") return "";
+  if (!av || !(av.google || av.microsoft) || connect.accounts().length || connect.feeds().length || connect.imapAccounts().length || prefs.cxBanner === "hidden") return "";
   return `<section class="rcard cx" data-key="cx-banner"><span class="rcard-ic cx">${icon("calendar")}</span><div class="rcard-b"><h3>Kalender & Mails verbinden</h3><p>Termine und Calls aus Outlook oder Google hier sehen, markierte Mails als Aufgaben übernehmen.</p><div class="rcard-btns">${av.microsoft ? `<button type="button" class="btn sm prov" data-act="cx-connect" data-p="microsoft">${glyph("microsoft", "sm")}<span>Microsoft</span></button>` : ""}${av.google ? `<button type="button" class="btn sm prov" data-act="cx-connect" data-p="google">${glyph("google", "sm")}<span>Google</span></button>` : ""}</div></div><button type="button" class="rcard-x" data-act="cx-banner-hide" aria-label="Ausblenden">${icon("x")}</button></section>`;
 }
 
@@ -179,7 +179,7 @@ function mailRow(m) {
 }
 
 // „Gmail: Stern · Outlook: Fahne · GMX: „Wichtig““ – je nach verbundenen Postfächern
-export function flagHint(accs = connect.mailAccounts()) {
+export function flagHint(accs = connect.mailAccounts(), { list = false } = {}) {
   const parts = [];
   if (accs.some((a) => a.provider === "google")) parts.push(["Gmail", "Stern"]);
   if (accs.some((a) => a.provider === "microsoft")) parts.push(["Outlook", "Fahne"]);
@@ -187,7 +187,7 @@ export function flagHint(accs = connect.mailAccounts()) {
     const m = mailStyle(a);
     if (!parts.some((p) => p[0] === m.name)) parts.push([m.name, m.flag]);
   }
-  if (parts.length === 1) return `In ${parts[0][0]} mit ${parts[0][1]} markiert`;
+  if (parts.length === 1 && !list) return `In ${parts[0][0]} mit ${parts[0][1]} markiert`;
   return parts.slice(0, 4).map(([n, f]) => `${n}: ${f}`).join(" · ");
 }
 
@@ -258,10 +258,10 @@ function icsFor(id) {
   }
 }
 
-export function mailMenu(id, el) {
+export function mailMenu(id, el, toAddr = "") {
   const t = store.task(id);
   if (!t) return;
-  const to = recipient(t);
+  const to = connect.emails(toAddr)[0] || recipient(t);
   const subject = t.title;
   const accs = connect.accounts().filter((a) => a.secret);
   const g = accs.filter((a) => a.provider === "google");
@@ -473,7 +473,7 @@ on("click", {
     app.render();
   },
   "cx-cal": (el) => calendarMenu(el.dataset.id, el),
-  "cx-mail": (el) => mailMenu(el.dataset.id, el),
+  "cx-mail": (el) => mailMenu(el.dataset.id, el, el.dataset.to || ""),
 });
 
 on("change", {

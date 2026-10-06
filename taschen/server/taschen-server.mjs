@@ -103,6 +103,7 @@ const redact = (s) =>
 
 // Atomar schreiben: erst in eine Temp-Datei (mit fsync), dann umbenennen – nie halbe Dateien
 export async function writeAtomic(file, data) {
+  await fsp.mkdir(path.dirname(file), { recursive: true, mode: 0o700 }); // Ordner fehlt (z. B. von Hand gelöscht) → neu anlegen
   const tmp = `${file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
   const fh = await fsp.open(tmp, "w", 0o600);
   try {

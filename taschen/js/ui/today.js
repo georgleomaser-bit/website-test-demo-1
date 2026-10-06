@@ -16,6 +16,7 @@ import { askAI } from "./aiui.js";
 import { openInstallHelp, installHint } from "./install.js";
 import { CHECK } from "./icons.js";
 import { eventsSection, timelineEvent, todayEvents, connectBanner } from "./connectui.js";
+import { todayCard } from "./integrationsui.js";
 
 const asBag = (x) => (x && typeof x === "object" ? x : x ? store.bag(x) : null);
 
@@ -138,7 +139,10 @@ ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("spa
   const inst = installHint();
   html += inst;
   html += reminderCard(!!inst);
-  html += safe(() => connectBanner(), "");
+  // Leerer Tag und noch nichts verbunden → „Mit allem verbinden“ (statt des kleineren Google/Microsoft-Hinweises)
+  const emptyDay = !timeline.length && !overdue.length && !todayList.length && !evToday.length && !(c.today || 0) && !(c.planned || 0);
+  const ixCard = safe(() => todayCard({ emptyDay }), "");
+  html += ixCard || safe(() => connectBanner(), "");
 
   // Im Blick
   const stalled = (b.stalled || []).map((x) => ({ ...x, bag: asBag(x.bag) })).filter((x) => x.bag);
