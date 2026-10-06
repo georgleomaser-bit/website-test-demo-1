@@ -10,6 +10,7 @@ import { moveTo } from "./actions.js";
 import { openMenu } from "./sheet.js";
 import { haptic, toast, toastUndo, toastError, sound } from "./fx.js";
 import { mailsSection } from "./connectui.js";
+import * as connect from "../connect.js";
 import { isCall } from "../connect.js";
 
 function suggest(t, s) {
@@ -28,12 +29,16 @@ export function render() {
   const items = store.tasks().filter((t) => !t.bag && !t.done).sort((a, b) => (b.created || 0) - (a.created || 0));
   const sugs = new Map(items.map((t) => [t.id, suggest(t, s)]));
   const nSug = [...sugs.values()].filter(Boolean).length;
-  let html = largeTitle("Eingang", { sub: items.length ? `${items.length} ${items.length === 1 ? "Gedanke wartet" : "Gedanken warten"} aufs Einsortieren` : "Alles einsortiert", key: "lt-in" });
+  const nMail = safe(() => (connect.accounts().some((a) => a.mail !== false) ? connect.mails().length : 0), 0);
+  const sub = items.length ? `${items.length} ${items.length === 1 ? "Gedanke wartet" : "Gedanken warten"} aufs Einsortieren` : nMail ? `${nMail} markierte ${nMail === 1 ? "Mail wartet" : "Mails warten"}` : "Alles einsortiert";
+  let html = largeTitle("Eingang", { sub, key: "lt-in" });
   html += `<form class="quick-in" data-key="qin" data-submit="inbox-add" autocomplete="off"><span class="qi-ic">${icon("plus")}</span><input type="text" name="t" placeholder="Schnell notieren – landet im Eingang" aria-label="Neuer Eintrag im Eingang" enterkeyhint="done" data-focus="inbox-add" /></form>`;
   // Markierte Mails (Gmail: Stern, Outlook: Fahne) aus verbundenen Konten
   const mails = safe(() => mailsSection(), "");
   html += mails;
-  if (!items.length) {
+  if (!items.length && nMail) {
+    // Nur noch Mails offen: kein „Eingang leer“ darunter
+  } else if (!items.length) {
     html += empty({ emoji: "📭", title: "Eingang leer – stark!", text: "Alles hat seinen Platz. Was dir durch den Kopf geht, kommt hier hinein – sortiert wird später.", cls: mails ? "" : "big" });
   } else {
     if (mails) html += `<div class="sec-h in-h" data-key="in-h"><span class="sec-title"><span class="sec-ic gray">${icon("tray")}</span><h2>Zum Einsortieren</h2><span class="sec-count">${items.length}</span></span></div>`;

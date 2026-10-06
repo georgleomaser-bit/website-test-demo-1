@@ -1489,8 +1489,8 @@ html.has-insp .island { right: calc(var(--insp-w) + 30px + var(--sar)); }
 .pglyph.microsoft svg { width: 74%; height: 74%; }
 .pglyph.sm { width: 20px; height: 20px; }
 .pglyph.microsoft.sm { border-radius: 6px; }
-.pglyph.badge { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; box-shadow: 0 0 0 2px var(--card); }
-.pglyph.microsoft.badge { border-radius: 5.5px; background: var(--card); box-shadow: 0 0 0 2px var(--card), inset 0 0 0 0.5px var(--sep2); }
+.pglyph.pbadge { position: absolute; right: -4px; bottom: -4px; width: 18px; height: 18px; box-shadow: 0 0 0 2px var(--card); }
+.pglyph.microsoft.pbadge { border-radius: 5.5px; background: var(--card); box-shadow: 0 0 0 2px var(--card), inset 0 0 0 0.5px var(--sep2); }
 .spinner.xs { width: 14px; height: 14px; border-width: 2px; border-color: var(--fill3); border-top-color: var(--accent); vertical-align: -2px; }
 
 /* Terminzeile (Heute, Demnächst) */
@@ -1517,6 +1517,12 @@ html.has-insp .island { right: calc(var(--insp-w) + 30px + var(--sar)); }
 @keyframes join-pulse { 0%, 100% { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 0 color-mix(in srgb, var(--green) 45%, transparent); } 50% { box-shadow: inset 0 1px 0.5px rgba(255, 255, 255, 0.35), 0 0 0 7px color-mix(in srgb, var(--green) 0%, transparent); } }
 .ev-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 12px 88px; margin-top: -3px; }
 .ev-acts .sg { height: 28px; padding: 0 10px; font-size: 0.78rem; }
+.ev-acts .sg.icon-only { width: 28px; padding: 0; }
+/* Breite Fenster: Aktionen rechts in derselben Zeile statt darunter */
+html.wide .ev.with-acts { grid-template-columns: minmax(0, 1fr) auto auto; }
+html.wide .ev-acts { grid-column: 2; grid-row: 1; flex-wrap: nowrap; padding: 0 12px 0 0; margin: 0; }
+html.wide .ev-join { grid-column: 3; grid-row: 1; }
+html.wide .ev.with-acts:not(:has(.ev-join)) .ev-acts { grid-column: 2 / -1; }
 .ev.past .ev-title, .ev.past .ev-when b { color: var(--label2); }
 .ev.past .ev-bar { opacity: 0.4; }
 .ev.live { background: linear-gradient(90deg, color-mix(in srgb, var(--bag) 11%, var(--card)), var(--card) 75%); }
@@ -1576,7 +1582,8 @@ html.has-insp .island { right: calc(var(--insp-w) + 30px + var(--sar)); }
 .frow.call .frow-l small { font-variant-numeric: tabular-nums; color: var(--green); font-weight: 600; font-size: 0.82rem; }
 .form > .frow:has(> .pglyph) + .frow::before { left: 56px; }
 .acc-dot { width: 10px; height: 10px; flex: none; border-radius: 50%; background: var(--bag); box-shadow: 0 0 0 3px color-mix(in srgb, var(--bag) 22%, transparent); }
-.frow.acc .pill { height: 26px; font-size: 0.74rem; }
+.acc-dot.warn { background: var(--red); box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 22%, transparent); }
+.acc-mail { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .frow.cx-intro .frow-l small { margin-top: 3px; }
 .frow.col.prov-row { padding: 12px 14px 14px; }
 .prov-grid { flex-basis: 100%; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }

@@ -73,6 +73,8 @@ Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät. Der Se
 
 Ohne Server gehen „In Kalender eintragen“ (per Link zu Google Kalender oder Outlook oder als Kalender-Datei), „E-Mail schreiben“ und „Anrufen“ trotzdem.
 
+**Einmalige Einrichtung:** Damit die Knöpfe „Mit Google/Microsoft verbinden“ funktionieren, braucht der Server Zugangsdaten von Google und Microsoft. Wie du sie kostenlos anlegst, steht Schritt für Schritt in [`VERBINDEN.md`](VERBINDEN.md).
+
 ## Server installieren (ein Befehl)
 Im Terminal eines eigenen Linux-Servers (z. B. bei Hetzner):
 ```
@@ -110,6 +112,7 @@ Wenn auf dem Server ein Anthropic-Schlüssel hinterlegt ist, erscheinen in der A
 | `js/remind.js` | Erinnerungen: Mitteilungen, App-Symbol-Zahl, Kalender (ICS), Kurzbefehl, Push |
 | `js/sync.js` | Ende-zu-Ende-verschlüsselter Sync |
 | `js/ai.js` | KI-Projektmanager (über den eigenen Server) |
+| `js/connect.js`, `js/ui/connectui.js` | Google- und Microsoft-Verbindung: Termine, Calls, markierte Mails, Kalender-Eintrag, E-Mail, Anrufen |
 | `js/config.js` | Name, Farben, Speicher, Server-Adresse (eine Stelle für alles) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | App-Installation, Offline-Betrieb, Push |
 | `server/taschen-server.mjs`, `server/install.sh` | eigener Server: App, Sync, Push, KI; Installation mit einem Befehl |

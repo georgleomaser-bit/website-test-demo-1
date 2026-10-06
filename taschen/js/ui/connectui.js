@@ -166,7 +166,7 @@ function mailRow(m) {
   const initial = (m.from || m.fromEmail || "?").trim().charAt(0).toUpperCase();
   const k = m.id.length > 60 ? m.id.slice(-60) : m.id;
   return `<div class="mrow" data-key="m-${esc(k)}" style="${accVars(a)}">
-<div class="mrow-in"><span class="mav" aria-hidden="true">${esc(initial)}${glyph(m.provider, "badge")}</span><div class="mmain"><div class="mtop"><b>${esc(m.from)}</b><time>${esc(relTime(m.date))}</time></div><span class="msubj">${esc(m.subject)}</span>${m.snippet ? `<span class="msnip">${esc(m.snippet)}</span>` : ""}</div></div>
+<div class="mrow-in"><span class="mav" aria-hidden="true">${esc(initial)}${glyph(m.provider, "pbadge")}</span><div class="mmain"><div class="mtop"><b>${esc(m.from)}</b><time>${esc(relTime(m.date))}</time></div><span class="msubj">${esc(m.subject)}</span>${m.snippet ? `<span class="msnip">${esc(m.snippet)}</span>` : ""}</div></div>
 <div class="in-sug m-acts">${sg ? `<button type="button" class="sg" data-act="mail-task" data-id="${esc(m.id)}" data-bag="${esc(sg.id)}" style="${colorVars(sg.color)}" aria-label="Als Aufgabe in ${esc(sg.name)}" title="Als Aufgabe in ${esc(sg.emoji)} ${esc(sg.name)}">${icon("plus")}<span>Als Aufgabe → ${esc(sg.emoji)}</span></button>` : `<button type="button" class="sg accent" data-act="mail-task" data-id="${esc(m.id)}">${icon("plus")}<span>Als Aufgabe</span></button>`}<button type="button" class="sg ghost icon-only" data-act="mail-pick" data-id="${esc(m.id)}" aria-label="Als Aufgabe in eine Tasche …" title="In Tasche …">${icon("bag")}</button>${m.web ? extLink(m.web, "sg ghost icon-only", icon("arrowUpRight"), `Mail öffnen: ${m.subject}`) : ""}<button type="button" class="sg ghost icon-only" data-act="mail-hide" data-id="${esc(m.id)}" aria-label="Ausblenden" title="Ausblenden">${icon("x")}</button></div>
 </div>`;
 }
@@ -351,9 +351,9 @@ export function settingsGroup() {
   for (const a of accs) {
     const s = connect.accountState(a.id) || { kind: "ok" };
     const what = [a.calendars !== false ? "Termine" : "", a.mail !== false ? (a.provider === "google" ? "markierte Mails" : "markierte Mails") : ""].filter(Boolean).join(" & ") || "nichts eingeblendet";
-    const sub = s.kind === "expired" ? `<span class="red">Abgelaufen – neu verbinden</span>` : s.kind === "error" ? `<span class="orange">${esc(s.msg)}</span>` : `${esc(connect.providerName(a.provider))} · ${esc(what)}`;
-    const right = s.kind === "expired" ? `<span class="pill red">Neu verbinden</span>` : `<i class="acc-dot" style="${accVars(a)}"></i>`;
-    rows.push(`<button type="button" class="frow btnrow acc" data-act="cx-acc" data-id="${esc(a.id)}" data-key="acc-${esc(a.id)}">${glyph(a.provider)}<span class="frow-l">${esc(a.email || connect.providerName(a.provider))}<small>${sub}</small></span><span class="frow-c">${right}${icon("chevronRight")}</span></button>`);
+    const sub = s.kind === "expired" ? `<span class="red">Abgelaufen – zum Neu-Verbinden antippen</span>` : s.kind === "error" ? `<span class="orange">${esc(s.msg)}</span>` : `${esc(connect.providerName(a.provider))} · ${esc(what)}`;
+    const right = s.kind === "expired" ? `<i class="acc-dot warn"></i>` : `<i class="acc-dot" style="${accVars(a)}"></i>`;
+    rows.push(`<button type="button" class="frow btnrow acc" data-act="cx-acc" data-id="${esc(a.id)}" data-key="acc-${esc(a.id)}">${glyph(a.provider)}<span class="frow-l"><span class="acc-mail">${esc(a.email || connect.providerName(a.provider))}</span><small>${sub}</small></span><span class="frow-c">${right}${icon("chevronRight")}</span></button>`);
   }
   if (!accs.length) rows.push(`<div class="frow cx-intro">${sq("calendar", "red")}<span class="frow-l">Termine, Calls und markierte Mails<small>Outlook, Microsoft 365, Gmail und Google Kalender – direkt in Heute, Demnächst und im Eingang.</small></span></div>`);
   const provBtn = (p) => {
@@ -375,13 +375,14 @@ export function settingsGroup() {
     prefs.cxGuide
       ? `<ol class="guide-steps">
 <li>Den <b>Arbeitstaschen-Server</b> installieren (siehe <code>server/install.sh</code>) – er läuft z. B. unter <code>https://taschen.…sslip.io</code>. Unter „Sync“ seine Adresse eintragen.</li>
-<li><b>Microsoft:</b> Im Azure-Portal unter „App-Registrierungen“ eine App anlegen (Konten in allen Organisationen <i>und</i> private Microsoft-Konten), Umleitungs-URI <code>…/api/connect/microsoft/callback</code>, einen geheimen Clientschlüssel erzeugen.</li>
+<li><b>Microsoft:</b> Im Microsoft-Entra-Admin-Center (früher Azure-Portal) unter „App-Registrierungen“ eine App anlegen (Konten in allen Organisationen <i>und</i> private Microsoft-Konten), Umleitungs-URI <code>…/api/connect/microsoft/callback</code>, einen geheimen Clientschlüssel erzeugen.</li>
 <li><b>Google:</b> In der Google Cloud Console einen OAuth-Client (Webanwendung) anlegen, Weiterleitungs-URI <code>…/api/connect/google/callback</code>, Kalender- und Gmail-API aktivieren.</li>
-<li>Die Zugangsdaten gibt dir <code>install.sh</code> ein (oder als <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>, <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>). Fertig – oben auf „Verbinden“ tippen.</li>
+<li>Die Zugangsdaten fragt <code>install.sh</code> ab (oder du setzt sie als <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>, <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>). Fertig – oben auf „Verbinden“ tippen.</li>
 </ol>`
       : ""
   }</div>`);
-  const foot = `${accs.length ? "" : "Tipp fürs iPhone: Am besten am Mac oder in Safari verbinden – über den Sync ist das Konto danach auf allen Geräten da. "}${icon("shield")} <b>Privat:</b> Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät – der Server vermittelt nur die Anmeldung und speichert dafür einen verschlüsselten Schlüssel. Firmenkonten (Microsoft 365, Google Workspace): Wenn deine Firma das blockiert, muss die IT die App einmal freigeben.`;
+  const ios = safe(() => remind.env().ios, false);
+  const foot = `${icon("shield")} <b>Privat:</b> Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät – der Server vermittelt nur die Anmeldung. Firmenkonto gesperrt? Dann muss die IT die App einmal freigeben.${ios && !accs.length ? " Tipp: Am besten einmal am Mac oder in Safari verbinden – über den Sync ist das Konto dann überall da." : ""}`;
   return `<section class="set" id="set-konten" data-key="set-konten"><h3 class="set-h">Konten & Kalender</h3><div class="card form">${rows.join("")}</div><p class="set-foot">${foot}</p></section>`;
 }
 
