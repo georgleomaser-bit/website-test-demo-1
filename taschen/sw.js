@@ -16,6 +16,7 @@ const CORE = [
   "./js/remind.js",
   "./js/sync.js",
   "./js/ai.js",
+  "./js/connect.js",
   "./js/ui/actions.js",
   "./js/ui/aiui.js",
   "./js/ui/bag.js",

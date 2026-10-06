@@ -5,6 +5,7 @@ import * as pm from "./pm.js";
 import * as remind from "./remind.js";
 import * as sync from "./sync.js";
 import * as ai from "./ai.js";
+import * as connect from "./connect.js";
 import { COLORS, SERVER } from "./config.js";
 import { app, handle, runMenu, render, on, safe, reducedMotion, isStandalone } from "./ui/core.js";
 import { placeSegPills } from "./ui/components.js";
@@ -556,6 +557,16 @@ async function boot() {
     if (qNew != null) setTimeout(() => openCapture({ text: qNew }), 250);
     if (qTask) setTimeout(() => (store.task(qTask) ? openTask(qTask) : toast("Aufgabe nicht gefunden", { icon: "info", sub: "Vielleicht auf einem anderen Gerät?" })), 250);
   }
+  connect.onChange(() => app.render());
+  connect
+    .finishReturn()
+    .then((r) => {
+      if (!r) return;
+      if (r.ok) toast(`${connect.PROVIDERS[r.provider]?.name || ""} verbunden`, { icon: "mail", sub: r.email ? `${r.email} · Termine und Mails findest du unter „Heute“` : "Termine und Mails findest du unter „Heute“" });
+      else if (r.retry && r.provider) toast(r.error, { icon: "mail", action: { label: "Anmelden", fn: () => connect.start(r.provider).catch(() => {}) }, ms: 8000 });
+      else toast(r.error || "Anmeldung fehlgeschlagen", { icon: "info", tone: "red" });
+    })
+    .catch((e) => console.warn("[taschen] Mail und Kalender", e));
   restoreFocus();
   detectServices();
   if (isStandalone()) safe(() => store.requestPersist()?.catch?.(() => {}));

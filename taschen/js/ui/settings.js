@@ -14,6 +14,7 @@ import { confirmBox, chooseBox } from "./sheet.js";
 import { haptic, toast, toastError, confetti } from "./fx.js";
 import { exportCalendar } from "./today.js";
 import { platform } from "./install.js";
+import * as connect from "../connect.js";
 
 const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const WD_LONG = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -85,6 +86,9 @@ export function render(r) {
 
   // Profil
   h += group("profil", "Profil", [inputRow("person", "blue", "Name", `<input type="text" class="in-text" value="${esc(p.name || "")}" placeholder="Wie soll ich dich nennen?" data-change="set-name" data-key-act="blur-enter" autocomplete="given-name" enterkeyhint="done" />`)]);
+
+  // Mail und Kalender
+  h += kontenGroup();
 
   // Tagesrhythmus
   h += group("rhythmus", "Tagesrhythmus", [
@@ -210,6 +214,23 @@ export function render(r) {
     }, 120);
   }
   return `<div class="view view-settings" data-key="view-settings">${h}</div>`;
+}
+
+// ---------- Mail und Kalender ----------
+function kontenGroup() {
+  const accs = new Map(connect.accounts().map((a) => [a.provider, a]));
+  const rows = Object.values(connect.PROVIDERS)
+    .filter((P) => connect.available(P.id) || accs.has(P.id))
+    .map((P) => {
+      const a = accs.get(P.id);
+      const ctl = a
+        ? `<button type="button" class="pill" data-act="connect-off" data-p="${P.id}">Trennen</button>`
+        : `<button type="button" class="pill accent" data-act="connect-on" data-p="${P.id}">Verbinden</button>`;
+      const sub = a ? `${a.email ? `${esc(a.email)} · ` : ""}verbunden` : esc(P.sub);
+      return ctlRow("mail", P.id === "google" ? "red" : "blue", P.name, ctl, sub);
+    });
+  if (!rows.length) rows.push(`<p class="conn-empty">Diese Funktion ist hier noch nicht eingeschaltet.</p>`);
+  return group("konten", "Mail und Kalender", rows, "Verbinde dein Postfach, dann siehst du unter „Heute“ deine Termine und neuen Mails und kannst aus einer Mail mit einem Tipp eine Aufgabe machen. Die App liest nur. Sie verschickt und löscht nichts, und deine Mails bleiben auf diesem Gerät.");
 }
 
 // ---------- Aktionen (auch von außen genutzt) ----------
@@ -354,6 +375,13 @@ on("input", {
 });
 
 on("click", {
+  "connect-on": (el) => connect.start(el.dataset.p).catch((e) => toastError(e)),
+  "connect-off": async (el) => {
+    const P = connect.PROVIDERS[el.dataset.p];
+    if (!(await confirmBox({ title: `${P.name} trennen?`, text: "Termine und Mails erscheinen dann nicht mehr in der App. In deinem Postfach ändert sich nichts.", ok: "Trennen", danger: true }))) return;
+    connect.disconnect(P.id);
+    toast(`${P.name} getrennt`, { icon: "mail" });
+  },
   "set-day": (el) => {
     const d = Number(el.dataset.d);
     const cur = new Set(store.get().profile.workdays || []);
