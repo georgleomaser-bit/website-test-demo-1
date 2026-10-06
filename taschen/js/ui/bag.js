@@ -12,7 +12,7 @@ import { openSheet, sheetHead, getSheet, closeSheet, openMenu, confirmBox, promp
 import { haptic, toast, toastUndo, toastError, sound, confetti } from "./fx.js";
 import { onDrop } from "./gestures.js";
 import { openTask } from "./task.js";
-import { openBagEditor, bagMenuItems, stats } from "./bags.js";
+import { openBagEditor, stats } from "./bags.js";
 import { askAI } from "./aiui.js";
 import { markdown, plain, toggleCheckLine, checkStats } from "./markdown.js";
 import { mergeIcs } from "./today.js";
@@ -60,7 +60,7 @@ export function render(r) {
 </div></div>
 <h1 class="bhero-name">${esc(b.name)}</h1>
 ${b.goal ? `<p class="bhero-goal">${esc(b.goal)}</p>` : `<button type="button" class="bhero-goal add" data-act="bag-edit" data-id="${b.id}">${icon("plus")} Ziel festlegen</button>`}
-<div class="bhero-stats">${ring(st.pct, { size: 64, stroke: 6, cls: "hero-ring" })}<div class="bhero-meta"><div class="bhero-pills">${healthPill(st)}${b.status !== "aktiv" ? `<span class="health gray"><i></i>${b.status === "pausiert" ? "Pausiert" : "Fertig"}</span>` : ""}</div>${st.healthReason ? `<p>${esc(st.healthReason)}</p>` : ""}${dlTxt ? `<p class="bhero-dl">${icon("flag")}${dlTxt}</p>` : ""}<p class="bhero-count"><b>${st.done}</b> von <b>${st.total}</b> erledigt</p></div></div>
+<div class="bhero-stats">${ring(st.pct, { size: 64, stroke: 6, cls: "hero-ring" })}<div class="bhero-meta"><div class="bhero-pills">${healthPill(st)}${b.status !== "aktiv" ? `<span class="health gray"><i></i>${b.status === "pausiert" ? "Pausiert" : "Fertig"}</span>` : ""}</div>${st.healthReason ? `<p>${esc(st.healthReason)}</p>` : ""}${dlTxt ? `<p class="bhero-dl">${icon("flag")}${dlTxt}</p>` : ""}${/erledigt/.test(st.healthReason || "") ? "" : `<p class="bhero-count"><b>${st.done}</b> von <b>${st.total}</b> erledigt</p>`}</div></div>
 </section>`;
 
   const tabs = `<div class="tabs-wrap" data-key="tabs">${seg(TABS.map((t) => ({ id: t.id, label: t.label, count: counts[t.id] || "" })), tab, { act: "bag-tab", attrs: `data-id="${b.id}"`, cls: "tabs", label: "Bereiche der Tasche" })}</div>`;
@@ -194,7 +194,6 @@ ${col ? "" : `<div class="card list" data-drop="section" data-drop-list data-bag
     h += `<section class="tsec done-sec${col ? " collapsed" : ""}" data-key="ts-done"><header class="tsec-h"><button type="button" class="sec-toggle" data-act="collapse" data-k="${key}" data-def="1" aria-expanded="${!col}"><span class="sec-chev${col ? "" : " open"}">${icon("chevronRight")}</span><h3>Erledigt</h3><span class="sec-count">${done.length}</span></button></header>${col ? "" : `<div class="card list">${done.slice(0, 100).map((t) => taskRow(t, { bag: false })).join("")}</div>`}</section>`;
   }
   if (!all.length) h = empty({ emoji: "📝", title: "Noch keine Aufgaben", text: "Was ist der erste Schritt? Schreib ihn einfach auf – Datum und Priorität erkenne ich mit.", action: `<button type="button" class="btn primary" data-act="new-task" data-bag="${b.id}">${icon("plus")}<span>Erste Aufgabe</span></button>` }) + h;
-  void st;
   return h;
 }
 
@@ -297,7 +296,7 @@ function filesTab(b, { files }) {
     .map((f) => {
       const th = thumb(f);
       const [ic, col] = fileIcon(f);
-      return `<div class="fcard" data-key="f-${f.id}"><button type="button" class="fprev" data-act="file-open" data-id="${f.id}" aria-label="Öffnen: ${esc(f.name)}">${th ? `<img src="${esc(th)}" alt="" loading="lazy" />` : sq(ic, col)}</button><div class="finfo"><b title="${esc(f.name)}">${esc(f.name)}</b><small>${esc(fmtSize(f.size))}${f.synced === false && f.size > LIMITS.syncFileMax ? ` · <span class="orange">nur auf diesem Gerät</span>` : ""}</small></div><button type="button" class="btn-round sm ghost" data-act="file-menu" data-id="${f.id}" aria-label="Datei-Aktionen">${icon("ellipsis")}</button></div>`;
+      return `<div class="filec" data-key="f-${f.id}"><button type="button" class="fprev" data-act="file-open" data-id="${f.id}" aria-label="Öffnen: ${esc(f.name)}">${th ? `<img src="${esc(th)}" alt="" loading="lazy" />` : sq(ic, col)}</button><div class="finfo"><b title="${esc(f.name)}">${esc(f.name)}</b><small>${esc(fmtSize(f.size))}${f.synced === false && f.size > LIMITS.syncFileMax ? ` · <span class="orange">nur auf diesem Gerät</span>` : ""}</small></div><button type="button" class="btn-round sm ghost" data-act="file-menu" data-id="${f.id}" aria-label="Datei-Aktionen">${icon("ellipsis")}</button></div>`;
     })
     .join("")}</div>`;
 }
@@ -887,6 +886,3 @@ onDrop("section", (id, zone, beforeId) => {
   if (beforeId !== id) store.reorderTask(id, beforeId || null);
 });
 
-void bagMenuItems;
-void colorsUnused;
-function colorsUnused() {}

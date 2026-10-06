@@ -74,7 +74,7 @@ export function ring(pct, { size = 44, stroke = 4.5, cls = "", label = true, sub
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const off = c * (1 - p / 100);
-  return `<span class="ring${cls ? " " + cls : ""}" style="--sz:${size}px" role="img" aria-label="${p} Prozent erledigt"><svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${stroke}"/><circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${stroke}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>${label ? `<b class="ring-l">${p}<small>%</small>${sub ? `<i>${esc(sub)}</i>` : ""}</b>` : ""}</span>`;
+  return `<span class="ring${cls ? " " + cls : ""}" style="--sz:${size}px" role="img" aria-label="${p} Prozent erledigt"><svg viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle class="ring-bg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${stroke}"/><circle class="ring-fg" cx="${size / 2}" cy="${size / 2}" r="${r}" stroke-width="${stroke}" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${off.toFixed(2)}" transform="rotate(-90 ${size / 2} ${size / 2})"/></svg>${label ? `<b class="ring-l"><span>${p}<small>%</small></span>${sub ? `<i>${esc(sub)}</i>` : ""}</b>` : ""}</span>`;
 }
 
 export function bar(pct, cls = "") {

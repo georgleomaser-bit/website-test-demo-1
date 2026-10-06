@@ -1,6 +1,5 @@
 // Arbeitstaschen – Installation als App: Hinweis-Karte (iPhone/iPad/Mac) und bebilderte Anleitung
 import * as remind from "../remind.js";
-import { esc } from "../util.js";
 import { icon, logo } from "./icons.js";
 import { app, on, prefs, setPref, safe, isStandalone } from "./core.js";
 import { openSheet, sheetHead } from "./sheet.js";
@@ -34,7 +33,7 @@ export function installHint() {
   let text = "", btn = "";
   if (pf === "iphone" || pf === "ipad") {
     text = `Tippe auf <b>Teilen</b> ${icon("share")} und dann auf <b>„Zum Home-Bildschirm“</b>. Erst dann gibt’s Mitteilungen, den Zähler am App-Symbol und sicheren Speicher.`;
-    btn = `<button type="button" class="btn sm" data-act="install-help">${icon("info")}<span>So geht’s</span></button>`;
+    btn = `<button type="button" class="btn primary sm" data-act="install-help">${icon("info")}<span>So geht’s</span></button><button type="button" class="btn sm" data-act="ics-daily">${icon("calendarPlus")}<span>Wecker im Kalender</span></button>`;
   } else if (pf === "mac-safari") {
     text = `In Safari: <b>Ablage → Zum Dock hinzufügen</b>. Dann startet Arbeitstaschen wie eine echte Mac-App – mit Mitteilungen.`;
     btn = `<button type="button" class="btn sm" data-act="install-help">${icon("info")}<span>So geht’s</span></button>`;
@@ -108,4 +107,3 @@ on("click", {
 });
 
 export const canPromptInstall = () => !!promptEvent;
-void esc;

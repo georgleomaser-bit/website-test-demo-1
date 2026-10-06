@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' https:; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex" />
+  <title>Arbeitstaschen</title>
+  <meta name="description" content="Arbeitstaschen – dein persönlicher Projektmanager: Projekte in Taschen, tägliches Briefing, Erinnerungen und Sync auf iPhone, iPad und Mac." />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#F2F2F7" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Taschen" />
+  <meta name="format-detection" content="telephone=no" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="icon" href="icons/favicon-64.png" type="image/png" sizes="64x64" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <link rel="stylesheet" href="css/taschen.css" />
+  <link rel="modulepreload" href="js/app.js" />
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+
+  <a class="skip" href="#main">Zum Inhalt springen</a>
+
+  <aside class="sidebar" id="sidebar" aria-label="Navigation"></aside>
+
+  <div class="app" id="app">
+    <header class="topbar" id="topbar"></header>
+    <main class="main" id="main" tabindex="-1">
+      <div id="view">
+        <div class="boot" aria-label="Lädt">
+          <div class="boot-logo"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <aside class="inspector" id="inspector" aria-label="Aufgabe" hidden></aside>
+
+  <nav class="tabbar" id="tabbar" aria-label="Bereiche"></nav>
+  <button type="button" class="fab" id="fab" data-act="fab" data-menu="fab" aria-label="Neue Aufgabe (lange drücken für mehr)">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" /></svg>
+  </button>
+
+  <div id="layer"></div>
+  <section class="onboarding" id="onboarding" aria-label="Willkommen" hidden></section>
+  <section class="focus" id="focus" role="dialog" aria-modal="true" aria-label="Fokus-Timer" hidden></section>
+  <div class="island" id="island" role="status" aria-live="polite" hidden></div>
+  <canvas class="confetti" id="confetti" aria-hidden="true" hidden></canvas>
+
+  <!-- unsichtbar: Haptik-Trick (iOS) und Datei-Auswahl aus dem Plus-Menü -->
+  <label class="haptic" id="haptic" aria-hidden="true"><input type="checkbox" switch tabindex="-1" /></label>
+  <input type="file" id="file-in" class="hidden-file" multiple tabindex="-1" aria-hidden="true" />
+
+  <noscript><p class="noscript">Arbeitstaschen braucht JavaScript.</p></noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

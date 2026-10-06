@@ -72,12 +72,12 @@ function suggestion(title, data) {
 // ---------- Darstellung ----------
 const TK = { date: "blue", time: "indigo", prio: "orange", bag: "bag", tag: "gray", repeat: "green", remind: "purple", est: "teal", someday: "gray" };
 
-function mirror(text, tokens) {
+function mirror(text, tokens, bag = null) {
   const tks = (tokens || []).filter((t) => Number.isFinite(t.start) && t.end > t.start).sort((a, b) => a.start - b.start);
   let out = "", pos = 0;
   for (const t of tks) {
     if (t.start < pos) continue;
-    out += esc(text.slice(pos, t.start)) + `<mark class="tk tk-${TK[t.type] || "gray"}">${esc(text.slice(t.start, t.end))}</mark>`;
+    out += esc(text.slice(pos, t.start)) + `<mark class="tk tk-${TK[t.type] || "gray"}"${t.type === "bag" && bag ? ` style="${bagVars(bag)}"` : ""}>${esc(text.slice(t.start, t.end))}</mark>`;
     pos = t.end;
   }
   return out + esc(text.slice(pos)) + "​";
@@ -110,7 +110,7 @@ function view() {
   return `<header class="sheet-head cap-head"><div class="sh-l"><button type="button" class="btn-text" data-act="sheet-close">Fertig</button></div><div class="sh-t"><h2>Neue Aufgabe</h2>${cap.added ? `<p class="cap-count">${icon("check")} ${cap.added} hinzugefügt</p>` : ""}</div><div class="sh-r"><button type="button" class="btn-add" data-act="cap-add"${empty ? " disabled" : ""} aria-label="Hinzufügen">${icon("arrowRight")}</button></div></header>
 <div class="cap">
 <div class="cap-field">
-<div class="cap-mirror" aria-hidden="true">${mirror(cap.text, p.tokens)}</div>
+<div class="cap-mirror" aria-hidden="true">${mirror(cap.text, p.tokens, p.bag ? store.bag(p.bag) : null)}</div>
 <textarea class="cap-input" rows="1" autofocus data-input="cap" data-key-act="cap-key" placeholder="Was steht an?" aria-label="Neue Aufgabe" enterkeyhint="send" autocapitalize="sentences" autocomplete="off" spellcheck="true"></textarea>
 </div>
 <div class="cap-tokens" aria-live="polite">${chips.join("") || `<span class="cap-hint">Tipp: Datum, Uhrzeit, #Tasche und !!! einfach mitschreiben</span>`}</div>

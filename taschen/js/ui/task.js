@@ -5,12 +5,11 @@ import * as remind from "../remind.js";
 import { PRIOS, REPEATS } from "../config.js";
 import { esc, debounce } from "../util.js";
 import { icon, CHECK } from "./icons.js";
-import { app, on, today, tomorrow, weekendISO, nextWeekISO, relTime, safe, appUrl, slug, bagVars } from "./core.js";
-import { pending, seg, toggle, sq } from "./components.js";
+import { app, on, today, tomorrow, weekendISO, nextWeekISO, relTime, safe, appUrl, slug, bagVars, autoGrow, growAll } from "./core.js";
+import { pending, seg, sq } from "./components.js";
 import { openSheet, closeSheet, getSheet, promptBox, openMenu } from "./sheet.js";
 import { haptic, toast, toastError } from "./fx.js";
-import { taskMenuItems, confirmDelete, duplicateTask, toggleTask } from "./actions.js";
-import { startFocus } from "./focus.js";
+import { confirmDelete, duplicateTask } from "./actions.js";
 import { askAI } from "./aiui.js";
 
 let currentId = null; // Aufgabe im Sheet
@@ -142,7 +141,7 @@ export function taskDetail(id, { inspector = false } = {}) {
   const sections = bag ? bag.sections || [] : [];
   const defRemind = p.defaultRemind ?? 15;
   const remindVal = t.remind == null ? "" : String(t.remind);
-  const remindOpts = REMINDS.map((r) => opt(r.v, r.v === "" ? `Standard (${defRemind ? defRemind + " Min. vorher" : "zum Termin"})` : r.l, r.v === remindVal)).join("") + (remindVal && !REMINDS.some((r) => r.v === remindVal) ? opt(remindVal, `${remindVal} Min. vorher`, true) : "");
+  const remindOpts = REMINDS.map((r) => opt(r.v, r.v === "" ? `Standard (${defRemind ? defRemind + " Min." : "zum Termin"})` : r.l, r.v === remindVal)).join("") + (remindVal && !REMINDS.some((r) => r.v === remindVal) ? opt(remindVal, `${remindVal} Min. vorher`, true) : "");
   const quick = [
     { k: "today", l: "Heute", iso: tdy, ic: "sun" },
     { k: "tomorrow", l: "Morgen", iso: tomorrow(), ic: "sunrise" },
@@ -171,6 +170,7 @@ export function taskDetail(id, { inspector = false } = {}) {
 
 <div class="td-chips hscroll">
 <button type="button" class="chip${isToday ? " on accent" : ""}" data-act="td-plan" data-id="${t.id}">${icon(isToday ? "starFill" : "star")}<span>${isToday ? "Heute eingeplant" : "Heute einplanen"}</span></button>
+<span class="chip-lab">Fällig</span>
 ${quick.map((q) => `<button type="button" class="chip${t.due === q.iso ? " on" : ""}" data-act="td-due" data-id="${t.id}" data-iso="${q.iso}">${icon(q.ic)}<span>${q.l}</span></button>`).join("")}
 <button type="button" class="chip${t.someday ? " on" : ""}" data-act="td-someday" data-id="${t.id}">${icon("moon")}<span>Irgendwann</span></button>
 ${t.due ? `<button type="button" class="chip ghost" data-act="td-due" data-id="${t.id}" data-iso="">${icon("x")}<span>Kein Datum</span></button>` : ""}
@@ -189,7 +189,7 @@ ${app.ai ? `<button type="button" class="btn ai sm" data-act="td-ai" data-id="${
 <div class="card form">
 ${row("calendar", "red", "Datum", `<input type="date" class="in-date" value="${esc(t.due || "")}" data-change="td-date" data-id="${t.id}" aria-label="Fälligkeitsdatum" />`, { sub: t.due ? esc(safe(() => dates.fmtDay(t.due), t.due)) : "" })}
 ${row("clock", "blue", "Uhrzeit", `<input type="time" class="in-time" value="${esc(t.time || "")}" data-change="td-time" data-id="${t.id}" aria-label="Uhrzeit" />${t.time ? `<button type="button" class="mini-x" data-act="td-notime" data-id="${t.id}" aria-label="Uhrzeit entfernen">${icon("x")}</button>` : ""}`)}
-${row("bell", "orange", "Erinnerung", `<select data-change="td-remind" data-id="${t.id}" aria-label="Erinnerung"${t.time ? "" : " disabled"}>${remindOpts}</select>`, { sub: t.time ? (remAt ? `um ${esc(remAt.toLocaleTimeString("de-DE", { hour: "numeric", minute: "2-digit" }))}${t.due !== tdy ? ", " + esc(safe(() => dates.relDay(dates.toISO(remAt), app.now), "")) : ""}` : "aus") : "braucht eine Uhrzeit" })}
+${row("bell", "orange", "Erinnerung", `<select data-change="td-remind" data-id="${t.id}" aria-label="Erinnerung"${t.time ? "" : " disabled"}>${remindOpts}</select>`, { sub: t.time ? (remAt ? `um ${esc(remAt.toLocaleTimeString("de-DE", { hour: "numeric", minute: "2-digit" }))}${t.due !== tdy ? ", " + esc(safe(() => dates.relDay(dates.toISO(remAt), app.now), "")) : ""}` : "aus") : "nur mit Uhrzeit" })}
 ${row("repeat", "gray", "Wiederholen", `<select data-change="td-repeat" data-id="${t.id}" aria-label="Wiederholung">${REPEATS.map((r) => opt(r.id || "", r.label, (t.repeat || "") === (r.id || ""))).join("")}</select>`)}
 </div>
 </section>
@@ -197,7 +197,6 @@ ${row("repeat", "gray", "Wiederholen", `<select data-change="td-repeat" data-id=
 <section class="td-block">
 <div class="card form">
 <div class="frow">${sq("flag", "red")}<span class="frow-l">Priorität</span><span class="frow-c">${seg(PRIOS.map((x) => ({ id: String(x.id), label: x.id ? x.mark : "Keine" })), String(t.prio || 0), { act: "td-prio", attrs: `data-id="${t.id}"`, cls: "mini", label: "Priorität" })}</span></div>
-<div class="frow">${sq("starFill", "yellow")}<span class="frow-l">Für heute einplanen</span><span class="frow-c">${toggle(isToday, `data-change="td-plan-sw" data-id="${t.id}"`, "Für heute einplanen")}</span></div>
 ${row("hourglass", "indigo", "Dauer", `<select data-change="td-est" data-id="${t.id}" aria-label="Geschätzte Dauer">${ESTS.map((m) => opt(m == null ? "" : String(m), m == null ? "Keine" : safe(() => dates.fmtDuration(m), m + " Min."), (t.est ?? null) === m)).join("")}${t.est && !ESTS.includes(t.est) ? opt(String(t.est), safe(() => dates.fmtDuration(t.est), t.est + " Min."), true) : ""}</select>`)}
 </div>
 </section>
@@ -449,20 +448,7 @@ async function shareTask(id) {
   }
 }
 
-// ---------- Textfelder wachsen mit ----------
-export function autoGrow(el) {
-  if (!el || el.nodeName !== "TEXTAREA") return;
-  el.style.height = "auto";
-  el.style.height = Math.min(el.scrollHeight + 2, el.classList.contains("td-title") ? 400 : 1200) + "px";
-}
-
-export function growAll(root = document) {
-  root.querySelectorAll(".td-title, .td-notes, textarea.grow").forEach((el) => {
-    if (el.value.length !== el._gl || !el.style.height) {
-      el._gl = el.value.length;
-      autoGrow(el);
-    }
-  });
-}
+// ---------- Textfelder wachsen mit (aus core) ----------
+export { autoGrow, growAll };
 
 export const currentTask = () => currentId;

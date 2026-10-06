@@ -55,7 +55,7 @@ export function render() {
     const diff = safe(() => dates.diffDays(tdy, d.date), 0);
     if (diff > 7 && wk !== lastWeek) agenda += `<div class="wk-sep" data-key="wk-${wk}-${d.date.slice(0, 4)}"><span>KW ${wk}</span></div>`;
     lastWeek = wk;
-    const load = d.load || 0;
+    const load = (d.tasks || []).some((t) => t.est) ? d.load || 0 : 0;
     const loadCls = load > capDay ? "red" : load > capDay * 0.8 ? "orange" : "";
     const ms = (d.milestones || []).map((m) => {
       const bag = store.bag(m.bag);

@@ -7,10 +7,9 @@ import { esc } from "../util.js";
 import { icon } from "./icons.js";
 import { app, on, today, tomorrow, safe, prefs, setPref, bagVars, isoWeek, appUrl, isStandalone } from "./core.js";
 import { taskRow, taskMeta, ring, bar, sec, empty, largeTitle, pending, bagSquircle } from "./components.js";
-import { allToToday, rescheduleMenu, batch, toggleTask } from "./actions.js";
+import { allToToday, rescheduleMenu, batch } from "./actions.js";
 import { openSheet, sheetHead, getSheet } from "./sheet.js";
 import { openTask } from "./task.js";
-import { startFocus } from "./focus.js";
 import { haptic, toast, toastError, confetti, sound } from "./fx.js";
 import { openCapture } from "./capture.js";
 import { askAI } from "./aiui.js";
@@ -21,7 +20,7 @@ const asBag = (x) => (x && typeof x === "object" ? x : x ? store.bag(x) : null);
 
 // ---------- Briefing (mit Rückfallebene, falls pm.js ausfällt) ----------
 function getBriefing(s, now) {
-  return safe(() => pm.briefing(s, now), null) || {
+  return safe(() => pm.briefing(s, now, { permission: safe(() => remind.permission(), "unsupported") }), null) || {
     greeting: safe(() => dates.greeting(now), "Hallo"), name: s.profile.name, daypart: "day", dateLabel: now.toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" }),
     headline: "Dein Tag", summary: "", counts: { overdue: 0, today: 0, planned: 0, inbox: 0, doneToday: 0, upcoming: 0 }, progress: 0,
     overdue: [], today: [], timeline: [], focus: [], doneToday: [], stalled: [], deadlines: [], tips: [],
@@ -83,10 +82,6 @@ ${tips.length ? `<div class="hero-tips">${tips.map((tp, i) => `<button type="but
 ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("sparkle")}<span>Frag deinen KI-PM, wie du heute vorgehst</span></button>` : ""}
 </section>`;
 
-  // Installations-Hinweis / Erinnerungs-Karte
-  html += installHint();
-  html += reminderCard();
-
   // Morgens: Tag planen
   const dayStartH = Number(String(p.dayStart || "08:00").split(":")[0]) || 8;
   if (now.getHours() < Math.max(12, dayStartH + 3) && prefs.plannedDay !== tdy && !planned.length && open.length) {
@@ -128,6 +123,11 @@ ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("spa
   } else if (focus.length || timeline.length) {
     html += `<div class="add-line" data-key="add-line">${addRow(true)}</div>`;
   }
+
+  // Installations-Hinweis / Erinnerungs-Karte (nach den Aufgaben – zuerst zählt, was ansteht)
+  const inst = installHint();
+  html += inst;
+  html += reminderCard(!!inst);
 
   // Im Blick
   const stalled = (b.stalled || []).map((x) => ({ ...x, bag: asBag(x.bag) })).filter((x) => x.bag);
@@ -201,11 +201,12 @@ function timelineHTML(list, now) {
   return html + `</div>`;
 }
 
-function reminderCard() {
+function reminderCard(installShown = false) {
   if (prefs.remindCard === "hidden") return "";
   const perm = safe(() => remind.permission(), "unsupported");
   if (perm === "granted") return "";
   const env = safe(() => remind.env(), {});
+  if (installShown && env.ios && !env.standalone) return ""; // die Installations-Karte sagt schon alles
   let text, btns;
   if (env.ios && !env.standalone) {
     text = "Auf dem iPhone und iPad gibt es Mitteilungen nur in der installierten App. Bis dahin: Termine mit Wecker in deinen Kalender.";
@@ -414,5 +415,3 @@ on("click", {
   },
 });
 
-void toggleTask;
-void startFocus;

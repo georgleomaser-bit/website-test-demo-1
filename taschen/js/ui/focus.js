@@ -2,7 +2,7 @@
 import * as store from "../store.js";
 import { esc } from "../util.js";
 import { icon, CHECK } from "./icons.js";
-import { app, on, render, bagVars, prefs, setPref } from "./core.js";
+import { on, render, bagVars, prefs, setPref } from "./core.js";
 import { haptic, sound, toast, confetti } from "./fx.js";
 
 let timer = null; // { taskId, start, minutes, pausedAt, pausedMs, finished }
@@ -246,4 +246,3 @@ on("click", {
 });
 
 export const focusTaskId = () => timer?.taskId || null;
-void app;

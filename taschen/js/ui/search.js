@@ -42,7 +42,6 @@ export function openSearch(q = "") {
 
 // ---------- Befehle ----------
 function commands() {
-  const s = store.get();
   const dark = document.documentElement.dataset.theme === "dark" || (!document.documentElement.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
   const sy = safe(() => sync.status(), { enabled: false });
   const perm = safe(() => remind.permission(), "unsupported");
@@ -67,7 +66,6 @@ function commands() {
     safe(() => store.canUndo(), false) ? { label: "Rückgängig", icon: "undo", tone: "gray", kbd: modKey() + "Z", run: () => { const l = store.undo(); toast(l ? `Rückgängig: ${l}` : "Nichts zum Rückgängigmachen", { icon: "undo" }); } } : null,
     ...store.bags().map((b) => ({ label: `${b.emoji} ${b.name}`, sub: "Tasche öffnen", bag: b, run: () => app.go("#tasche/" + b.id) })),
   ].filter(Boolean);
-  void s;
 }
 
 // ---------- Suche ----------
@@ -87,10 +85,12 @@ function search(q) {
   out.bags = store.bags().map((b) => [b, Math.max(score(b.name, n) * 2, score(b.goal, n))]).filter((x) => x[1]).sort((a, b) => b[1] - a[1]).slice(0, 5).map((x) => x[0]);
   out.tasks = store
     .tasks()
-    .map((t) => [t, Math.max(score(t.title, n) * 2, score(t.notes, n), score((t.tags || []).join(" "), n), score(t.waiting, n)) + (t.done ? 0 : 1.5) + (t.updated || 0) / 1e14])
-    .filter((x) => x[1] >= 1.5 + 0.0001 || (x[0].done && x[1] > 0.0001))
-    .filter((x) => x[1] - (x[0].done ? 0 : 1.5) - (x[0].updated || 0) / 1e14 > 0)
-    .sort((a, b) => b[1] - a[1])
+    .map((t) => {
+      const m = Math.max(score(t.title, n) * 2, score(t.notes, n), score((t.tags || []).join(" "), n), score(t.waiting, n));
+      return [t, m, m + (t.done ? 0 : 1.5)];
+    })
+    .filter((x) => x[1] > 0)
+    .sort((a, b) => b[2] - a[2] || (b[0].updated || 0) - (a[0].updated || 0))
     .slice(0, 10)
     .map((x) => x[0]);
   out.notes = store.notes().filter((x) => score(x.title, n) || score(x.body, n)).slice(0, 5);

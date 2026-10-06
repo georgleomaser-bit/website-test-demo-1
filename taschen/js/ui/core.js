@@ -149,7 +149,7 @@ function patch(a, b) {
   }
   if (a.hasAttribute("data-hold")) return; // gerade gewischt/gezogen – nicht anfassen
   const focused = a === document.activeElement;
-  for (const at of [...a.attributes]) if (!b.hasAttribute(at.name)) a.removeAttribute(at.name);
+  for (const at of [...a.attributes]) if (!b.hasAttribute(at.name) && at.name !== "style") a.removeAttribute(at.name); // Inline-Stil ohne Vorlage gehört JS (Höhe, Pillen-Position)
   for (const at of [...b.attributes]) if (a.getAttribute(at.name) !== at.value) a.setAttribute(at.name, at.value);
   const tag = a.nodeName;
   if (tag === "INPUT") {
@@ -273,6 +273,25 @@ export function safe(fn, fallback) {
     console.warn("[taschen]", e);
     return fallback;
   }
+}
+
+// ---------- Textfelder wachsen mit ----------
+export function autoGrow(el) {
+  if (!el || el.nodeName !== "TEXTAREA") return;
+  el.style.height = "auto";
+  const max = el.classList.contains("td-title") ? 400 : 4000;
+  el.style.height = Math.min(el.scrollHeight + 2, max) + "px";
+}
+
+export function growAll(root = document) {
+  root.querySelectorAll("textarea.td-title, textarea.td-notes, textarea.grow, textarea.cap-input").forEach((el) => {
+    if (!el.offsetParent) return;
+    const key = el.value.length + ":" + el.clientWidth;
+    if (el._gk !== key || !el.style.height) {
+      el._gk = key;
+      autoGrow(el);
+    }
+  });
 }
 
 // ---------- Plattform ----------

@@ -4,9 +4,9 @@ import * as dates from "../dates.js";
 import * as pm from "../pm.js";
 import { esc } from "../util.js";
 import { icon } from "./icons.js";
-import { app, on, safe, bagVars, today, tomorrow, nextWeekISO, setPref, prefs } from "./core.js";
+import { app, on, safe, bagVars, today, tomorrow, nextWeekISO, setPref } from "./core.js";
 import { taskRow, ring, healthPill, empty, largeTitle, bar } from "./components.js";
-import { haptic, toast, confetti, sound, toastUndo } from "./fx.js";
+import { haptic, toast, confetti, sound } from "./fx.js";
 import { moveTo, deleteTask } from "./actions.js";
 import { askAI } from "./aiui.js";
 
@@ -171,7 +171,7 @@ on("click", {
     for (const id of rv.picked) if (store.task(id)) store.planTask(id, nw);
     const n = rv.picked.size;
     store.setMeta({ lastReview: today() });
-    safe(() => (typeof store.addLog === "function" ? store.addLog({ kind: "review", text: "Wochenrückblick abgeschlossen", bag: null, task: null }) : null));
+    safe(() => (typeof store.addLog === "function" ? store.addLog("review", n ? `Wochenrückblick abgeschlossen · ${n} Fokus-Aufgaben für nächste Woche` : "Wochenrückblick abgeschlossen") : null));
     setPref("lastReviewDone", today());
     resetReview();
     confetti();
@@ -181,5 +181,3 @@ on("click", {
   },
 });
 
-void toastUndo;
-void prefs;

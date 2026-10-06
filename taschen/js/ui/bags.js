@@ -244,7 +244,8 @@ on("input", {
   },
   "be-emoji-in": (el) => {
     if (!ed) return;
-    const v = [...el.value.trim()].slice(0, 4).join("");
+    const raw = el.value.trim();
+    const v = typeof Intl !== "undefined" && Intl.Segmenter ? [...new Intl.Segmenter("de", { granularity: "grapheme" }).segment(raw)].pop()?.segment || "" : [...raw].slice(-2).join("");
     if (v) {
       ed.emoji = v;
       refreshEditor();

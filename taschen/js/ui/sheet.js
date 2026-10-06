@@ -1,7 +1,8 @@
 // Arbeitstaschen – Sheets (von unten mit Feder, Ziehen zum Schließen), Dialoge, Kontextmenüs und Bestätigungen
 import { esc } from "../util.js";
 import { icon } from "./icons.js";
-import { render, app } from "./core.js";
+import { render, app, growAll } from "./core.js";
+import { placeSegPills } from "./components.js";
 
 const stack = [];
 const layer = () => document.getElementById("layer");
@@ -34,6 +35,8 @@ export function openSheet(o) {
       if (this.closing || !this.render) return;
       try {
         render(this.body, this.render());
+        growAll(this.body);
+        placeSegPills(this.body);
       } catch (e) {
         console.error(e);
       }

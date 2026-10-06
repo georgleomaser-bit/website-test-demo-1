@@ -168,7 +168,10 @@ export function remindAt(task, profile = DEFAULT_PROFILE) {
   if (!task || !isISO(task.due) || parseTime(task.time) === null) return null;
   const r = task.remind ?? profile?.defaultRemind ?? DEFAULT_PROFILE.defaultRemind;
   if (typeof r !== "number" || !Number.isFinite(r) || r < 0) return null;
-  return new Date(dueAt(task, profile).getTime() - r * 60000);
+  // Ganze Tage als Kalendertage abziehen („1 Tag vorher“ bleibt um dieselbe Uhrzeit, auch über die Zeitumstellung)
+  const days = Math.floor(r / 1440);
+  const at = atLocal(addDays(task.due, -days), parseTime(task.time));
+  return new Date(at.getTime() - (r - days * 1440) * 60000);
 }
 
 // ---------- Deutsche Formatierung ----------

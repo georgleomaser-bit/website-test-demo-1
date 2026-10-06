@@ -4,7 +4,7 @@ import * as pm from "../pm.js";
 import * as dates from "../dates.js";
 import { esc } from "../util.js";
 import { icon } from "./icons.js";
-import { app, on, safe, bagVars, today } from "./core.js";
+import { on, safe, bagVars, today } from "./core.js";
 import { taskRow, empty, largeTitle } from "./components.js";
 import { moveTo } from "./actions.js";
 import { openMenu } from "./sheet.js";
@@ -78,7 +78,7 @@ on("submit", {
     if (!v) return;
     try {
       const pq = safe(() => dates.parseQuick(v, { bags: store.bags(), now: new Date(), profile: store.get().profile }), null);
-      store.addTask(pq ? { title: pq.title || v, due: pq.due, time: pq.time, prio: pq.prio || 0, bag: null, tags: pq.tags || [], remind: pq.remind, repeat: pq.repeat, someday: !!pq.someday, est: pq.est, plan: pq.plan ? today() : null } : { title: v, bag: null });
+      store.addTask(pq ? { title: pq.title || v, due: pq.due, time: pq.time, prio: pq.prio || 0, bag: pq.bag || null, tags: pq.tags || [], remind: pq.remind, repeat: pq.repeat, someday: !!pq.someday, est: pq.est, plan: pq.plan ? today() : null } : { title: v, bag: null });
       inp.value = "";
       haptic();
       toast("Im Eingang", { icon: "tray", sub: v });
@@ -88,4 +88,3 @@ on("submit", {
   },
 });
 
-void app;

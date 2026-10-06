@@ -1,6 +1,6 @@
 // Arbeitstaschen – der Projektmanager: feste Regeln für Fokus, Briefing, Gesundheit, Rückblick und Erinnerungsplan (reine Funktionen, kein DOM)
 import { DEFAULT_PROFILE } from "./config.js";
-import { todayISO, toISO, addDays, diffDays, weekday, startOfWeek, nextOccurrence, remindAt, relDay, dateLabel, greeting, daypart, fmtTime, fmtDuration, fmtNumber, parseTime, atLocal, isISO, matchBag } from "./dates.js";
+import { todayISO, toISO, addDays, diffDays, weekday, startOfWeek, nextOccurrence, remindAt, relDay, dateLabel, greeting, daypart, fmtTime, fmtDuration, fmtNumber, parseTime, atLocal, matchBag } from "./dates.js";
 
 // ---------- Grundlagen ----------
 const DAY = 86400000;
@@ -751,9 +751,10 @@ export function reminderPlan(state, now = new Date(), { days = 3 } = {}) {
     const planD = C.open.filter((t) => (d === today ? isPlanned(C, t) : t.plan === d) && !(t.due && t.due <= d));
     const n = dueD.length + planD.length;
 
-    // Morgen-Briefing
+    // Morgen-Briefing (an freien Tagen nur, wenn an diesem Tag wirklich etwas ansteht – Überfälliges nervt nicht am Wochenende)
+    const workday = isWorkday(C, d);
     const atB = atLocal(d, startMin).getTime();
-    if (profile.briefing && inWin(atB) && (isWorkday(C, d) || n + overD.length > 0)) {
+    if (profile.briefing && inWin(atB) && (workday || n > 0)) {
       const title = n ? `☀️ Dein Tag: ${plural(n, "Aufgabe", "Aufgaben")}${overD.length ? ` + ${overD.length} überfällig` : ""}` : overD.length ? `☀️ Dein Tag: ${plural(overD.length, "überfällige Aufgabe", "überfällige Aufgaben")}` : `☀️ ${greeting(new Date(atB))}${profile.name ? ", " + profile.name : ""}`;
       items.push({ at: atB, kind: "briefing", title, body: briefBody(C, d, { dueD, overD, planD }), tag: `briefing-${d}` });
     }
@@ -769,7 +770,7 @@ export function reminderPlan(state, now = new Date(), { days = 3 } = {}) {
 
     // Feierabend – nur wenn an dem Tag noch etwas offen ist (am Rückblick-Tag übernimmt der Rückblick)
     const leftD = [...overD, ...dueD, ...planD];
-    if (profile.evening && leftD.length && inWin(atE) && !reviewDays.has(d)) {
+    if (profile.evening && leftD.length && (workday || n > 0) && inWin(atE) && !reviewDays.has(d)) {
       const top = leftD.slice().sort((a, b) => sumParts(scoreParts(C, b)) - sumParts(scoreParts(C, a))).slice(0, 2).map((t) => q(t.title, 30));
       items.push({ at: atE, kind: "evening", title: `🌙 Feierabend: ${plural(leftD.length, "Aufgabe", "Aufgaben")} offen`, body: `${joinDe(top)}${leftD.length > 2 ? ` und ${leftD.length - 2} weitere` : ""} – erledigen oder auf morgen schieben?`, tag: `evening-${d}` });
     }

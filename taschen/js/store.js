@@ -41,11 +41,11 @@ function base(e, now = Date.now()) {
   const created = num(e.created, 0) || num(e.updated, 0) || now;
   return { id: str(e.id), created, updated: num(e.updated, created), deleted: msOrNull(e.deleted, now) };
 }
-function strList(v) {
+function strList(v, strip = null) {
   const out = [];
   const seen = new Set();
   for (const x of Array.isArray(v) ? v : []) {
-    const s = str(x).trim();
+    const s = strip ? str(x).trim().replace(strip, "").trim() : str(x).trim();
     if (s && !seen.has(s.toLowerCase())) seen.add(s.toLowerCase()), out.push(s);
   }
   return out;
@@ -85,7 +85,7 @@ export function normTask(t) {
     remind: t.remind === null || t.remind === undefined || t.remind === "" ? null : int(t.remind, -1, 525600, null),
     repeat,
     section: str(t.section).trim(),
-    tags: strList(t.tags).map((x) => x.replace(/^[#@]/, "")).filter(Boolean),
+    tags: strList(t.tags, /^[#@]+/),
     subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).map(normSub).filter((s) => s.title),
     plan: isISO(t.plan) ? t.plan : null,
     someday: !!t.someday,
@@ -116,7 +116,7 @@ const NORM = { bags: normBag, tasks: normTask, notes: normNote, links: normLink,
 export function normProfile(p) {
   const d = DEFAULT_PROFILE;
   const x = { ...clone(d), ...(p && typeof p === "object" ? p : {}) };
-  const days = [...new Set((Array.isArray(x.workdays) ? x.workdays : d.workdays).map((n) => int(n, 0, 6, -1)).filter((n) => n >= 0))].sort();
+  const days = [...new Set((Array.isArray(x.workdays) ? x.workdays : d.workdays).map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6))].sort();
   return {
     ...x,
     name: str(x.name).trim().slice(0, 80),
@@ -421,6 +421,7 @@ function installLifecycle() {
   if (typeof BroadcastChannel === "function") {
     try {
       channel = new BroadcastChannel("taschen-store");
+      channel.unref?.(); // nur Node: hält den Prozess nicht am Leben
       channel.onmessage = (e) => {
         if (e?.data?.type !== "saved" || e.data.from === instance || !adapter) return;
         adapter
@@ -812,7 +813,8 @@ export function updateTask(id, patch = {}) {
     const p = taskFields(patch, today);
     if ("title" in p && !str(p.title).trim()) delete p.title;
     const next = normTask({ ...t, ...p });
-    if ("section" in p || "bag" in p) next.section = sectionName(next.bag, next.section);
+    if ("bag" in p && next.bag !== t.bag && !("section" in p)) next.section = ""; // Abschnitt gehört zur alten Tasche
+    if ("section" in p || "bag" in p) next.section = next.bag ? sectionName(next.bag, next.section) : "";
     if ("due" in p && p.due !== t.due && !("repeatDay" in p)) delete next.repeatDay; // Datum von Hand geändert → neuer Anker
     if ("bag" in p && next.bag !== t.bag && !("order" in p)) next.order = maxOrder(live(S.tasks).filter((x) => (x.bag || null) === next.bag && x.id !== t.id)) + 1;
     const movedTo = "bag" in p && next.bag !== t.bag ? next.bag : undefined;
@@ -1103,7 +1105,7 @@ export async function addFile(bagId, f) {
   await ensureAdapter();
   if (!f || typeof f.size !== "number") throw new Error("Das ist keine Datei.");
   const name = str(f.name).trim() || "Datei";
-  if (f.size > LIMITS.fileMax) throw new Error(`${quote(name)} ist zu groß (${fmtSize(f.size)}) – erlaubt sind höchstens ${fmtSize(LIMITS.fileMax)} pro Datei.`);
+  if (f.size > LIMITS.fileMax) throw new Error(`${quote(name)} ist zu groß (${fmtSize(f.size)}) – erlaubt sind höchstens ${Math.round(LIMITS.fileMax / 1048576)} MB pro Datei.`);
   if (!adapter.files) throw new Error("Dateien kann dieser Browser gerade nicht speichern (kein IndexedDB – z. B. im privaten Modus).");
   const id = uid("f_");
   try {
@@ -1137,6 +1139,19 @@ export function removeFile(id) {
   // Inhalt bleibt bis zum Aufräumen der Grabsteine liegen – so kann man das Löschen rückgängig machen
   return tx("Datei gelöscht", { type: "file", id, action: "remove" }, () => tombstone("files", f));
 }
+// Datei umbenennen oder in eine andere Tasche legen (Inhalt bleibt unverändert)
+export function updateFile(id, patch = {}) {
+  const f = findLive("files", id);
+  if (!f) return null;
+  const p = {};
+  if ("name" in patch && str(patch.name).trim()) p.name = str(patch.name).trim();
+  if ("bag" in patch) p.bag = bagOrNull(patch.bag);
+  return tx("Datei geändert", { type: "file", id, action: "update" }, () => {
+    change("files", f, normFile({ ...f, ...p }));
+    return f;
+  }, { coalesce: "file:" + id });
+}
+
 // Für sync.js: Datei als hochgeladen markieren (nur lokal, ändert updated nicht)
 export function markFileSynced(id, synced = true) {
   const f = findRaw("files", id);
