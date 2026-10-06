@@ -5,7 +5,6 @@ import * as remind from "../remind.js";
 import * as sync from "../sync.js";
 import * as ai from "../ai.js";
 import { BRAND, COLORS, COLOR_NAMES, SERVER } from "../config.js";
-import { SEED } from "../seed.js";
 import { esc, fmtSize } from "../util.js";
 import { icon } from "./icons.js";
 import { app, on, safe, prefs, setPref, colorVars, relTime, today, isStandalone, modKey } from "./core.js";
@@ -187,7 +186,6 @@ export function render(r) {
       `<label class="frow btnrow">${sq("upload", "blue")}<span class="frow-l">Backup importieren<small>JSON-Datei aus einem Export</small></span><span class="frow-c">${icon("chevronRight")}</span><input type="file" accept=".json,application/json" class="hidden-file" data-change="set-import" /></label>`,
       ctlRow("lock", ui.persisted ? "green" : "orange", "Dauerhafter Speicher", ui.persisted ? `<span class="status green">Geschützt</span>` : `<button type="button" class="pill accent" data-act="set-persist">Anfordern</button>`, ui.persisted ? "Safari löscht deine Daten nicht automatisch" : isStandalone() ? "Schützt vor automatischem Löschen" : "Installiere die App, damit deine Daten sicher bleiben"),
       est && est.usage != null ? ctlRow("archive", "gray", "Belegter Speicher", `<span class="status gray">${esc(fmtSize(est.usage))}</span>`, `${store.tasks().length} Aufgaben · ${store.files().length} Dateien`) : "",
-      btnRow("sparkle", "pink", "Meine Projekte laden", "set-seed", { sub: `${SEED?.bags?.length || 0} Taschen von akytex united · wird zusammengeführt` }),
       btnRow("trash", "red", "Alles löschen", "set-reset", { sub: "Alle Taschen, Aufgaben und Dateien auf diesem Gerät", danger: true }),
     ],
     "Deine Daten liegen lokal auf diesem Gerät (IndexedDB). Ein Backup ist eine JSON-Datei mit allem – auch Dateien.",
@@ -198,7 +196,7 @@ export function render(r) {
     btnRow("download", "blue", "Als App installieren", "install-help", { sub: { iphone: "iPhone: Teilen → Zum Home-Bildschirm", ipad: "iPad: Teilen → Zum Home-Bildschirm", "mac-safari": "Mac: Ablage → Zum Dock hinzufügen", mac: "Mac: In Safari Ablage → Zum Dock hinzufügen" }[pf] || "Anleitung für iPhone, iPad und Mac", right: isStandalone() ? `<span class="status green">Installiert</span>` : "" }),
     `<div class="frow col">${sq("keyboard", "gray")}<span class="frow-l">Tastaturkürzel</span><div class="kbd-list"><span><kbd>N</kbd> Neue Aufgabe</span><span><kbd>${modKey()}K</kbd> / <kbd>/</kbd> Suche & Befehle</span><span><kbd>1</kbd>–<kbd>5</kbd> Bereiche</span><span><kbd>${modKey()}Z</kbd> Rückgängig</span><span><kbd>${modKey()}↵</kbd> Speichern & schließen</span><span><kbd>Esc</kbd> Schließen</span></div></div>`,
     ctlRow("info", "gray", "Version", `<span class="status gray">${esc(BRAND.version)}</span>`, "Arbeitstaschen – Dein persönlicher Projektmanager"),
-  ], `Mit ❤️ für akytex united. Keine Werbung, kein Tracking – deine Projekte gehören dir.`);
+  ], `Keine Werbung, kein Tracking – deine Daten gehören dir.`);
 
   if (r?.id) {
     setTimeout(() => {
@@ -232,17 +230,6 @@ export async function doBackup() {
   }
 }
 
-export async function loadSeed(mode = "merge") {
-  try {
-    store.applySeed(SEED, { mode });
-    haptic();
-    confetti({ count: 90 });
-    toast("Deine Projekte sind da", { icon: "sparkle", sub: `${SEED.bags.length} Taschen geladen` });
-    if (app.route.view !== "taschen") app.go("#taschen");
-  } catch (e) {
-    toastError(e);
-  }
-}
 
 async function importFile(file) {
   if (!file) return;
@@ -393,9 +380,6 @@ on("click", {
       toastError(e);
     }
     app.render();
-  },
-  "set-seed": async () => {
-    if (await confirmBox({ title: "Meine Projekte laden?", text: `${SEED?.bags?.length || 0} Taschen mit Aufgaben, Notizen und Links werden zu deinen Daten hinzugefügt.`, ok: "Laden" })) loadSeed("merge");
   },
   "set-reset": async () => {
     if (!(await confirmBox({ title: "Alles löschen?", text: "Alle Taschen, Aufgaben, Notizen, Links und Dateien auf diesem Gerät werden gelöscht. Mach vorher ein Backup!", ok: "Weiter", danger: true }))) return;

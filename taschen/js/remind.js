@@ -400,7 +400,7 @@ export const currentPlan = () => plan;
 
 // ---------- Kalender (.ics nach RFC 5545) ----------
 const CRLF = "\r\n";
-const PRODID = "-//akytex united//Arbeitstaschen//DE";
+const PRODID = "-//Arbeitstaschen//Projektmanager//DE";
 const BYDAY = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
 
 // Oktette einer Zeichenkette in UTF-8

@@ -759,27 +759,6 @@ describe("applySeed", () => {
     assert.equal(store.canUndo(), false);
   });
 
-  test("das echte seed.js (falls schon vorhanden) lässt sich vollständig laden", async (t) => {
-    let SEED;
-    try {
-      ({ SEED } = await import("../js/seed.js"));
-    } catch (_) {
-      return t.skip("seed.js gibt es noch nicht");
-    }
-    const c = store.applySeed(SEED);
-    assert.ok(c.bags >= 1);
-    assert.equal(c.bags, SEED.bags.length);
-    assert.equal(c.tasks, SEED.bags.reduce((n, b) => n + new Set((b.tasks || []).map((x) => x.title.trim().toLowerCase())).size, 0));
-    for (const b of store.bags()) {
-      assert.ok(b.name && b.emoji);
-      for (const x of store.tasksOf(b.id)) {
-        if (x.done) assert.ok(x.done < Date.now());
-        if (x.section) assert.ok(b.sections.includes(x.section), `Abschnitt „${x.section}“ fehlt in „${b.name}“`);
-      }
-    }
-    assert.ok(store.links().every((l) => /^https?:/.test(l.url)));
-  });
-
   test("merge-Modus legt nichts doppelt an; replace ersetzt", () => {
     store.applySeed(SEED);
     store.addTask({ title: "Eigene Aufgabe" });
