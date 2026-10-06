@@ -1044,6 +1044,7 @@ html:not(.wide) #app { transition: transform 0.45s var(--ease), filter 0.45s, bo
 .frow select, .frow input[type="time"], .frow input[type="date"] { -webkit-appearance: none; appearance: none; height: 34px; min-width: 6.4em; max-width: 100%; padding: 0 10px; border: 0; border-radius: 9px; background: var(--fill); color: var(--label); font-size: max(16px, 0.94rem); text-align: center; outline: none; }
 .frow select { text-align: left; padding-right: 26px; background-image: linear-gradient(45deg, transparent 50%, var(--label2) 50%), linear-gradient(135deg, var(--label2) 50%, transparent 50%); background-position: calc(100% - 13px) 15px, calc(100% - 9px) 15px; background-size: 4px 4px; background-repeat: no-repeat; text-overflow: ellipsis; min-width: 0; }
 .frow select:disabled { opacity: 0.45; }
+.frow input[type="time"] { min-width: 7.6em; }
 .frow input[type="date"]::-webkit-date-and-time-value { text-align: center; }
 .frow .in-text { width: 100%; min-width: 0; border: 0; background: transparent; outline: none; text-align: right; color: var(--label); padding: 6px 0; }
 .frow.col.input .in-text { text-align: left; }
