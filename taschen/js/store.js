@@ -6,8 +6,9 @@ import { todayISO, addDays, nextOccurrence, isISO, parseTime, toTime, normName }
 // ---------- Grundlagen ----------
 export const STATE_VERSION = 1;
 const DAY = 86400000;
-const COLLS = ["bags", "tasks", "notes", "links", "files", "milestones"];
-const KIND = { bags: "bag", tasks: "task", notes: "note", links: "link", files: "file", milestones: "milestone" };
+const COLLS = ["bags", "tasks", "notes", "links", "files", "milestones", "accounts"];
+const KIND = { bags: "bag", tasks: "task", notes: "note", links: "link", files: "file", milestones: "milestone", accounts: "account" };
+const PROJECT_COLLS = COLLS.filter((c) => c !== "accounts"); // Projektdaten (ohne verbundene Konten)
 const REPEAT_IDS = new Set(REPEATS.map((r) => r.id).filter(Boolean));
 const STATUSES = ["aktiv", "pausiert", "fertig"];
 const LOG_KINDS = new Set(["done", "add", "move", "bag", "note", "link", "file", "review", "sync", "import", "seed"]);
@@ -30,7 +31,7 @@ const quote = (s) => `„${str(s).length > 60 ? str(s).slice(0, 59) + "…" : st
 
 function fresh() {
   const now = Date.now();
-  return { v: STATE_VERSION, profile: { ...clone(DEFAULT_PROFILE), updated: 0 }, bags: [], tasks: [], notes: [], links: [], files: [], milestones: [], log: [], meta: { lastReview: null, lastBackup: null, lastSync: null, createdAt: now, seeded: false } };
+  return { v: STATE_VERSION, profile: { ...clone(DEFAULT_PROFILE), updated: 0 }, bags: [], tasks: [], notes: [], links: [], files: [], milestones: [], accounts: [], log: [], meta: { lastReview: null, lastBackup: null, lastSync: null, createdAt: now, seeded: false } };
 }
 
 // Monotone Zeitstempel: jede Änderung ist echt neuer als die vorige Fassung (wichtig für Last-Writer-Wins)
@@ -111,7 +112,24 @@ export function normMilestone(m) {
   const b = base(m);
   return { ...m, ...b, bag: typeof m.bag === "string" && m.bag ? m.bag : null, title: str(m.title).trim() || "Meilenstein", date: isISO(m.date) ? m.date : null, done: msOrNull(m.done, b.updated) };
 }
-const NORM = { bags: normBag, tasks: normTask, notes: normNote, links: normLink, files: normFile, milestones: normMilestone };
+// Verbundenes Konto (Google/Microsoft): secret ist der Schlüssel zum Refresh-Token auf dem eigenen Server
+export function normAccount(a) {
+  const b = base(a);
+  const provider = str(a.provider).trim().toLowerCase() || "google";
+  return {
+    ...a,
+    ...b,
+    provider,
+    email: str(a.email).trim().slice(0, 254),
+    secret: b.deleted ? "" : str(a.secret).trim(),
+    server: str(a.server).trim().replace(/\/+$/, ""),
+    color: COLORS[a.color] ? a.color : null,
+    calendars: a.calendars !== false,
+    mail: a.mail !== false,
+    broken: !!a.broken,
+  };
+}
+const NORM = { bags: normBag, tasks: normTask, notes: normNote, links: normLink, files: normFile, milestones: normMilestone, accounts: normAccount };
 
 export function normProfile(p) {
   const d = DEFAULT_PROFILE;
@@ -1161,6 +1179,53 @@ export function markFileSynced(id, synced = true) {
   emit({ type: "file", id, action: "update", local: false });
 }
 
+// ---------- Verbundene Konten (Google, Microsoft) ----------
+// Kein Rückgängig-Schritt (label null): Verbinden und Trennen passieren auch auf dem Server – ⌘Z soll das nicht still umkehren.
+const ACC_COLORS = ["blue", "orange", "green", "purple", "teal", "pink", "indigo", "red", "mint", "brown"];
+export const accounts = () => live(S.accounts).sort((a, b) => a.created - b.created || (a.id < b.id ? -1 : 1));
+export const account = (id) => findLive("accounts", id);
+
+export function addAccount(data = {}) {
+  const d = cleanPatch(data);
+  const provider = str(data.provider).trim().toLowerCase();
+  if (!provider) throw new Error("Unbekannter Anbieter.");
+  const id = str(data.id).trim();
+  const existing = id ? findRaw("accounts", id) : null;
+  return tx(null, (a) => ({ type: "account", id: a.id, action: existing ? "update" : "add" }), () => {
+    const now = Date.now();
+    if (existing) {
+      // dieselbe Verbindung kommt erneut an (z. B. zweimal zurückgekehrt) → auffrischen, Grabstein aufheben
+      change("accounts", existing, normAccount({ ...existing, ...d, provider, deleted: null, broken: false }));
+      return existing;
+    }
+    const used = new Set(live(S.accounts).map((x) => x.color));
+    const color = COLORS[d.color] ? d.color : ACC_COLORS.find((c) => !used.has(c)) || "blue";
+    const a = normAccount({ calendars: true, mail: true, ...d, provider, color, broken: false, id: id || uid("a_"), created: now, updated: now, deleted: null });
+    insert("accounts", a);
+    return a;
+  });
+}
+
+export function updateAccount(id, patch = {}) {
+  const a = findLive("accounts", id);
+  if (!a) return null;
+  return tx(null, { type: "account", id, action: "update" }, () => {
+    const p = cleanPatch(patch);
+    delete p.provider; // ein Konto wechselt nie den Anbieter
+    change("accounts", a, normAccount({ ...a, ...p }));
+    return a;
+  });
+}
+
+export function removeAccount(id) {
+  const a = findLive("accounts", id);
+  if (!a) return false;
+  return tx(null, { type: "account", id, action: "remove" }, () => {
+    a.secret = ""; // der Schlüssel verschwindet mit dem Konto (auch aus dem Sync)
+    return tombstone("accounts", a);
+  });
+}
+
 // ---------- Grabsteine aufräumen ----------
 function purgeTombstones(now = Date.now()) {
   const cut = now - LIMITS.tombstoneDays * DAY;
@@ -1180,7 +1245,9 @@ function purgeTombstones(now = Date.now()) {
 
 // ---------- Sync: Nutzlast & Zusammenführen ----------
 export function syncPayload() {
-  return clone({ v: S.v, profile: S.profile, bags: S.bags, tasks: S.tasks, notes: S.notes, links: S.links, files: S.files, milestones: S.milestones, log: S.log });
+  const out = { v: S.v, profile: S.profile, bags: S.bags, tasks: S.tasks, notes: S.notes, links: S.links, files: S.files, milestones: S.milestones, log: S.log };
+  if (S.accounts.length) out.accounts = S.accounts; // nur wenn es Konten (oder deren Grabsteine) gibt
+  return clone(out);
 }
 
 // Last-Writer-Wins pro id (Gleichstand: lokal behalten); Grabsteine sind normale Fassungen mit deleted ≠ null
@@ -1195,6 +1262,15 @@ function mergeInto(remote) {
       if (!validEntity(r0)) continue;
       const r = NORM[c](clone(r0));
       const i = idx.get(r.id);
+      if (c === "accounts" && i !== undefined) {
+        // Ein Konto ohne Schlüssel (z. B. aus einem Backup) darf einen vorhandenen Schlüssel nie überschreiben – und umgekehrt kommt er dazu
+        const cur = S[c][i];
+        if (!r.deleted && !r.secret && cur.secret) r.secret = cur.secret;
+        if (!cur.deleted && !cur.secret && r.secret && r.updated <= num(cur.updated)) {
+          cur.secret = r.secret;
+          changed = true;
+        }
+      }
       if (i === undefined) {
         if (r.deleted && r.deleted < cut) continue;
         S[c].push(r);
@@ -1255,7 +1331,10 @@ export async function exportBackup({ includeFiles = true } = {}) {
       if (blob) list.push({ id: f.id, name: f.name, type: f.type || blob.type || "", data: await blobToBase64(blob) });
     }
   }
-  const json = JSON.stringify({ app: "arbeitstaschen", v: STATE_VERSION, exported: new Date().toISOString(), state: syncPayload(), meta: clone(S.meta), files: list });
+  const state = syncPayload();
+  // Verbundene Konten ohne Schlüssel: Ein Backup liegt oft offen in iCloud Drive – nach einem Import einfach neu verbinden
+  if (state.accounts) state.accounts = state.accounts.map((a) => ({ ...a, secret: "" }));
+  const json = JSON.stringify({ app: "arbeitstaschen", v: STATE_VERSION, exported: new Date().toISOString(), state, meta: clone(S.meta), files: list });
   setMeta({ lastBackup: Date.now() });
   return new Blob([json], { type: "application/json" });
 }
@@ -1272,7 +1351,7 @@ export async function importBackup(fileOrText, { mode = "merge" } = {}) {
   if (data.v > STATE_VERSION) throw new Error("Dieses Backup stammt aus einer neueren Version der App – bitte aktualisiere die App zuerst.");
   const st = data.state;
   if (!st || typeof st !== "object" || Array.isArray(st)) throw new Error("Das Backup ist beschädigt: Es enthält keine Daten.");
-  const names = { bags: "Taschen", tasks: "Aufgaben", notes: "Notizen", links: "Links", files: "Dateien", milestones: "Meilensteine", log: "Logbuch" };
+  const names = { bags: "Taschen", tasks: "Aufgaben", notes: "Notizen", links: "Links", files: "Dateien", milestones: "Meilensteine", accounts: "Konten", log: "Logbuch" };
   for (const c of [...COLLS, "log"]) if (st[c] !== undefined && !Array.isArray(st[c])) throw new Error(`Das Backup ist beschädigt: „${names[c]}“ ist keine Liste.`);
   if (data.files !== undefined && !Array.isArray(data.files)) throw new Error("Das Backup ist beschädigt: „Dateien“ ist keine Liste.");
   await ensureAdapter();
@@ -1287,6 +1366,11 @@ export async function importBackup(fileOrText, { mode = "merge" } = {}) {
     }
   }
   const incoming = normalizeState({ ...st, meta: data.meta });
+  // Konten aus dem Backup haben keinen Schlüssel – ist das Konto hier schon verbunden, bleibt dessen Schlüssel erhalten
+  for (const a of incoming.accounts) {
+    const mine = findRaw("accounts", a.id);
+    if (!a.secret && mine?.secret && !a.deleted) a.secret = mine.secret;
+  }
   const counts = Object.fromEntries(["bags", "tasks", "notes", "links", "files"].map((c) => [c, live(incoming[c]).length]));
 
   if (mode === "replace") {
@@ -1294,6 +1378,7 @@ export async function importBackup(fileOrText, { mode = "merge" } = {}) {
     // damit sie auch auf den anderen Geräten gewinnen.
     const now = Date.now();
     for (const c of COLLS) {
+      if (c === "accounts" && !Array.isArray(st.accounts)) continue; // älteres Backup ohne Konten: verbundene Konten bleiben
       const ids = new Set(incoming[c].map((e) => e.id));
       for (const e of S[c]) if (!ids.has(e.id) && !e.deleted) (e.deleted = now), (e.updated = stamp(e));
       const idx = new Map(S[c].map((e, i) => [e.id, i]));
@@ -1335,7 +1420,7 @@ export function applySeed(seed, { mode = "replace" } = {}) {
   const today = todayISO(new Date(now));
   const counts = { bags: 0, tasks: 0, notes: 0, links: 0, milestones: 0 };
   if (mode === "replace") {
-    for (const c of COLLS) for (const e of S[c]) if (!e.deleted) (e.deleted = now), (e.updated = stamp(e));
+    for (const c of PROJECT_COLLS) for (const e of S[c]) if (!e.deleted) (e.deleted = now), (e.updated = stamp(e));
     undoStack = [];
   }
   let order = maxOrder(live(S.bags));

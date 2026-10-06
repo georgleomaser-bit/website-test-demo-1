@@ -9,6 +9,7 @@ import { app, on, today, tomorrow, safe, bagVars, prefs, setPref } from "./core.
 import { openSheet, getSheet, closeSheet, openMenu } from "./sheet.js";
 import { haptic, toast, toastError } from "./fx.js";
 import { openTask } from "./task.js";
+import { isCall } from "../connect.js";
 
 let cap = null; // { text, bag, due, prio, ctx, added, last }
 
@@ -45,13 +46,15 @@ function resolve(p) {
   const c = cap;
   const due = p.due ?? (c.due !== undefined ? c.due : c.ctx.due) ?? null;
   const bag = p.bag ?? (c.bag !== undefined ? c.bag : c.ctx.bag) ?? null;
+  const tags = [...(p.tags || [])];
+  if (isCall(p.title) && !tags.includes("anruf")) tags.push("anruf"); // „Anruf …“, „anrufen“, „Call“ → Telefon-Symbol
   return {
     title: p.title,
     due: p.someday ? null : due,
     time: p.time ?? null,
     prio: p.prio || c.prio || 0,
     bag,
-    tags: p.tags || [],
+    tags,
     remind: p.remind ?? null,
     repeat: p.repeat ?? null,
     someday: !!p.someday,
@@ -98,7 +101,7 @@ function view() {
   if (d.time) chips.push(chip("indigo", icon("clock"), esc(safe(() => dates.fmtTime(d.time), d.time))));
   if (d.prio) chips.push(chip(`orange${p.prio ? "" : " ctx"}`, icon("flag"), esc(PRIOS[d.prio]?.label || "") + " " + esc(PRIOS[d.prio]?.mark || "")));
   if (bag) chips.push(`<span class="tchip bagc${p.bag ? "" : " ctx"}" style="${bagVars(bag)}"><span>${esc(bag.emoji)} ${esc(bag.name)}</span></span>`);
-  for (const t of d.tags) chips.push(chip("gray", icon("tag"), esc(t)));
+  for (const t of d.tags) chips.push(t === "anruf" ? chip("green", icon("call"), "Anruf") : chip("gray", icon("tag"), esc(t)));
   if (d.repeat) chips.push(chip("green", icon("repeat"), esc(REPEATS.find((r) => r.id === d.repeat)?.label || d.repeat)));
   if (d.remind != null) chips.push(chip("purple", icon("bell"), d.remind > 0 ? `${d.remind >= 60 && d.remind % 60 === 0 ? d.remind / 60 + " Std." : d.remind + " Min."} vorher` : "Zum Termin"));
   if (d.est) chips.push(chip("teal", icon("hourglass"), esc(safe(() => dates.fmtDuration(d.est), d.est + " Min."))));

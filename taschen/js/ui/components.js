@@ -5,6 +5,7 @@ import { PRIOS, REPEATS } from "../config.js";
 import { esc, clamp } from "../util.js";
 import { icon, CHECK } from "./icons.js";
 import { app, today, bagVars, colorVars, isCollapsed, safe } from "./core.js";
+import { phoneList, telHref } from "../connect.js";
 
 // Aufgaben, die gerade abgehakt werden (Animation läuft, Speichern folgt gleich)
 export const pending = new Map();
@@ -45,7 +46,11 @@ export function taskMeta(t, o = {}) {
     const ms = store.milestones?.().find?.((x) => x.id === t.milestone);
     if (ms) m.push(`<span class="m">${icon("diamond")}${esc(ms.title)}</span>`);
   }
-  for (const tag of (t.tags || []).slice(0, 4)) m.push(`<span class="m tag">#${esc(tag)}</span>`);
+  const tags = t.tags || [];
+  if (tags.includes("anruf") && !o.phone) m.push(`<span class="m green">${icon("call")}Anruf</span>`);
+  if (t.src?.kind === "mail") m.push(`<span class="m" title="Aus einer Mail">${icon("mail")}</span>`);
+  else if (t.src?.kind === "event") m.push(`<span class="m" title="Aus dem Kalender">${icon("calendar")}Termin</span>`);
+  for (const tag of tags.filter((x) => x !== "anruf").slice(0, 4)) m.push(`<span class="m tag">#${esc(tag)}</span>`);
   return m.join("");
 }
 
@@ -55,13 +60,15 @@ export function taskRow(t, o = {}) {
   const pend = pending.has(t.id);
   const done = !!t.done || pend;
   const bag = t.bag ? store.bag(t.bag) : null;
-  const meta = taskMeta(t, o);
+  // Telefonnummer in Titel/Notizen → kleiner Anrufen-Knopf direkt in der Zeile
+  const tel = !done && !o.compact ? safe(() => phoneList(`${t.title}\n${t.notes || ""}`)[0], null) : null;
+  const meta = taskMeta(t, { ...o, phone: !!tel });
   const prio = t.prio > 0 && !done ? (t.prio === 3 ? `<span class="pflag" aria-label="Priorität hoch">${icon("flag")}</span>` : `<span class="prio p${t.prio}" aria-label="Priorität ${esc(PRIOS[t.prio]?.label || "")}">${esc(PRIOS[t.prio]?.mark || "")}</span>`) : "";
   return `<div class="task${done ? " done" : ""}${pend ? " checking" : ""}${t.prio === 3 ? " p3" : ""}${o.compact ? " compact" : ""}${o.cls ? " " + o.cls : ""}" data-key="t-${t.id}" data-task="${t.id}" data-menu="task" data-id="${t.id}"${o.drag ? ` data-drag="task"` : ""} style="${bagVars(bag)}">
 <div class="swipe-bg" aria-hidden="true"><span class="sw-done">${icon("check")}<b>${t.done ? "Öffnen" : "Erledigt"}</b></span><span class="sw-acts"><button type="button" tabindex="-1" class="sw-btn orange" data-act="task-tomorrow" data-id="${t.id}">${icon("sunrise")}<b>Morgen</b></button><button type="button" tabindex="-1" class="sw-btn red" data-act="task-delete" data-id="${t.id}">${icon("trash")}<b>Löschen</b></button></span></div>
 <div class="task-in">
 <button class="check" type="button" data-act="toggle" data-id="${t.id}" aria-label="${done ? "Wieder öffnen" : "Erledigen"}: ${esc(t.title)}" aria-pressed="${done}">${CHECK}</button>
-<button class="task-main" type="button" data-act="task" data-id="${t.id}"><span class="task-title">${prio}${esc(t.title)}</span>${meta ? `<span class="task-meta">${meta}</span>` : ""}</button>
+<button class="task-main" type="button" data-act="task" data-id="${t.id}"><span class="task-title">${prio}${esc(t.title)}</span>${meta ? `<span class="task-meta">${meta}</span>` : ""}</button>${tel ? `<a class="tcall" href="${esc(telHref(tel.tel))}" aria-label="Anrufen: ${esc(tel.label)}" title="Anrufen: ${esc(tel.label)}">${icon("call")}</a>` : ""}
 <span class="task-hover"><button type="button" class="hv" data-act="task-plan" data-id="${t.id}" title="${t.plan === today() ? "Aus Heute entfernen" : "Für heute einplanen"}" aria-label="Für heute einplanen">${icon(t.plan === today() ? "starFill" : "star")}</button><button type="button" class="hv" data-act="task-menu" data-id="${t.id}" title="Mehr" aria-label="Mehr Aktionen">${icon("ellipsis")}</button></span>
 </div>${o.extra || ""}
 </div>`;

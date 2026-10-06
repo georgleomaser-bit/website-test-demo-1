@@ -5,11 +5,12 @@ import * as pm from "./pm.js";
 import * as remind from "./remind.js";
 import * as sync from "./sync.js";
 import * as ai from "./ai.js";
+import * as connect from "./connect.js";
 import { COLORS, SERVER } from "./config.js";
 import { app, handle, runMenu, render, on, safe, reducedMotion, isStandalone } from "./ui/core.js";
 import { placeSegPills } from "./ui/components.js";
 import { initGestures, gestureBusy } from "./ui/gestures.js";
-import { topSheet, closeSheet, refreshSheets, menuOpen, closeMenu, openMenu } from "./ui/sheet.js";
+import { topSheet, closeSheet, refreshSheets, menuOpen, closeMenu, openMenu, infoBox } from "./ui/sheet.js";
 import { toast, toastUndo, banner, sound, haptic } from "./ui/fx.js";
 import { openTask, taskDetail, inspectorToSheet, growAll, flushSaves } from "./ui/task.js";
 import { openCapture } from "./ui/capture.js";
@@ -27,6 +28,7 @@ import * as vBags from "./ui/bags.js";
 import * as vBag from "./ui/bag.js";
 import * as vReview from "./ui/review.js";
 import * as vSettings from "./ui/settings.js";
+import { openEvent, openExternal, checkAvail } from "./ui/connectui.js";
 
 // ---------- Ansichten ----------
 const VIEWS = {
@@ -483,6 +485,12 @@ function showReminder(it) {
     banner({ title: it.title || "Dein Tag", body: it.body || "", emoji: "☀️", buttons: [{ label: "Mein Tag", primary: true, fn: () => app.go("#heute") }, { label: "Tag planen", fn: () => vToday.openPlanDay() }] });
   } else if (it.kind === "evening") {
     banner({ title: it.title || "Feierabend?", body: it.body || "", emoji: "🌙", buttons: [{ label: "Tag abschließen", primary: true, fn: () => app.go("#heute") }] });
+  } else if (it.kind === "event") {
+    const btns = [];
+    if (it.join) btns.push({ label: "Beitreten", primary: true, fn: () => openExternal(it.join) });
+    if (it.eventId && connect.event(it.eventId)) btns.push({ label: "Details", fn: () => openEvent(it.eventId) });
+    else if (it.web) btns.push({ label: "Öffnen", fn: () => openExternal(it.web) });
+    banner({ title: it.title || "Termin", body: it.body || "", emoji: "📅", buttons: btns });
   } else if (it.kind === "review") {
     banner({ title: it.title || "Wochenrückblick", body: it.body || "", emoji: "📊", buttons: [{ label: "Starten", primary: true, fn: () => app.go("#rueckblick") }] });
   } else banner({ title: it.title || "Erinnerung", body: it.body || "", emoji: "🔔" });
@@ -495,6 +503,7 @@ async function detectServices() {
     if (!srv) srv = await sync.detectServer();
     if (!srv) return;
     app.server = srv;
+    checkAvail(true).catch(() => {}); // bietet der Server Google/Microsoft an?
     app.aiAvailable = !!(await ai.available(srv));
     const kv = await store.kvGet("ai").catch(() => null);
     app.ai = app.aiAvailable && !!kv?.enabled;
@@ -523,6 +532,13 @@ async function boot() {
     return fatal(e);
   }
   applyTheme(state.profile);
+  // Rückkehr aus der Anmeldung bei Google/Microsoft (#connect=…): Konto anlegen, Schlüssel aus der Adresse entfernen
+  let connected = false;
+  try {
+    connected = connect.handleReturn(store);
+  } catch (e) {
+    console.warn("[taschen] Konto verbinden", e);
+  }
   // URL-Parameter: ?view=, ?neu=, ?task=
   const qs = new URLSearchParams(location.search);
   const qView = qs.get("view"), qNew = qs.get("neu"), qTask = qs.get("task");
@@ -540,6 +556,24 @@ async function boot() {
     remind.start(store, pm);
   } catch (e) {
     console.warn("[taschen] Erinnerungen", e);
+  }
+  try {
+    connect.onChange(() => {
+      app.render();
+      remind.start(store, pm); // Termine fließen in den Erinnerungsplan
+    });
+    connect.start(store);
+  } catch (e) {
+    console.warn("[taschen] Konten", e);
+  }
+  if (connected) {
+    const r = connect.lastReturn();
+    if (r?.ok) {
+      toast(`${connect.providerName(r.provider)} ist verbunden`, { icon: "checkCircle", sub: r.email ? `${r.email} · Termine und Mails werden geladen` : "Termine und Mails werden geladen", ms: 4200 });
+      haptic();
+    } else if (r) {
+      setTimeout(() => infoBox({ title: `${r.provider ? connect.providerName(r.provider) : "Konto"} nicht verbunden`, text: r.error || "Die Anmeldung hat nicht geklappt." }), 350);
+    }
   }
   try {
     sync.onStatus((st) => {

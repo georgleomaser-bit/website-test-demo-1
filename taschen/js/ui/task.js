@@ -11,6 +11,7 @@ import { openSheet, closeSheet, getSheet, promptBox, openMenu } from "./sheet.js
 import { haptic, toast, toastError } from "./fx.js";
 import { confirmDelete, duplicateTask } from "./actions.js";
 import { askAI } from "./aiui.js";
+import { taskActions } from "./connectui.js";
 
 let currentId = null; // Aufgabe im Sheet
 
@@ -176,6 +177,8 @@ ${quick.map((q) => `<button type="button" class="chip${t.due === q.iso ? " on" :
 ${t.due ? `<button type="button" class="chip ghost" data-act="td-due" data-id="${t.id}" data-iso="">${icon("x")}<span>Kein Datum</span></button>` : ""}
 </div>
 
+${safe(() => taskActions(t), "")}
+
 <section class="td-block">
 <h3 class="td-h">Unteraufgaben${subs.length ? ` <span>${subDone}/${subs.length}</span>` : ""}</h3>
 <div class="card list subs">
@@ -213,7 +216,6 @@ ${row("tag", "green", "Tags", `<input type="text" class="in-text" value="${esc((
 
 <div class="td-actions">
 ${!t.done ? `<button type="button" class="act" data-act="task-focus" data-id="${t.id}">${icon("target")}<span>Fokus</span></button>` : ""}
-<button type="button" class="act" data-act="td-ics" data-id="${t.id}"${t.due ? "" : ` disabled title="Erst ein Datum wählen"`}>${icon("calendarPlus")}<span>Kalender</span></button>
 <button type="button" class="act" data-act="td-dup" data-id="${t.id}">${icon("copy")}<span>Duplizieren</span></button>
 <button type="button" class="act" data-act="td-share" data-id="${t.id}">${icon("share")}<span>Teilen</span></button>
 <button type="button" class="act red" data-act="td-del" data-id="${t.id}">${icon("trash")}<span>Löschen</span></button>

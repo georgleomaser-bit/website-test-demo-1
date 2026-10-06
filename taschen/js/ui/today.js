@@ -15,6 +15,7 @@ import { openCapture } from "./capture.js";
 import { askAI } from "./aiui.js";
 import { openInstallHelp, installHint } from "./install.js";
 import { CHECK } from "./icons.js";
+import { eventsSection, timelineEvent, todayEvents, connectBanner } from "./connectui.js";
 
 const asBag = (x) => (x && typeof x === "object" ? x : x ? store.bag(x) : null);
 
@@ -60,6 +61,11 @@ export function render() {
   const doneToday = (b.doneToday || []).filter((t) => !pending.has(t.id));
   const pct = Math.round((b.progress || 0) * 100);
   const c = b.counts || {};
+  // Termine aus verbundenen Kalendern (Google, Microsoft)
+  const nowMs = now.getTime();
+  const evToday = todayEvents(tdy);
+  const evTimed = evToday.filter((e) => !e.allDay && e.date === tdy);
+  const evNext = evTimed.find((e) => e.end > nowMs) || null;
 
   // Kopf
   const avatar = `<button type="button" class="avatar only-phone" data-act="go" data-to="#einstellungen" aria-label="Einstellungen">${name ? esc(name[0].toUpperCase()) : icon("person")}</button>`;
@@ -69,6 +75,7 @@ export function render() {
   const chips = [
     c.overdue ? `<button type="button" class="hchip red" data-act="scroll-to" data-to="sec-overdue">${icon("flag")}<b>${c.overdue}</b> überfällig</button>` : "",
     `<button type="button" class="hchip" data-act="scroll-to" data-to="${focus.length ? "sec-focus" : "sec-today"}">${icon("sun")}<b>${(c.today || 0) + (c.planned || 0)}</b> heute</button>`,
+    evToday.length ? `<button type="button" class="hchip" data-act="scroll-to" data-to="sec-events">${icon("calendar")}<b>${evToday.length}</b> ${evToday.length === 1 ? "Termin" : "Termine"}</button>` : "",
     c.inbox ? `<button type="button" class="hchip" data-act="go" data-to="#eingang">${icon("tray")}<b>${c.inbox}</b> im Eingang</button>` : "",
     `<button type="button" class="hchip" data-act="scroll-to" data-to="sec-done">${icon("check")}<b>${c.doneToday || 0}</b> erledigt</button>`,
   ].join("");
@@ -76,7 +83,7 @@ export function render() {
   html += `<section class="hero dp-${esc(dp)}" data-key="hero">
 <div class="hero-art" aria-hidden="true"><i></i><i></i><i></i></div>
 <div class="hero-top"><div class="hero-text"><p class="hero-greet">${esc(b.greeting || "Hallo")}${name ? `, ${esc(name)}` : ""}</p><h2 class="hero-head">${esc(b.headline || "")}</h2></div>${ring(pct, { size: 76, stroke: 7, cls: "hero-ring", sub: "geschafft" })}</div>
-${b.summary ? `<p class="hero-sum">${esc(b.summary)}</p>` : ""}
+${b.summary || evToday.length ? `<p class="hero-sum">${esc([b.summary, eventLine(evToday, evNext, nowMs)].filter(Boolean).join(" "))}</p>` : ""}
 <div class="hero-chips">${chips}</div>
 ${tips.length ? `<div class="hero-tips">${tips.map((tp, i) => `<button type="button" class="tip" data-act="tip" data-i="${i}"><span class="tip-e">${esc(tp.icon || "💡")}</span><span>${esc(tp.text)}</span>${icon("chevronRight")}</button>`).join("")}</div>` : ""}
 ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("sparkle")}<span>Frag deinen KI-PM, wie du heute vorgehst</span></button>` : ""}
@@ -87,6 +94,9 @@ ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("spa
   if (now.getHours() < Math.max(12, dayStartH + 3) && prefs.plannedDay !== tdy && !planned.length && open.length) {
     html += `<button type="button" class="banner plan" data-key="plan-banner" data-act="plan-day"><span class="banner-ic">${icon("sunrise")}</span><span class="banner-t"><b>Tag planen</b><small>In 60 Sekunden festlegen, was heute zählt</small></span>${icon("chevronRight")}</button>`;
   }
+
+  // Termine (verbundene Kalender)
+  html += safe(() => eventsSection(tdy, nowMs), "");
 
   // Fokus
   if (focus.length) {
@@ -105,8 +115,8 @@ ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("spa
     html += empty({ emoji: "🌤️", title: "Ein freier Tag", text: "Keine offenen Aufgaben. Leg los mit deiner ersten – oder genieß die Ruhe.", action: `<button type="button" class="btn primary" data-act="new-task">${icon("plus")}<span>Aufgabe hinzufügen</span></button>` });
   }
 
-  // Zeitplan
-  if (timeline.length) html += sec({ key: "timeline", title: "Zeitplan", icon: "clock", tone: "indigo", plain: true, body: timelineHTML(timeline, now) });
+  // Zeitplan (Aufgaben mit Uhrzeit und Termine)
+  if (timeline.length || evTimed.length) html += sec({ key: "timeline", title: "Zeitplan", icon: "clock", tone: "indigo", plain: true, body: timelineHTML(timeline, now, evTimed) });
 
   // Überfällig
   if (overdue.length) {
@@ -128,6 +138,7 @@ ${app.ai ? `<button type="button" class="hero-ai" data-act="ai-plan">${icon("spa
   const inst = installHint();
   html += inst;
   html += reminderCard(!!inst);
+  html += safe(() => connectBanner(), "");
 
   // Im Blick
   const stalled = (b.stalled || []).map((x) => ({ ...x, bag: asBag(x.bag) })).filter((x) => x.bag);
@@ -176,19 +187,36 @@ function focusCard(t, i) {
 </article>`;
 }
 
-function timelineHTML(list, now) {
+// Briefing-Zusatz: „Dazu 3 Termine – der nächste um 14:00: „Call mit Müller“.“
+function eventLine(list, next, nowMs) {
+  if (!list.length) return "";
+  const n = list.length === 1 ? "1 Termin" : `${list.length} Termine`;
+  if (!next) return `Dazu ${n} im Kalender.`;
+  const at = new Date(next.start);
+  const hm = `${at.getHours()}:${String(at.getMinutes()).padStart(2, "0")}`;
+  const live = next.start <= nowMs;
+  const t = next.title.length > 40 ? next.title.slice(0, 39) + "…" : next.title;
+  return live ? `Dazu ${n} – gerade läuft „${t}“.` : `Dazu ${n} – ${list.length === 1 ? "um" : "der nächste um"} ${hm}: „${t}“.`;
+}
+
+function timelineHTML(list, now, evs = []) {
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const items = list.slice().sort((a, b) => String(a.time).localeCompare(String(b.time)));
+  const minOf = (x) => (x.kind === "event" ? new Date(x.e.start).getHours() * 60 + new Date(x.e.start).getMinutes() : (([h, m]) => h * 60 + m)(String(x.t.time || "0:0").split(":").map(Number)));
+  const items = [...list.map((t) => ({ kind: "task", t })), ...evs.map((e) => ({ kind: "event", e }))].map((x) => ({ ...x, min: minOf(x) })).sort((a, b) => a.min - b.min || (a.kind === "event" ? -1 : 1));
   let html = `<div class="timeline card">`;
   let nowPlaced = false;
   const nowLine = `<div class="tl-now" data-key="tl-now"><time>${esc(now.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" }))}</time><i></i></div>`;
-  for (const t of items) {
-    const [h, m] = String(t.time || "0:0").split(":").map(Number);
-    const min = h * 60 + m;
+  for (const x of items) {
+    const min = x.min;
     if (!nowPlaced && min > nowMin) {
       html += nowLine;
       nowPlaced = true;
     }
+    if (x.kind === "event") {
+      html += timelineEvent(x.e, now.getTime());
+      continue;
+    }
+    const t = x.t;
     const bag = t.bag ? store.bag(t.bag) : null;
     const past = min + (t.est || 30) < nowMin && !t.done;
     const done = !!t.done || pending.has(t.id);
