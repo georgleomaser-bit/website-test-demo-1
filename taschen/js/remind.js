@@ -2,6 +2,7 @@
 import { BRAND, DEFAULT_PROFILE, PRIOS, SERVER } from "./config.js";
 import { isISO, addDays, weekday, parseTime, atLocal, toISO, todayISO, fmtDuration } from "./dates.js";
 import { checkServer, normServer, detectServer, request, status as syncStatus } from "./sync.js";
+import { eventReminders, eventSummary } from "./connect.js";
 
 // ---------- Grundlagen ----------
 // Beim Import nichts von window/document/navigator anfassen – der ICS-Teil läuft auch in Node (Tests).
@@ -208,7 +209,23 @@ export function computePlan(state, pm, now = Date.now()) {
   } catch (e) {
     if (typeof console !== "undefined") console.warn("[taschen] Erinnerungsplan", e);
   }
-  items = items.filter((it) => it && Number.isFinite(it.at) && it.tag).map((it) => ({ at: it.at, kind: it.kind, ...(it.taskId ? { taskId: it.taskId } : {}), title: String(it.title || ""), body: String(it.body || ""), tag: String(it.tag) }));
+  // Termine aus verbundenen Kalendern (Google, Microsoft) – profile.defaultRemind Minuten vorher
+  let evItems = [];
+  try {
+    evItems = eventReminders(new Date(now - CATCHUP), profileOf(s.profile)) || [];
+  } catch (_) {
+    evItems = [];
+  }
+  items = [...items, ...evItems]
+    .filter((it) => it && Number.isFinite(it.at) && it.tag)
+    .map((it) => ({ at: it.at, kind: it.kind, ...(it.taskId ? { taskId: it.taskId } : {}), ...(it.eventId ? { eventId: String(it.eventId) } : {}), ...(it.join ? { join: String(it.join) } : {}), ...(it.web ? { web: String(it.web) } : {}), title: String(it.title || ""), body: String(it.body || ""), tag: String(it.tag) }))
+    .sort((a, b) => a.at - b.at);
+  // Morgen-Briefing nennt die Termine des Tages
+  for (const it of items) {
+    if (it.kind !== "briefing") continue;
+    const line = safeSummary(toISO(new Date(it.at)));
+    if (line) it.body = it.body ? `${it.body}\n${line}` : line;
+  }
   let badge = 0;
   try {
     badge = Math.max(0, Math.round(pm.badgeCount(s, new Date(now)) || 0));
@@ -225,12 +242,23 @@ export function computePlan(state, pm, now = Date.now()) {
     for (const it of pm.reminderPlan(forced, morning, { days: BRIEF_DAYS }) || []) {
       if (it?.kind !== "briefing") continue;
       const d = toISO(new Date(it.at));
-      if (d && d <= last && !briefings[d]) briefings[d] = { title: String(it.title || ""), body: String(it.body || "") };
+      if (d && d <= last && !briefings[d]) {
+        const line = safeSummary(d);
+        briefings[d] = { title: String(it.title || ""), body: [String(it.body || ""), line].filter(Boolean).join("\n") };
+      }
     }
   } catch (_) {
     /* ohne Briefings – der Service Worker baut dann selbst einen Text */
   }
   return { at: now, items, badge, briefings };
+}
+
+function safeSummary(iso) {
+  try {
+    return eventSummary(iso) || "";
+  } catch (_) {
+    return "";
+  }
 }
 
 function setBadge(n) {

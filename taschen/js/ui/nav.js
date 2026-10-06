@@ -6,6 +6,7 @@ import { esc } from "../util.js";
 import { icon, logo } from "./icons.js";
 import { app, safe, bagVars, today, modKey, relTime } from "./core.js";
 import { ring } from "./components.js";
+import { mails as connectMails } from "../connect.js";
 
 const SYNC = { off: ["", "Lokal auf diesem Gerät"], idle: ["green", "Synchron"], syncing: ["blue", "Synchronisiere …"], error: ["red", "Sync-Fehler"], offline: ["orange", "Offline"] };
 
@@ -17,6 +18,7 @@ export function counts() {
     today: safe(() => pm.badgeCount(s, app.now), open.filter((t) => (t.due && t.due <= tdy) || t.plan === tdy).length),
     inbox: open.filter((t) => !t.bag).length,
     overdue: open.filter((t) => t.due && t.due < tdy).length,
+    mails: safe(() => connectMails().length, 0), // markierte Mails, die noch nicht übernommen sind
   };
 }
 
@@ -51,7 +53,7 @@ export function sidebar() {
 <nav class="sb-nav" aria-label="Bereiche">
 ${item("#heute", "sun", "orange", "Heute", c.today, v === "heute", c.overdue ? `<span class="sb-od" title="${c.overdue} überfällig"></span>` : "")}
 ${item("#demnaechst", "calendar", "red", "Demnächst", 0, v === "demnaechst")}
-${item("#eingang", "tray", "blue", "Eingang", c.inbox, v === "eingang")}
+${item("#eingang", "tray", "blue", "Eingang", c.inbox + c.mails, v === "eingang")}
 ${item("#rueckblick", "chart", "purple", "Rückblick", 0, v === "rueckblick", reviewDue() ? `<span class="sb-due">fällig</span>` : "")}
 </nav>
 <div class="sb-sec"><a href="#taschen" class="sb-sec-t${v === "taschen" ? " on" : ""}">Taschen</a><button type="button" class="btn-round xs" data-act="bag-new" aria-label="Neue Tasche" title="Neue Tasche">${icon("plus")}</button></div>
@@ -68,7 +70,7 @@ export function tabbar() {
     const on = v === id || (id === "taschen" && v === "tasche");
     return `<a class="tb${on ? " on" : ""}" href="${hash}" ${on ? 'aria-current="page"' : ""}><span class="tb-ic">${icon(ic)}${n ? `<b class="badge">${n > 99 ? "99+" : n}</b>` : ""}</span><span class="tb-l">${label}</span></a>`;
   };
-  return `<div class="tb-pill">${tab("#heute", "heute", "sun", "Heute", c.today)}${tab("#demnaechst", "demnaechst", "calendar", "Demnächst")}${tab("#taschen", "taschen", "bag", "Taschen")}${tab("#eingang", "eingang", "tray", "Eingang", c.inbox)}</div><button type="button" class="tb-search" data-act="search" aria-label="Suchen">${icon("search")}</button>`;
+  return `<div class="tb-pill">${tab("#heute", "heute", "sun", "Heute", c.today)}${tab("#demnaechst", "demnaechst", "calendar", "Demnächst")}${tab("#taschen", "taschen", "bag", "Taschen")}${tab("#eingang", "eingang", "tray", "Eingang", c.inbox + c.mails)}</div><button type="button" class="tb-search" data-act="search" aria-label="Suchen">${icon("search")}</button>`;
 }
 
 // ---------- Kopfzeile ----------

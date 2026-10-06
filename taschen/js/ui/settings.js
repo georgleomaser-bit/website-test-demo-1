@@ -13,6 +13,7 @@ import { confirmBox, chooseBox } from "./sheet.js";
 import { haptic, toast, toastError, confetti } from "./fx.js";
 import { exportCalendar } from "./today.js";
 import { platform } from "./install.js";
+import { settingsGroup as accountsGroup, checkAvail } from "./connectui.js";
 
 const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 const WD_LONG = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
@@ -59,6 +60,7 @@ export async function refreshInfo() {
     /* egal */
   }
   ui.aiAvail = !!app.aiAvailable;
+  await checkAvail(true).catch(() => {});
   ui.checked = true;
   infoBusy = false;
   app.render();
@@ -84,6 +86,9 @@ export function render(r) {
 
   // Profil
   h += group("profil", "Profil", [inputRow("person", "blue", "Name", `<input type="text" class="in-text" value="${esc(p.name || "")}" placeholder="Wie soll ich dich nennen?" data-change="set-name" data-key-act="blur-enter" autocomplete="given-name" enterkeyhint="done" />`)]);
+
+  // Konten & Kalender (Google, Microsoft)
+  h += safe(() => accountsGroup(), "");
 
   // Tagesrhythmus
   h += group("rhythmus", "Tagesrhythmus", [
@@ -188,7 +193,7 @@ export function render(r) {
       est && est.usage != null ? ctlRow("archive", "gray", "Belegter Speicher", `<span class="status gray">${esc(fmtSize(est.usage))}</span>`, `${store.tasks().length} Aufgaben · ${store.files().length} Dateien`) : "",
       btnRow("trash", "red", "Alles löschen", "set-reset", { sub: "Alle Taschen, Aufgaben und Dateien auf diesem Gerät", danger: true }),
     ],
-    "Deine Daten liegen lokal auf diesem Gerät (IndexedDB). Ein Backup ist eine JSON-Datei mit allem – auch Dateien.",
+    `Deine Daten liegen lokal auf diesem Gerät (IndexedDB). Ein Backup ist eine JSON-Datei mit allem – auch Dateien.${store.accounts().length ? " Verbundene Konten kommen aus Sicherheitsgründen ohne Schlüssel hinein – nach einem Import auf einem neuen Gerät einfach neu verbinden." : ""}`,
   );
 
   // Über
@@ -269,6 +274,7 @@ async function startSync(code, join = false) {
     await sync.configure({ server, code, join });
     ui.code = code;
     app.server = server;
+    checkAvail(true).catch(() => {});
     return true;
   } catch (e) {
     toastError(e, "Sync");
@@ -316,7 +322,7 @@ on("change", {
       ui.server = base;
       app.server = base;
       app.aiAvailable = !!(await ai.available(base).catch(() => false));
-      toast("Server verbunden", { icon: "cloud", sub: [chk.sync ? "Sync" : "", chk.push ? "Push" : "", chk.ai ? "KI" : ""].filter(Boolean).join(" · ") || base });
+      toast("Server verbunden", { icon: "cloud", sub: [chk.sync ? "Sync" : "", chk.push ? "Push" : "", chk.ai ? "KI" : "", chk.connect?.google || chk.connect?.microsoft ? "Konten" : ""].filter(Boolean).join(" · ") || base });
       refreshInfo();
     } catch (e) {
       toastError(e, "Server");

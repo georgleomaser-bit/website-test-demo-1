@@ -175,7 +175,8 @@ export function openMenu(items, { x = null, y = null, el = null, title = "" } = 
   // Position
   const place = () => {
     const W = window.innerWidth, Hh = window.innerHeight;
-    const r = box.getBoundingClientRect();
+    // Maße ohne die Start-Skalierung (scale 0.82) – sonst rutscht ein breites Menü über den Rand
+    const r = { width: box.offsetWidth, height: box.offsetHeight };
     let px = x, py = y;
     if (el) {
       const er = el.getBoundingClientRect();

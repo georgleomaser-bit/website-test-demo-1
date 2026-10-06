@@ -11,6 +11,8 @@ import { openMenu } from "./sheet.js";
 import { toastUndo, haptic } from "./fx.js";
 import { exportCalendar } from "./today.js";
 import { openMilestone } from "./bag.js";
+import * as connect from "../connect.js";
+import { eventRow, stripDots } from "./connectui.js";
 
 const WD = ["So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"];
 
@@ -28,8 +30,22 @@ export function render() {
   const now = app.now;
   const tdy = today();
   const p = s.profile;
-  const days = safe(() => pm.upcoming(s, now, 60), []) || [];
-  const byDate = new Map(days.map((d) => [d.date, d]));
+  const days0 = safe(() => pm.upcoming(s, now, 60), []) || [];
+  const byDate = new Map(days0.map((d) => [d.date, d]));
+  // Termine aus verbundenen Kalendern (heute bis +30 Tage) – auch an Tagen ohne Aufgaben
+  const evAll = safe(() => connect.events(), []);
+  const evBy = new Map();
+  if (evAll.length) {
+    for (let i = 0; i <= 30; i++) {
+      const iso = dates.addDays(tdy, i);
+      const list = safe(() => connect.eventsOn(iso, evAll), []);
+      if (!list.length) continue;
+      evBy.set(iso, list);
+      if (!byDate.has(iso)) byDate.set(iso, { date: iso, tasks: [], milestones: [], load: 0 });
+    }
+  }
+  const days = [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const nEv = [...evBy.values()].reduce((n, l) => n + l.length, 0);
   const capDay = Math.max(60, minutes(p.dayEnd, "18:00") - minutes(p.dayStart, "08:00"));
 
   // Wochenstreifen (14 Tage)
@@ -43,7 +59,9 @@ export function render() {
     const ms = d && d.milestones && d.milestones.length;
     const heavy = d && d.load > capDay ? " heavy" : "";
     const workday = (p.workdays || [1, 2, 3, 4, 5]).includes(wd);
-    strip += `<button type="button" class="wday${i === 0 ? " today" : ""}${n || ms ? "" : " free"}${workday ? "" : " weekend"}${heavy}" data-act="up-day" data-iso="${iso}" data-drop="day" data-day="${iso}" aria-label="${esc(safe(() => dates.fmtDay(iso), iso))}: ${n} Aufgaben"><small>${WD[wd]}</small><b>${Number(iso.slice(8))}</b><span class="wdots">${ms ? `<i class="wms">${icon("diamondFill")}</i>` : ""}${bagsOf.map((b) => `<i style="${bagVars(b)}"></i>`).join("")}</span>${n ? `<em>${n}</em>` : ""}</button>`;
+    const ev = evBy.has(iso) ? stripDots(iso) : { n: 0, html: "" };
+    const label = [`${n} ${n === 1 ? "Aufgabe" : "Aufgaben"}`, ev.n ? `${ev.n} ${ev.n === 1 ? "Termin" : "Termine"}` : ""].filter(Boolean).join(", ");
+    strip += `<button type="button" class="wday${i === 0 ? " today" : ""}${n || ms || ev.n ? "" : " free"}${workday ? "" : " weekend"}${heavy}" data-act="up-day" data-iso="${iso}" data-drop="day" data-day="${iso}" aria-label="${esc(safe(() => dates.fmtDay(iso), iso))}: ${esc(label)}"><small>${WD[wd]}</small><b>${Number(iso.slice(8))}</b><span class="wdots">${ms ? `<i class="wms">${icon("diamondFill")}</i>` : ""}${ev.html}${bagsOf.slice(0, ev.n ? 2 : 3).map((b) => `<i style="${bagVars(b)}"></i>`).join("")}</span>${n + ev.n ? `<em>${n + ev.n}</em>` : ""}</button>`;
     if (i === 6) strip += `<span class="wsep" aria-hidden="true"></span>`;
   }
 
@@ -64,7 +82,7 @@ export function render() {
     const tasks = (d.tasks || []).slice().sort((a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || String(a.time || "").localeCompare(String(b.time || "")) || (b.prio || 0) - (a.prio || 0));
     agenda += `<section class="aday${diff === 0 ? " is-today" : ""}" id="day-${d.date}" data-key="day-${d.date}" data-drop="day" data-day="${d.date}">
 <header class="aday-h"><div class="aday-t"><h3>${esc(dayTitle(d.date).title)}</h3><small>${esc(dayTitle(d.date).sub)}</small></div>${load ? `<span class="load ${loadCls}" title="Geschätzte Arbeitszeit">${icon("hourglass")}${esc(safe(() => dates.fmtDuration(load), load + " Min."))}${loadCls === "red" ? " · zu voll" : ""}</span>` : ""}<button type="button" class="btn-round sm" data-act="new-task" data-due="${d.date}" aria-label="Aufgabe für diesen Tag">${icon("plus")}</button></header>
-<div class="card list">${ms.join("")}${tasks.map((t) => taskRow(t, { date: false, drag: true })).join("")}</div>
+<div class="card list">${ms.join("")}${(evBy.get(d.date) || []).map((e) => eventRow(e, { iso: d.date })).join("")}${tasks.map((t) => taskRow(t, { date: false, drag: true })).join("")}</div>
 </section>`;
   }
 
@@ -76,7 +94,9 @@ export function render() {
   const someday = open.filter((t) => t.someday && !t.due);
   const overdueN = open.filter((t) => t.due && t.due < tdy).length;
 
-  let html = largeTitle("Demnächst", { sub: `${days.length ? `${days.reduce((n, d) => n + d.tasks.length, 0)} Termine in den nächsten Wochen` : "Die nächsten Wochen"}`, key: "lt-up" });
+  const nTasks = days.reduce((n, d) => n + d.tasks.length, 0);
+  const subParts = [nTasks ? `${nTasks} ${nTasks === 1 ? "Aufgabe" : "Aufgaben"}` : "", nEv ? `${nEv} ${nEv === 1 ? "Termin" : "Termine"}` : ""].filter(Boolean);
+  let html = largeTitle("Demnächst", { sub: subParts.length ? `${subParts.join(" · ")} in den nächsten Wochen` : "Die nächsten Wochen", key: "lt-up" });
   html += `<div class="wstrip-wrap" data-key="wstrip"><div class="wstrip hscroll">${strip}</div></div>`;
   if (overdueN) html += `<button type="button" class="banner overdue" data-key="up-overdue" data-act="go" data-to="#heute"><span class="banner-ic">${icon("flag")}</span><span class="banner-t"><b>${overdueN} überfällig</b><small>Auf „Heute“ neu planen</small></span>${icon("chevronRight")}</button>`;
   html += days.length ? `<div class="agenda" data-key="agenda">${agenda}</div>` : empty({ emoji: "🗓️", title: "Nichts terminiert", text: "In den nächsten Wochen steht nichts mit Datum an. Gib Aufgaben ein Datum – oder zieh sie auf einen Tag im Streifen.", action: `<button type="button" class="btn primary" data-act="new-task" data-due="${dates.addDays(tdy, 1)}">${icon("plus")}<span>Aufgabe für morgen</span></button>` });

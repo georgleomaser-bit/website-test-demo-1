@@ -55,6 +55,26 @@ Du kannst die App über GitHub Pages benutzen und den Server nur für Sync, Push
 
 Dateien bis 10 MB werden mit synchronisiert, größere bleiben auf dem Gerät, auf dem sie hochgeladen wurden.
 
+## Google und Outlook verbinden
+Verbinde deine Postfächer und Kalender: Outlook, Microsoft 365 und Outlook.com über **Microsoft**, Gmail, Google Kalender und Google Workspace über **Google**. Du kannst mehrere Konten verbinden, etwa Firma und privat.
+
+1. **Einstellungen → Konten & Kalender → „Mit Microsoft verbinden“** bzw. **„Mit Google verbinden“**.
+2. Melde dich beim Anbieter an und erlaube den Zugriff. Danach bist du automatisch zurück in der App.
+3. Das Konto ist über den Sync auch auf deinen anderen Geräten da. Auf dem iPhone verbindest du am besten einmal am Mac oder in Safari.
+
+Das bekommst du danach:
+- **Heute:** deine Termine des Tages mit **„Beitreten“** für Teams, Meet, Zoom und Webex. Sie stehen auch im Zeitplan, und das Briefing nennt sie.
+- **Demnächst:** Termine der nächsten 30 Tage je Tag und als Punkte im Wochenstreifen.
+- **Eingang:** markierte Mails (Gmail: Stern, Outlook: Fahne). Ein Tipp macht daraus eine Aufgabe mit Link zur Mail.
+- **An jeder Aufgabe:** „In Kalender eintragen“, „E-Mail schreiben“ und „Anrufen“, sobald eine Telefonnummer im Text steht.
+- **Erinnerungen** auch zu deinen Terminen, so viele Minuten vorher wie bei der Standard-Erinnerung eingestellt.
+
+Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät. Der Server vermittelt nur die Anmeldung und bewahrt den Zugang verschlüsselt auf. Wenn deine Firma Microsoft 365 oder Google Workspace sperrt, muss die IT die App einmal freigeben. Ein Backup enthält die Konten ohne Schlüssel. Nach dem Einspielen auf einem neuen Gerät verbindest du sie einfach neu.
+
+Ohne Server gehen „In Kalender eintragen“ (per Link zu Google Kalender oder Outlook oder als Kalender-Datei), „E-Mail schreiben“ und „Anrufen“ trotzdem.
+
+**Einmalige Einrichtung:** Damit die Knöpfe „Mit Google/Microsoft verbinden“ funktionieren, braucht der Server Zugangsdaten von Google und Microsoft. Wie du sie kostenlos anlegst, steht Schritt für Schritt in [`VERBINDEN.md`](VERBINDEN.md).
+
 ## Server installieren (ein Befehl)
 Im Terminal eines eigenen Linux-Servers (z. B. bei Hetzner):
 ```
@@ -92,6 +112,7 @@ Wenn auf dem Server ein Anthropic-Schlüssel hinterlegt ist, erscheinen in der A
 | `js/remind.js` | Erinnerungen: Mitteilungen, App-Symbol-Zahl, Kalender (ICS), Kurzbefehl, Push |
 | `js/sync.js` | Ende-zu-Ende-verschlüsselter Sync |
 | `js/ai.js` | KI-Projektmanager (über den eigenen Server) |
+| `js/connect.js`, `js/ui/connectui.js` | Google- und Microsoft-Verbindung: Termine, Calls, markierte Mails, Kalender-Eintrag, E-Mail, Anrufen |
 | `js/config.js` | Name, Farben, Speicher, Server-Adresse (eine Stelle für alles) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | App-Installation, Offline-Betrieb, Push |
 | `server/taschen-server.mjs`, `server/install.sh` | eigener Server: App, Sync, Push, KI; Installation mit einem Befehl |

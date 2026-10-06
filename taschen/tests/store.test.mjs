@@ -807,3 +807,109 @@ describe("Logbuch, KV-Speicher, Zurücksetzen", () => {
     assert.equal((await store.storageInfo()).kind, "memory");
   });
 });
+
+// ---------- Verbundene Konten (Google, Microsoft) ----------
+describe("Konten", () => {
+  const G = { id: "a".repeat(32), provider: "google", email: "papa@gmail.com", secret: "geheim-google-1234567890", server: "https://taschen.test/" };
+  const M = { id: "b".repeat(32), provider: "microsoft", email: "t@firma.de", secret: "geheim-ms-1234567890", server: "https://taschen.test" };
+
+  test("addAccount: Standardwerte, eigene Farbe je Konto, kein Rückgängig-Schritt, erneutes Hinzufügen frischt auf", () => {
+    const g = store.addAccount(G);
+    const m = store.addAccount(M);
+    assert.deepEqual([g.id, g.provider, g.email, g.secret, g.server, g.calendars, g.mail, g.broken, g.deleted], [G.id, "google", "papa@gmail.com", G.secret, "https://taschen.test", true, true, false, null]);
+    assert.ok(g.color && m.color && g.color !== m.color);
+    assert.equal(store.canUndo(), false);
+    assert.deepEqual(store.accounts().map((a) => a.id), [G.id, M.id]);
+    store.updateAccount(G.id, { broken: true });
+    const again = store.addAccount({ ...G, secret: "neues-geheimnis-1234567" });
+    assert.equal(again.id, G.id);
+    assert.equal(store.accounts().length, 2);
+    assert.equal(store.account(G.id).secret, "neues-geheimnis-1234567");
+    assert.equal(store.account(G.id).broken, false);
+    assert.throws(() => store.addAccount({ email: "x" }), /Anbieter/);
+  });
+
+  test("updateAccount ändert Schalter, nie den Anbieter; removeAccount setzt Grabstein und löscht den Schlüssel", () => {
+    store.addAccount(G);
+    const u0 = store.account(G.id).updated;
+    store.updateAccount(G.id, { calendars: false, provider: "microsoft", id: "anders" });
+    const a = store.account(G.id);
+    assert.equal(a.calendars, false);
+    assert.equal(a.provider, "google");
+    assert.ok(a.updated > u0);
+    assert.equal(store.removeAccount(G.id), true);
+    assert.equal(store.account(G.id), null);
+    assert.equal(store.accounts().length, 0);
+    const raw = store.get().accounts.find((x) => x.id === G.id);
+    assert.ok(raw.deleted);
+    assert.equal(raw.secret, "");
+    assert.equal(store.removeAccount(G.id), false);
+  });
+
+  test("Sync: Nutzlast nur mit Konten, Zusammenführen nach Last-Writer-Wins, Grabsteine wandern mit", () => {
+    assert.equal("accounts" in store.syncPayload(), false);
+    const g = store.addAccount(G);
+    const p = store.syncPayload();
+    assert.equal(p.accounts.length, 1);
+    assert.equal(p.accounts[0].secret, G.secret); // im (verschlüsselten) Sync steht der Schlüssel
+    const now = Date.now() + 1000;
+    const u0 = g.updated;
+    store.merge({ accounts: [{ ...M, created: now, updated: now, deleted: null }, { ...g, mail: false, updated: u0 + 50 }] });
+    assert.equal(store.accounts().length, 2);
+    assert.equal(store.account(G.id).mail, false);
+    store.merge({ accounts: [{ ...store.account(G.id), mail: true, updated: u0 + 10 }] }); // älter → bleibt
+    assert.equal(store.account(G.id).mail, false);
+    store.merge({ accounts: [{ ...store.account(M.id), deleted: now + 5, updated: now + 5, secret: "" }] });
+    assert.equal(store.account(M.id), null);
+  });
+
+  test("Sync: ein Konto ohne Schlüssel überschreibt nie den vorhandenen Schlüssel – und bekommt ihn ab", () => {
+    const g = store.addAccount(G);
+    store.merge({ accounts: [{ ...g, secret: "", calendars: false, updated: g.updated + 100 }] });
+    assert.equal(store.account(G.id).calendars, false);
+    assert.equal(store.account(G.id).secret, G.secret);
+    // umgekehrt: hier fehlt der Schlüssel, die andere Fassung hat ihn
+    store.addAccount(M);
+    const cur = store.account(M.id);
+    store.get().accounts.find((a) => a.id === M.id).secret = "";
+    store.merge({ accounts: [{ ...cur, secret: M.secret }] });
+    assert.equal(store.account(M.id).secret, M.secret);
+  });
+
+  test("Backup ohne Schlüssel; Import behält vorhandene Schlüssel; altes Backup ohne Konten löscht keine Konten", async () => {
+    store.addAccount(G);
+    store.addTask({ title: "Aufgabe" });
+    const text = await (await store.exportBackup({ includeFiles: false })).text();
+    const json = JSON.parse(text);
+    assert.equal(json.state.accounts.length, 1);
+    assert.equal(json.state.accounts[0].secret, "");
+    assert.ok(!text.includes(G.secret), "Schlüssel nirgends im Backup");
+    await store.importBackup(text, { mode: "replace" });
+    assert.equal(store.account(G.id).secret, G.secret);
+    // auf einem neuen Gerät: Konto kommt an, aber ohne Schlüssel → neu verbinden
+    await store.resetAll();
+    await store.load({ memory: true });
+    await store.importBackup(text, { mode: "merge" });
+    assert.equal(store.account(G.id).secret, "");
+    assert.equal(store.account(G.id).email, "papa@gmail.com");
+    // älteres Backup (ohne „accounts“) ersetzen → verbundene Konten bleiben
+    store.addAccount(M);
+    const old = JSON.parse(text);
+    delete old.state.accounts;
+    await store.importBackup(JSON.stringify(old), { mode: "replace" });
+    assert.ok(store.account(M.id));
+    await assert.rejects(store.importBackup(JSON.stringify({ app: "arbeitstaschen", v: 1, state: { accounts: "x" } })), /„Konten“ ist keine Liste/);
+  });
+
+  test("Startdaten ersetzen lässt verbundene Konten in Ruhe; Laden normalisiert", async () => {
+    store.addAccount(G);
+    store.applySeed({ bags: [{ name: "Büro", tasks: [{ title: "Post" }] }] }, { mode: "replace" });
+    assert.ok(store.account(G.id));
+    await store.flush();
+    await store.load({ memory: true });
+    assert.equal(store.account(G.id).secret, G.secret);
+    const s = store.migrate({ v: 1, accounts: [{ id: "x1", provider: "GOOGLE", email: " a@b.de ", color: "neon", calendars: false }, { provider: "google" }] });
+    assert.equal(s.accounts.length, 1);
+    assert.deepEqual([s.accounts[0].provider, s.accounts[0].email, s.accounts[0].color, s.accounts[0].calendars, s.accounts[0].mail], ["google", "a@b.de", null, false, true]);
+  });
+});

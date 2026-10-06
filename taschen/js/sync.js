@@ -10,7 +10,7 @@ const SALT = "arbeitstaschen-sync-v1";
 const INFO_ID = "taschen/sync-id/v1";
 const INFO_KEY = "taschen/aes-gcm-256/v1";
 const AAD_STATE = "taschen/state/v1";
-const COLLS = ["bags", "tasks", "notes", "links", "files", "milestones"];
+const COLLS = ["bags", "tasks", "notes", "links", "files", "milestones", "accounts"];
 const STATIC_HOSTS = /(^|\.)(github\.io|netlify\.app|vercel\.app)$/i;
 const FID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -270,7 +270,7 @@ const healthCache = new Map(); // Basis-URL → { at, value }
 
 export async function checkServer(url) {
   const base = normServer(url);
-  const fail = (error) => ({ ok: false, version: null, sync: false, push: false, ai: false, error });
+  const fail = (error) => ({ ok: false, version: null, sync: false, push: false, ai: false, connect: { google: false, microsoft: false }, error });
   if (!base) return fail("Ungültige Adresse – sie muss mit https:// beginnen.");
   const hit = healthCache.get(base);
   if (hit && Date.now() - hit.at < (hit.value.ok ? 60000 : 5000)) return hit.value;
@@ -278,7 +278,7 @@ export async function checkServer(url) {
   try {
     const r = await request(base, "/api/health", { timeout: 8000 });
     if (!r.ok || r.data?.service !== "taschen") value = fail("Unter dieser Adresse läuft kein Taschen-Server.");
-    else value = { ok: r.data.ok !== false, version: r.data.version || null, sync: r.data.sync !== false, push: !!r.data.push, ai: !!r.data.ai };
+    else value = { ok: r.data.ok !== false, version: r.data.version || null, sync: r.data.sync !== false, push: !!r.data.push, ai: !!r.data.ai, connect: { google: !!r.data.connect?.google, microsoft: !!r.data.connect?.microsoft } };
   } catch (e) {
     value = fail(e.message);
   }

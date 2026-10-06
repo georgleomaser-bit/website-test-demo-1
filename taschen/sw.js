@@ -1,5 +1,5 @@
 // Arbeitstaschen Service Worker: Netz zuerst (immer die neueste Version), offline aus dem Speicher, Erinnerungen per Push ohne Inhalt
-const VERSION = "taschen-v1.1.0";
+const VERSION = "taschen-v1.2.0";
 const CORE = [
   "./",
   "./index.html",
@@ -15,12 +15,14 @@ const CORE = [
   "./js/remind.js",
   "./js/sync.js",
   "./js/ai.js",
+  "./js/connect.js",
   "./js/ui/actions.js",
   "./js/ui/aiui.js",
   "./js/ui/bag.js",
   "./js/ui/bags.js",
   "./js/ui/capture.js",
   "./js/ui/components.js",
+  "./js/ui/connectui.js",
   "./js/ui/core.js",
   "./js/ui/focus.js",
   "./js/ui/fx.js",
