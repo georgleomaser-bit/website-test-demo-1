@@ -10,6 +10,7 @@ import { moveTo } from "./actions.js";
 import { openMenu } from "./sheet.js";
 import { haptic, toast, toastUndo, toastError, sound } from "./fx.js";
 import { mailsSection } from "./connectui.js";
+import { inboxAction } from "./integrationsui.js";
 import * as connect from "../connect.js";
 import { isCall } from "../connect.js";
 
@@ -29,7 +30,7 @@ export function render() {
   const items = store.tasks().filter((t) => !t.bag && !t.done).sort((a, b) => (b.created || 0) - (a.created || 0));
   const sugs = new Map(items.map((t) => [t.id, suggest(t, s)]));
   const nSug = [...sugs.values()].filter(Boolean).length;
-  const nMail = safe(() => (connect.accounts().some((a) => a.mail !== false) ? connect.mails().length : 0), 0);
+  const nMail = safe(() => (connect.mailAccounts().length ? connect.mails().length : 0), 0);
   const sub = items.length ? `${items.length} ${items.length === 1 ? "Gedanke wartet" : "Gedanken warten"} aufs Einsortieren` : nMail ? `${nMail} markierte ${nMail === 1 ? "Mail wartet" : "Mails warten"}` : "Alles einsortiert";
   let html = largeTitle("Eingang", { sub, key: "lt-in" });
   html += `<form class="quick-in" data-key="qin" data-submit="inbox-add" autocomplete="off"><span class="qi-ic">${icon("plus")}</span><input type="text" name="t" placeholder="Schnell notieren – landet im Eingang" aria-label="Neuer Eintrag im Eingang" enterkeyhint="done" data-focus="inbox-add" /></form>`;
@@ -56,7 +57,7 @@ export function render() {
 }
 
 export function actions() {
-  return "";
+  return safe(() => inboxAction(), ""); // Briefkasten (Siri, Zapier …) und markierte Mails neu holen
 }
 
 on("click", {

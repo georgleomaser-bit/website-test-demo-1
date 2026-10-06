@@ -57,6 +57,8 @@ function commands() {
     { label: "Neue Notiz", icon: "note", tone: "yellow", run: () => openNote(null, { bag: app.route.view === "tasche" ? app.route.id : null }) },
     { label: "Neuer Link", icon: "link", tone: "teal", run: () => openLink(null, { bag: app.route.view === "tasche" ? app.route.id : null }) },
     { label: "Einstellungen", icon: "gear", tone: "gray", kbd: ",", run: () => app.go("#einstellungen") },
+    { label: "Verbindungen (Kalender, E-Mail, Siri, Excel)", icon: "plug", tone: "purple", run: () => app.go("#einstellungen/verbindungen") },
+    { label: "Als Excel/CSV exportieren", icon: "table", tone: "green", run: () => app.go("#einstellungen/verbindungen/datenx") },
     { label: dark ? "Hell-Modus" : "Dunkelmodus", icon: dark ? "sun" : "moon", tone: "indigo", run: () => import("./settings.js").then((m) => m.setTheme(dark ? "light" : "dark")) },
     { label: "Zum Kalender hinzufügen", icon: "calendarPlus", tone: "red", run: () => exportCalendar({ daily: true }) },
     { label: "Backup exportieren", icon: "download", tone: "green", run: () => import("./settings.js").then((m) => m.doBackup()) },

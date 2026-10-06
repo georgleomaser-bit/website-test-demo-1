@@ -6,7 +6,7 @@ Damit die Arbeitstaschen Termine, Calls und markierte Mails aus **Gmail / Google
 2. eine kostenlose **App-Registrierung bei Google** (für Gmail und Google Kalender),
 3. eine kostenlose **App-Registrierung bei Microsoft** (für Outlook und Microsoft 365).
 
-Das richtest du einmal ein, das dauert pro Anbieter etwa 15 Minuten. Danach tippt dein Vater in der App nur noch auf **Einstellungen → Konten & Kalender → „Mit Google verbinden“** bzw. **„Mit Microsoft verbinden“** und meldet sich an.
+Das richtest du einmal ein, das dauert pro Anbieter etwa 15 Minuten. Danach tippt dein Vater in der App nur noch auf **Einstellungen → Verbindungen → Google** bzw. **Microsoft** und meldet sich an.
 
 > Die Oberflächen von Google und Microsoft ändern sich manchmal. Wenn ein Menüpunkt anders heißt, such nach dem fett gedruckten Begriff.
 
@@ -70,6 +70,6 @@ Die Funktionen „E-Mail schreiben“, „Anrufen“ und „In Kalender eintrage
 ## Datenschutz
 - Der Server speichert nur den **Anmelde-Schlüssel** (Refresh-Token), und den **verschlüsselt**.
 - Mails und Termine holt die App **direkt** von Google bzw. Microsoft; sie laufen nicht über den Server.
-- Trennen: **Einstellungen → Konten & Kalender → Trennen**.
+- Trennen: **Einstellungen → Verbindungen → Konto antippen → Trennen**.
   - Bei Google wird der Zugriff dabei auch beim Anbieter entzogen.
   - Bei Microsoft entfernst du ihn zusätzlich unter https://account.microsoft.com/privacy/app-access bzw. bei Firmenkonten unter https://myapps.microsoft.com.

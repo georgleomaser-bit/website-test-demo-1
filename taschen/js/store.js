@@ -112,7 +112,9 @@ export function normMilestone(m) {
   const b = base(m);
   return { ...m, ...b, bag: typeof m.bag === "string" && m.bag ? m.bag : null, title: str(m.title).trim() || "Meilenstein", date: isISO(m.date) ? m.date : null, done: msOrNull(m.done, b.updated) };
 }
-// Verbundenes Konto (Google/Microsoft): secret ist der Schlüssel zum Refresh-Token auf dem eigenen Server
+// Verbundenes Konto: Google/Microsoft (secret = Schlüssel zum Refresh-Token auf dem eigenen Server), „ics“ (Kalender-Link im secret),
+// „imap“ (Schlüssel zum verschlüsselten IMAP-Zugang), „hook-in“ (Schlüssel des Eingangs-Briefkastens), „hook-out“ (Ziel-URL im secret).
+// Zusatzfelder (name, label, host, on, …) bleiben erhalten; secret verschwindet beim Backup-Export.
 export function normAccount(a) {
   const b = base(a);
   const provider = str(a.provider).trim().toLowerCase() || "google";
@@ -629,6 +631,13 @@ function insert(coll, e) {
   rememberNew(coll, e.id);
   S[coll].push(e);
   return e;
+}
+
+// Mehrere Änderungen als EIN Schritt: ein Rückgängig, einmal speichern, ein Ereignis (CSV-Import, Webhook-Eingang)
+// – innere addTask/removeTask/… laufen in derselben Transaktion; wirft fn, wird alles zurückgerollt
+export function batch(label, fn, ev = { type: "all", action: "import" }) {
+  if (typeof fn !== "function") return undefined;
+  return tx(label || null, ev, fn);
 }
 
 export function canUndo() {

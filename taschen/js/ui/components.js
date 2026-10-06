@@ -50,6 +50,7 @@ export function taskMeta(t, o = {}) {
   if (tags.includes("anruf") && !o.phone) m.push(`<span class="m green">${icon("call")}Anruf</span>`);
   if (t.src?.kind === "mail") m.push(`<span class="m" title="Aus einer Mail">${icon("mail")}</span>`);
   else if (t.src?.kind === "event") m.push(`<span class="m" title="Aus dem Kalender">${icon("calendar")}Termin</span>`);
+  else if (t.src?.kind === "hook") m.push(`<span class="m via" title="Über deine Eingangs-Adresse gekommen">${icon("inboxIn")}via ${esc(String(t.src.via || "Webhook").slice(0, 24))}</span>`);
   for (const tag of tags.filter((x) => x !== "anruf").slice(0, 4)) m.push(`<span class="m tag">#${esc(tag)}</span>`);
   return m.join("");
 }

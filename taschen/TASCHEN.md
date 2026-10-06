@@ -58,7 +58,7 @@ Dateien bis 10 MB werden mit synchronisiert, größere bleiben auf dem Gerät, a
 ## Google und Outlook verbinden
 Verbinde deine Postfächer und Kalender: Outlook, Microsoft 365 und Outlook.com über **Microsoft**, Gmail, Google Kalender und Google Workspace über **Google**. Du kannst mehrere Konten verbinden, etwa Firma und privat.
 
-1. **Einstellungen → Konten & Kalender → „Mit Microsoft verbinden“** bzw. **„Mit Google verbinden“**.
+1. **Einstellungen → Verbindungen → Microsoft** bzw. **Google** (unter „Kalender“ oder „E-Mail“).
 2. Melde dich beim Anbieter an und erlaube den Zugriff. Danach bist du automatisch zurück in der App.
 3. Das Konto ist über den Sync auch auf deinen anderen Geräten da. Auf dem iPhone verbindest du am besten einmal am Mac oder in Safari.
 
@@ -74,6 +74,18 @@ Termine und Mails gehen direkt von Google bzw. Microsoft auf dein Gerät. Der Se
 Ohne Server gehen „In Kalender eintragen“ (per Link zu Google Kalender oder Outlook oder als Kalender-Datei), „E-Mail schreiben“ und „Anrufen“ trotzdem.
 
 **Einmalige Einrichtung:** Damit die Knöpfe „Mit Google/Microsoft verbinden“ funktionieren, braucht der Server Zugangsdaten von Google und Microsoft. Wie du sie kostenlos anlegst, steht Schritt für Schritt in [`VERBINDEN.md`](VERBINDEN.md).
+
+## Mit allem verbinden
+Unter **Einstellungen → Verbindungen** (ganz oben) findest du alles an einem Ort – mit kurzer Anleitung bei jedem Punkt.
+
+- **Kalender per Link:** iCloud („Öffentlicher Kalender“), Google („Privatadresse im iCal-Format“), Outlook („Kalender veröffentlichen“), Firmen-, Schul- und Vereinskalender, Calendly, und die **deutschen Feiertage mit einem Tipp**. Link einfügen, **Testen** („12 Termine gefunden“), **Hinzufügen**. Die Termine erscheinen in Heute und Demnächst. Nur lesen.
+- **E-Mail von GMX, WEB.DE, T-Online, iCloud, Yahoo, IONOS, Strato, freenet** oder jedem anderen Anbieter (IMAP): Anbieter antippen, Adresse und Passwort eingeben. Was du dort **markierst** (Fahne, Stern, bei GMX/WEB.DE „Wichtig“), landet im **Eingang** und wird mit einem Tipp zur Aufgabe. Bei GMX und WEB.DE musst du IMAP vorher in deren Einstellungen erlauben, iCloud und Yahoo verlangen ein App-Passwort. Gmail und Outlook verbindest du besser über Google bzw. Microsoft.
+- **Nachrichten & Anrufe – ohne Einrichtung:** Steht in einer Aufgabe eine Telefonnummer, E-Mail-Adresse oder Anschrift, zeigt das Aufgaben-Detail unter „Kontakt & Kalender“ passende Knöpfe: **Anrufen, WhatsApp, SMS, FaceTime**, **E-Mail, Teams-Chat, Teams-Anruf**, **Apple Karten, Google Maps, Route**. Zoom-, Teams- und Meet-Links werden zu „Beitreten“. Dazu **Aufgabe teilen** (Teilen-Menü, WhatsApp, Mail, Kopieren).
+- **Siri & Kurzbefehle:** Mit „Eingangs-Adresse erstellen“ bekommst du eine geheime Adresse. Ein Kurzbefehl „Neue Aufgabe“ (Nach Eingabe fragen → Inhalte von URL abrufen, POST, JSON `title`) – und **„Hey Siri, neue Aufgabe“** legt sie im Eingang an, „via Siri“. Die Schritt-für-Schritt-Anleitung steht in der App. „Steuerberater anrufen morgen 10 Uhr #Büro“ wird wie in der Schnellerfassung verstanden.
+- **Zapier, Make, n8n, IFTTT, Formulare:** dieselbe Adresse nimmt neue Aufgaben an (JSON mit `title`, optional `notes`, `due`, `time`, `bag`, `prio`, `url`). Umgekehrt meldet ein **ausgehender Webhook** „Aufgabe neu“ und „Aufgabe erledigt“ an deinen Zap.
+- **Excel & CSV:** Aufgaben als Tabelle exportieren (öffnet sich direkt in Excel, Numbers, Google Tabellen) und Listen aus Excel, **Todoist, Trello oder Asana** importieren – mit Vorschau, Spaltenzuordnung, Zieltasche und „Rückgängig“.
+
+Ehrlich gesagt: Kalender-Links, IMAP und die Eingangs-Adresse brauchen den **Arbeitstaschen-Server**. Er lädt die Kalender-Links für dich, bewahrt IMAP-Zugänge verschlüsselt auf und reicht markierte Mails von GMX & Co. durch. Einträge für die Eingangs-Adresse liegen mit dem Server-Schlüssel verschlüsselt auf dem Server (nicht Ende-zu-Ende) und nur, bis die App sie abholt. Links, Zugänge und Adressen kommen nie ins Backup. Alles hier liest nur – in deinen Postfächern und Kalendern wird nichts gelöscht oder verschickt. Ohne Server gehen Nachrichten & Anrufe, Excel/CSV und „In Kalender eintragen“ trotzdem.
 
 ## Server installieren (ein Befehl)
 Im Terminal eines eigenen Linux-Servers (z. B. bei Hetzner):
@@ -113,6 +125,7 @@ Wenn auf dem Server ein Anthropic-Schlüssel hinterlegt ist, erscheinen in der A
 | `js/sync.js` | Ende-zu-Ende-verschlüsselter Sync |
 | `js/ai.js` | KI-Projektmanager (über den eigenen Server) |
 | `js/connect.js`, `js/ui/connectui.js` | Google- und Microsoft-Verbindung: Termine, Calls, markierte Mails, Kalender-Eintrag, E-Mail, Anrufen |
+| `js/integrations.js`, `js/ui/integrationsui.js` | „Verbindungen“: Kalender-Links (ICS), IMAP, Siri/Webhooks, WhatsApp/SMS/FaceTime/Teams/Karten, Excel/CSV |
 | `js/config.js` | Name, Farben, Speicher, Server-Adresse (eine Stelle für alles) |
 | `sw.js`, `manifest.webmanifest`, `icons/` | App-Installation, Offline-Betrieb, Push |
 | `server/taschen-server.mjs`, `server/install.sh` | eigener Server: App, Sync, Push, KI; Installation mit einem Befehl |
