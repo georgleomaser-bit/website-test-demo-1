@@ -10,7 +10,7 @@ import { COLORS, SERVER } from "./config.js";
 import { app, handle, runMenu, render, on, safe, reducedMotion, isStandalone } from "./ui/core.js";
 import { placeSegPills } from "./ui/components.js";
 import { initGestures, gestureBusy } from "./ui/gestures.js";
-import { topSheet, closeSheet, refreshSheets, menuOpen, closeMenu, openMenu, infoBox } from "./ui/sheet.js";
+import { topSheet, closeSheet, refreshSheets, menuOpen, closeMenu, openMenu, infoBox, confirmBox } from "./ui/sheet.js";
 import { toast, toastUndo, banner, sound, haptic } from "./ui/fx.js";
 import { openTask, taskDetail, inspectorToSheet, growAll, flushSaves } from "./ui/task.js";
 import { openCapture } from "./ui/capture.js";
@@ -522,6 +522,41 @@ function fatal(e) {
   document.documentElement.classList.add("booted");
 }
 
+// ---------- Alte Beispiel-Projekte aus Version 1.0 ----------
+// Die erste Version konnte AKYTEX-Projekte als Startdaten laden. Liegen die noch auf dem Gerät, einmal anbieten, sie zu entfernen.
+const OLD_SEED = new Set(["AKYTEX Plattform & Go-Live", "Firma & Beteiligung", "Broker-Partner & Echtgeld", "Zahlungen & Stripe", "Marketing & Clips", "Server & Betrieb", "NOVA – KI-Assistent"]);
+async function offerCleanup() {
+  const old = store.bags().filter((b) => OLD_SEED.has(b.name));
+  if (!old.length) return false;
+  let keep = false;
+  try {
+    keep = localStorage.getItem("taschen-keep-old") === "1";
+  } catch (_) {
+    /* ohne Speicher: fragen */
+  }
+  if (keep) return false;
+  const ok = await confirmBox({
+    title: "Alte Beispiel-Projekte entfernen?",
+    text: `Auf diesem Gerät liegen noch ${old.length} ${old.length === 1 ? "Tasche" : "Taschen"} aus der ersten Version (AKYTEX, NOVA …). Sollen sie weg, damit du die App leer und neu einrichten kannst?`,
+    ok: "Entfernen",
+    cancel: "Behalten",
+    danger: true,
+  });
+  if (!ok) {
+    try {
+      localStorage.setItem("taschen-keep-old", "1");
+    } catch (_) {
+      /* nur für diese Sitzung */
+    }
+    return false;
+  }
+  for (const b of old) safe(() => store.removeBag(b.id));
+  safe(() => store.setMeta({ seeded: false }));
+  if (!store.bags().length) store.setProfile({ onboarded: false });
+  toast("Alte Projekte entfernt", { icon: "checkCircle", sub: store.bags().length ? "Deine eigenen Taschen bleiben" : "Jetzt neu einrichten" });
+  return true;
+}
+
 async function boot() {
   layout();
   bind();
@@ -584,7 +619,8 @@ async function boot() {
   } catch (e) {
     console.warn("[taschen] Sync", e);
   }
-  if (!state.profile.onboarded) openOnboarding();
+  if (store.get().profile.onboarded && (await offerCleanup().catch(() => false))) app.render();
+  if (!store.get().profile.onboarded) openOnboarding();
   else {
     if (qNew != null) setTimeout(() => openCapture({ text: qNew }), 250);
     if (qTask) setTimeout(() => (store.task(qTask) ? openTask(qTask) : toast("Aufgabe nicht gefunden", { icon: "info", sub: "Vielleicht auf einem anderen Gerät?" })), 250);
