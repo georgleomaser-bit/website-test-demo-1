@@ -8,6 +8,8 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 > **Zweites Business: NOVA** – ein KI-Assistent zum Sprechen und Schreiben (wie Claude) im professionellen Design, komplett getrennt von AKYTEX: [`nova/NOVA.md`](nova/NOVA.md) · Vorschau: `…/website-test-demo-1/nova/`
 
+> **Arbeitstaschen** – der persönliche Projektmanager für alle Projekte: digitale Arbeitstaschen mit Aufgaben, Notizen, Links, Dateien und Meilensteinen, Tagesbriefing mit Erinnerungen und verschlüsseltem Sync auf iPhone, iPad und Mac: [`taschen/TASCHEN.md`](taschen/TASCHEN.md) · App: `…/website-test-demo-1/taschen/`
+
 ## Funktionen
 
 **Charts (TradingView Lightweight Charts)**

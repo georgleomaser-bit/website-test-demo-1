@@ -1,0 +1,88 @@
+{
+  "id": "./",
+  "name": "Arbeitstaschen – Dein Projektmanager",
+  "short_name": "Taschen",
+  "description": "Deine Projekte in digitalen Arbeitstaschen: Aufgaben, Notizen und Links sortiert, jeden Morgen ein Briefing, Erinnerungen an das, was ansteht, und Sync auf iPhone, iPad und Mac.",
+  "lang": "de",
+  "dir": "ltr",
+  "start_url": "./?view=heute",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#F2F2F7",
+  "theme_color": "#F2F2F7",
+  "categories": [
+    "productivity"
+  ],
+  "prefer_related_applications": false,
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Neue Aufgabe",
+      "short_name": "Neu",
+      "description": "Schnell etwas in den Eingang oder eine Tasche legen",
+      "url": "./?neu=",
+      "icons": [
+        {
+          "src": "icons/shortcut-neu-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Heute",
+      "short_name": "Heute",
+      "description": "Dein Briefing: was heute ansteht",
+      "url": "./?view=heute",
+      "icons": [
+        {
+          "src": "icons/shortcut-heute-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Demnächst",
+      "short_name": "Demnächst",
+      "description": "Die nächsten Tage und Meilensteine im Überblick",
+      "url": "./?view=demnaechst",
+      "icons": [
+        {
+          "src": "icons/shortcut-demnaechst-96.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>Arbeitstaschen</title>
+  <defs>
+    <linearGradient id="bg" gradientUnits="userSpaceOnUse" x1="150" y1="0" x2="362" y2="512"><stop offset="0" stop-color="#5F57EC"/><stop offset="0.2" stop-color="#5856D6"/><stop offset="0.62" stop-color="#007AFF"/><stop offset="1" stop-color="#1EC2E8"/></linearGradient>
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="118" cy="-46" r="430"><stop offset="0" stop-color="#fff" stop-opacity="0.2"/><stop offset=".45" stop-color="#fff" stop-opacity="0.076"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="teal" gradientUnits="userSpaceOnUse" cx="470" cy="540" r="300"><stop offset="0" stop-color="#3BE0E0" stop-opacity="0.2"/><stop offset="1" stop-color="#3BE0E0" stop-opacity="0"/></radialGradient>
+    <linearGradient id="shade" gradientUnits="userSpaceOnUse" x1="0" y1="300" x2="0" y2="512"><stop offset="0" stop-opacity="0"/><stop offset="1" stop-opacity="0.1"/></linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".35" stop-color="#fff" stop-opacity=".08"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="bag" gradientUnits="userSpaceOnUse" x1="0" y1="123" x2="0" y2="389"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E6ECFF"/></linearGradient>
+    <clipPath id="sq"><rect width="512" height="512" rx="114.5"/></clipPath>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur stdDeviation="15"/><feOffset dy="10"/><feComponentTransfer><feFuncA type="linear" slope="0.32"/></feComponentTransfer></filter>
+    <filter id="ct" x="-10%" y="-10%" width="120%" height="125%"><feGaussianBlur stdDeviation="3.5"/><feOffset dy="3"/><feComponentTransfer><feFuncA type="linear" slope="0.16"/></feComponentTransfer></filter>
+    <mask id="cut" maskUnits="userSpaceOnUse" x="0" y="0" width="512" height="512"><rect width="512" height="512" fill="#fff"/><g fill="#000"><rect x="100" y="246.5" width="312" height="13"/></g><polyline points="211 323 243 354 303 294" fill="none" stroke="#000" stroke-width="28" stroke-linecap="round" stroke-linejoin="round"/></mask>
+    <g id="sil"><path d="M152 187H360A52 52 0 0 1 412 239V337A52 52 0 0 1 360 389H152A52 52 0 0 1 100 337V239A52 52 0 0 1 152 187Z"/><path d="M218 123H294A38 38 0 0 1 332 161V197A38 38 0 0 1 294 235H218A38 38 0 0 1 180 197V161A38 38 0 0 1 218 123ZM218 149H294A12 12 0 0 1 306 161V263A12 12 0 0 1 294 275H218A12 12 0 0 1 206 263V161A12 12 0 0 1 218 149Z" fill-rule="evenodd"/></g>
+  </defs>
+  <g clip-path="url(#sq)">
+    <rect width="512" height="512" fill="url(#bg)"/>
+    <rect width="512" height="512" fill="url(#glow)"/>
+    <rect width="512" height="512" fill="url(#teal)"/>
+    <rect width="512" height="512" fill="url(#shade)"/>
+    <g mask="url(#cut)">
+      <use href="#sil" fill="#13186B" filter="url(#sh)"/>
+      <use href="#sil" fill="#13186B" filter="url(#ct)"/>
+      <use href="#sil" fill="url(#bag)"/>
+    </g>
+  </g>
+  <rect x="1.5" y="1.5" width="509" height="509" rx="113.0" fill="none" stroke="url(#rim)" stroke-width="3"/>
+</svg>
