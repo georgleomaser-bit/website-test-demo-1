@@ -295,8 +295,13 @@ export async function detectServer() {
   if (!hasDoc() || typeof location === "undefined") return null;
   if (!/^https?:$/.test(location.protocol) || STATIC_HOSTS.test(location.hostname)) return null; // statische Hosts haben keine API
   try {
-    const base = normServer(new URL(".", document.baseURI).href);
+    const here = new URL(".", document.baseURI).href;
+    const base = normServer(here);
     if (!base) return null;
+    // Der Taschen-Server setzt „X-Taschen-Server“ an jede Antwort. Ohne das Zeichen (statischer Host) gar nicht erst
+    // nach /api/health fragen – das gäbe nur ein 404 in der Konsole. HEAD geht am Service Worker vorbei ans Netz.
+    const head = await fetch(here, { method: "HEAD", cache: "no-store", credentials: "same-origin" }).catch(() => null);
+    if (!head?.headers?.get("x-taschen-server")) return null;
     const chk = await checkServer(base);
     return chk.ok ? base : null;
   } catch (_) {

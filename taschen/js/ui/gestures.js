@@ -238,10 +238,15 @@ function autoScroll(x, y, zone) {
   let vy = 0, vx = 0;
   if (y < edge) vy = -Math.ceil((edge - y) / 6);
   else if (y > H - edge) vy = Math.ceil((y - (H - edge)) / 6);
-  const board = (zone || document.elementFromPoint(x, y))?.closest?.(".board-scroll");
+  // Board: Ränder des sichtbaren Board-Bereichs (auf dem Mac endet er vor dem Fensterrand), nicht des Fensters
+  const board = D?.el?.closest?.(".board-scroll") || (zone || document.elementFromPoint(x, y))?.closest?.(".board-scroll");
   if (board) {
-    if (x < edge) vx = -Math.ceil((edge - x) / 5);
-    else if (x > W - edge) vx = Math.ceil((x - (W - edge)) / 5);
+    const br = board.getBoundingClientRect();
+    const l = Math.max(0, br.left), r = Math.min(W, br.right);
+    if (y > br.top - 60 && y < br.bottom + 60) {
+      if (x < l + edge) vx = -Math.min(28, Math.ceil((l + edge - x) / 5));
+      else if (x > r - edge) vx = Math.min(28, Math.ceil((x - (r - edge)) / 5));
+    }
   }
   if (!vx && !vy) return;
   asT = requestAnimationFrame(() => {

@@ -412,9 +412,11 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     "X-Permitted-Cross-Domain-Policies": "none",
     "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https:; worker-src 'self'; manifest-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'",
   };
+  // Erkennungszeichen: Die App fragt per HEAD auf ihre eigene Adresse, ob sie auf einem Taschen-Server läuft (statt blind /api/health → 404 auf fremden Hosts)
+  const MARK = { "X-Taschen-Server": VERSION };
   const send = (res, status, body, headers = {}) => {
     const json = typeof body !== "string" && !Buffer.isBuffer(body);
-    res.writeHead(status, { ...SECURITY, "Cache-Control": "no-store", ...(json ? { "Content-Type": "application/json; charset=utf-8" } : {}), ...res.extraHeaders, ...headers });
+    res.writeHead(status, { ...SECURITY, ...MARK, "Cache-Control": "no-store", ...(json ? { "Content-Type": "application/json; charset=utf-8" } : {}), ...res.extraHeaders, ...headers });
     res.end(json ? JSON.stringify(body) : body);
   };
   const fail = (res, status, msg, extra = {}, headers = {}) => send(res, status, { ok: false, msg, ...extra }, headers);
@@ -1059,7 +1061,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     const ext = path.extname(file);
     const etag = `"${st.size.toString(36)}-${Math.floor(st.mtimeMs).toString(36)}"`;
     const cache = /^\/(?:icons|fonts)\//.test(p) ? "public, max-age=604800" : "no-cache";
-    const headers = { ...SECURITY, "Content-Type": TYPES[ext] || "application/octet-stream", "Cache-Control": cache, ETag: etag, "Last-Modified": st.mtime.toUTCString() };
+    const headers = { ...SECURITY, ...MARK, "Content-Type": TYPES[ext] || "application/octet-stream", "Cache-Control": cache, ETag: etag, "Last-Modified": st.mtime.toUTCString() };
     if (req.headers["if-none-match"] === etag) {
       res.writeHead(304, headers);
       return res.end();

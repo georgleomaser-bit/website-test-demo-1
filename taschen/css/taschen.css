@@ -928,6 +928,8 @@ html.is-dragging, html.is-dragging * { cursor: grabbing !important; -webkit-user
 /* Board */
 .board-scroll { margin: 0 -16px; padding: 0 16px 8px; scroll-snap-type: x mandatory; scroll-padding: 0 16px; }
 html.wide .board-scroll { margin: 0; padding: 0 0 8px; scroll-padding: 0; }
+/* Beim Ziehen am Rand scrollt das Board schrittweise mit – Einrasten würde jeden Schritt zurücksetzen */
+html.is-dragging .board-scroll { scroll-snap-type: none; }
 html.wide #view:has(.tab-board) { max-width: 1320px; }
 .board { display: flex; gap: 12px; align-items: flex-start; width: max-content; }
 .kcol { flex: none; width: min(78vw, 290px); scroll-snap-align: start; display: flex; flex-direction: column; border-radius: 22px; background: color-mix(in srgb, var(--card) 55%, transparent); box-shadow: inset 0 0 0 0.5px var(--sep); padding: 10px; }
