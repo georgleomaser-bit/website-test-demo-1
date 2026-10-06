@@ -9,7 +9,12 @@
 # Sicherheitsupdates, tägliche Backups und den Befehl „taschen-update“.
 # Ohne eigene Domain gibt es eine kostenlose HTTPS-Adresse der Form taschen.1-2-3-4.sslip.io.
 #
-# Ohne Rückfragen (z. B. per Skript):  TASCHEN_DOMAIN=… ANTHROPIC_API_KEY=… ALLOWED_ORIGINS=… VAPID_SUBJECT=… bash install.sh
+# Optional verbindet die App deine Konten: Gmail, Google Kalender und Google Workspace bzw. Outlook, Microsoft 365 und
+# Outlook.com. Dafür braucht der Server je einen OAuth-Client (Client-ID + Secret) – das Skript fragt danach (Enter = überspringen)
+# und zeigt am Ende die Weiterleitungs-URIs, die du bei Google bzw. Microsoft einträgst.
+#
+# Ohne Rückfragen (z. B. per Skript):  TASCHEN_DOMAIN=… ANTHROPIC_API_KEY=… ALLOWED_ORIGINS=… VAPID_SUBJECT=… \
+#   GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… MS_CLIENT_ID=… MS_CLIENT_SECRET=… bash install.sh
 set -euo pipefail
 
 REPO="https://github.com/georgleomaser-bit/website-test-demo-1.git"
@@ -22,9 +27,17 @@ DEFAULT_ORIGINS="https://georgleomaser-bit.github.io"
 say() { printf '\n\033[1;34m▶ %s\033[0m\n' "$*"; }
 warn() { printf '  \033[1;33m⚠️  %s\033[0m\n' "$*"; }
 die() { printf '\n\033[1;31m✖ %s\033[0m\n' "$*"; exit 1; }
+# Frage direkt am Terminal stellen (auch bei „curl … | sudo bash“); ohne Terminal bleibt die Antwort leer
 ask() {
   local v=""
-  if [ -r /dev/tty ]; then { read -r -p "$1" v </dev/tty; } 2>/dev/null || true; fi
+  { printf '%s' "$1" >/dev/tty && IFS= read -r v </dev/tty; } 2>/dev/null || true
+  printf '%s' "$v"
+}
+# Wie ask, aber die Eingabe bleibt unsichtbar (für Secrets)
+ask_secret() {
+  local v=""
+  { printf '%s' "$1" >/dev/tty && IFS= read -r -s v </dev/tty; } 2>/dev/null || true
+  { printf '\n' >/dev/tty; } 2>/dev/null || true
   printf '%s' "$v"
 }
 # Wert in /etc/taschen.env setzen (ersetzt einen vorhandenen)
@@ -63,6 +76,44 @@ KEY=${ANTHROPIC_API_KEY:-$(ask "  Anthropic-API-Schlüssel (sk-ant-…) für den
 KEY=${KEY:-$OLD_KEY}
 KEY=$(printf '%s' "$KEY" | tr -d '[:space:]')
 case "$KEY" in "" | sk-ant-*) ;; *) warn "Das sieht nicht nach einem Anthropic-Schlüssel aus (sk-ant-…) – KI bleibt aus."; KEY="" ;; esac
+
+# Konten verbinden (optional): Google (Gmail, Kalender, Workspace) und Microsoft (Outlook, Microsoft 365, Outlook.com)
+echo ""
+echo "  Konten verbinden (optional): Damit holt die App Termine und markierte Mails aus Google bzw. Microsoft"
+echo "  und trägt Aufgaben in den Kalender ein. Die Weiterleitungs-URIs dafür zeigt das Skript am Ende."
+nows() { printf '%s' "$1" | tr -d '[:space:]'; }
+SECRET_RE='^[A-Za-z0-9._~+/=-]*$'
+GUID_RE='^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
+OLD_GID=$(getenv GOOGLE_CLIENT_ID)
+OLD_GSEC=$(getenv GOOGLE_CLIENT_SECRET)
+KEEP_G=$([ -n "$OLD_GID" ] && echo "behält die bisherige" || echo "überspringt")
+GID=${GOOGLE_CLIENT_ID:-$(ask "  Google-Client-ID (….apps.googleusercontent.com) – optional, Enter $KEEP_G: ")}
+GID=$(nows "${GID:-$OLD_GID}")
+GSEC=""
+if [ -n "$GID" ]; then
+  KEEP_GS=$([ -n "$OLD_GSEC" ] && echo "behält das bisherige" || echo "überspringt")
+  GSEC=${GOOGLE_CLIENT_SECRET:-$(ask_secret "  Google-Client-Secret (GOCSPX-…, Eingabe unsichtbar) – Enter $KEEP_GS: ")}
+  GSEC=$(nows "${GSEC:-$OLD_GSEC}")
+fi
+case "$GID" in "" | *.apps.googleusercontent.com) ;; *) warn "Das sieht nicht nach einer Google-Client-ID aus (….apps.googleusercontent.com) – Google bleibt aus."; GID="" ;; esac
+[[ "$GSEC" =~ $SECRET_RE ]] || { warn "Das Google-Client-Secret enthält ungültige Zeichen – Google bleibt aus."; GSEC=""; }
+if [ -n "$GID" ] && [ -z "$GSEC" ]; then warn "Ohne Google-Client-Secret bleibt die Google-Verbindung aus."; fi
+
+OLD_MID=$(getenv MS_CLIENT_ID)
+OLD_MSEC=$(getenv MS_CLIENT_SECRET)
+KEEP_M=$([ -n "$OLD_MID" ] && echo "behält die bisherige" || echo "überspringt")
+MID=${MS_CLIENT_ID:-$(ask "  Microsoft-Anwendungs-ID (Client-ID, z. B. 1a2b3c4d-…) – optional, Enter $KEEP_M: ")}
+MID=$(nows "${MID:-$OLD_MID}")
+MSEC=""
+if [ -n "$MID" ]; then
+  KEEP_MS=$([ -n "$OLD_MSEC" ] && echo "behält das bisherige" || echo "überspringt")
+  MSEC=${MS_CLIENT_SECRET:-$(ask_secret "  Microsoft-Client-Secret (der „Wert“, nicht die Secret-ID; Eingabe unsichtbar) – Enter $KEEP_MS: ")}
+  MSEC=$(nows "${MSEC:-$OLD_MSEC}")
+fi
+if [ -n "$MID" ] && ! [[ "$MID" =~ $GUID_RE ]]; then warn "Das sieht nicht nach einer Microsoft-Anwendungs-ID aus (GUID) – Microsoft bleibt aus."; MID=""; fi
+[[ "$MSEC" =~ $SECRET_RE ]] || { warn "Das Microsoft-Client-Secret enthält ungültige Zeichen – Microsoft bleibt aus."; MSEC=""; }
+if [ -n "$MSEC" ] && [[ "$MSEC" =~ $GUID_RE ]]; then warn "Das sieht nach der Secret-ID aus – gebraucht wird der „Wert“ des geheimen Clientschlüssels. Microsoft bleibt aus."; MSEC=""; fi
+if [ -n "$MID" ] && [ -z "$MSEC" ]; then warn "Ohne Microsoft-Client-Secret bleibt die Microsoft-Verbindung aus."; fi
 
 ORIGINS=${ALLOWED_ORIGINS:-${TASCHEN_ORIGINS:-$(getenv ALLOWED_ORIGINS)}}
 ORIGINS=${ORIGINS:-$DEFAULT_ORIGINS}
@@ -117,6 +168,19 @@ setenv ALLOWED_ORIGINS "$ORIGINS"
 setenv VAPID_SUBJECT "$SUBJECT"
 [ -n "$KEY" ] && setenv ANTHROPIC_API_KEY "$KEY"
 [ -n "$(getenv TASCHEN_AI_DAILY)" ] || setenv TASCHEN_AI_DAILY 100
+# Konten verbinden: öffentliche Adresse (daraus die Weiterleitungs-URIs) und Zugangsdaten – Secrets nur hier (600)
+setenv PUBLIC_URL "https://$DOMAIN"
+if [ -n "$GID" ] && [ -n "$GSEC" ]; then
+  setenv GOOGLE_CLIENT_ID "$GID"
+  setenv GOOGLE_CLIENT_SECRET "$GSEC"
+fi
+if [ -n "$MID" ] && [ -n "$MSEC" ]; then
+  setenv MS_CLIENT_ID "$MID"
+  setenv MS_CLIENT_SECRET "$MSEC"
+fi
+# Schlüssel für die Refresh-Tokens hier statt im Datenordner – so liegt er nicht mit in den Backups.
+# (Hat der Server schon einen eigenen connect.key angelegt, bleibt der, sonst wären verbundene Konten unlesbar.)
+if [ -z "$(getenv CONNECT_KEY)" ] && [ ! -f "$DATA/connect.key" ]; then setenv CONNECT_KEY "$(openssl rand -hex 32)"; fi
 chown root:root "$ENVF"
 chmod 600 "$ENVF"
 
@@ -202,7 +266,8 @@ mkdir -p /var/backups/taschen
 chmod 700 /var/backups/taschen
 cat >/etc/cron.daily/taschen-backup <<'EOF'
 #!/bin/sh
-# Tägliche Sicherung der Arbeitstaschen-Daten (Sync-Stände sind verschlüsselt, dazu Push-Abos und Schlüssel) – 14 Tage aufbewahren
+# Tägliche Sicherung der Arbeitstaschen-Daten (Sync-Stände sind verschlüsselt, dazu Push-Abos, VAPID-Schlüssel und die
+# verschlüsselten Refresh-Tokens verbundener Konten – deren Schlüssel CONNECT_KEY liegt nur in /etc/taschen.env) – 14 Tage aufbewahren
 umask 077
 tar -czf "/var/backups/taschen/taschen-$(date +%F).tgz" -C /var/lib taschen 2>/dev/null
 find /var/backups/taschen -name 'taschen-*.tgz' -mtime +14 -delete
@@ -237,6 +302,29 @@ echo "     Erinnerungen: $(printf '%s' "$STATUS" | grep -q '"push":true' && echo
 MODEL_SHOWN=$(getenv TASCHEN_MODEL)
 echo "     KI-PM:       $(printf '%s' "$STATUS" | grep -q '"ai":true' && echo "Claude aktiv (${MODEL_SHOWN:-claude-opus-5-5}, $(getenv TASCHEN_AI_DAILY) Fragen/Tag)" || echo 'aus – Skript erneut starten und Anthropic-Schlüssel eingeben')"
 echo "     Freigegeben: $ORIGINS"
+CONNECT_G=$(printf '%s' "$STATUS" | grep -q '"google":true' && echo 'bereit' || echo 'aus')
+CONNECT_M=$(printf '%s' "$STATUS" | grep -q '"microsoft":true' && echo 'bereit' || echo 'aus')
+echo "     Konten:      Google $CONNECT_G · Microsoft $CONNECT_M"
+echo ""
+echo "     Konten verbinden – diese Weiterleitungs-URIs beim Anbieter eintragen:"
+echo "       Google:    https://$DOMAIN/api/connect/google/callback"
+echo "       Microsoft: https://$DOMAIN/api/connect/microsoft/callback"
+if [ "$CONNECT_G" != bereit ]; then
+  echo ""
+  echo "       Google: console.cloud.google.com → APIs & Dienste → Gmail API und Google Calendar API aktivieren,"
+  echo "         OAuth-Zustimmungsbildschirm (Extern) anlegen, dann Anmeldedaten → OAuth-Client-ID → Webanwendung"
+  echo "         → „Autorisierte Weiterleitungs-URIs“: die Google-Adresse oben."
+fi
+if [ "$CONNECT_M" != bereit ]; then
+  echo ""
+  echo "       Microsoft: entra.microsoft.com → App-Registrierungen → Neue Registrierung → „Konten in allen"
+  echo "         Organisationsverzeichnissen und persönliche Microsoft-Konten“, Plattform „Web“ mit der Microsoft-Adresse"
+  echo "         oben; unter „Zertifikate & Geheimnisse“ einen geheimen Clientschlüssel anlegen und den Wert kopieren."
+fi
+if [ "$CONNECT_G" != bereit ] || [ "$CONNECT_M" != bereit ]; then
+  echo "       Danach dieses Skript noch einmal starten und Client-ID + Secret eingeben."
+fi
+echo "       Firmenkonten (Microsoft 365, Workspace): Die IT muss die App einmal freigeben."
 echo ""
 echo "     So verbindest du deine Geräte:"
 echo "       1. Öffne https://$DOMAIN in Safari und füge die App zum Home-Bildschirm"

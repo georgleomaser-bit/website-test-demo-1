@@ -15,8 +15,20 @@
 //   TASCHEN_MAX_DEVICES (Push-Geräte), TASCHEN_AI_TIMEOUT (ms), TASCHEN_TICK_MS (Push-Takt, Standard 30000),
 //   TASCHEN_PUSH_HOSTS (zusätzlich erlaubte Push-Hosts, z. B. 127.0.0.1 – nur zum Testen; dort ist auch http erlaubt)
 //
+// Konten verbinden (Gmail, Google Kalender, Workspace · Outlook, Microsoft 365, Outlook.com) – optional:
+//   GOOGLE_CLIENT_ID · GOOGLE_CLIENT_SECRET   OAuth-Client „Webanwendung“ aus der Google Cloud Console
+//   MS_CLIENT_ID · MS_CLIENT_SECRET           App-Registrierung in Microsoft Entra ID (alle Organisationen + persönliche Konten)
+//   PUBLIC_URL          Öffentliche Adresse des Servers (Standard https://<erster Eintrag aus ALLOWED_HOSTS>) – daraus die
+//                       Weiterleitungs-URIs ${PUBLIC_URL}/api/connect/google/callback und …/microsoft/callback
+//   CONNECT_KEY         32 Byte (64 Hex-Zeichen oder Base64) zum Verschlüsseln der Refresh-Tokens – sonst DATA_DIR/connect.key
+//   TASCHEN_RATE_CONNECT (Anmeldungen bzw. Token-Abrufe pro Minute, Standard 30) · TASCHEN_CONNECT_MAX (Konten, Standard 500)
+//   Nur für Tests: CONNECT_GOOGLE_AUTH · CONNECT_GOOGLE_TOKEN · CONNECT_GOOGLE_USERINFO · CONNECT_GOOGLE_REVOKE ·
+//                  CONNECT_MS_AUTHORITY (https://login.microsoftonline.com/common) · CONNECT_MS_GRAPH (https://graph.microsoft.com/v1.0)
+//
 // Datenschutz: Der Server sieht nie Inhalte. Sync-Daten und Dateien sind auf dem Gerät verschlüsselt, Push-Abos kennen nur
-// Zeitpunkte. Sync-IDs und Geräte-Tokens tauchen in keinem Log auf.
+// Zeitpunkte. Sync-IDs und Geräte-Tokens tauchen in keinem Log auf. Bei verbundenen Konten hält der Server nur die
+// Refresh-Tokens (AES-256-GCM-verschlüsselt) und gibt der App kurzlebige Access-Tokens – Mails und Termine holt die App
+// direkt bei Google bzw. Microsoft. Tokens, Secrets und E-Mail-Adressen tauchen in keinem Log auf.
 import http from "node:http";
 import https from "node:https";
 import fs from "node:fs";
@@ -60,11 +72,13 @@ const list = (s) =>
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
-// IDs, Tokens und Push-Adressen nie in Logs
+// IDs, Tokens, E-Mail-Adressen und Push-Adressen nie in Logs
 const redact = (s) =>
   String(s ?? "")
     .replace(/[0-9a-f]{64}/gi, "‹id›")
-    .replace(/https?:\/\/[^\s"']+/g, "‹url›");
+    .replace(/https?:\/\/[^\s"']+/g, "‹url›")
+    .replace(/[^\s"'<>@()/]+@[^\s"'<>@()/]+\.[A-Za-z]{2,}/g, "‹mail›")
+    .replace(/[A-Za-z0-9_+=~.!*$-]{40,}/g, "‹token›");
 
 // Atomar schreiben: erst in eine Temp-Datei (mit fsync), dann umbenennen – nie halbe Dateien
 export async function writeAtomic(file, data) {
@@ -244,8 +258,104 @@ function postEmpty(endpoint, headers, timeout = 15000) {
   });
 }
 
+// ---------- Konten verbinden: Schlüssel, Verschlüsselung, Fehlertexte ----------
+// Schlüssel für die Refresh-Tokens: CONNECT_KEY (32 Byte hex/Base64) oder DATA_DIR/connect.key (0600, beim ersten Start erzeugt)
+export function parseConnectKey(raw) {
+  const s = String(raw || "").trim();
+  if (!s) return null;
+  const k = /^[0-9a-f]{64}$/i.test(s) ? Buffer.from(s, "hex") : /^[A-Za-z0-9+/_-]+={0,2}$/.test(s) ? Buffer.from(s, "base64") : null;
+  return k && k.length === 32 ? k : null;
+}
+function loadConnectKey(envKey, file, warn) {
+  if (envKey) {
+    const k = parseConnectKey(envKey);
+    if (k) return k;
+    warn("⚠️  CONNECT_KEY muss 32 Byte lang sein (64 Hex-Zeichen oder Base64) – nehme stattdessen DATA_DIR/connect.key.");
+  }
+  try {
+    const k = parseConnectKey(fs.readFileSync(file, "utf8"));
+    if (k) {
+      fs.chmodSync(file, 0o600);
+      return k;
+    }
+    warn("⚠️  connect.key ist beschädigt – erzeuge einen neuen (verbundene Konten müssen neu verbunden werden).");
+    fs.renameSync(file, `${file}.kaputt-${Date.now()}`);
+  } catch (e) {
+    if (e.code !== "ENOENT") warn("⚠️  connect.key unlesbar – erzeuge einen neuen (verbundene Konten müssen neu verbunden werden).");
+  }
+  const k = crypto.randomBytes(32);
+  const tmp = `${file}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, k.toString("base64") + "\n", { mode: 0o600 });
+  fs.renameSync(tmp, file);
+  return k;
+}
+// AES-256-GCM mit eigenem Teilschlüssel (HKDF); aad bindet den Geheimtext an Konto und Anbieter → "v1.iv.geheimtext.tag"
+const tokenKey = (raw) => Buffer.from(crypto.hkdfSync("sha256", raw, Buffer.alloc(0), "taschen-connect-refresh-v1", 32));
+export function sealToken(rawKey, plain, aad) {
+  const iv = crypto.randomBytes(12);
+  const c = crypto.createCipheriv("aes-256-gcm", tokenKey(rawKey), iv);
+  c.setAAD(Buffer.from(aad));
+  const ct = Buffer.concat([c.update(String(plain), "utf8"), c.final()]);
+  return `v1.${b64u(iv)}.${b64u(ct)}.${b64u(c.getAuthTag())}`;
+}
+export function openToken(rawKey, box, aad) {
+  const [v, iv, ct, tag] = String(box || "").split(".");
+  if (v !== "v1" || !iv || !ct || !tag) throw new Error("Unbekanntes Format");
+  const d = crypto.createDecipheriv("aes-256-gcm", tokenKey(rawKey), Buffer.from(iv, "base64url"));
+  d.setAAD(Buffer.from(aad));
+  d.setAuthTag(Buffer.from(tag, "base64url"));
+  return Buffer.concat([d.update(Buffer.from(ct, "base64url")), d.final()]).toString("utf8");
+}
+// Fehlercode für Logs: nur der Code selbst und ggf. die AADSTS-Nummer – Beschreibungen können E-Mail-Adressen enthalten
+const errCode = (error, description) =>
+  [
+    String(error || "")
+      .replace(/[^a-z_]/gi, "")
+      .slice(0, 40),
+    /AADSTS\d{4,7}/.exec(String(description || ""))?.[0],
+  ]
+    .filter(Boolean)
+    .join(" ") || "unbekannt";
+// Fehler von Google bzw. Microsoft (aus der Weiterleitung oder vom Token-Endpunkt) in verständliches Deutsch übersetzen
+export function connectErrorText(provider, error, description = "", subcode = "") {
+  const name = provider === "microsoft" ? "Microsoft" : "Google";
+  const e = String(error || "").toLowerCase();
+  const d = String(description || "");
+  const aad = +(/AADSTS(\d{4,7})/.exec(d)?.[1] || 0);
+  const IT = "Deine Firma erlaubt diese App noch nicht – bitte die IT um Freigabe (Administrator-Zustimmung für „Arbeitstaschen“ in Microsoft Entra ID).";
+  if (provider === "microsoft" && ([65001, 90094, 90095, 900941, 90099].includes(aad) || e === "consent_required" || /admin(istrator)?[ _-]?(consent|approval)|needs? admin/i.test(d))) return IT;
+  if (aad === 50105) return "Deine Firma hat dich für diese App noch nicht freigeschaltet – bitte die IT, dich der App „Arbeitstaschen“ zuzuweisen.";
+  if ([53000, 53001, 53003, 530032, 50097].includes(aad)) return "Die Sicherheitsregeln deiner Firma blockieren die Anmeldung von diesem Gerät aus – bitte die IT fragen.";
+  if ([50020, 50194, 500200].includes(aad)) return "Diese Art von Microsoft-Konto ist für die App nicht freigeschaltet – in der App-Registrierung „Konten in allen Organisationsverzeichnissen und persönliche Microsoft-Konten“ wählen.";
+  if (aad === 700016) return "Die App ist bei Microsoft nicht bekannt – bitte MS_CLIENT_ID auf dem Server prüfen.";
+  if ([7000215, 7000222, 7000218].includes(aad)) return "Das Client-Secret für Microsoft auf dem Server ist ungültig oder abgelaufen – bitte erneuern (install.sh erneut ausführen).";
+  if (aad === 50011 || e === "redirect_uri_mismatch") return `Die Weiterleitungsadresse ist bei ${name} nicht eingetragen – siehe Ausgabe von install.sh.`;
+  if (aad === 65004 || e === "access_denied" || subcode === "cancel") {
+    return provider === "microsoft"
+      ? "Anmeldung abgebrochen. Stand dort „Genehmigung durch Administrator erforderlich“? Dann erlaubt deine Firma diese App noch nicht – bitte die IT um Freigabe."
+      : "Anmeldung abgebrochen.";
+  }
+  if (e === "admin_policy_enforced") return "Dein Google-Workspace-Administrator hat diese App gesperrt – bitte ihn, „Arbeitstaschen“ in der Admin-Konsole freizugeben (Sicherheit → Zugriffs- und Datenkontrolle → API-Steuerung).";
+  if (e === "org_internal") return "Diese Google-App ist nur für eine bestimmte Organisation freigegeben – in der Google Cloud Console den Nutzertyp „Extern“ wählen.";
+  if (e === "disallowed_useragent") return "Google erlaubt die Anmeldung nicht in eingebetteten Browsern – öffne die App bitte in Safari oder Chrome.";
+  if (e === "invalid_client" || e === "unauthorized_client") return `Die Zugangsdaten des Servers für ${name} sind ungültig – bitte Client-ID und Secret prüfen (install.sh).`;
+  if (e === "invalid_grant") return "Der Anmeldecode ist abgelaufen – bitte noch einmal verbinden.";
+  if (e === "interaction_required" || e === "login_required") return `${name} verlangt eine erneute Anmeldung – bitte noch einmal verbinden.`;
+  if (e === "temporarily_unavailable" || e === "server_error") return `${name} ist gerade nicht erreichbar – versuch es gleich noch mal.`;
+  return `Die Anmeldung bei ${name} hat nicht geklappt (${errCode(error, description)}).`;
+}
+// Nutzdaten eines JWT lesen (nur für id_tokens, die direkt vom Token-Endpunkt kommen – dort ist TLS die Prüfung)
+const jwtClaims = (t) => {
+  try {
+    return JSON.parse(Buffer.from(String(t || "").split(".")[1] || "", "base64url").toString("utf8")) || {};
+  } catch (_) {
+    return {};
+  }
+};
+const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
 // ---------- KI-Projektmanager ----------
-const SYSTEM = `Du bist der persönliche Projektmanager in „Arbeitstaschen“. Dein Nutzer ist ein junger Gründer, der mehrere Projekte gleichzeitig vorantreibt; jede „Tasche“ ist ein Projekt mit Ziel, Aufgaben, Abschnitten und Meilensteinen. Du arbeitest ihm zu wie ein erfahrener Projektmanager, dem er vertraut: Du behältst den Überblick, setzt klare Prioritäten und machst aus großen Vorhaben kleine, machbare Schritte.
+const SYSTEM =`Du bist der persönliche Projektmanager in „Arbeitstaschen“. Dein Nutzer ist ein junger Gründer, der mehrere Projekte gleichzeitig vorantreibt; jede „Tasche“ ist ein Projekt mit Ziel, Aufgaben, Abschnitten und Meilensteinen. Du arbeitest ihm zu wie ein erfahrener Projektmanager, dem er vertraut: Du behältst den Überblick, setzt klare Prioritäten und machst aus großen Vorhaben kleine, machbare Schritte.
 
 Haltung und Ton
 - Deutsch, du-Form, freundlich und direkt. Kurz und konkret – jeder Satz soll ihm helfen, ins Handeln zu kommen. Keine Floskeln, kein „Gerne!“, keine Wiederholung der Frage.
@@ -998,6 +1108,389 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     return send(res, 200, { ok: true, ...answer, left: Math.max(0, Math.min(AI_DEVICE - (usageToday().devices[who] || 0), AI_DAILY - usageToday().total)) });
   }
 
+  // ---------- Konten verbinden (Google, Microsoft) ----------
+  // Der Server ist nur Token-Vermittler: vertraulicher OAuth-Client (Code + PKCE + Client-Secret), hält die Refresh-Tokens
+  // verschlüsselt und gibt der App kurzlebige Access-Tokens. Mails und Termine laufen direkt zwischen App und Anbieter.
+  const RATE_CONNECT = num(env.TASCHEN_RATE_CONNECT, 30);
+  const CONNECT_MAX = num(env.TASCHEN_CONNECT_MAX, 500);
+  const STATE_TTL = 10 * MIN;
+  const PENDING_MAX = 5000;
+  const STALE = 200 * DAY; // unbenutzte Konten aufräumen (Google/Microsoft lassen Refresh-Tokens ohnehin nach Monaten verfallen)
+  const ACC_RE = /^[0-9a-f]{32}$/;
+  const SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
+  const STATE_RE = /^[A-Za-z0-9_-]{32}$/;
+  const envOf = (k) => String(env[k] || "").trim();
+  const base = (u, d) => (envOf(u) || d).replace(/\/+$/, "");
+  const MS_AUTHORITY = base("CONNECT_MS_AUTHORITY", "https://login.microsoftonline.com/common");
+  const PROVIDERS = {
+    google: {
+      name: "Google",
+      id: envOf("GOOGLE_CLIENT_ID"),
+      secret: envOf("GOOGLE_CLIENT_SECRET"),
+      auth: base("CONNECT_GOOGLE_AUTH", "https://accounts.google.com/o/oauth2/v2/auth"),
+      token: base("CONNECT_GOOGLE_TOKEN", "https://oauth2.googleapis.com/token"),
+      userinfo: base("CONNECT_GOOGLE_USERINFO", "https://openidconnect.googleapis.com/v1/userinfo"),
+      revoke: base("CONNECT_GOOGLE_REVOKE", "https://oauth2.googleapis.com/revoke"),
+      scope: "openid email https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly",
+      params: { access_type: "offline", prompt: "consent select_account", include_granted_scopes: "true" },
+      noRefresh: "Google hat keinen dauerhaften Zugriff erteilt. Bitte unter myaccount.google.com → Sicherheit → Drittanbieter-Zugriff „Arbeitstaschen“ entfernen und neu verbinden.",
+    },
+    microsoft: {
+      name: "Microsoft",
+      id: envOf("MS_CLIENT_ID"),
+      secret: envOf("MS_CLIENT_SECRET"),
+      auth: `${MS_AUTHORITY}/oauth2/v2.0/authorize`,
+      token: `${MS_AUTHORITY}/oauth2/v2.0/token`,
+      graph: base("CONNECT_MS_GRAPH", "https://graph.microsoft.com/v1.0"),
+      scope: "offline_access openid email User.Read Calendars.ReadWrite Mail.Read",
+      params: { response_mode: "query", prompt: "select_account" },
+      noRefresh: "Microsoft hat keinen dauerhaften Zugriff erteilt – bitte noch einmal verbinden und allen Berechtigungen zustimmen.",
+    },
+  };
+  const isProvider = (p) => p === "google" || p === "microsoft";
+  const connectOn = (p) => isProvider(p) && !!(PROVIDERS[p].id && PROVIDERS[p].secret);
+  const originOfUrl = (s) => {
+    try {
+      const u = new URL(s);
+      return (u.protocol === "https:" || u.protocol === "http:") && !u.username && !u.password ? u : null;
+    } catch (_) {
+      return null;
+    }
+  };
+  // Öffentliche Adresse: PUBLIC_URL, sonst https://<erster ALLOWED_HOSTS>, sonst (nur lokal) die Adresse der Anfrage
+  let PUBLIC_BASE = "";
+  {
+    const raw = envOf("PUBLIC_URL") || (ALLOWED_HOSTS[0] ? `https://${ALLOWED_HOSTS[0]}` : "");
+    const u = raw ? originOfUrl(raw) : null;
+    if (u) PUBLIC_BASE = (u.origin + u.pathname).replace(/\/+$/, "");
+    else if (raw) warn("⚠️  PUBLIC_URL ist keine gültige http(s)-Adresse – die Konten-Verbindung nimmt die Adresse der Anfrage.");
+  }
+  const reqOrigin = (req) => {
+    const proto = TRUST_PROXY && String(req.headers["x-forwarded-proto"] || "").split(",")[0].trim() === "https" ? "https" : "http";
+    const host = String((TRUST_PROXY && req.headers["x-forwarded-host"]) || req.headers.host || "").toLowerCase();
+    return /^[a-z0-9.-]+(:\d{1,5})?$|^\[[0-9a-f:.]+\](:\d{1,5})?$/.test(host) ? `${proto}://${host}` : null;
+  };
+  // Erlaubte Rücksprung-Herkünfte: ALLOWED_ORIGINS, ALLOWED_HOSTS (https), die eigene öffentliche Adresse
+  const RETURN_ORIGINS = new Set([...ALLOWED_ORIGINS, ...ALLOWED_HOSTS.map((h) => originOfUrl(`https://${h}`)?.origin), PUBLIC_BASE && new URL(PUBLIC_BASE).origin].filter(Boolean));
+  function returnTarget(req, raw) {
+    if (typeof raw !== "string" || !raw || raw.length > 2048) return null;
+    const u = originOfUrl(raw);
+    if (!u) return null;
+    const own = !PUBLIC_BASE && !ALLOWED_HOSTS.length ? reqOrigin(req) : null; // nur ohne feste Adresse (lokal)
+    if (!RETURN_ORIGINS.has(u.origin) && u.origin !== own) return null;
+    u.hash = "";
+    return u.href;
+  }
+
+  const connectKey = loadConnectKey(env.CONNECT_KEY, path.join(DATA, "connect.key"), warn);
+  const aadOf = (a) => `taschen-connect:${a.id}:${a.provider}`;
+  const connectDb = jsonFile(path.join(DATA, "connect.json"), { accounts: {} });
+  if (!connectDb.data.accounts || typeof connectDb.data.accounts !== "object" || Array.isArray(connectDb.data.accounts)) connectDb.data.accounts = {};
+  const accounts = connectDb.data.accounts;
+  for (const [id, a] of Object.entries(accounts)) if (!ACC_RE.test(id) || !a || !isProvider(a.provider) || typeof a.refreshEnc !== "string" || !/^[0-9a-f]{64}$/.test(a.secretHash || "")) delete accounts[id];
+  const pending = new Map(); // state → { provider, verifier, ret, redirectUri, nonce (Hash), exp }
+  const accessCache = new Map(); // Konto → { token, exp } – nur im Speicher
+  const connectLock = lockMap();
+  const hashEq = (a, b) => {
+    const x = Buffer.from(String(a), "hex");
+    const y = Buffer.from(String(b), "hex");
+    return x.length === 32 && y.length === 32 && crypto.timingSafeEqual(x, y);
+  };
+  const secretOk = (a, secret) => hashEq(sha(secret), a.secretHash);
+  function connectPurge() {
+    const t = Date.now();
+    for (const [s, p] of pending) if (p.exp < t) pending.delete(s);
+    let changed = false;
+    for (const [id, a] of Object.entries(accounts)) {
+      if (t - (a.used || a.created || 0) > STALE) {
+        delete accounts[id];
+        accessCache.delete(id);
+        changed = true;
+      }
+    }
+    if (changed) connectDb.save();
+  }
+  connectPurge();
+  timers.push(setInterval(connectPurge, MIN).unref());
+
+  // Anfrage an Google/Microsoft – ohne Weiterleitungen, mit Zeitlimit; Netzfehler → status 0
+  async function providerFetch(url, { method = "GET", form = null, bearer = null, timeout = 15000 } = {}) {
+    const headers = { Accept: "application/json" };
+    if (form) headers["Content-Type"] = "application/x-www-form-urlencoded";
+    if (bearer) headers.Authorization = `Bearer ${bearer}`;
+    try {
+      const r = await fetch(url, { method, headers, body: form ? new URLSearchParams(form).toString() : undefined, redirect: "manual", signal: AbortSignal.timeout(timeout) });
+      const text = await r.text();
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (_) {
+        data = null;
+      }
+      return { status: r.status, data: data && typeof data === "object" ? data : null };
+    } catch (_) {
+      return { status: 0, data: null };
+    }
+  }
+  async function revokeGoogle(token) {
+    const r = await providerFetch(PROVIDERS.google.revoke, { method: "POST", form: { token } });
+    if (r.status !== 200) warn(`Google: Widerruf nicht bestätigt (${r.status || "keine Verbindung"}).`);
+    return r.status === 200;
+  }
+  // E-Mail-Adresse des Kontos: Google über userinfo (sonst id_token), Microsoft über Graph /me (mail || userPrincipalName)
+  async function emailOf(provider, t) {
+    const P = PROVIDERS[provider];
+    const claims = jwtClaims(t.id_token);
+    let email = "";
+    if (provider === "google") {
+      const r = await providerFetch(P.userinfo, { bearer: t.access_token });
+      email = (r.status === 200 && r.data?.email) || claims.email || "";
+    } else {
+      const r = await providerFetch(`${P.graph}/me?$select=mail,userPrincipalName`, { bearer: t.access_token });
+      email = (r.status === 200 && (r.data?.mail || r.data?.userPrincipalName)) || claims.email || claims.preferred_username || "";
+    }
+    return clean(typeof email === "string" ? email : "", 254);
+  }
+  const remember = (id, t) => {
+    const secs = Math.min(Math.max(num(t.expires_in, 3600), 0), DAY / 1000);
+    const c = { token: String(t.access_token), exp: Date.now() + secs * 1000 };
+    accessCache.set(id, c);
+    return c;
+  };
+
+  // Ein Cookie bindet die Anmeldung an den Browser, der sie begonnen hat (kein untergeschobenes fremdes Konto)
+  const cookieName = (state, secure) => `${secure ? "__Host-" : ""}taschen-connect-${sha(state).slice(0, 12)}`;
+  const cookieOf = (req, name) => {
+    for (const part of String(req.headers.cookie || "").split(";")) {
+      const i = part.indexOf("=");
+      if (i > 0 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
+    }
+    return "";
+  };
+  const html = (title, text) =>
+    `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Arbeitstaschen</title><style>body{font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:32rem;margin:18vh auto;padding:0 1.25rem;color:#1d1d1f;background:#f5f5f7}h1{font-size:1.35rem}@media (prefers-color-scheme:dark){body{color:#f5f5f7;background:#1c1c1e}}</style></head><body><h1>${escHtml(title)}</h1><p>${escHtml(text)}</p></body></html>`;
+  // Zurück zur App – Ergebnis im Fragment (#connect=…), das nie an einen Server geht
+  const backToApp = (res, ret, provider, fields, headers = {}) => {
+    const frag = Object.entries({ connect: provider, ...fields })
+      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
+      .join("&");
+    return send(res, 302, "", { Location: `${ret}#${frag}`, "Referrer-Policy": "no-referrer", ...headers });
+  };
+
+  // GET /api/connect/:provider/start?return=<App-URL> → 302 zum Anbieter
+  async function connectStart(req, res, url, provider, ip) {
+    guard("cs:" + ip, RATE_CONNECT, MIN, "Zu viele Anmeldeversuche – warte kurz und versuch es dann noch einmal.");
+    const ret = returnTarget(req, url.searchParams.get("return"));
+    if (!ret) return fail(res, 400, "Ungültige Rücksprung-Adresse – sie muss zur App gehören.");
+    const P = PROVIDERS[provider];
+    if (!connectOn(provider)) return backToApp(res, ret, provider, { error: `${P.name} ist auf diesem Server nicht eingerichtet.` });
+    const site = PUBLIC_BASE || reqOrigin(req);
+    if (!site) return fail(res, 400, "Ungültige Server-Adresse.");
+    if (pending.size >= PENDING_MAX) connectPurge();
+    if (pending.size >= PENDING_MAX) throw err(503, "Gerade laufen zu viele Anmeldungen – versuch es gleich noch mal.");
+    const state = b64u(crypto.randomBytes(24));
+    const verifier = b64u(crypto.randomBytes(48));
+    const nonce = b64u(crypto.randomBytes(24));
+    const redirectUri = `${site}/api/connect/${provider}/callback`;
+    const secure = redirectUri.startsWith("https:");
+    pending.set(state, { provider, verifier, ret, redirectUri, nonce: sha(nonce), exp: Date.now() + STATE_TTL });
+    const q = new URLSearchParams({
+      client_id: P.id,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: P.scope,
+      state,
+      code_challenge: b64u(crypto.createHash("sha256").update(verifier).digest()),
+      code_challenge_method: "S256",
+      ...P.params,
+    });
+    const cookie = `${cookieName(state, secure)}=${nonce}; Path=/; Max-Age=${STATE_TTL / 1000}; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}`;
+    return send(res, 302, "", { Location: `${P.auth}?${q}`, "Set-Cookie": cookie, "Referrer-Policy": "no-referrer" });
+  }
+
+  // GET /api/connect/:provider/callback?code&state (oder error) → Code tauschen, Konto anlegen, zurück zur App
+  async function connectCallback(req, res, url, provider, ip) {
+    guard("cc:" + ip, RATE_CONNECT, MIN, "Zu viele Anmeldeversuche – warte kurz und versuch es dann noch einmal.");
+    const state = url.searchParams.get("state") || "";
+    const pend = STATE_RE.test(state) ? pending.get(state) : null;
+    if (pend) pending.delete(state); // jeder state gilt genau einmal
+    if (!pend || pend.exp < Date.now() || pend.provider !== provider) {
+      return send(res, 400, html("Anmeldung abgelaufen", "Die Anmeldung ist abgelaufen oder wurde schon abgeschlossen. Geh zurück zur App und tipp noch einmal auf „Verbinden“."), {
+        "Content-Type": "text/html; charset=utf-8",
+        "Referrer-Policy": "no-referrer",
+      });
+    }
+    const P = PROVIDERS[provider];
+    const secure = pend.redirectUri.startsWith("https:");
+    const name = cookieName(state, secure);
+    const done = (fields) => backToApp(res, pend.ret, provider, fields, { "Set-Cookie": `${name}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure ? "; Secure" : ""}` });
+    const nonce = cookieOf(req, name);
+    if (!nonce || !hashEq(sha(nonce), pend.nonce)) {
+      warn(`Verbindung mit ${P.name}: Anmeldung in einem anderen Browser beendet – abgelehnt.`);
+      return done({ error: "Die Anmeldung wurde in einem anderen Browser beendet, als sie begonnen hat – bitte noch einmal verbinden." });
+    }
+    const error = url.searchParams.get("error");
+    if (error) {
+      warn(`Verbindung mit ${P.name} nicht zustande gekommen (${errCode(error, url.searchParams.get("error_description"))}).`);
+      return done({ error: connectErrorText(provider, error, url.searchParams.get("error_description") || "", url.searchParams.get("error_subcode") || "") });
+    }
+    const code = url.searchParams.get("code") || "";
+    if (!code || code.length > 4096) return done({ error: "Die Anmeldung hat nicht geklappt – bitte noch einmal verbinden." });
+    if (!connectOn(provider)) return done({ error: `${P.name} ist auf diesem Server nicht eingerichtet.` });
+
+    const r = await providerFetch(P.token, {
+      method: "POST",
+      form: { grant_type: "authorization_code", code, redirect_uri: pend.redirectUri, client_id: P.id, client_secret: P.secret, code_verifier: pend.verifier, ...(provider === "microsoft" ? { scope: P.scope } : {}) },
+    });
+    const t = r.data || {};
+    if (r.status !== 200 || typeof t.access_token !== "string") {
+      warn(`Verbindung mit ${P.name}: Code-Tausch fehlgeschlagen (${r.status || "keine Verbindung"} ${errCode(t.error, t.error_description)}).`);
+      return done({ error: !r.status || r.status >= 500 ? `${P.name} ist gerade nicht erreichbar – versuch es gleich noch mal.` : connectErrorText(provider, t.error || "server_error", t.error_description || "") });
+    }
+    if (typeof t.refresh_token !== "string" || !t.refresh_token) {
+      warn(`Verbindung mit ${P.name}: kein Refresh-Token erhalten.`);
+      return done({ error: P.noRefresh });
+    }
+    const email = await emailOf(provider, t);
+    if (!email) {
+      if (provider === "google") await revokeGoogle(t.refresh_token);
+      warn(`Verbindung mit ${P.name}: E-Mail-Adresse nicht ermittelbar.`);
+      return done({ error: "Die E-Mail-Adresse des Kontos ließ sich nicht abrufen – bitte noch einmal verbinden." });
+    }
+    // Dasselbe Konto noch einmal verbunden → der neue Eintrag ersetzt den alten (alte Verbindung meldet dann 410)
+    for (const [old, a] of Object.entries(accounts)) {
+      if (a.provider === provider && String(a.email).toLowerCase() === email.toLowerCase()) {
+        delete accounts[old];
+        accessCache.delete(old);
+      }
+    }
+    if (Object.keys(accounts).length >= CONNECT_MAX) {
+      if (provider === "google") await revokeGoogle(t.refresh_token);
+      return done({ error: "Auf diesem Server sind schon zu viele Konten verbunden." });
+    }
+    const now = Date.now();
+    const id = crypto.randomBytes(16).toString("hex");
+    const secret = b64u(crypto.randomBytes(32));
+    const a = { id, provider, email, refreshEnc: "", secretHash: sha(secret), scope: clean(t.scope, 2000), created: now, used: now, broken: false };
+    a.refreshEnc = sealToken(connectKey, t.refresh_token, aadOf(a));
+    accounts[id] = a;
+    remember(id, t);
+    connectDb.save();
+    await connectDb.flush();
+    log(`Konto verbunden (${P.name}).`);
+    return done({ account: id, secret, email });
+  }
+
+  const expiredText = (a, extra = "") => `Die Verbindung zu ${a.email || `deinem ${PROVIDERS[a.provider].name}-Konto`} ist abgelaufen – bitte neu verbinden.${extra}`;
+  async function markBroken(a, extra = "") {
+    a.broken = true;
+    a.brokenAt = Date.now();
+    accessCache.delete(a.id);
+    connectDb.save();
+    await connectDb.flush();
+    throw err(410, expiredText(a, extra));
+  }
+  // Neues Access-Token mit dem Refresh-Token holen; Microsoft rotiert Refresh-Tokens → den neuen verschlüsselt speichern
+  async function refreshAccess(a) {
+    const P = PROVIDERS[a.provider];
+    if (!connectOn(a.provider)) throw err(503, `${P.name} ist auf diesem Server nicht mehr eingerichtet.`);
+    let rt;
+    try {
+      rt = openToken(connectKey, a.refreshEnc, aadOf(a));
+    } catch (_) {
+      warn(`${P.name}: Refresh-Token nicht entschlüsselbar (anderer Schlüssel?) – Konto muss neu verbunden werden.`);
+      return markBroken(a);
+    }
+    const r = await providerFetch(P.token, { method: "POST", form: { grant_type: "refresh_token", refresh_token: rt, client_id: P.id, client_secret: P.secret, ...(a.provider === "microsoft" ? { scope: P.scope } : {}) } });
+    const t = r.data || {};
+    if (r.status === 200 && typeof t.access_token === "string") {
+      const c = remember(a.id, t);
+      if (typeof t.refresh_token === "string" && t.refresh_token && t.refresh_token !== rt) {
+        a.refreshEnc = sealToken(connectKey, t.refresh_token, aadOf(a));
+        a.rotated = Date.now();
+        connectDb.save();
+        await connectDb.flush();
+      }
+      if (typeof t.scope === "string" && t.scope) a.scope = clean(t.scope, 2000);
+      return c;
+    }
+    const code = String(t.error || "");
+    warn(`${P.name}: Token-Erneuerung fehlgeschlagen (${r.status || "keine Verbindung"} ${errCode(code, t.error_description)}).`);
+    if (r.status >= 400 && r.status < 500 && (code === "invalid_grant" || code === "interaction_required")) {
+      const firm = connectErrorText(a.provider, code, t.error_description || "");
+      return markBroken(a, /^Deine Firma|^Die Sicherheitsregeln/.test(firm) ? ` ${firm}` : "");
+    }
+    if (code === "invalid_client" || code === "unauthorized_client") throw err(502, connectErrorText(a.provider, code, t.error_description || ""));
+    throw err(502, `${P.name} ist gerade nicht erreichbar – versuch es gleich noch mal.`);
+  }
+
+  // { account, secret } prüfen – Format, Ratenbegrenzung pro Konto
+  async function connectBody(req, kind) {
+    const b = await readJson(req, 4096);
+    if (!ACC_RE.test(b.account || "") || !SECRET_RE.test(b.secret || "")) throw err(400, "Ungültige Verbindung.");
+    guard(`c${kind}:${b.account}`, RATE_CONNECT, MIN, "Zu viele Anfragen für dieses Konto – gleich geht's weiter.");
+    return b;
+  }
+  const GONE = "Diese Verbindung gibt es auf dem Server nicht mehr – bitte neu verbinden.";
+
+  // POST /api/connect/token { account, secret } → { ok, access_token, expires_at, provider, email, scope }
+  async function connectToken(req, res, ip) {
+    guard("ct:" + ip, RATE_CONNECT * 4, MIN);
+    const b = await connectBody(req, "t");
+    return connectLock(b.account, async () => {
+      const a = accounts[b.account];
+      if (!a) return fail(res, 410, GONE);
+      if (!secretOk(a, b.secret)) return fail(res, 403, "Kein Zugriff auf diese Verbindung.");
+      if (a.broken) return fail(res, 410, expiredText(a));
+      let c = accessCache.get(a.id);
+      if (!c || c.exp - 5 * MIN <= Date.now()) c = await refreshAccess(a);
+      a.used = Date.now();
+      connectDb.save();
+      return send(res, 200, { ok: true, access_token: c.token, expires_at: c.exp, provider: a.provider, email: a.email, scope: a.scope || "" });
+    });
+  }
+
+  // POST /api/connect/remove { account, secret } → beim Anbieter widerrufen (Google) und löschen → { ok, revoked }
+  async function connectRemove(req, res, ip) {
+    guard("cr:" + ip, RATE_CONNECT, MIN);
+    const b = await connectBody(req, "r");
+    return connectLock(b.account, async () => {
+      const a = accounts[b.account];
+      if (!a) return send(res, 200, { ok: true, revoked: false });
+      if (!secretOk(a, b.secret)) return fail(res, 403, "Kein Zugriff auf diese Verbindung.");
+      let revoked = false;
+      if (a.provider === "google") {
+        let rt = "";
+        try {
+          rt = openToken(connectKey, a.refreshEnc, aadOf(a));
+        } catch (_) {
+          rt = "";
+        }
+        if (rt) revoked = await revokeGoogle(rt);
+      }
+      delete accounts[a.id];
+      accessCache.delete(a.id);
+      connectDb.save();
+      await connectDb.flush();
+      log(`Konto getrennt (${PROVIDERS[a.provider].name}).`);
+      return send(res, 200, { ok: true, revoked });
+    });
+  }
+
+  async function connectApi(req, res, url, p, ip) {
+    const m = /^\/connect\/([a-z]+)\/(start|callback)$/.exec(p);
+    if (m) {
+      if (!isProvider(m[1])) return fail(res, 404, "Unbekannter Anbieter.");
+      if (req.method !== "GET") return fail(res, 405, "Nicht erlaubt.");
+      return m[2] === "start" ? connectStart(req, res, url, m[1], ip) : connectCallback(req, res, url, m[1], ip);
+    }
+    if (p === "/connect/token" || p === "/connect/remove") {
+      if (req.method !== "POST") return fail(res, 405, "Nicht erlaubt.");
+      return p === "/connect/token" ? connectToken(req, res, ip) : connectRemove(req, res, ip);
+    }
+    return fail(res, 404, "Unbekannte Anfrage.");
+  }
+
   // ---------- API ----------
   async function api(req, res, url) {
     const ip = ipOf(req);
@@ -1012,7 +1505,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     if (r) throw tooMany(r);
     if (req.method !== "GET" && req.method !== "HEAD" && !o.allowed) return fail(res, 403, "Fremde Herkunft – diese Adresse ist auf dem Server nicht freigegeben.");
     const p = url.pathname.replace(/^\/api/, "");
-    if (p === "/health" && (req.method === "GET" || req.method === "HEAD")) return send(res, 200, { ok: true, service: "taschen", version: VERSION, sync: true, push: !!vapid, ai: !!client, limits: { state: STATE_MAX, file: FILE_MAX, quota: QUOTA } });
+    if (p === "/health" && (req.method === "GET" || req.method === "HEAD")) return send(res, 200, { ok: true, service: "taschen", version: VERSION, sync: true, push: !!vapid, ai: !!client, connect: { google: connectOn("google"), microsoft: connectOn("microsoft") }, limits: { state: STATE_MAX, file: FILE_MAX, quota: QUOTA } });
 
     const m = /^\/sync\/([^/]+)(?:\/files\/([^/]+))?$/.exec(p);
     if (m) {
@@ -1032,6 +1525,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     }
     if (/^\/push\/(key|subscribe|update|unsubscribe|test)$/.test(p)) return pushApi(req, res, p, ip);
     if (p === "/ai") return aiApi(req, res, ip);
+    if (p.startsWith("/connect/")) return connectApi(req, res, url, p, ip);
     return fail(res, 404, "Unbekannte Anfrage.");
   }
 
@@ -1113,7 +1607,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
   });
   const port = server.address().port;
   const url = `http://${HOST && HOST !== "0.0.0.0" && HOST !== "::" ? (HOST.includes(":") ? `[${HOST}]` : HOST) : "localhost"}:${port}`;
-  log(`Arbeitstaschen-Server läuft auf ${url}  (Daten: ${DATA}, Push: an, KI: ${client ? `${MODEL} · ${AI_DAILY}/Tag` : "aus – ANTHROPIC_API_KEY setzen"}, Herkünfte: ${ALLOWED_ORIGINS.join(", ") || "nur eigene"})`);
+  log(`Arbeitstaschen-Server läuft auf ${url}  (Daten: ${DATA}, Push: an, KI: ${client ? `${MODEL} · ${AI_DAILY}/Tag` : "aus – ANTHROPIC_API_KEY setzen"}, Konten: ${["google", "microsoft"].filter(connectOn).map((p) => PROVIDERS[p].name).join(" + ") || "aus"}, Herkünfte: ${ALLOWED_ORIGINS.join(", ") || "nur eigene"})`);
 
   let closed = false;
   async function close() {
@@ -1125,7 +1619,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
       server.closeAllConnections?.();
     });
     await ticking;
-    await Promise.all([pushDb.flush(), aiDb.flush()]);
+    await Promise.all([pushDb.flush(), aiDb.flush(), connectDb.flush()]);
   }
   return { server, port, url, dataDir: DATA, close, tick, vapidPublicKey: vapid.publicKey };
 }
