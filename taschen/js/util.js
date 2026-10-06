@@ -28,11 +28,12 @@ export function fmtSize(n) {
   return (n / 1024 / 1024).toFixed(1).replace(".", ",") + " MB";
 }
 
-// Nur http(s)-Links zulassen (kein javascript:)
-export function safeUrl(u) {
+// Nur http(s)- und mailto-Links zulassen (kein javascript:); weitere Schemata nur ausdrücklich, z. B. { schemes: ["tel:", "sms:"] }
+export function safeUrl(u, { schemes = null } = {}) {
   try {
     const x = new URL(String(u).trim(), typeof location !== "undefined" ? location.href : "https://localhost/");
-    return x.protocol === "https:" || x.protocol === "http:" || x.protocol === "mailto:" ? x.href : "";
+    if (x.protocol === "https:" || x.protocol === "http:" || x.protocol === "mailto:") return x.href;
+    return Array.isArray(schemes) && schemes.includes(x.protocol) ? x.href : "";
   } catch (_) {
     return "";
   }

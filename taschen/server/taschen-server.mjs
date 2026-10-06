@@ -25,17 +25,37 @@
 //   Nur für Tests: CONNECT_GOOGLE_AUTH · CONNECT_GOOGLE_TOKEN · CONNECT_GOOGLE_USERINFO · CONNECT_GOOGLE_REVOKE ·
 //                  CONNECT_MS_AUTHORITY (https://login.microsoftonline.com/common) · CONNECT_MS_GRAPH (https://graph.microsoft.com/v1.0)
 //
+// Verbindungen (immer an, ohne Einrichtung):
+//   Kalender-Abos   POST /api/feeds/fetch – lädt ICS/webcal-Links für die App (CORS), mit SSRF-Schutz und 10 Min. Cache
+//   E-Mail per IMAP POST /api/imap/add · /flagged · /remove – markierte Mails aus GMX, WEB.DE, T-Online, iCloud, Yahoo …
+//   Webhook-Eingang POST /api/inbox/create · /pull · /ack · /reset · /remove und POST/GET /api/in/<hook>/<key> (von überall)
+//   Feinheiten: TASCHEN_FEEDS_MAX (5 MB) · TASCHEN_FEEDS_TIMEOUT (15000 ms) · TASCHEN_FEEDS_CACHE_MS (600000) ·
+//   TASCHEN_RATE_FEEDS (30/Min.) · TASCHEN_IMAP_TIMEOUT (20000 ms) · TASCHEN_IMAP_MAX (Postfächer, 500) ·
+//   TASCHEN_IMAP_CACHE_MS (60000) · TASCHEN_RATE_IMAP (Anmeldeversuche pro Minute und Adresse, 10) ·
+//   TASCHEN_INBOX_MAX (Eingänge, 1000) · TASCHEN_INBOX_ITEMS (Einträge pro Eingang, 200) · TASCHEN_RATE_INBOX (pro Minute
+//   und Eingang, 30) · TASCHEN_INBOX_NEW (neue Eingänge pro Tag und Adresse, 20)
+//   Nur für Tests: TASCHEN_FEEDS_ALLOW_PRIVATE bzw. TASCHEN_IMAP_ALLOW_PRIVATE (1 = interne Adressen und jeder Port erlaubt,
+//   oder Komma-Liste einzelner IP-Adressen) · TASCHEN_IMAP_ALLOW_PLAIN=1 (IMAP ohne TLS)
+//
 // Datenschutz: Der Server sieht nie Inhalte. Sync-Daten und Dateien sind auf dem Gerät verschlüsselt, Push-Abos kennen nur
 // Zeitpunkte. Sync-IDs und Geräte-Tokens tauchen in keinem Log auf. Bei verbundenen Konten hält der Server nur die
 // Refresh-Tokens (AES-256-GCM-verschlüsselt) und gibt der App kurzlebige Access-Tokens – Mails und Termine holt die App
 // direkt bei Google bzw. Microsoft. Tokens, Secrets und E-Mail-Adressen tauchen in keinem Log auf.
+// Ausnahmen, weil der Browser es nicht selbst kann: Kalender-Abos laufen durch den Server (nur im Speicher, 10 Min.), IMAP-
+// Zugangsdaten liegen AES-256-GCM-verschlüsselt auf dem Server, und Webhook-Einträge liegen verschlüsselt im Eingang, bis
+// die App sie abholt. Links, Zugangsdaten, Betreffzeilen und Aufgaben tauchen in keinem Log auf.
 import http from "node:http";
 import https from "node:https";
+import net from "node:net";
+import tls from "node:tls";
+import dns from "node:dns";
+import zlib from "node:zlib";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { BRAND } from "../js/config.js";
 
 const SELF = fileURLToPath(import.meta.url);
@@ -76,7 +96,8 @@ const list = (s) =>
 const redact = (s) =>
   String(s ?? "")
     .replace(/[0-9a-f]{64}/gi, "‹id›")
-    .replace(/https?:\/\/[^\s"']+/g, "‹url›")
+    .replace(/[0-9a-f]{32}/gi, "‹id›") // Konten (connect/IMAP) und Webhook-Eingänge
+    .replace(/(?:https?|webcals?):\/\/[^\s"']+/g, "‹url›")
     .replace(/[^\s"'<>@()/]+@[^\s"'<>@()/]+\.[A-Za-z]{2,}/g, "‹mail›")
     .replace(/[A-Za-z0-9_+=~.!*$-]{40,}/g, "‹token›");
 
@@ -353,6 +374,716 @@ const jwtClaims = (t) => {
   }
 };
 const escHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// ---------- Verbindungen: SSRF-Schutz ----------
+// Test-Override: "1" erlaubt alles (interne Adressen, jeder Port), sonst eine Komma-Liste einzelner IP-Adressen
+export function allowList(v) {
+  const s = String(v ?? "").trim();
+  if (!s || s === "0") return null;
+  if (s === "1" || s === "true") return true;
+  return new Set(list(s).map((x) => x.replace(/^\[|\]$/g, "").toLowerCase()));
+}
+const bareHost = (h) => String(h || "").replace(/^\[|\]$/g, "");
+// IP-Adresse als Bytes (IPv4: 4, IPv6: 16) – null, wenn es keine gültige Adresse ist
+function ipBytes(ip) {
+  const s = bareHost(ip).replace(/%.*$/, "");
+  const v = net.isIP(s);
+  if (v === 4) return s.split(".").map(Number);
+  if (v !== 6) return null;
+  let t = s;
+  const q = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(t);
+  if (q) {
+    const b = q[1].split(".").map(Number);
+    t = `${t.slice(0, -q[1].length)}${((b[0] << 8) | b[1]).toString(16)}:${((b[2] << 8) | b[3]).toString(16)}`;
+  }
+  const [head, tail] = t.split("::");
+  const h = head ? head.split(":") : [];
+  const r = tail ? tail.split(":") : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - r.length)).fill("0"), ...r];
+  if (groups.length !== 8) return null;
+  return groups.flatMap((g) => {
+    const n = parseInt(g, 16);
+    return [n >> 8, n & 255];
+  });
+}
+const inNet = (b, prefix, bits) => {
+  for (let i = 0; bits > 0; i++, bits -= 8) {
+    const mask = bits >= 8 ? 255 : (0xff << (8 - bits)) & 255;
+    if ((b[i] & mask) !== ((prefix[i] || 0) & mask)) return false;
+  }
+  return true;
+};
+const V4_BLOCKED = [
+  [[0], 8], // „dieses Netz“
+  [[10], 8], // privat
+  [[100, 64], 10], // CGNAT
+  [[127], 8], // Loopback
+  [[169, 254], 16], // Link-local (u. a. Cloud-Metadaten 169.254.169.254)
+  [[172, 16], 12], // privat
+  [[192, 0, 0], 24], // IETF
+  [[192, 0, 2], 24], // Dokumentation
+  [[192, 88, 99], 24], // 6to4-Relay
+  [[192, 168], 16], // privat
+  [[198, 18], 15], // Benchmark
+  [[198, 51, 100], 24], // Dokumentation
+  [[203, 0, 113], 24], // Dokumentation
+  [[224], 4], // Multicast
+  [[240], 4], // reserviert + Broadcast
+];
+// true = Adresse darf der Server nicht ansprechen (privat, Loopback, Link-local, CGNAT, Multicast, ULA, IPv4-mapped …)
+export function blockedIp(ip) {
+  const b = ipBytes(ip);
+  if (!b) return true;
+  if (b.length === 4) return V4_BLOCKED.some(([p, bits]) => inNet(b, p, bits));
+  // NAT64 (64:ff9b::/96) – entscheidend ist die eingebettete IPv4-Adresse
+  if (inNet(b, [0, 0x64, 0xff, 0x9b], 96)) return blockedIp(b.slice(12).join("."));
+  // Sonst nur globale Unicast-Adressen (2000::/3) – damit fallen ::, ::1, ::ffff:…, fc00::/7, fe80::/10, ff00::/8 weg
+  if ((b[0] & 0xe0) !== 0x20) return true;
+  if (inNet(b, [0x20, 0x01, 0x00], 23)) return true; // 2001::/23 (Teredo, IETF-Sonderbereiche)
+  if (inNet(b, [0x20, 0x01, 0x0d, 0xb8], 32)) return true; // Dokumentation
+  if (inNet(b, [0x3f, 0xff], 20)) return true; // Dokumentation (RFC 9637)
+  if (inNet(b, [0x20, 0x02], 16)) return blockedIp(b.slice(2, 6).join(".")); // 6to4
+  return false;
+}
+function allowedIp(ip, allow) {
+  if (!blockedIp(ip) || allow === true) return true;
+  return !!allow?.has?.(bareHost(ip).toLowerCase());
+}
+// Kalender-Link prüfen und vereinheitlichen: webcal(s):// → https://, nur http(s), keine Zugangsdaten, nur Port 80/443
+export function feedUrl(raw, { anyPort = false } = {}) {
+  let s = String(raw ?? "").trim();
+  if (!s) throw err(400, "Bitte einen Kalender-Link eingeben.");
+  if (s.length > 4096) throw err(400, "Der Link ist zu lang.");
+  s = s.replace(/^webcals?:\/\//i, "https://");
+  let u;
+  try {
+    u = new URL(s);
+  } catch (_) {
+    throw err(400, "Das ist kein gültiger Link – Kalender-Links beginnen mit https:// oder webcal://.");
+  }
+  if (u.protocol !== "https:" && u.protocol !== "http:") throw err(400, "Nur Links mit https://, http:// oder webcal:// gehen.");
+  if (u.username || u.password) throw err(400, "Links mit Benutzername und Passwort werden nicht unterstützt – nimm den öffentlichen bzw. geheimen Abo-Link.");
+  if (!u.hostname) throw err(400, "Im Link fehlt der Server.");
+  if (!anyPort && u.port && u.port !== "80" && u.port !== "443") throw err(400, "Dieser Link nutzt einen ungewöhnlichen Port – erlaubt sind nur 80 und 443.");
+  u.hash = "";
+  return u;
+}
+const PRIVATE_MSG = (what) => `Dieser ${what} zeigt auf eine interne Adresse – aus Sicherheitsgründen verbindet sich der Server nur mit öffentlichen Adressen.`;
+// Hostnamen auflösen; alle Adressen müssen öffentlich sein (sonst Ablehnung) → { address, family } für die feste Verbindung
+async function resolvePublic(hostname, allow, { what = "Link", server = "Server" } = {}) {
+  const h = bareHost(hostname).toLowerCase();
+  let addrs;
+  if (net.isIP(h)) addrs = [{ address: h, family: net.isIP(h) }];
+  else {
+    try {
+      addrs = await dns.promises.lookup(h, { all: true, verbatim: true });
+    } catch (_) {
+      addrs = [];
+    }
+    if (!addrs.length) throw err(502, `Den ${server} „${h.slice(0, 100)}“ gibt es nicht – bitte die Adresse prüfen.`);
+  }
+  if (!addrs.every((a) => allowedIp(a.address, allow))) throw err(400, PRIVATE_MSG(what));
+  return addrs.find((a) => a.family === 4) || addrs[0];
+}
+// lookup-Ersatz: die Verbindung geht genau an die geprüfte Adresse (kein DNS-Rebinding zwischen Prüfung und Abruf)
+// Zeitlimit für einen Schritt (z. B. DNS) – ohne hängende Zeitgeber oder unbehandelte Ablehnungen
+const withDeadline = (p, deadline) =>
+  new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(Object.assign(new Error("Zeitüberschreitung"), { code: "ETIMEDOUT" })), Math.max(0, deadline - Date.now()));
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+const pinnedLookup = (a) => (_host, opts, cb) => {
+  if (typeof opts === "function") cb = opts;
+  if (opts && typeof opts === "object" && opts.all) cb(null, [{ address: a.address, family: a.family }]);
+  else cb(null, a.address, a.family);
+};
+// Netzwerkfehler in verständliches Deutsch
+function netError(e, server) {
+  if (e?.status) return e;
+  const c = String(e?.code || "");
+  if (c === "ETIMEDOUT") return err(504, `Der ${server} antwortet nicht (Zeitüberschreitung).`);
+  if (c === "ECONNREFUSED" || c === "EHOSTUNREACH" || c === "ENETUNREACH") return err(502, `Der ${server} ist nicht erreichbar.`);
+  if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ALTNAME|UNABLE_TO_GET_ISSUER/.test(c)) return err(502, `Das Sicherheitszertifikat des ${server}s ist ungültig – stimmt die Adresse?`);
+  if (c === "EPROTO" || /^ERR_SSL|^ERR_TLS/.test(c)) return err(502, `Keine sichere Verbindung (TLS) zum ${server} möglich.`);
+  if (c === "ECONNRESET" || c === "EPIPE" || c === "ECONNABORTED") return err(502, `Der ${server} hat die Verbindung abgebrochen.`);
+  if (/^Z_|ERR_ZLIB/.test(c)) return err(502, `Die Antwort des ${server}s war beschädigt.`);
+  return err(502, `Der ${server} ist gerade nicht erreichbar.`);
+}
+
+// ---------- Verbindungen: Texte aus Mails (RFC 2047, MIME, Quoted-Printable, Base64) ----------
+const CP1252 = "€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š›œ\u009džŸ";
+const cp1252 = (buf) => {
+  let s = "";
+  for (const c of buf) s += c >= 0x80 && c < 0xa0 ? CP1252[c - 0x80] : String.fromCharCode(c);
+  return s;
+};
+const CHARSETS = { utf8: "utf-8", "utf-8": "utf-8", "us-ascii": "utf-8", ascii: "utf-8", "iso-8859-1": "windows-1252", "iso8859-1": "windows-1252", "iso_8859-1": "windows-1252", latin1: "windows-1252", "l1": "windows-1252", "windows-1252": "windows-1252", cp1252: "windows-1252", "x-cp1252": "windows-1252" };
+// Bytes in Text: UTF-8 (unvollständiges Zeichen am Ende wird verworfen), ISO-8859-1/Windows-1252 auch ohne ICU, sonst TextDecoder
+export function decodeText(buf, charset = "utf-8") {
+  const b = Buffer.isBuffer(buf) ? buf : Buffer.from(String(buf ?? ""), "latin1");
+  let cs = String(charset || "utf-8")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .toLowerCase();
+  cs = CHARSETS[cs] || cs;
+  if (cs === "utf-8") {
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(b, { stream: true });
+    } catch (_) {
+      return cp1252(b); // falsch deklariert – meist Windows-1252
+    }
+  }
+  if (cs === "windows-1252") return cp1252(b);
+  try {
+    return new TextDecoder(cs).decode(b);
+  } catch (_) {
+    return decodeText(b, "utf-8");
+  }
+}
+const qpBytes = (s, underscore) => {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (underscore && c === "_") out.push(32);
+    else if (c === "=" && /^[0-9A-Fa-f]{2}$/.test(s.slice(i + 1, i + 3))) {
+      out.push(parseInt(s.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else out.push(s.charCodeAt(i) & 255);
+  }
+  return Buffer.from(out);
+};
+// RFC 2047: =?charset?B|Q?…?= – Leerraum zwischen kodierten Wörtern entfällt, Bytes gleicher Zeichensätze werden vor dem
+// Dekodieren verbunden (ein UTF-8-Zeichen darf über zwei Wörter verteilt sein)
+export function decodeWords(s) {
+  const str = String(s ?? "");
+  const re = /=\?([^?\s]+)\?([BbQq])\?([^?\s]*)\?=/g;
+  const parts = [];
+  let last = 0;
+  let m;
+  while ((m = re.exec(str))) {
+    const between = str.slice(last, m.index);
+    if (between && !(parts.at(-1)?.enc && /^\s*$/.test(between))) parts.push({ text: between });
+    const charset = m[1].replace(/\*.*$/, "").toLowerCase();
+    let bytes;
+    try {
+      bytes = m[2].toUpperCase() === "B" ? Buffer.from(m[3], "base64") : qpBytes(m[3], true);
+    } catch (_) {
+      bytes = Buffer.from(m[0], "latin1");
+    }
+    const prev = parts.at(-1);
+    if (prev?.enc && prev.charset === charset) prev.bytes = Buffer.concat([prev.bytes, bytes]);
+    else parts.push({ enc: true, charset, bytes });
+    last = re.lastIndex;
+  }
+  if (last < str.length) parts.push({ text: str.slice(last) });
+  return parts.map((p) => (p.enc ? decodeText(p.bytes, p.charset) : p.text)).join("");
+}
+// Kopfzeilen (Bytes) → { name: Wert } – entfaltet, 8-Bit-Kopfzeilen als UTF-8 bzw. Windows-1252, erster Wert gewinnt
+export function parseHeaders(raw) {
+  const text = decodeText(Buffer.isBuffer(raw) ? raw : Buffer.from(String(raw ?? ""), "utf8"));
+  const h = {};
+  for (const line of text.replace(/\r?\n(?=[ \t])/g, "").split(/\r?\n/)) {
+    const m = /^([!-9;-~]+):[ \t]*(.*)$/.exec(line);
+    if (m) {
+      const k = m[1].toLowerCase();
+      if (!(k in h)) h[k] = m[2].trim();
+    }
+  }
+  return h;
+}
+// "text/plain; charset=\"utf-8\"" → { type, params }
+export function contentType(v) {
+  const s = String(v ?? "");
+  const type = (/^\s*([\w!#$&^.+-]+\/[\w!#$&^.+-]+)/.exec(s)?.[1] || "text/plain").toLowerCase();
+  const params = {};
+  for (const m of s.matchAll(/;\s*([\w!#$%&'*+.^`|~-]+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^;\s]+))/g)) params[m[1].toLowerCase()] = m[2] !== undefined ? m[2].replace(/\\(.)/g, "$1") : m[3];
+  return { type, params };
+}
+// Absender: "Jürgen Müller" <j@x.de> · Name <j@x.de> · j@x.de · j@x.de (Name) → { name, email }
+export function parseFrom(v) {
+  const s = String(v ?? "").trim();
+  let name = "";
+  let email = "";
+  const m = /^(.*?)\s*<([^<>\s]*)>/.exec(s);
+  if (m) {
+    name = m[1];
+    email = m[2];
+  } else {
+    email = /[^\s<>()"',;:]+@[^\s<>()"',;:]+/.exec(s)?.[0] || "";
+    name = /\(([^)]*)\)/.exec(s)?.[1] || "";
+  }
+  name = decodeWords(name.trim())
+    .replace(/^"([\s\S]*)"$/, "$1")
+    .replace(/\\(.)/g, "$1")
+    .trim();
+  email = clean(email, 254);
+  return { name: clean(name || email, 200), email };
+}
+// Teile einer multipart-Nachricht (auch abgeschnitten) → [{ headers, body }]
+function splitMultipart(buf, boundary) {
+  const s = buf.toString("latin1");
+  const d = `--${boundary}`;
+  const parts = [];
+  let i = s.startsWith(d) ? 0 : s.indexOf(`\n${d}`);
+  if (i > 0) i += 1;
+  while (i >= 0 && parts.length < 50) {
+    const after = i + d.length;
+    if (s.startsWith("--", after)) break; // Schluss-Begrenzer
+    const lineEnd = s.indexOf("\n", after);
+    if (lineEnd < 0) break;
+    const next = s.indexOf(`\n${d}`, lineEnd);
+    const chunk = s.slice(lineEnd + 1, next < 0 ? s.length : next).replace(/\r$/, "");
+    let head = "";
+    let body = "";
+    if (/^\r?\n/.test(chunk)) body = chunk.replace(/^\r?\n/, "");
+    else {
+      const sep = /\r?\n\r?\n/.exec(chunk);
+      head = sep ? chunk.slice(0, sep.index) : chunk;
+      body = sep ? chunk.slice(sep.index + sep[0].length) : "";
+    }
+    parts.push({ headers: parseHeaders(Buffer.from(head, "latin1")), body: Buffer.from(body, "latin1") });
+    if (next < 0) break;
+    i = next + 1;
+  }
+  return parts;
+}
+function transferDecode(buf, cte) {
+  const enc = String(cte ?? "")
+    .trim()
+    .toLowerCase();
+  if (enc === "base64") return Buffer.from(buf.toString("latin1").replace(/[^A-Za-z0-9+/=]/g, ""), "base64");
+  if (enc === "quoted-printable") return qpBytes(buf.toString("latin1").replace(/=\r?\n/g, "").replace(/=[0-9A-Fa-f]?$/, ""), false);
+  return buf;
+}
+// Erster text/plain-Teil (sonst text/html), auch in verschachtelten multipart-Teilen
+function textPart(ct, cte, buf, depth, disposition) {
+  const { type, params } = contentType(ct);
+  if (type.startsWith("multipart/")) {
+    if (!params.boundary || depth > 4) return null;
+    let html = null;
+    for (const p of splitMultipart(buf, params.boundary)) {
+      const r = textPart(p.headers["content-type"], p.headers["content-transfer-encoding"], p.body, depth + 1, p.headers["content-disposition"]);
+      if (r && !r.html) return r;
+      if (r && !html) html = r;
+    }
+    return html;
+  }
+  if (/^\s*attachment/i.test(disposition || "")) return null;
+  if (type !== "text/plain" && type !== "text/html") return null;
+  return { html: type === "text/html", text: decodeText(transferDecode(buf, cte), params.charset) };
+}
+const ENTITIES = { nbsp: " ", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", auml: "ä", ouml: "ö", uuml: "ü", Auml: "Ä", Ouml: "Ö", Uuml: "Ü", szlig: "ß", euro: "€", hellip: "…", ndash: "–", mdash: "—", bdquo: "„", ldquo: "“", rdquo: "”", sbquo: "‚", lsquo: "‘", rsquo: "’", laquo: "«", raquo: "»", copy: "©", reg: "®", trade: "™", middot: "·", bull: "•", eacute: "é", egrave: "è", agrave: "à", aacute: "á", ccedil: "ç", zwnj: "", zwj: "", shy: "" };
+export function htmlToText(h) {
+  return String(h ?? "")
+    .replace(/<!--[\s\S]*?(?:-->|$)/g, " ")
+    .replace(/<(style|script|head|title|template|svg)\b[\s\S]*?(?:<\/\1\s*>|$)/gi, " ")
+    .replace(/<(?:br|\/p|\/div|\/tr|\/li|\/h[1-6]|\/table)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]*(?:>|$)/g, " ")
+    .replace(/&(#[xX][0-9a-fA-F]{1,6}|#\d{1,7}|[a-zA-Z]{2,8});/g, (all, e) => {
+      if (e[0] === "#") {
+        const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+        return n > 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : " ";
+      }
+      return ENTITIES[e] ?? ENTITIES[e.toLowerCase()] ?? all;
+    });
+}
+// Vorschau (best effort) aus den ersten Bytes des Nachrichtentexts: text/plain bevorzugt, HTML ohne Tags, max. 200 Zeichen
+export function mailSnippet(headers, body, max = 200) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(String(body ?? ""), "latin1");
+  if (!buf.length) return "";
+  let ct = headers?.["content-type"];
+  if (!ct) {
+    const m = /^\s*--([^\s]{1,200})\r?\n/.exec(buf.toString("latin1", 0, 300));
+    if (m) ct = `multipart/mixed; boundary="${m[1]}"`;
+  }
+  const part = textPart(ct, headers?.["content-transfer-encoding"], buf, 0, headers?.["content-disposition"]);
+  if (!part) return "";
+  const t = (part.html ? htmlToText(part.text) : part.text)
+    .split(/\r?\n/)
+    .filter((l) => !/^\s*>/.test(l)) // zitierte Antworten
+    .join(" ")
+    .replace(/[­͏؜ᅟᅠ឴឵᠎​-‏‪-‮⁠-⁯ㅤ﻿ﾠ�]/g, "")
+    .replace(/[\u0000-\u001f\u007f\s]+/g, " ")
+    .trim();
+  const chars = Array.from(t);
+  return chars.length > max ? `${chars.slice(0, max - 1).join("").trimEnd()}…` : t;
+}
+
+// ---------- Verbindungen: kleiner IMAP-Client (RFC 3501 – nur, was für markierte Mails nötig ist) ----------
+// Wert für einen IMAP-Befehl: druckbares ASCII als "quoted string" (\ und " maskiert), alles andere als Literal {n}
+export function imapString(v) {
+  const s = String(v ?? "");
+  if (/^[\x20-\x7e]*$/.test(s)) return `"${s.replace(/[\\"]/g, (c) => `\\${c}`)}"`;
+  return { literal: Buffer.from(s, "utf8") };
+}
+// Antwort (Zeilen und Literale) in Token: Atome (inkl. BODY[…]<…>), Strings und Literale (Buffer), NIL (null), Listen
+export function imapTokens(segs) {
+  const out = [];
+  const stack = [out];
+  for (const seg of segs) {
+    if (Buffer.isBuffer(seg)) {
+      stack.at(-1).push(seg);
+      continue;
+    }
+    const s = String(seg);
+    let i = 0;
+    while (i < s.length) {
+      const c = s[i];
+      if (c === " ") i++;
+      else if (c === "(") {
+        const l = [];
+        stack.at(-1).push(l);
+        stack.push(l);
+        i++;
+      } else if (c === ")") {
+        if (stack.length > 1) stack.pop();
+        i++;
+      } else if (c === '"') {
+        let j = i + 1;
+        let v = "";
+        while (j < s.length && s[j] !== '"') {
+          if (s[j] === "\\" && j + 1 < s.length) j++;
+          v += s[j++];
+        }
+        stack.at(-1).push(Buffer.from(v, "latin1"));
+        i = j + 1;
+      } else if (c === "{" && /^\{\d+\+?\}$/.test(s.slice(i))) break; // Literal folgt als nächstes Segment
+      else {
+        let j = i;
+        let depth = 0;
+        while (j < s.length) {
+          const d = s[j];
+          if (d === "[") depth++;
+          else if (d === "]") depth = Math.max(0, depth - 1);
+          else if (depth === 0 && (d === " " || d === "(" || d === ")")) break;
+          j++;
+        }
+        const atom = s.slice(i, j);
+        stack.at(-1).push(atom.toUpperCase() === "NIL" ? null : atom);
+        i = j;
+      }
+    }
+  }
+  return out;
+}
+const imapText = (v) => (Buffer.isBuffer(v) ? v.toString("latin1") : v == null ? "" : String(v));
+const imapBuf = (v) => (Buffer.isBuffer(v) ? v : Buffer.from(v == null || Array.isArray(v) ? "" : String(v), "latin1"));
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+// INTERNALDATE "17-Jul-1996 02:44:25 -0700" → ms
+export function imapDate(s) {
+  const m = /^\s*(\d{1,2})-([A-Za-z]{3})-(\d{4}) (\d{2}):(\d{2}):(\d{2}) ([+-])(\d{2})(\d{2})\s*$/.exec(String(s ?? ""));
+  const mo = m ? MONTHS[m[2].toLowerCase()] : undefined;
+  if (mo === undefined) return null;
+  const off = (m[7] === "-" ? -1 : 1) * (+m[8] * 60 + +m[9]);
+  return Date.UTC(+m[3], mo, +m[1], +m[4], +m[5], +m[6]) - off * MIN;
+}
+const imapFail = (kind, code = "") => Object.assign(new Error(`IMAP: ${kind}`), { imap: kind, imapCode: code });
+class ImapSession {
+  constructor(socket, maxBuffer = 8 * MB) {
+    this.socket = socket;
+    this.maxBuffer = maxBuffer;
+    this.buf = Buffer.alloc(0);
+    this.queue = [];
+    this.waiter = null;
+    this.error = null;
+    this.n = 0;
+    socket.on("data", (c) => this.onData(c));
+    socket.on("error", (e) => this.close(e));
+    socket.on("close", () => this.close(Object.assign(new Error("Verbindung beendet"), { code: "ECONNRESET" })));
+  }
+  onData(c) {
+    this.buf = this.buf.length ? Buffer.concat([this.buf, c]) : c;
+    if (this.buf.length > this.maxBuffer) return this.close(Object.assign(new Error("Antwort zu groß"), { code: "IMAP_TOO_BIG" }));
+    for (;;) {
+      let r;
+      try {
+        r = this.take();
+      } catch (e) {
+        return this.close(e);
+      }
+      if (!r) break;
+      this.queue.push(r);
+    }
+    this.wake();
+  }
+  // Eine vollständige Antwort: Zeile, ggf. mit Literalen {n} und Fortsetzungszeilen → [Text, Buffer, Text, …]
+  take() {
+    let pos = 0;
+    const segs = [];
+    for (;;) {
+      const i = this.buf.indexOf("\r\n", pos);
+      if (i < 0) return null;
+      const line = this.buf.toString("latin1", pos, i);
+      const m = /\{(\d{1,10})\+?\}$/.exec(line);
+      if (!m) {
+        segs.push(line);
+        this.buf = this.buf.subarray(i + 2);
+        return segs;
+      }
+      const n = +m[1];
+      if (n > this.maxBuffer) throw Object.assign(new Error("Literal zu groß"), { code: "IMAP_TOO_BIG" });
+      if (this.buf.length < i + 2 + n) return null;
+      segs.push(line, Buffer.from(this.buf.subarray(i + 2, i + 2 + n)));
+      pos = i + 2 + n;
+    }
+  }
+  wake() {
+    const w = this.waiter;
+    this.waiter = null;
+    w?.();
+  }
+  close(e) {
+    if (!this.error) this.error = e;
+    this.wake();
+  }
+  async next() {
+    for (;;) {
+      if (this.queue.length) return this.queue.shift();
+      if (this.error) throw this.error;
+      await new Promise((r) => (this.waiter = r));
+    }
+  }
+  // Befehl aus Text und { literal } – synchronisierende Literale: erst nach „+“ vom Server weiter
+  async command(...parts) {
+    const tag = `T${++this.n}`;
+    const untagged = [];
+    const done = (r) => {
+      const m = /^(OK|NO|BAD)\b\s*(?:\[([^\]]*)\])?\s*(.*)$/i.exec(r.filter((x) => typeof x === "string").join(" ").slice(tag.length + 1)) || [];
+      return { ok: (m[1] || "").toUpperCase() === "OK", status: (m[1] || "BAD").toUpperCase(), code: (m[2] || "").split(" ")[0].toUpperCase(), untagged };
+    };
+    let text = `${tag} `;
+    for (const p of parts) {
+      if (typeof p === "string") {
+        text += p;
+        continue;
+      }
+      this.socket.write(`${text}{${p.literal.length}}\r\n`);
+      text = "";
+      for (;;) {
+        const r = await this.next();
+        if (r[0].startsWith("+")) break;
+        if (r[0].startsWith(`${tag} `)) return done(r);
+        untagged.push(r);
+      }
+      this.socket.write(p.literal);
+    }
+    this.socket.write(`${text}\r\n`);
+    for (;;) {
+      const r = await this.next();
+      if (r[0].startsWith(`${tag} `)) return done(r);
+      untagged.push(r);
+    }
+  }
+}
+// Verbinden (an die geprüfte Adresse), Begrüßung, LOGIN, fn(session), LOGOUT – alles innerhalb von timeout ms
+export async function imapWith({ host, address, family, port, user, password, plain = false, timeout = 20000 }, fn) {
+  const opts = { host: address || bareHost(host), port, family };
+  const socket = plain ? net.connect(opts) : tls.connect({ ...opts, servername: net.isIP(bareHost(host)) ? undefined : bareHost(host), minVersion: "TLSv1.2" });
+  socket.setNoDelay?.(true);
+  const s = new ImapSession(socket);
+  let timer;
+  const timedOut = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const e = Object.assign(new Error("Zeitüberschreitung"), { code: "ETIMEDOUT" });
+      s.close(e);
+      socket.destroy();
+      reject(e);
+    }, timeout);
+  });
+  timedOut.catch(() => {});
+  const run = (async () => {
+    const greet = (await s.next())[0];
+    if (/^\* BYE/i.test(greet)) throw imapFail("bye");
+    if (!/^\* (OK|PREAUTH)\b/i.test(greet)) throw imapFail("proto");
+    if (!/^\* PREAUTH/i.test(greet)) {
+      const login = await s.command("LOGIN ", imapString(user), " ", imapString(password));
+      if (!login.ok) throw imapFail("login", login.code);
+    }
+    const out = await fn(s);
+    await Promise.race([s.command("LOGOUT"), delay(1500, undefined, { ref: false })]).catch(() => {});
+    return out;
+  })();
+  try {
+    return await Promise.race([run, timedOut]);
+  } finally {
+    clearTimeout(timer);
+    run.catch(() => {});
+    socket.end();
+    setTimeout(() => socket.destroy(), 1000).unref();
+  }
+}
+// Markierte Mails aus dem Posteingang: EXAMINE INBOX (nur lesen), UID SEARCH FLAGGED, UID FETCH der neuesten `limit`
+export async function imapFlaggedMails(s, limit = 25) {
+  const sel = await s.command("EXAMINE INBOX");
+  if (!sel.ok) throw imapFail("select", sel.code);
+  const search = await s.command("UID SEARCH FLAGGED");
+  if (!search.ok) throw imapFail("search", search.code);
+  const uids = new Set();
+  for (const r of search.untagged) {
+    const m = /^\* SEARCH\b(.*)$/i.exec(r[0]);
+    if (m) for (const x of m[1].trim().split(/\s+/)) if (/^\d{1,10}$/.test(x)) uids.add(+x);
+  }
+  const pick = [...uids].sort((a, b) => b - a).slice(0, limit);
+  if (!pick.length) return [];
+  const f = await s.command(`UID FETCH ${pick.join(",")} (UID INTERNALDATE BODY.PEEK[HEADER.FIELDS (SUBJECT FROM DATE CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] BODY.PEEK[TEXT]<0.2000>)`);
+  if (!f.ok) throw imapFail("fetch", f.code);
+  const want = new Set(pick);
+  const byUid = new Map();
+  for (const r of f.untagged) {
+    const t = imapTokens(r);
+    if (t[0] !== "*" || String(t[2]).toUpperCase() !== "FETCH" || !Array.isArray(t[3])) continue;
+    const kv = {};
+    for (let i = 0; i + 1 < t[3].length; i += 2) kv[imapText(t[3][i]).toUpperCase()] = t[3][i + 1];
+    const uid = +imapText(kv.UID);
+    if (!want.has(uid)) continue;
+    const x = byUid.get(uid) || {};
+    for (const [k, v] of Object.entries(kv)) {
+      if (k.startsWith("BODY[HEADER")) x.header = v;
+      else if (k.startsWith("BODY[TEXT]")) x.text = v;
+      else if (k === "INTERNALDATE") x.internal = v;
+    }
+    byUid.set(uid, x);
+  }
+  const mails = [];
+  for (const [uid, x] of byUid) {
+    const h = parseHeaders(imapBuf(x.header));
+    const from = parseFrom(h.from);
+    const sent = Date.parse(h.date || "");
+    mails.push({
+      uid,
+      subject: clean(decodeWords(h.subject || ""), 300),
+      from: from.name,
+      fromEmail: from.email,
+      date: imapDate(imapText(x.internal)) ?? (Number.isFinite(sent) ? sent : null),
+      snippet: mailSnippet(h, imapBuf(x.text)),
+    });
+  }
+  return mails.sort((a, b) => (b.date || 0) - (a.date || 0) || b.uid - a.uid);
+}
+// Anbieter am Server bzw. an der Adresse erkennen – für passende Hilfetexte
+export function mailProvider(host, user = "") {
+  const h = `${String(host || "").toLowerCase()} ${String(user || "").toLowerCase().split("@")[1] || ""}`;
+  const has = (re) => h.split(" ").some((x) => re.test(x));
+  if (has(/(^|\.)gmx\.(net|de|at|ch|com)$/)) return "GMX";
+  if (has(/(^|\.)web\.de$/)) return "WEB.DE";
+  if (has(/(^|\.)(mail\.me\.com|icloud\.com|me\.com|mac\.com)$/)) return "iCloud";
+  if (has(/(^|\.)(yahoo\.(com|de)|ymail\.com|aol\.(com|de))$/)) return "Yahoo";
+  if (has(/(^|\.)(t-online\.de|magenta\.de)$/)) return "T-Online";
+  if (has(/(^|\.)(gmail\.com|googlemail\.com)$/)) return "Gmail";
+  if (has(/(^|\.)(office365\.com|outlook\.com|hotmail\.(com|de)|live\.(com|de)|msn\.com)$/)) return "Microsoft";
+  return "";
+}
+// Verständliche Meldung bei abgelehnter Anmeldung – mit dem Tipp, der beim jeweiligen Anbieter fast immer hilft
+export function imapLoginHelp(host, user) {
+  const p = mailProvider(host, user);
+  if (p === "GMX" || p === "WEB.DE")
+    return `Anmeldung fehlgeschlagen – stimmen E-Mail-Adresse und Passwort? Bei ${p} musst du IMAP erst in den Einstellungen erlauben: im Postfach unter Einstellungen → POP3 & IMAP → „Zugriff über POP3 und IMAP erlauben“.`;
+  if (p === "iCloud") return "Anmeldung fehlgeschlagen – bei iCloud brauchst du ein app-spezifisches Passwort (account.apple.com → Anmeldung und Sicherheit → App-spezifische Passwörter), nicht dein Apple-Account-Passwort.";
+  if (p === "Yahoo") return "Anmeldung fehlgeschlagen – bei Yahoo brauchst du ein app-spezifisches Passwort (Kontoeinstellungen → Kontosicherheit → App-Passwort generieren).";
+  if (p === "T-Online") return "Anmeldung fehlgeschlagen – bei T-Online brauchst du das E-Mail-Passwort, nicht das Passwort fürs Kundencenter (Telekom Kundencenter → E-Mail-Einstellungen → E-Mail-Passwort).";
+  if (p === "Gmail") return "Anmeldung fehlgeschlagen – Gmail verlangt ein App-Passwort (myaccount.google.com → Sicherheit → App-Passwörter). Einfacher: Google direkt über „Google“ verbinden.";
+  if (p === "Microsoft") return "Microsoft erlaubt die Anmeldung per Passwort nicht mehr – verbinde Outlook bitte direkt über „Microsoft“.";
+  return "Anmeldung fehlgeschlagen – bitte E-Mail-Adresse und Passwort prüfen. Bei GMX/WEB.DE musst du IMAP erst in den Einstellungen erlauben; bei iCloud und Yahoo brauchst du ein app-spezifisches Passwort.";
+}
+
+// ---------- Verbindungen: Webhook-Eingang (reine Helfer) ----------
+// Herkunft: Kopfzeile X-Source, ?source=, Feld source – sonst am User-Agent erkannt
+export function hookSource({ header, query, body, ua } = {}) {
+  const given = clean(header || query || (typeof body === "string" ? body : "") || "", 40);
+  if (given) return given;
+  const u = String(ua || "");
+  if (/Zapier/i.test(u)) return "Zapier";
+  if (/Integromat|\bMake\b|make\.com/i.test(u)) return "Make";
+  if (/n8n/i.test(u)) return "n8n";
+  if (/IFTTT/i.test(u)) return "IFTTT";
+  if (/Shortcuts|WorkflowKit|CFNetwork|Siri/i.test(u)) return "Siri";
+  return "Webhook";
+}
+const pickField = (o, keys) => {
+  for (const k of keys) {
+    const v = o[k];
+    if (v != null && typeof v !== "object" && String(v).trim() !== "") return String(v);
+  }
+  return "";
+};
+function prioOf(v) {
+  const s = String(v ?? "")
+    .trim()
+    .toLowerCase();
+  if (/^[1-3]$/.test(s)) return +s;
+  if (/^(hoch|high|wichtig|dringend|urgent|!!!|p1)$/.test(s)) return 3;
+  if (/^(mittel|medium|normal|!!|p2)$/.test(s)) return 2;
+  if (/^(niedrig|low|gering|!|p3)$/.test(s)) return 1;
+  return null;
+}
+// Felder einer eingehenden Anfrage → { title, notes, due, time, bag, prio, url } (null, wenn der Titel fehlt); max. 8 KB
+export function inboxItem(raw, max = 8 * 1024) {
+  const f = {};
+  for (const [k, v] of Object.entries(raw && typeof raw === "object" ? raw : {})) f[k.toLowerCase()] = v;
+  let title = pickField(f, ["title", "text", "name", "subject", "task", "content", "titel", "aufgabe"]).replace(/\r\n?/g, "\n").trim();
+  let notes = pickField(f, ["notes", "description", "body", "note", "notiz", "notizen", "beschreibung", "details"]).replace(/\r\n?/g, "\n");
+  const nl = title.indexOf("\n");
+  if (nl >= 0) {
+    const rest = title.slice(nl + 1).trim();
+    title = title.slice(0, nl);
+    if (rest) notes = notes.trim() ? `${rest}\n\n${notes}` : rest;
+  }
+  title = clean(title, 300);
+  if (!title) return null;
+  notes = notes
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, "")
+    .trim()
+    .slice(0, 6000);
+  let time = clean(pickField(f, ["time", "uhrzeit", "zeit"]), 40) || null;
+  const tm = /^(\d{1,2})[:.](\d{2})(?:\s*uhr)?$/i.exec(time || "");
+  if (tm && +tm[1] < 24 && +tm[2] < 60) time = `${tm[1].padStart(2, "0")}:${tm[2]}`;
+  let url = clean(pickField(f, ["url", "link"]), 2000);
+  try {
+    const u = new URL(url);
+    url = u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch (_) {
+    url = null;
+  }
+  const item = {
+    title,
+    notes: notes || null,
+    due: clean(pickField(f, ["due", "date", "duedate", "due_date", "faellig", "fällig", "datum", "deadline"]), 80) || null,
+    time,
+    bag: clean(pickField(f, ["bag", "project", "tasche", "projekt", "list", "liste"]), 100) || null,
+    prio: prioOf(pickField(f, ["prio", "priority", "priorität", "prioritaet"])),
+    url,
+  };
+  while (item.notes && Buffer.byteLength(JSON.stringify(item)) > max - 256) item.notes = item.notes.slice(0, Math.floor(item.notes.length * 0.8)).trimEnd() || null;
+  return item;
+}
+// multipart/form-data (z. B. Kurzbefehle „Formular“) → { feld: wert } – nur Textfelder
+function formFields(buf, boundary) {
+  const out = {};
+  for (const p of splitMultipart(buf, boundary)) {
+    const cd = p.headers["content-disposition"] || "";
+    const name = /\bname="([^"]*)"/i.exec(cd)?.[1] ?? /\bname=([^;\s]+)/i.exec(cd)?.[1];
+    if (!name || /\bfilename\*?=/i.test(cd) || name in out) continue;
+    out[name] = decodeText(p.body, contentType(p.headers["content-type"]).params.charset);
+  }
+  return out;
+}
+const jsonObject = (t) => {
+  try {
+    const v = JSON.parse(t);
+    return v && typeof v === "object" && !Array.isArray(v) ? v : null;
+  } catch (_) {
+    return null;
+  }
+};
 
 // ---------- KI-Projektmanager ----------
 const SYSTEM =`Du bist der persönliche Projektmanager in „Arbeitstaschen“. Dein Nutzer ist ein junger Gründer, der mehrere Projekte gleichzeitig vorantreibt; jede „Tasche“ ist ein Projekt mit Ziel, Aufgaben, Abschnitten und Meilensteinen. Du arbeitest ihm zu wie ein erfahrener Projektmanager, dem er vertraut: Du behältst den Überblick, setzt klare Prioritäten und machst aus großen Vorhaben kleine, machbare Schritte.
@@ -1491,9 +2222,543 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     return fail(res, 404, "Unbekannte Anfrage.");
   }
 
+  // ---------- Kalender-Abos (ICS/webcal) ----------
+  // Der Browser darf fremde ICS-Links wegen CORS nicht direkt laden – der Server holt sie, streng gegen SSRF geschützt:
+  // jede Station (auch nach Weiterleitungen) wird per DNS aufgelöst und geprüft, die Verbindung geht genau an diese Adresse.
+  const FEEDS_ALLOW = allowList(env.TASCHEN_FEEDS_ALLOW_PRIVATE);
+  const FEEDS_MAX = num(env.TASCHEN_FEEDS_MAX, 5 * MB);
+  const FEEDS_TIMEOUT = num(env.TASCHEN_FEEDS_TIMEOUT, 15000);
+  const FEEDS_CACHE = num(env.TASCHEN_FEEDS_CACHE_MS, 10 * MIN);
+  const RATE_FEEDS = num(env.TASCHEN_RATE_FEEDS, 30);
+  const FEEDS_REDIRECTS = 3;
+  const FEEDS_PARALLEL = 16;
+  const FEEDS_CACHE_BYTES = 64 * MB;
+  const KS = "Kalender-Server";
+  const feedCache = new Map(); // sha(URL) → { ics, fetched, size } – nur im Speicher
+  const feedPending = new Map(); // sha(URL) → laufender Abruf (gleiche URL nur einmal gleichzeitig)
+  let feedCacheBytes = 0;
+  const feedForget = (k) => {
+    const hit = feedCache.get(k);
+    if (hit) feedCacheBytes -= hit.size;
+    feedCache.delete(k);
+  };
+  timers.push(
+    setInterval(() => {
+      for (const [k, v] of feedCache) if (Date.now() - v.fetched >= FEEDS_CACHE) feedForget(k);
+    }, MIN).unref(),
+  );
+
+  // Ein GET-Versuch an die geprüfte Adresse → { status, location } bzw. { status, headers, body }
+  function feedRequest(u, addr, deadline) {
+    return new Promise((resolve, reject) => {
+      const left = deadline - Date.now();
+      if (left <= 0) return reject(Object.assign(new Error("Zeitüberschreitung"), { code: "ETIMEDOUT" }));
+      let finished = false;
+      let req = null;
+      const finish = (fn, v) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        fn(v);
+      };
+      const tooBig = () => err(502, `Der Kalender ist zu groß (mehr als ${sizeText(FEEDS_MAX)}).`);
+      const timer = setTimeout(() => {
+        finish(reject, Object.assign(new Error("Zeitüberschreitung"), { code: "ETIMEDOUT" }));
+        req?.destroy();
+      }, left);
+      const mod = u.protocol === "https:" ? https : http;
+      req = mod.request(
+        {
+          protocol: u.protocol,
+          hostname: bareHost(u.hostname),
+          port: u.port || (u.protocol === "https:" ? 443 : 80),
+          path: `${u.pathname || "/"}${u.search}`,
+          method: "GET",
+          agent: false,
+          lookup: pinnedLookup(addr),
+          headers: { "User-Agent": `Arbeitstaschen/${VERSION} (Kalender-Abo)`, Accept: "text/calendar, text/plain;q=0.9, */*;q=0.5", "Accept-Encoding": "gzip, deflate, br" },
+        },
+        (res) => {
+          // Immer einen Fehler-Empfänger: nach req.destroy() meldet die Antwort sonst einen unbehandelten Fehler
+          res.on("error", (e) => finish(reject, e));
+          const status = res.statusCode || 0;
+          if (status >= 300 && status < 400 && res.headers.location) {
+            res.resume();
+            req.destroy();
+            return finish(resolve, { status, location: String(res.headers.location) });
+          }
+          if (status < 200 || status >= 300) {
+            res.resume();
+            req.destroy();
+            return finish(resolve, { status });
+          }
+          const len = +res.headers["content-length"];
+          if (Number.isFinite(len) && len > FEEDS_MAX) {
+            req.destroy();
+            return finish(reject, tooBig());
+          }
+          const enc = String(res.headers["content-encoding"] || "")
+            .trim()
+            .toLowerCase();
+          let stream = res;
+          if (enc === "gzip" || enc === "x-gzip") stream = res.pipe(zlib.createGunzip());
+          else if (enc === "deflate") stream = res.pipe(zlib.createInflate());
+          else if (enc === "br") stream = res.pipe(zlib.createBrotliDecompress());
+          else if (enc && enc !== "identity") {
+            req.destroy();
+            return finish(reject, err(502, "Der Kalender-Server antwortet in einem unbekannten Format."));
+          }
+          const chunks = [];
+          let size = 0;
+          stream.on("data", (c) => {
+            size += c.length; // nach dem Entpacken gezählt – keine „Zip-Bomben“
+            if (size > FEEDS_MAX) {
+              finish(reject, tooBig());
+              req.destroy();
+              if (stream !== res) stream.destroy();
+              return;
+            }
+            chunks.push(c);
+          });
+          stream.on("end", () => finish(resolve, { status, headers: res.headers, body: Buffer.concat(chunks) }));
+          if (stream !== res)
+            stream.on("error", (e) => {
+              finish(reject, e);
+              req.destroy();
+            });
+          res.on("aborted", () => finish(reject, Object.assign(new Error("abgebrochen"), { code: "ECONNRESET" })));
+        },
+      );
+      req.on("error", (e) => finish(reject, e));
+      req.end();
+    });
+  }
+
+  // Abruf mit Weiterleitungen (max. 3, jede Station neu geprüft) und Gesamt-Zeitlimit
+  async function loadFeed(start) {
+    const deadline = Date.now() + FEEDS_TIMEOUT;
+    let u = start;
+    for (let hop = 0; ; hop++) {
+      let r;
+      try {
+        const addr = await withDeadline(resolvePublic(u.hostname, FEEDS_ALLOW, { what: "Link", server: KS }), deadline);
+        r = await feedRequest(u, addr, deadline);
+      } catch (e) {
+        throw netError(e, KS);
+      }
+      if (r.location) {
+        if (hop >= FEEDS_REDIRECTS) throw err(502, "Der Kalender-Link leitet zu oft weiter.");
+        try {
+          u = feedUrl(new URL(r.location, u).href, { anyPort: !!FEEDS_ALLOW });
+        } catch (_) {
+          throw err(502, "Der Kalender-Link leitet an eine nicht erlaubte Adresse weiter.");
+        }
+        continue;
+      }
+      if (r.status === 401 || r.status === 403) throw err(502, "Der Kalender-Server verweigert den Zugriff – ist der Link noch gültig und der Kalender freigegeben?");
+      if (r.status === 404 || r.status === 410) throw err(502, "Unter diesem Link gibt es keinen Kalender (mehr) – bitte den Link neu kopieren.");
+      if (r.status === 429) throw err(502, "Der Kalender-Server bremst gerade – versuch es später noch mal.");
+      if (!r.body) throw err(502, `Der Kalender-Server hat einen Fehler gemeldet (${r.status || "keine Antwort"}).`);
+      const ics = decodeText(r.body, contentType(r.headers["content-type"]).params.charset).replace(/^﻿/, "");
+      if (!/^\s*BEGIN:VCALENDAR/i.test(ics)) {
+        if (/^\s*(<!doctype html|<html|<\?xml|<head)/i.test(ics)) throw err(422, "Der Link führt zu einer Webseite statt zu einem Kalender – du brauchst den Abo-Link im iCal-Format (.ics bzw. webcal://).");
+        throw err(422, "Unter diesem Link liegt kein Kalender im iCal-Format (.ics).");
+      }
+      return { ics, fetched: Date.now() };
+    }
+  }
+
+  // POST /api/feeds/fetch { url } → { ok, ics, fetched, cached }
+  async function feedsFetch(req, res, ip) {
+    guard("feed:" + ip, RATE_FEEDS, MIN, "Zu viele Kalender-Abrufe – gleich geht's weiter.");
+    const b = await readJson(req, 8 * 1024);
+    const u = feedUrl(b.url, { anyPort: !!FEEDS_ALLOW });
+    const key = sha("taschen-feed:" + u.href);
+    const hit = feedCache.get(key);
+    if (hit && Date.now() - hit.fetched < FEEDS_CACHE) return send(res, 200, { ok: true, ics: hit.ics, fetched: hit.fetched, cached: true });
+    let p = feedPending.get(key);
+    if (!p) {
+      if (feedPending.size >= FEEDS_PARALLEL) throw err(503, "Gerade werden zu viele Kalender geladen – versuch es gleich noch mal.");
+      p = loadFeed(u)
+        .then((r) => {
+          feedForget(key);
+          const size = Buffer.byteLength(r.ics);
+          feedCache.set(key, { ...r, size });
+          feedCacheBytes += size;
+          for (const k of feedCache.keys()) {
+            if (feedCacheBytes <= FEEDS_CACHE_BYTES && feedCache.size <= 300) break;
+            feedForget(k);
+          }
+          return r;
+        })
+        .finally(() => feedPending.delete(key));
+      feedPending.set(key, p);
+    }
+    const r = await p;
+    return send(res, 200, { ok: true, ics: r.ics, fetched: r.fetched, cached: false });
+  }
+
+  // ---------- E-Mail per IMAP (markierte Mails) ----------
+  // Zugangsdaten liegen AES-256-GCM-verschlüsselt (Schlüssel wie bei /api/connect), die App kennt nur account + secret.
+  const IMAP_ALLOW = allowList(env.TASCHEN_IMAP_ALLOW_PRIVATE);
+  const IMAP_PLAIN = env.TASCHEN_IMAP_ALLOW_PLAIN === "1";
+  const IMAP_TIMEOUT = num(env.TASCHEN_IMAP_TIMEOUT, 20000);
+  const IMAP_MAX = num(env.TASCHEN_IMAP_MAX, 500);
+  const IMAP_CACHE = num(env.TASCHEN_IMAP_CACHE_MS, MIN);
+  const RATE_IMAP = num(env.TASCHEN_RATE_IMAP, 10);
+  const IMAP_PARALLEL = 16;
+  const HOSTNAME_RE = /^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
+  const aadImap = (a) => `taschen-imap:${a.id}:${a.host}:${a.port}`;
+  const imapDb = jsonFile(path.join(DATA, "imap.json"), { accounts: {} });
+  if (!imapDb.data.accounts || typeof imapDb.data.accounts !== "object" || Array.isArray(imapDb.data.accounts)) imapDb.data.accounts = {};
+  const imapAccounts = imapDb.data.accounts;
+  for (const [id, a] of Object.entries(imapAccounts)) if (!ACC_RE.test(id) || !a || typeof a.credEnc !== "string" || !/^[0-9a-f]{64}$/.test(a.secretHash || "") || typeof a.host !== "string") delete imapAccounts[id];
+  const imapCache = new Map(); // Konto → { at, limit, mails } – nur im Speicher
+  const imapPending = new Map();
+  const imapLock = lockMap();
+  let imapActive = 0;
+  timers.push(
+    setInterval(() => {
+      const t = Date.now();
+      let changed = false;
+      for (const [id, a] of Object.entries(imapAccounts)) {
+        if (t - (a.used || a.created || 0) > STALE) {
+          delete imapAccounts[id];
+          imapCache.delete(id);
+          changed = true;
+        }
+      }
+      for (const [id, c] of imapCache) if (t - c.at > IMAP_CACHE) imapCache.delete(id);
+      if (changed) imapDb.save();
+    }, MIN).unref(),
+  );
+
+  // Eine IMAP-Sitzung: Adresse prüfen, verbinden, anmelden, fn – Fehler in verständlichem Deutsch
+  async function imapRun({ host, port, user, password, label, stored }, fn) {
+    if (imapActive >= IMAP_PARALLEL) throw err(503, "Gerade sind zu viele Postfächer gleichzeitig dran – versuch es gleich noch mal.");
+    imapActive++;
+    try {
+      const addr = await withDeadline(resolvePublic(host, IMAP_ALLOW, { what: "Mailserver", server: "Mailserver" }), Date.now() + IMAP_TIMEOUT);
+      return await imapWith({ host, address: addr.address, family: addr.family, port, user, password, plain: IMAP_PLAIN, timeout: IMAP_TIMEOUT }, fn);
+    } catch (e) {
+      if (e.status) throw e;
+      if (e.imap === "login") {
+        if (e.imapCode === "UNAVAILABLE") throw err(503, "Der Mailserver ist gerade nicht verfügbar – versuch es später noch mal.");
+        if (stored) throw err(401, `Die Anmeldung bei ${label || "deinem Postfach"} klappt nicht mehr – wurde das Passwort geändert? Bitte das Postfach neu verbinden.`);
+        throw err(401, imapLoginHelp(host, user));
+      }
+      if (e.imap === "select") throw err(502, "Der Posteingang ließ sich nicht öffnen.");
+      if (e.imap === "search" || e.imap === "fetch") throw err(502, "Der Mailserver hat die Abfrage abgelehnt.");
+      if (e.imap === "bye") throw err(503, "Der Mailserver nimmt gerade keine Verbindungen an – versuch es später noch mal.");
+      if (e.imap === "proto") throw err(502, "Der Mailserver antwortet nicht wie ein IMAP-Server – stimmen Server und Port (IMAP mit SSL/TLS, meist 993)?");
+      if (e.code === "IMAP_TOO_BIG") throw err(502, "Die Antwort des Mailservers war zu groß.");
+      if (e.code === "ETIMEDOUT") throw err(504, "Der Mailserver antwortet nicht (Zeitüberschreitung) – stimmen Server und Port?");
+      throw netError(e, "Mailserver");
+    } finally {
+      imapActive--;
+    }
+  }
+  async function imapAccountBody(req, kind) {
+    const b = await readJson(req, 4096);
+    if (!ACC_RE.test(b.account || "") || !SECRET_RE.test(b.secret || "")) throw err(400, "Ungültige Verbindung.");
+    guard(`i${kind}:${b.account}`, RATE_CONNECT, MIN, "Zu viele Anfragen für dieses Postfach – gleich geht's weiter.");
+    return b;
+  }
+  const IMAP_GONE = "Dieses Postfach ist auf dem Server nicht (mehr) verbunden – bitte neu verbinden.";
+
+  // POST /api/imap/add { host, port = 993, user, password, label } → Anmeldung testen → { ok, account, secret, email, host, port, label }
+  async function imapAdd(req, res, ip) {
+    guard("ia:" + ip, RATE_IMAP, MIN, "Zu viele Anmeldeversuche – warte kurz und versuch es dann noch einmal.");
+    const b = await readJson(req, 8 * 1024);
+    const host = String(b.host ?? "")
+      .trim()
+      .toLowerCase()
+      .replace(/^imaps?:\/\//, "")
+      .replace(/\/.*$/, "")
+      .replace(/\.$/, "");
+    if (!HOSTNAME_RE.test(host) && !net.isIP(bareHost(host))) throw err(400, "Bitte den IMAP-Server angeben (z. B. imap.gmx.net).");
+    const port = b.port == null || b.port === "" ? 993 : Number(b.port);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw err(400, "Ungültiger Port.");
+    if (port !== 993 && !IMAP_ALLOW && !IMAP_PLAIN) throw err(400, "Unterstützt wird IMAP mit SSL/TLS auf Port 993.");
+    const user = typeof b.user === "string" ? b.user.trim() : "";
+    const password = typeof b.password === "string" ? b.password : "";
+    if (!user || user.length > 254 || /[\u0000-\u001f\u007f]/.test(user)) throw err(400, "Bitte die E-Mail-Adresse bzw. den Benutzernamen angeben.");
+    if (!password || password.length > 1024 || /[\u0000\r\n]/.test(password)) throw err(400, "Bitte das Passwort angeben.");
+    const label = clean(b.label, 40) || mailProvider(host, user) || host;
+    if (Object.keys(imapAccounts).length >= IMAP_MAX) throw err(507, "Auf diesem Server sind schon zu viele Postfächer verbunden.");
+    await imapRun({ host, port, user, password }, async () => true);
+    // Dasselbe Postfach noch einmal verbunden → der neue Eintrag ersetzt den alten
+    const userHash = sha(`taschen-imap-user:${host}:${port}:${user.toLowerCase()}`);
+    for (const [old, a] of Object.entries(imapAccounts)) {
+      if (a.userHash === userHash) {
+        delete imapAccounts[old];
+        imapCache.delete(old);
+      }
+    }
+    const now = Date.now();
+    const id = crypto.randomBytes(16).toString("hex");
+    const secret = b64u(crypto.randomBytes(32));
+    const a = { id, host, port, label, userHash, credEnc: "", secretHash: sha(secret), created: now, used: now };
+    a.credEnc = sealToken(connectKey, JSON.stringify({ user, password }), aadImap(a));
+    imapAccounts[id] = a;
+    imapDb.save();
+    await imapDb.flush();
+    log("Postfach verbunden (IMAP).");
+    return send(res, 200, { ok: true, account: id, secret, email: user, host, port, label });
+  }
+
+  // POST /api/imap/flagged { account, secret, limit = 25 } → { ok, mails: [{ uid, subject, from, fromEmail, date, snippet }] }
+  async function imapFlagged(req, res, ip) {
+    guard("if:" + ip, RATE_CONNECT * 4, MIN);
+    const b = await imapAccountBody(req, "f");
+    const a = imapAccounts[b.account];
+    if (!a) return fail(res, 410, IMAP_GONE);
+    if (!secretOk(a, b.secret)) return fail(res, 403, "Kein Zugriff auf dieses Postfach.");
+    const limit = Math.min(50, Math.max(1, Math.round(num(b.limit, 25)) || 25));
+    const hit = imapCache.get(a.id);
+    if (hit && hit.limit >= limit && Date.now() - hit.at < IMAP_CACHE) return send(res, 200, { ok: true, mails: hit.mails.slice(0, limit) });
+    const pk = `${a.id}:${limit}`;
+    let p = imapPending.get(pk);
+    if (!p) {
+      let cred;
+      try {
+        cred = JSON.parse(openToken(connectKey, a.credEnc, aadImap(a)));
+      } catch (_) {
+        warn("IMAP: Zugangsdaten nicht entschlüsselbar (anderer Schlüssel?) – Postfach muss neu verbunden werden.");
+        return fail(res, 410, IMAP_GONE);
+      }
+      p = imapRun({ host: a.host, port: a.port, user: cred.user, password: cred.password, label: a.label, stored: true }, (s) => imapFlaggedMails(s, limit)).finally(() => imapPending.delete(pk));
+      imapPending.set(pk, p);
+    }
+    const mails = await p;
+    if (imapAccounts[a.id] === a) {
+      imapCache.set(a.id, { at: Date.now(), limit, mails });
+      if (Date.now() - (a.used || 0) > HOUR) {
+        a.used = Date.now();
+        imapDb.save();
+      }
+    }
+    return send(res, 200, { ok: true, mails });
+  }
+
+  // POST /api/imap/remove { account, secret } → { ok, removed }
+  async function imapRemove(req, res, ip) {
+    guard("ir:" + ip, RATE_CONNECT, MIN);
+    const b = await imapAccountBody(req, "r");
+    return imapLock(b.account, async () => {
+      const a = imapAccounts[b.account];
+      if (!a) return send(res, 200, { ok: true, removed: false });
+      if (!secretOk(a, b.secret)) return fail(res, 403, "Kein Zugriff auf dieses Postfach.");
+      delete imapAccounts[a.id];
+      imapCache.delete(a.id);
+      imapDb.save();
+      await imapDb.flush();
+      log("Postfach getrennt (IMAP).");
+      return send(res, 200, { ok: true, removed: true });
+    });
+  }
+
+  // ---------- Webhook-Eingang (Siri/Kurzbefehle, Zapier, Make, n8n, IFTTT, Formulare …) ----------
+  // Jeder Eingang: DATA_DIR/inbox/<hook>.json mit Hash des Schlüssels und verschlüsselten Einträgen – bis die App sie abholt.
+  const INBOX = path.join(DATA, "inbox");
+  fs.mkdirSync(INBOX, { recursive: true, mode: 0o700 });
+  const INBOX_MAX = num(env.TASCHEN_INBOX_MAX, 1000);
+  const INBOX_ITEMS = num(env.TASCHEN_INBOX_ITEMS, 200);
+  const RATE_INBOX = num(env.TASCHEN_RATE_INBOX, 30);
+  const INBOX_NEW = num(env.TASCHEN_INBOX_NEW, 20);
+  const ITEM_MAX = 8 * 1024;
+  const IN_BODY_MAX = 32 * 1024;
+  const ITEM_TTL = 60 * DAY; // nie abgeholte Einträge verfallen
+  const HOOK_STALE = 400 * DAY; // ungenutzte Eingänge verschwinden
+  const HOOK_RE = /^[0-9a-f]{32}$/;
+  const KEY_RE = /^[A-Za-z0-9_-]{43}$/;
+  const HOOK_FILE_RE = /^([0-9a-f]{32})\.json$/;
+  const inboxLock = lockMap();
+  const hookFile = (h) => path.join(INBOX, `${h}.json`);
+  const aadInbox = (h) => `taschen-inbox:${h}`;
+  let hookCount = 0;
+  for (const name of fs.readdirSync(INBOX)) {
+    if (name.endsWith(".tmp")) fs.rmSync(path.join(INBOX, name), { force: true });
+    else if (HOOK_FILE_RE.test(name)) hookCount++;
+  }
+  async function readHook(h) {
+    try {
+      const d = JSON.parse(await fsp.readFile(hookFile(h), "utf8"));
+      return d && d.hook === h && Array.isArray(d.items) && /^[0-9a-f]{64}$/.test(d.keyHash || "") ? d : null;
+    } catch (e) {
+      if (e.code === "ENOENT" || e instanceof SyntaxError) return null;
+      throw e;
+    }
+  }
+  const writeHook = (d) => writeAtomic(hookFile(d.hook), JSON.stringify(d));
+  const hookUrl = (req, h, key) => `${PUBLIC_BASE || reqOrigin(req) || ""}/api/in/${h}/${key}`;
+  const keyOk = (d, key) => hashEq(sha(key), d.keyHash);
+  const fresh = (d, t = Date.now()) => d.items.filter((it) => t - (it.at || 0) < ITEM_TTL);
+  async function inboxPurge() {
+    const t = Date.now();
+    let names = [];
+    try {
+      names = await fsp.readdir(INBOX);
+    } catch (_) {
+      return;
+    }
+    for (const name of names) {
+      const h = HOOK_FILE_RE.exec(name)?.[1];
+      if (!h) continue;
+      await inboxLock(h, async () => {
+        const d = await readHook(h);
+        if (!d) return;
+        if (t - (d.used || d.created || 0) > HOOK_STALE) {
+          await fsp.unlink(hookFile(h)).catch(() => {});
+          hookCount = Math.max(0, hookCount - 1);
+          return;
+        }
+        const items = fresh(d, t);
+        if (items.length !== d.items.length) await writeHook({ ...d, items });
+      }).catch((e) => logError("Eingang aufräumen", e));
+    }
+  }
+  inboxPurge();
+  timers.push(setInterval(inboxPurge, 6 * HOUR).unref());
+
+  // Inhalt einer eingehenden Anfrage lesen: JSON, Formular (urlencoded/multipart) oder Text (erste Zeile = Titel)
+  async function inboxPayload(req) {
+    const ct = contentType(req.headers["content-type"] || "text/plain");
+    const chunks = [];
+    await readBody(req, IN_BODY_MAX, (c) => chunks.push(c)).catch((e) => {
+      if (e.status === 413) e.message = `Zu groß – höchstens ${IN_BODY_MAX / 1024} KB pro Aufgabe.`;
+      throw e;
+    });
+    const buf = Buffer.concat(chunks);
+    if (!buf.length) return {};
+    const text = () => decodeText(buf, ct.params.charset).replace(/^﻿/, "");
+    if (/[/+]json$/.test(ct.type)) {
+      const v = jsonObject(text());
+      if (!v) throw err(400, 'Ungültiges JSON – erwartet wird z. B. {"title": "Angebot schicken"}.');
+      return v;
+    }
+    if (ct.type === "application/x-www-form-urlencoded") return Object.fromEntries(new URLSearchParams(text()));
+    if (ct.type === "multipart/form-data") {
+      if (!ct.params.boundary) throw err(400, "Formular ohne Begrenzer (boundary).");
+      return formFields(buf, ct.params.boundary);
+    }
+    if (ct.type.startsWith("text/")) {
+      const t = text();
+      return (/^\s*\{/.test(t) && jsonObject(t)) || { text: t };
+    }
+    throw err(415, "Unbekanntes Format – schick JSON, ein Formular oder einfachen Text.");
+  }
+
+  const IN_BAD = "Diese Eingangs-Adresse ist ungültig – sie wurde zurückgesetzt oder gelöscht. Kopiere die aktuelle Adresse aus der App (Einstellungen → Verbindungen).";
+  // POST|GET /api/in/:hook/:key – von überall (CORS *), Schlüssel in der Adresse (timing-sicher verglichen) → { ok, id }
+  async function inboxIn(req, res, url, p) {
+    const m = /^\/in\/([^/]+)\/([^/]+)\/?$/.exec(p);
+    if (!m) return fail(res, 404, "Unbekannte Anfrage.");
+    if (req.method !== "POST" && req.method !== "GET") return fail(res, 405, "Nicht erlaubt – schick POST (JSON, Formular oder Text) oder GET mit ?text=…", {}, { Allow: "GET, POST, OPTIONS" });
+    const [, hook, key] = m;
+    if (!HOOK_RE.test(hook) || !KEY_RE.test(key)) return fail(res, 403, IN_BAD);
+    guard("in:" + hook, RATE_INBOX, MIN, "Zu viele neue Aufgaben auf einmal – gleich geht's weiter.");
+    const query = Object.fromEntries([...url.searchParams].filter(([k]) => k !== "source"));
+    const body = req.method === "POST" ? await inboxPayload(req) : {};
+    return inboxLock(hook, async () => {
+      const d = await readHook(hook);
+      if (!d || !keyOk(d, key)) return fail(res, 403, IN_BAD);
+      const item = inboxItem({ ...query, ...body }, ITEM_MAX);
+      if (!item) return fail(res, 400, "Titel fehlt – schick z. B. JSON {\"title\": \"Angebot schicken\"}, einfachen Text oder ?text=….");
+      const source = hookSource({ header: req.headers["x-source"], query: url.searchParams.get("source"), body: body.source, ua: req.headers["user-agent"] });
+      const items = fresh(d);
+      if (items.length >= INBOX_ITEMS) return fail(res, 507, `Der Eingang ist voll (${INBOX_ITEMS} Einträge) – öffne die App, damit sie die Aufgaben abholt.`);
+      const id = crypto.randomBytes(8).toString("hex");
+      const now = Date.now();
+      items.push({ id, at: now, box: sealToken(connectKey, JSON.stringify({ ...item, source }), aadInbox(hook)) });
+      await writeHook({ ...d, items, used: now });
+      return send(res, 200, { ok: true, id });
+    });
+  }
+
+  async function hookBody(req, kind) {
+    const b = await readJson(req, 32 * 1024);
+    if (!HOOK_RE.test(b.hook || "") || !KEY_RE.test(b.key || "")) throw err(400, "Ungültiger Eingang.");
+    guard(`ib${kind}:${b.hook}`, 60, MIN, "Zu viele Anfragen für diesen Eingang – gleich geht's weiter.");
+    return b;
+  }
+  const HOOK_GONE = "Diesen Eingang gibt es auf dem Server nicht mehr – bitte unter Einstellungen → Verbindungen neu einrichten.";
+  const HOOK_DENIED = "Kein Zugriff auf diesen Eingang.";
+
+  async function inboxApi(req, res, p, ip) {
+    guard("inbox:" + ip, RATE_CONNECT * 4, MIN);
+    // POST /api/inbox/create {} → { ok, hook, key, url }
+    if (p === "/inbox/create") {
+      guard("inbox-new:" + ip, INBOX_NEW, DAY, "Von dieser Verbindung wurden heute schon zu viele Eingänge angelegt.");
+      await readJson(req, 1024);
+      if (hookCount >= INBOX_MAX) throw err(507, "Auf diesem Server gibt es schon zu viele Eingänge.");
+      const hook = crypto.randomBytes(16).toString("hex");
+      const key = b64u(crypto.randomBytes(32));
+      const now = Date.now();
+      await writeHook({ v: 1, hook, keyHash: sha(key), created: now, used: now, items: [] });
+      hookCount++;
+      log("Eingang angelegt.");
+      return send(res, 200, { ok: true, hook, key, url: hookUrl(req, hook, key) });
+    }
+    const kind = p.slice("/inbox/".length);
+    const b = await hookBody(req, kind[0]);
+    return inboxLock(b.hook, async () => {
+      const d = await readHook(b.hook);
+      if (!d) return kind === "remove" ? send(res, 200, { ok: true, removed: false }) : fail(res, 410, HOOK_GONE);
+      if (!keyOk(d, b.key)) return fail(res, 403, HOOK_DENIED);
+      const now = Date.now();
+      // POST /api/inbox/pull { hook, key } → { ok, items: [{ id, at, title, notes, due, time, bag, prio, url, source }] }
+      if (kind === "pull") {
+        const items = [];
+        const keep = [];
+        for (const it of fresh(d, now)) {
+          try {
+            const x = JSON.parse(openToken(connectKey, it.box, aadInbox(d.hook)));
+            items.push({ id: it.id, at: it.at, title: x.title, notes: x.notes ?? null, due: x.due ?? null, time: x.time ?? null, bag: x.bag ?? null, prio: x.prio ?? null, url: x.url ?? null, source: x.source || "Webhook" });
+            keep.push(it);
+          } catch (_) {
+            /* mit anderem Schlüssel verschlüsselt – unlesbar, wird verworfen */
+          }
+        }
+        if (keep.length !== d.items.length || now - (d.used || 0) > HOUR) await writeHook({ ...d, items: keep, used: now });
+        return send(res, 200, { ok: true, items });
+      }
+      // POST /api/inbox/ack { hook, key, ids } → { ok, removed, left }
+      if (kind === "ack") {
+        const ids = new Set((Array.isArray(b.ids) ? b.ids : []).slice(0, 1000).filter((x) => typeof x === "string"));
+        const items = d.items.filter((it) => !ids.has(it.id));
+        const removed = d.items.length - items.length;
+        if (removed) await writeHook({ ...d, items, used: now });
+        return send(res, 200, { ok: true, removed, left: items.length });
+      }
+      // POST /api/inbox/reset { hook, key } → neuer Schlüssel, alte Adresse ungültig → { ok, key, url }
+      if (kind === "reset") {
+        const key = b64u(crypto.randomBytes(32));
+        await writeHook({ ...d, keyHash: sha(key), used: now, reset: now });
+        log("Eingang: Adresse zurückgesetzt.");
+        return send(res, 200, { ok: true, key, url: hookUrl(req, d.hook, key) });
+      }
+      // POST /api/inbox/remove { hook, key } → { ok, removed }
+      await fsp.unlink(hookFile(d.hook)).catch((e) => {
+        if (e.code !== "ENOENT") throw e;
+      });
+      hookCount = Math.max(0, hookCount - 1);
+      log("Eingang gelöscht.");
+      return send(res, 200, { ok: true, removed: true });
+    });
+  }
+
   // ---------- API ----------
   async function api(req, res, url) {
     const ip = ipOf(req);
+    // Eingehender Webhook: von überall (CORS *, keine Herkunftsprüfung) – geschützt durch den Schlüssel in der Adresse
+    if (url.pathname === "/api/in" || url.pathname.startsWith("/api/in/")) {
+      res.extraHeaders = { "Access-Control-Allow-Origin": "*", "Cross-Origin-Resource-Policy": "cross-origin", "Referrer-Policy": "no-referrer" };
+      if (req.method === "OPTIONS") return send(res, 204, "", { "Access-Control-Allow-Methods": "GET, POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type, X-Source", "Access-Control-Max-Age": "86400" });
+      const r = limited("ip:" + ip, RATE_IP, MIN);
+      if (r) throw tooMany(r);
+      return inboxIn(req, res, url, url.pathname.replace(/^\/api/, ""));
+    }
     const o = originOf(req);
     res.extraHeaders = { Vary: "Origin" };
     if (o.cors) Object.assign(res.extraHeaders, { "Access-Control-Allow-Origin": o.origin, "Cross-Origin-Resource-Policy": "cross-origin" });
@@ -1505,7 +2770,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     if (r) throw tooMany(r);
     if (req.method !== "GET" && req.method !== "HEAD" && !o.allowed) return fail(res, 403, "Fremde Herkunft – diese Adresse ist auf dem Server nicht freigegeben.");
     const p = url.pathname.replace(/^\/api/, "");
-    if (p === "/health" && (req.method === "GET" || req.method === "HEAD")) return send(res, 200, { ok: true, service: "taschen", version: VERSION, sync: true, push: !!vapid, ai: !!client, connect: { google: connectOn("google"), microsoft: connectOn("microsoft") }, limits: { state: STATE_MAX, file: FILE_MAX, quota: QUOTA } });
+    if (p === "/health" && (req.method === "GET" || req.method === "HEAD")) return send(res, 200, { ok: true, service: "taschen", version: VERSION, sync: true, push: !!vapid, ai: !!client, connect: { google: connectOn("google"), microsoft: connectOn("microsoft") }, feeds: true, imap: true, inbox: true, limits: { state: STATE_MAX, file: FILE_MAX, quota: QUOTA } });
 
     const m = /^\/sync\/([^/]+)(?:\/files\/([^/]+))?$/.exec(p);
     if (m) {
@@ -1526,6 +2791,13 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
     if (/^\/push\/(key|subscribe|update|unsubscribe|test)$/.test(p)) return pushApi(req, res, p, ip);
     if (p === "/ai") return aiApi(req, res, ip);
     if (p.startsWith("/connect/")) return connectApi(req, res, url, p, ip);
+    if (p === "/feeds/fetch") return req.method === "POST" ? feedsFetch(req, res, ip) : fail(res, 405, "Nicht erlaubt.");
+    const im = /^\/imap\/(add|flagged|remove)$/.exec(p);
+    if (im) {
+      if (req.method !== "POST") return fail(res, 405, "Nicht erlaubt.");
+      return im[1] === "add" ? imapAdd(req, res, ip) : im[1] === "flagged" ? imapFlagged(req, res, ip) : imapRemove(req, res, ip);
+    }
+    if (/^\/inbox\/(create|pull|ack|reset|remove)$/.test(p)) return req.method === "POST" ? inboxApi(req, res, p, ip) : fail(res, 405, "Nicht erlaubt.");
     return fail(res, 404, "Unbekannte Anfrage.");
   }
 
@@ -1607,7 +2879,7 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
   });
   const port = server.address().port;
   const url = `http://${HOST && HOST !== "0.0.0.0" && HOST !== "::" ? (HOST.includes(":") ? `[${HOST}]` : HOST) : "localhost"}:${port}`;
-  log(`Arbeitstaschen-Server läuft auf ${url}  (Daten: ${DATA}, Push: an, KI: ${client ? `${MODEL} · ${AI_DAILY}/Tag` : "aus – ANTHROPIC_API_KEY setzen"}, Konten: ${["google", "microsoft"].filter(connectOn).map((p) => PROVIDERS[p].name).join(" + ") || "aus"}, Herkünfte: ${ALLOWED_ORIGINS.join(", ") || "nur eigene"})`);
+  log(`Arbeitstaschen-Server läuft auf ${url}  (Daten: ${DATA}, Push: an, KI: ${client ? `${MODEL} · ${AI_DAILY}/Tag` : "aus – ANTHROPIC_API_KEY setzen"}, Konten: ${["google", "microsoft"].filter(connectOn).map((p) => PROVIDERS[p].name).join(" + ") || "aus"}, Verbindungen: Kalender-Abos, IMAP, Webhook, Herkünfte: ${ALLOWED_ORIGINS.join(", ") || "nur eigene"})`);
 
   let closed = false;
   async function close() {
@@ -1619,7 +2891,9 @@ export async function start({ env = process.env, aiClient = null, quiet = false 
       server.closeAllConnections?.();
     });
     await ticking;
-    await Promise.all([pushDb.flush(), aiDb.flush(), connectDb.flush()]);
+    feedCache.clear();
+    imapCache.clear();
+    await Promise.all([pushDb.flush(), aiDb.flush(), connectDb.flush(), imapDb.flush()]);
   }
   return { server, port, url, dataDir: DATA, close, tick, vapidPublicKey: vapid.publicKey };
 }

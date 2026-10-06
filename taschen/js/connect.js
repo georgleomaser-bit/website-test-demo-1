@@ -1,7 +1,8 @@
 // Arbeitstaschen – Verbindung zu Google (Gmail, Google Kalender, Workspace) und Microsoft (Outlook, Microsoft 365, Outlook.com)
 // Der eigene Arbeitstaschen-Server vermittelt nur die Anmeldung (OAuth) und gibt kurzlebige Zugangs-Tokens aus.
 // Termine und Mails holt die App direkt bei Google bzw. Microsoft (beide erlauben CORS) – sie laufen nie über den Server.
-// Ohne Server gehen trotzdem: Kalender-Links, E-Mail schreiben (Gmail, Outlook, Mail-App) und Anrufen (tel:).
+// Dazu kommen Kalender-Abos (ICS-Links) und IMAP-Postfächer (GMX, WEB.DE, T-Online …) aus integrations.js – gleicher Cache,
+// gleiche Termin- und Mail-Form. Ohne Server gehen trotzdem: Kalender-Links, E-Mail schreiben (Gmail, Outlook, Mail-App) und Anrufen (tel:).
 import { SERVER } from "./config.js";
 import { normServer, request, checkServer, status as syncStatus } from "./sync.js";
 import { safeUrl } from "./util.js";
@@ -461,8 +462,25 @@ const liveAccounts = () => {
     return [];
   }
 };
-const accountById = (id) => liveAccounts().find((a) => a.id === id) || null;
-export const accounts = () => liveAccounts();
+// Kalender-Abos (ics) und IMAP-Postfächer – laden über integrations.js, landen im selben Cache
+const EXT = new Set(["ics", "imap"]);
+const extAccounts = () => {
+  try {
+    return (ST?.accounts?.() || []).filter((a) => EXT.has(a.provider));
+  } catch (_) {
+    return [];
+  }
+};
+const allAccounts = () => [...liveAccounts(), ...extAccounts()];
+const accountById = (id) => allAccounts().find((a) => a.id === id) || null;
+export const accounts = () => liveAccounts(); // nur Google/Microsoft (OAuth)
+export const feeds = () => extAccounts().filter((a) => a.provider === "ics");
+export const imapAccounts = () => extAccounts().filter((a) => a.provider === "imap");
+// Alles, was Termine bzw. markierte Mails liefert (Google, Microsoft, Kalender-Links, IMAP)
+export const calendarAccounts = () => allAccounts().filter((a) => a.provider !== "imap" && a.calendars !== false);
+export const mailAccounts = () => allAccounts().filter((a) => a.provider !== "ics" && a.mail !== false);
+// Anzeigename eines Kontos (E-Mail, Kalendername oder Anbieter)
+export const accountName = (a) => (a ? str(a.provider === "ics" ? a.name || a.label || a.host : a.email || a.label) || providerName(a.provider) : "");
 
 async function loadCache() {
   if (!cacheReady) {
@@ -490,7 +508,7 @@ function saveCache() {
 
 // Zuletzt geladene Termine (ohne abgesagte, nur Konten mit „Termine anzeigen“)
 export function events({ all = false } = {}) {
-  const accs = ST ? new Map(liveAccounts().map((a) => [a.id, a])) : null;
+  const accs = ST ? new Map(allAccounts().map((a) => [a.id, a])) : null;
   return cache.events.filter((e) => e && (all || !e.cancelled) && (!accs || (accs.has(e.account) && accs.get(e.account).calendars !== false)));
 }
 // Termine an einem Tag (auch mehrtägige, die über den Tag laufen)
@@ -501,7 +519,7 @@ export function eventsOn(iso, list = events()) {
   return list.filter((e) => e.start < b && (e.end > a || (e.end === e.start && e.start >= a))).sort((x, y) => Number(y.allDay) - Number(x.allDay) || x.start - y.start || x.title.localeCompare(y.title));
 }
 export function mails({ all = false } = {}) {
-  const accs = ST ? new Map(liveAccounts().map((a) => [a.id, a])) : null;
+  const accs = ST ? new Map(allAccounts().map((a) => [a.id, a])) : null;
   const done = all ? null : takenSet();
   return cache.mails.filter((m) => m && (!accs || (accs.has(m.account) && accs.get(m.account).mail !== false)) && (!done || !done.has(m.id)));
 }
@@ -513,7 +531,7 @@ export const info = () => ({ at: cache.at, busy, errors: cache.errors.filter((e)
 export function accountState(id) {
   const a = accountById(id);
   if (!a) return null;
-  if (!a.secret) return { kind: "expired", msg: "Schlüssel fehlt (z. B. nach einem Backup) – bitte neu verbinden." };
+  if (!a.secret) return { kind: "expired", msg: a.provider === "ics" ? "Der Kalender-Link fehlt (z. B. nach einem Backup) – bitte neu eintragen." : "Schlüssel fehlt (z. B. nach einem Backup) – bitte neu verbinden." };
   if (a.broken) return { kind: "expired", msg: "Die Verbindung ist abgelaufen – bitte neu verbinden." };
   const e = cache.errors.find((x) => x.account === id);
   if (e) return { kind: e.expired ? "expired" : e.network ? "network" : "error", msg: e.msg };
@@ -556,6 +574,9 @@ export function markTaken(id, taskId = true) {
 }
 
 // ---------- Server ----------
+// Server eines Kontos (gespeichert) bzw. der eingestellte Arbeitstaschen-Server
+export const serverFor = (a) => normServer(a?.server) || defaultServer();
+
 function defaultServer() {
   const fixed = normServer(SERVER.url);
   if (fixed) return fixed;
@@ -620,6 +641,8 @@ export function startConnect(provider, server, { back = "#einstellungen/konten" 
 }
 
 export const lastReturn = () => lastRet;
+// Für integrations.js: der verbundene Store (Konto als „abgelaufen“ markieren)
+export const storeRef = () => ST;
 
 // Rückkehr aus der Anmeldung: #connect=<provider>&account=<32 hex>&secret=<base64url>&email=<…> oder #connect=<provider>&error=<…>
 // → true, wenn eine (selbst gestartete) Rückkehr verarbeitet wurde; Ergebnis über lastReturn()
@@ -691,11 +714,17 @@ function dropAccount(id) {
   if (cache.events.length + cache.mails.length + cache.errors.length !== n) saveCache();
 }
 
+// Termine/Mails/Fehler eines entfernten Kontos sofort aus dem Cache (Kalender-Link, IMAP)
+export function forgetAccount(id) {
+  dropAccount(id);
+  emit();
+}
+
 // Trennen: beim Server widerrufen und löschen, dann hier (und per Sync überall) entfernen
 export async function disconnect(id) {
   const a = accountById(id) || ST?.account?.(id);
   if (!a) return { ok: false, remote: false };
-  const remote = await removeRemote(a);
+  const remote = EXT.has(a.provider) ? false : await removeRemote(a); // Kalender-Link/IMAP: integrations.js räumt selbst beim Server auf
   ST.removeAccount(a.id);
   dropAccount(a.id);
   emit();
@@ -846,7 +875,7 @@ async function graphMails(a) {
 }
 
 function errInfo(a, e, what) {
-  return { account: a.id, email: a.email, provider: a.provider, what, msg: clean(e?.message || "Unbekannter Fehler", 240), expired: !!e?.expired, network: !!e?.network, at: Date.now() };
+  return { account: a.id, email: accountName(a), provider: a.provider, what, msg: clean(e?.message || "Unbekannter Fehler", 240), expired: !!e?.expired, network: !!e?.network, at: Date.now() };
 }
 
 const result = () => ({ events: events(), mails: mails(), errors: info().errors });
@@ -860,7 +889,7 @@ export function refresh(store, { force = false, retryBroken = false } = {}) {
   }
   running = (async () => {
     await loadCache();
-    const accs = liveAccounts();
+    const accs = allAccounts();
     if (!accs.length) {
       if (cache.events.length || cache.mails.length || cache.errors.length) {
         cache = { at: 0, events: [], mails: [], errors: [] };
@@ -880,18 +909,45 @@ export function refresh(store, { force = false, retryBroken = false } = {}) {
     const evs = [];
     const ms = [];
     const errors = [];
+    // Kalender-Links und IMAP: erst bei Bedarf laden (kein Kreis-Import connect ↔ integrations)
+    const I = accs.some((a) => EXT.has(a.provider)) ? await import("./integrations.js") : null;
     await Promise.all(
       accs.map(async (a) => {
         const prevE = cache.events.filter((e) => e.account === a.id);
         const prevM = cache.mails.filter((m) => m.account === a.id);
         if (!a.secret || (a.broken && !retryBroken)) {
-          errors.push(errInfo(a, expiredError(a, !a.secret ? `Für ${a.email} fehlt der Schlüssel – bitte neu verbinden.` : undefined), "Konto"));
+          const missing = a.provider === "ics" ? `Für „${accountName(a)}“ fehlt der Kalender-Link – bitte neu eintragen.` : `Für ${accountName(a)} fehlt der Schlüssel – bitte neu verbinden.`;
+          errors.push(errInfo(a, expiredError(a, !a.secret ? missing : undefined), "Konto"));
           evs.push(...prevE);
           ms.push(...prevM);
           return;
         }
         const g = a.provider === "google";
         const jobs = [];
+        if (a.provider === "ics" || a.provider === "imap") {
+          if (a.provider === "ics" && a.calendars !== false)
+            jobs.push(
+              I.loadFeed(a, { from, to }).then(
+                (list) => evs.push(...list),
+                (e) => {
+                  errors.push(errInfo(a, e, "Termine"));
+                  evs.push(...prevE);
+                },
+              ),
+            );
+          if (a.provider === "imap" && a.mail !== false)
+            jobs.push(
+              I.loadImap(a).then(
+                (list) => ms.push(...list),
+                (e) => {
+                  errors.push(errInfo(a, e, "Mails"));
+                  ms.push(...prevM);
+                },
+              ),
+            );
+          await Promise.all(jobs);
+          return;
+        }
         if (a.calendars !== false)
           jobs.push(
             (g ? googleEvents(a, from, to) : graphEvents(a, from, to)).then(
@@ -1037,8 +1093,8 @@ export function eventSummary(iso) {
 
 // ---------- Start ----------
 const accSig = () =>
-  liveAccounts()
-    .map((a) => `${a.id}:${a.secret ? 1 : 0}${a.calendars !== false ? 1 : 0}${a.mail !== false ? 1 : 0}`)
+  allAccounts()
+    .map((a) => `${a.id}:${a.secret ? (a.provider === "ics" ? fnv(a.secret) : 1) : 0}${a.calendars !== false ? 1 : 0}${a.mail !== false ? 1 : 0}`)
     .join("|");
 
 export function start(store) {

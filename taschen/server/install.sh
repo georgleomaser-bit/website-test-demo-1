@@ -13,6 +13,11 @@
 # Outlook.com. Dafür braucht der Server je einen OAuth-Client (Client-ID + Secret) – das Skript fragt danach (Enter = überspringen)
 # und zeigt am Ende die Weiterleitungs-URIs, die du bei Google bzw. Microsoft einträgst.
 #
+# Ohne weitere Einrichtung aktiv: Kalender-Abos per Link (iCloud, Google, Outlook, Feiertage … als ICS/webcal), markierte
+# Mails per IMAP (GMX, WEB.DE, T-Online, iCloud, Yahoo, IONOS, Strato, freenet …) und ein persönlicher Webhook-Eingang
+# für Siri/Kurzbefehle, Zapier, Make, n8n und IFTTT. IMAP-Zugangsdaten und Webhook-Einträge liegen verschlüsselt auf dem
+# Server (Schlüssel CONNECT_KEY in /etc/taschen.env, nicht in den Backups).
+#
 # Ohne Rückfragen (z. B. per Skript):  TASCHEN_DOMAIN=… ANTHROPIC_API_KEY=… ALLOWED_ORIGINS=… VAPID_SUBJECT=… \
 #   GOOGLE_CLIENT_ID=… GOOGLE_CLIENT_SECRET=… MS_CLIENT_ID=… MS_CLIENT_SECRET=… bash install.sh
 set -euo pipefail
@@ -266,8 +271,9 @@ mkdir -p /var/backups/taschen
 chmod 700 /var/backups/taschen
 cat >/etc/cron.daily/taschen-backup <<'EOF'
 #!/bin/sh
-# Tägliche Sicherung der Arbeitstaschen-Daten (Sync-Stände sind verschlüsselt, dazu Push-Abos, VAPID-Schlüssel und die
-# verschlüsselten Refresh-Tokens verbundener Konten – deren Schlüssel CONNECT_KEY liegt nur in /etc/taschen.env) – 14 Tage aufbewahren
+# Tägliche Sicherung der Arbeitstaschen-Daten (Sync-Stände sind verschlüsselt, dazu Push-Abos, VAPID-Schlüssel, die
+# verschlüsselten Refresh-Tokens verbundener Konten, verschlüsselte IMAP-Zugangsdaten und noch nicht abgeholte, verschlüsselte
+# Webhook-Einträge – deren Schlüssel CONNECT_KEY liegt nur in /etc/taschen.env) – 14 Tage aufbewahren
 umask 077
 tar -czf "/var/backups/taschen/taschen-$(date +%F).tgz" -C /var/lib taschen 2>/dev/null
 find /var/backups/taschen -name 'taschen-*.tgz' -mtime +14 -delete
@@ -305,6 +311,11 @@ echo "     Freigegeben: $ORIGINS"
 CONNECT_G=$(printf '%s' "$STATUS" | grep -q '"google":true' && echo 'bereit' || echo 'aus')
 CONNECT_M=$(printf '%s' "$STATUS" | grep -q '"microsoft":true' && echo 'bereit' || echo 'aus')
 echo "     Konten:      Google $CONNECT_G · Microsoft $CONNECT_M"
+if printf '%s' "$STATUS" | grep -q '"inbox":true'; then
+  echo "     Verbindungen: Kalender-Abos, IMAP und Webhook sind aktiv."
+else
+  echo "     Verbindungen: noch nicht bereit – nach dem Start erneut prüfen (taschen-update)"
+fi
 echo ""
 echo "     Konten verbinden – diese Weiterleitungs-URIs beim Anbieter eintragen:"
 echo "       Google:    https://$DOMAIN/api/connect/google/callback"
@@ -325,6 +336,10 @@ if [ "$CONNECT_G" != bereit ] || [ "$CONNECT_M" != bereit ]; then
   echo "       Danach dieses Skript noch einmal starten und Client-ID + Secret eingeben."
 fi
 echo "       Firmenkonten (Microsoft 365, Workspace): Die IT muss die App einmal freigeben."
+echo ""
+echo "     Kalender-Links, GMX/WEB.DE/iCloud-Mail per IMAP und den Webhook für Siri, Zapier & Co. richtest du"
+echo "     direkt in der App ein: Einstellungen → Verbindungen (die persönliche Webhook-Adresse beginnt mit"
+echo "     https://$DOMAIN/api/in/…)."
 echo ""
 echo "     So verbindest du deine Geräte:"
 echo "       1. Öffne https://$DOMAIN in Safari und füge die App zum Home-Bildschirm"

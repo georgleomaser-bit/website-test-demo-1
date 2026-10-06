@@ -270,7 +270,7 @@ const healthCache = new Map(); // Basis-URL → { at, value }
 
 export async function checkServer(url) {
   const base = normServer(url);
-  const fail = (error) => ({ ok: false, version: null, sync: false, push: false, ai: false, connect: { google: false, microsoft: false }, error });
+  const fail = (error) => ({ ok: false, version: null, sync: false, push: false, ai: false, connect: { google: false, microsoft: false }, feeds: false, imap: false, inbox: false, error });
   if (!base) return fail("Ungültige Adresse – sie muss mit https:// beginnen.");
   const hit = healthCache.get(base);
   if (hit && Date.now() - hit.at < (hit.value.ok ? 60000 : 5000)) return hit.value;
@@ -278,7 +278,7 @@ export async function checkServer(url) {
   try {
     const r = await request(base, "/api/health", { timeout: 8000 });
     if (!r.ok || r.data?.service !== "taschen") value = fail("Unter dieser Adresse läuft kein Taschen-Server.");
-    else value = { ok: r.data.ok !== false, version: r.data.version || null, sync: r.data.sync !== false, push: !!r.data.push, ai: !!r.data.ai, connect: { google: !!r.data.connect?.google, microsoft: !!r.data.connect?.microsoft } };
+    else value = { ok: r.data.ok !== false, version: r.data.version || null, sync: r.data.sync !== false, push: !!r.data.push, ai: !!r.data.ai, connect: { google: !!r.data.connect?.google, microsoft: !!r.data.connect?.microsoft }, feeds: !!r.data.feeds, imap: !!r.data.imap, inbox: !!r.data.inbox };
   } catch (e) {
     value = fail(e.message);
   }
