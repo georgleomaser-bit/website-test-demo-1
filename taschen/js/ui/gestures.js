@@ -268,6 +268,9 @@ function endDrag(commit) {
   d.el.classList.remove("drag-src");
   d.el.removeAttribute("data-hold");
   document.documentElement.classList.remove("is-dragging");
+  // Board-Position merken: Verschwindet eine Spalte (z. B. „Ohne Abschnitt“ leer), rastet der Browser sonst irgendwo neu ein
+  const sc = d.el.closest?.(".board-scroll");
+  const left = sc ? sc.scrollLeft : null;
   if (commit && d.zone) {
     const fn = drops[d.zone.dataset.drop];
     if (fn) {
@@ -279,6 +282,18 @@ function endDrag(commit) {
       }
     }
   }
+  if (left != null) keepBoardScroll(left);
+}
+
+function keepBoardScroll(left) {
+  const fix = () => {
+    const b = document.querySelector(".board-scroll");
+    if (!b || D) return;
+    const want = Math.min(left, b.scrollWidth - b.clientWidth);
+    if (Math.abs(b.scrollLeft - want) > 2) b.scrollTo({ left: want, behavior: "instant" });
+  };
+  requestAnimationFrame(() => requestAnimationFrame(fix));
+  setTimeout(fix, 220);
 }
 
 // Maus: ab 6 px Bewegung mit gedrückter Taste

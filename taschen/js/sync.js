@@ -294,6 +294,7 @@ export async function detectServer() {
   if (fixed) return fixed;
   if (!hasDoc() || typeof location === "undefined") return null;
   if (!/^https?:$/.test(location.protocol) || STATIC_HOSTS.test(location.hostname)) return null; // statische Hosts haben keine API
+  if (!online()) return null; // offline gibt es nichts zu finden (und keine Netzwerk-Fehlermeldung in der Konsole)
   try {
     const here = new URL(".", document.baseURI).href;
     const base = normServer(here);
@@ -338,6 +339,8 @@ let retryN = 0;
 let localTimer = null;
 let blockedUntil = 0;
 let lastMeta = 0;
+let fresh = null; // { code } – gerade neu erzeugter Code: der Raum ist leer, erster Abgleich lädt nur hoch (kein 404-Abruf)
+let joined = null; // { code, rev, data } – beim Beitreten schon geholter Stand; dessen Profil gewinnt (Einstellungen kommen mit)
 const haveLocal = new Set(); // Dateien, deren Inhalt hier liegt
 const fileWait = new Map(); // Datei-id → frühester neuer Versuch
 
@@ -421,14 +424,18 @@ export async function configure({ server, code, join = false } = {}) {
   if (!c) throw new Error("Der Sync-Code ist ungültig – 24 Zeichen, z. B. ABCD-EFGH-…");
   cryptoApi();
   await ready();
+  let joinSnap = null;
   if (join) {
     // „Ich habe schon einen Code“: Gibt es dazu Daten? Sonst ist es vermutlich ein Tippfehler.
     const { id } = await derive(c);
     const r = await request(base, `/api/sync/${id}`, { timeout: 15000 });
     if (r.status === 404) throw new Error("Zu diesem Code gibt es auf dem Server noch keine Daten – stimmt der Code?");
     if (!r.ok) throw httpError(r, "Prüfen");
+    joinSnap = { code: c, rev: num(r.data?.rev, 0), data: typeof r.data?.data === "string" ? r.data.data : "" };
   }
   const same = cfg.code === c && cfg.server === base;
+  fresh = !join && !same ? { code: c } : null;
+  joined = joinSnap && !same ? joinSnap : null;
   cfg = { ...cfg, enabled: true, server: base, code: c, rev: same ? cfg.rev : 0, lastError: null, gone: same ? cfg.gone : [] };
   blockedUntil = 0;
   retryN = 0;
@@ -518,7 +525,15 @@ async function runSync({ quiet = false } = {}) {
   let pulled = false;
   let pushed = false;
   try {
-    let snap = await pull(path, key);
+    let snap;
+    if (fresh?.code === cfg.code) snap = { rev: 0, remote: null }; // neuer Raum – sollte es ihn doch geben, kommt 409 mit dessen Stand
+    else if (joined?.code === cfg.code) {
+      snap = { rev: joined.rev, remote: joined.data ? await decrypt(key, joined.data) : null };
+      // Beitreten: Profil (Name, Tagesrhythmus, Darstellung) vom bestehenden Raum übernehmen – nicht das frische dieses Geräts hochladen
+      const lp = st.get?.()?.profile;
+      if (snap.remote?.profile && lp) snap.remote.profile = { ...snap.remote.profile, updated: Math.max(num(snap.remote.profile.updated), num(lp.updated) + 1) };
+    } else snap = await pull(path, key);
+    fresh = joined = null;
     // Server hat nichts mehr, obwohl wir schon synchronisiert hatten → Dateien neu hochladen
     if (snap.missing && cfg.rev > 0) for (const f of st.files?.() || []) if (f.synced) st.markFileSynced?.(f.id, false);
     let done = false;
