@@ -3,13 +3,14 @@ import * as store from "../store.js";
 import * as dates from "../dates.js";
 import * as remind from "../remind.js";
 import * as sync from "../sync.js";
+import * as ai from "../ai.js";
 import { BRAND, COLORS, COLOR_NAMES, SERVER } from "../config.js";
 import { SEED } from "../seed.js";
 import { esc, fmtSize } from "../util.js";
 import { icon } from "./icons.js";
 import { app, on, safe, prefs, setPref, colorVars, relTime, today, isStandalone, modKey } from "./core.js";
 import { seg, toggle, sq, largeTitle } from "./components.js";
-import { confirmBox, chooseBox, infoBox } from "./sheet.js";
+import { confirmBox, chooseBox } from "./sheet.js";
 import { haptic, toast, toastError, confetti } from "./fx.js";
 import { exportCalendar } from "./today.js";
 import { platform } from "./install.js";
@@ -26,7 +27,10 @@ export function title() {
 }
 
 // Asynchrone Infos einmal pro Öffnen nachladen
+let infoBusy = false;
 export async function refreshInfo() {
+  if (infoBusy) return;
+  infoBusy = true;
   try {
     ui.persisted = navigator.storage?.persisted ? await navigator.storage.persisted() : null;
     ui.estimate = navigator.storage?.estimate ? await navigator.storage.estimate() : null;
@@ -57,6 +61,7 @@ export async function refreshInfo() {
   }
   ui.aiAvail = !!app.aiAvailable;
   ui.checked = true;
+  infoBusy = false;
   app.render();
 }
 
@@ -86,8 +91,8 @@ export function render(r) {
     inputRow("sunrise", "orange", "Tagesbriefing", `<input type="time" class="in-time" value="${esc(p.dayStart || "08:00")}" data-change="set-prof" data-f="dayStart" />`, "Arbeitsbeginn & Morgen-Erinnerung"),
     inputRow("sunset", "indigo", "Feierabend", `<input type="time" class="in-time" value="${esc(p.dayEnd || "18:00")}" data-change="set-prof" data-f="dayEnd" />`, "Tagesabschluss"),
     `<div class="frow col">${sq("calendar", "red")}<span class="frow-l">Arbeitstage</span><div class="days">${[1, 2, 3, 4, 5, 6, 0].map((d) => `<button type="button" class="day${(p.workdays || []).includes(d) ? " on" : ""}" data-act="set-day" data-d="${d}" aria-pressed="${(p.workdays || []).includes(d)}">${WD[d]}</button>`).join("")}</div></div>`,
-    ctlRow("target", "pink", "Fokus-Aufgaben pro Tag", seg([1, 2, 3, 4, 5].map((n) => ({ id: String(n), label: String(n) })), String(p.focusCount || 3), { act: "set-focus", cls: "mini", label: "Fokus-Anzahl" })),
-    ctlRow("calendar", "teal", "Woche beginnt am", seg([{ id: "1", label: "Montag" }, { id: "0", label: "Sonntag" }], String(p.weekStart ?? 1), { act: "set-weekstart", cls: "mini", label: "Wochenstart" })),
+    ctlRow("target", "pink", "Fokus pro Tag", seg([1, 2, 3, 4, 5].map((n) => ({ id: String(n), label: String(n) })), String(p.focusCount || 3), { act: "set-focus", cls: "mini", label: "Fokus-Anzahl" })),
+    ctlRow("calendar", "teal", "Wochenstart", seg([{ id: "1", label: "Montag" }, { id: "0", label: "Sonntag" }], String(p.weekStart ?? 1), { act: "set-weekstart", cls: "mini", label: "Wochenstart" })),
     inputRow("chart", "purple", "Wochenrückblick", `<select data-change="set-prof-num" data-f="reviewDay">${[1, 2, 3, 4, 5, 6, 0].map((d) => opt(String(d), WD_LONG[d], (p.reviewDay ?? 5) === d)).join("")}</select>`),
   ]);
 
@@ -145,7 +150,7 @@ export function render(r) {
   const syncRows = [];
   syncRows.push(ctlRow("devices", "cyan", "Status", `<span class="status ${syncState[1]}">${syncState[0]}</span>`, sy.enabled ? (sy.lastSync ? `zuletzt ${esc(relTime(sy.lastSync))}` : "noch nicht synchronisiert") + (sy.error ? ` · <span class="red">${esc(sy.error)}</span>` : "") : "iPhone, iPad und Mac auf dem gleichen Stand"));
   if (!sy.enabled) {
-    syncRows.push(inputRow("cloud", "blue", "Server", `<input type="url" class="in-text" value="${esc(ui.server)}" placeholder="https://taschen.…sslip.io" data-input="set-server" autocapitalize="off" autocorrect="off" inputmode="url" />`, app.server ? "automatisch gefunden" : "Adresse deines Taschen-Servers"));
+    syncRows.push(inputRow("cloud", "blue", "Server", `<input type="url" class="in-text" value="${esc(ui.server)}" placeholder="https://taschen.…sslip.io" data-input="set-server" data-change="set-server-save" data-key-act="blur-enter" autocapitalize="off" autocorrect="off" inputmode="url" enterkeyhint="done" />`, app.server ? "automatisch gefunden" : "Adresse deines Taschen-Servers"));
     if (ui.joining) {
       syncRows.push(inputRow("key", "orange", "Sync-Code", `<input type="text" class="in-text mono" value="${esc(ui.joinCode)}" placeholder="ABCD-EFGH-…" data-input="set-joincode" autocapitalize="characters" autocorrect="off" spellcheck="false" />`, "vom anderen Gerät"));
       syncRows.push(`<div class="frow btns"><button type="button" class="btn sm" data-act="set-join-cancel">Abbrechen</button><button type="button" class="btn primary sm" data-act="set-join"${ui.busy ? " disabled" : ""}>${ui.busy === "join" ? `<span class="spinner sm"></span>` : icon("link")}<span>Verbinden</span></button></div>`);
@@ -167,7 +172,7 @@ export function render(r) {
   // Darstellung
   h += group("darstellung", "Darstellung", [
     `<div class="frow col">${sq("palette", "pink")}<span class="frow-l">Akzentfarbe</span><div class="colors">${Object.keys(COLORS).filter((c) => c !== "gray").map((c) => `<button type="button" class="color${(p.accent || "blue") === c ? " on" : ""}" style="${colorVars(c)}" data-act="set-accent" data-v="${c}" aria-label="${esc(COLOR_NAMES[c])}" title="${esc(COLOR_NAMES[c])}"></button>`).join("")}</div></div>`,
-    ctlRow("moon", "indigo", "Erscheinungsbild", seg([{ id: "auto", label: "Auto" }, { id: "light", label: "Hell" }, { id: "dark", label: "Dunkel" }], p.theme || "auto", { act: "set-theme", cls: "mini", label: "Erscheinungsbild" })),
+    ctlRow("moon", "indigo", "Modus", seg([{ id: "auto", label: "Auto" }, { id: "light", label: "Hell" }, { id: "dark", label: "Dunkel" }], p.theme || "auto", { act: "set-theme", cls: "mini", label: "Erscheinungsbild" })),
     ctlRow("phone", "gray", "Haptik", toggle(p.haptics !== false, `data-change="set-bool" data-f="haptics"`, "Haptik"), "Fühlbares Feedback beim Abhaken"),
     ctlRow("bell", "orange", "Töne", toggle(p.sounds !== false, `data-change="set-bool" data-f="sounds"`, "Töne"), "Leiser Klang beim Erledigen"),
   ]);
@@ -257,7 +262,7 @@ function sendReminders(which) {
   const tasks = store.tasks().filter((t) => !t.done && (which === "today" ? (t.due && t.due <= tdy) || t.plan === tdy : !!t.due));
   if (!tasks.length) return toast("Keine passenden Aufgaben", { icon: "info" });
   try {
-    const url = remind.remindersShortcutUrl(tasks, { name: SHORTCUT });
+    const url = remind.remindersShortcutUrl(tasks, { name: SHORTCUT, bagsById: Object.fromEntries(store.bags().map((b) => [b.id, b])), profile: store.get().profile });
     if (url.length > 7800) toast("Sehr viele Aufgaben – evtl. kürzt iOS die Liste", { icon: "info" });
     location.href = url;
   } catch (e) {
@@ -265,7 +270,7 @@ function sendReminders(which) {
   }
 }
 
-async function startSync(code) {
+async function startSync(code, join = false) {
   const server = (ui.server || "").trim().replace(/\/+$/, "");
   if (!/^https?:\/\//.test(server)) {
     toast("Bitte die Server-Adresse eintragen", { icon: "cloud", sub: "z. B. https://taschen.1-2-3-4.sslip.io" });
@@ -274,7 +279,7 @@ async function startSync(code) {
   try {
     const chk = await sync.checkServer(server);
     if (!chk || !chk.ok || chk.sync === false) throw new Error("Unter dieser Adresse läuft kein Taschen-Server.");
-    await sync.configure({ server, code });
+    await sync.configure({ server, code, join });
     ui.code = code;
     app.server = server;
     return true;
@@ -313,6 +318,22 @@ on("change", {
       toastError(e, "Push");
     }
     app.render();
+  },
+  "set-server-save": async (el) => {
+    const v = el.value.trim();
+    if (!v) return;
+    try {
+      const chk = await sync.checkServer(v);
+      if (!chk.ok) throw new Error(chk.error || "Unter dieser Adresse läuft kein Taschen-Server.");
+      const base = await sync.setServer(v);
+      ui.server = base;
+      app.server = base;
+      app.aiAvailable = !!(await ai.available(base).catch(() => false));
+      toast("Server verbunden", { icon: "cloud", sub: [chk.sync ? "Sync" : "", chk.push ? "Push" : "", chk.ai ? "KI" : ""].filter(Boolean).join(" · ") || base });
+      refreshInfo();
+    } catch (e) {
+      toastError(e, "Server");
+    }
   },
   "set-ai": async (el) => {
     ui.aiOn = el.checked;
@@ -405,7 +426,8 @@ on("click", {
     if (ok) {
       ui.codeShown = true;
       haptic();
-      await infoBox({ title: "Sync ist eingerichtet", text: `Dein Code: ${code}\n\nGib ihn auf iPhone, iPad und Mac unter Einstellungen → Sync ein („Ich habe schon einen Code“).` });
+      toast("Sync ist eingerichtet", { icon: "devices", sub: "Gib den Code auf deinen anderen Geräten ein", ms: 5000 });
+      setTimeout(() => document.querySelector(".code-box")?.scrollIntoView({ behavior: "smooth", block: "center" }), 150);
     }
     app.render();
   },
@@ -426,7 +448,7 @@ on("click", {
     }
     ui.busy = "join";
     app.render();
-    const ok = await startSync(code);
+    const ok = await startSync(code, true);
     ui.busy = "";
     if (ok) {
       ui.joining = false;

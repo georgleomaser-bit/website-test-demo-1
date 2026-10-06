@@ -3,10 +3,11 @@ import * as store from "../store.js";
 import * as dates from "../dates.js";
 import * as pm from "../pm.js";
 import * as remind from "../remind.js";
+import * as sync from "../sync.js";
 import { LIMITS } from "../config.js";
 import { esc, safeUrl, fmtSize, debounce } from "../util.js";
 import { icon } from "./icons.js";
-import { app, on, safe, bagVars, today, relTime, isCollapsed, hostOf, appUrl, slug, clockStr } from "./core.js";
+import { app, on, safe, bagVars, today, relTime, isCollapsed, hostOf, appUrl, slug, clockStr, dayTitle } from "./core.js";
 import { taskRow, ring, healthPill, empty, seg, toggle, sq } from "./components.js";
 import { openSheet, sheetHead, getSheet, closeSheet, openMenu, confirmBox, promptBox } from "./sheet.js";
 import { haptic, toast, toastUndo, toastError, sound, confetti } from "./fx.js";
@@ -289,6 +290,7 @@ function fileIcon(f) {
 }
 
 function filesTab(b, { files }) {
+  const syncOn = safe(() => sync.status().enabled, false);
   const list = files.slice().sort((x, y) => (y.created || 0) - (x.created || 0));
   const up = `<label class="upload" data-key="upload"><input type="file" multiple data-change="file-upload" data-bag="${b.id}" aria-label="Dateien hochladen" />${icon("upload")}<span><b>Dateien hinzufügen</b><small>Fotos, PDFs, Dokumente · bis ${fmtSize(LIMITS.fileMax)} pro Datei</small></span></label>`;
   if (!list.length) return up + empty({ emoji: "📎", title: "Noch keine Dateien", text: "Verträge, Screenshots, Präsentationen – sicher auf deinem Gerät gespeichert und per Sync auf deinen anderen Geräten." });
@@ -296,7 +298,7 @@ function filesTab(b, { files }) {
     .map((f) => {
       const th = thumb(f);
       const [ic, col] = fileIcon(f);
-      return `<div class="filec" data-key="f-${f.id}"><button type="button" class="fprev" data-act="file-open" data-id="${f.id}" aria-label="Öffnen: ${esc(f.name)}">${th ? `<img src="${esc(th)}" alt="" loading="lazy" />` : sq(ic, col)}</button><div class="finfo"><b title="${esc(f.name)}">${esc(f.name)}</b><small>${esc(fmtSize(f.size))}${f.synced === false && f.size > LIMITS.syncFileMax ? ` · <span class="orange">nur auf diesem Gerät</span>` : ""}</small></div><button type="button" class="btn-round sm ghost" data-act="file-menu" data-id="${f.id}" aria-label="Datei-Aktionen">${icon("ellipsis")}</button></div>`;
+      return `<div class="filec" data-key="f-${f.id}"><button type="button" class="fprev" data-act="file-open" data-id="${f.id}" aria-label="Öffnen: ${esc(f.name)}">${th ? `<img src="${esc(th)}" alt="" loading="lazy" />` : sq(ic, col)}</button><div class="finfo"><b title="${esc(f.name)}">${esc(f.name)}</b><small>${esc(fmtSize(f.size))}${f.size > LIMITS.syncFileMax ? ` · <span class="orange">nur auf diesem Gerät</span>` : syncOn && !f.synced ? ` · <span class="muted">wartet auf Sync</span>` : ""}</small></div><button type="button" class="btn-round sm ghost" data-act="file-menu" data-id="${f.id}" aria-label="Datei-Aktionen">${icon("ellipsis")}</button></div>`;
     })
     .join("")}</div>`;
 }
@@ -369,7 +371,7 @@ function milestonesTab(b, { ms, all }) {
     const late = !m.done && d != null && d < 0;
     h += `<div class="ms-item${m.done ? " done" : ""}${late ? " late" : ""}" data-key="ms-${m.id}">
 <button type="button" class="ms-dot" data-act="ms-toggle" data-id="${m.id}" aria-pressed="${!!m.done}" aria-label="${m.done ? "Wieder öffnen" : "Als erreicht markieren"}">${icon(m.done ? "check" : "diamondFill")}</button>
-<button type="button" class="ms-body" data-act="ms-open" data-id="${m.id}"><b>${esc(m.title)}</b><small>${m.done ? `Erreicht ${esc(relTime(m.done))}` : m.date ? `${esc(safe(() => dates.fmtDay(m.date), m.date))} · ${esc(safe(() => dates.relDay(m.date, app.now), ""))}` : "Ohne Datum"}${linked.length ? ` · ${ld}/${linked.length} Aufgaben` : ""}</small>${linked.length ? `<span class="bar sm"><i style="width:${Math.round((ld / linked.length) * 100)}%"></i></span>` : ""}</button>
+<button type="button" class="ms-body" data-act="ms-open" data-id="${m.id}"><b>${esc(m.title)}</b><small>${m.done ? `Erreicht ${esc(relTime(m.done))}` : m.date ? esc([dayTitle(m.date).title, dayTitle(m.date).sub].filter(Boolean).join(" · ")) : "Ohne Datum"}${linked.length ? ` · ${ld}/${linked.length} Aufgaben` : ""}</small>${linked.length ? `<span class="bar sm"><i style="width:${Math.round((ld / linked.length) * 100)}%"></i></span>` : ""}</button>
 </div>`;
   }
   return head + h + `</div>`;
@@ -458,20 +460,6 @@ export function openLink(id, { bag = null } = {}) {
     return;
   }
   openSheet({ key: "link", label: "Link", render: linkView, onClose: () => (le = null) });
-  if (!id && navigator.clipboard?.readText && matchMedia("(pointer: fine)").matches) {
-    navigator.clipboard
-      .readText()
-      .then((t) => {
-        if (le && !le.url && /^https?:\/\/\S+$/.test(t.trim())) {
-          le.url = t.trim();
-          autoTitle();
-          getSheet("link")?.refresh();
-          const inp = getSheet("link")?.body.querySelector("[data-f=url]");
-          if (inp) inp.value = le.url;
-        }
-      })
-      .catch(() => {});
-  }
 }
 
 function autoTitle() {
@@ -548,7 +536,7 @@ function bagIcs(id) {
       return;
     }
     let ics = tasks.length ? remind.icsForTasks(tasks, { bagsById, profile: s.profile, calName: b.name, appUrl: appUrl() }) : "";
-    if (ms.length) ics = mergeIcs(ics, remind.icsForMilestones(ms, { bagsById }));
+    if (ms.length) ics = mergeIcs(ics, remind.icsForMilestones(ms, { bagsById, profile: s.profile, appUrl: appUrl() }));
     remind.deliverFile(`${slug(b.name)}.ics`, "text/calendar", ics).then((how) => how === "downloaded" && toast("Kalender-Datei geladen", { icon: "calendarCheck" })).catch((e) => toastError(e));
   } catch (e) {
     toastError(e);
@@ -772,7 +760,7 @@ on("click", {
     const ms = safe(() => store.milestones(el.dataset.bag).filter((m) => !m.done && m.date), []);
     if (!ms.length) return;
     try {
-      remind.deliverFile(`meilensteine-${slug(store.bag(el.dataset.bag)?.name)}.ics`, "text/calendar", remind.icsForMilestones(ms, { bagsById })).catch((e) => toastError(e));
+      remind.deliverFile(`meilensteine-${slug(store.bag(el.dataset.bag)?.name)}.ics`, "text/calendar", remind.icsForMilestones(ms, { bagsById, profile: store.get().profile, appUrl: appUrl() })).catch((e) => toastError(e));
     } catch (e) {
       toastError(e);
     }

@@ -273,7 +273,11 @@ export function exportCalendar({ daily = true } = {}) {
       ics = ics ? mergeIcs(ics, d) : d;
     }
     const ms = safe(() => store.milestones().filter((m) => !m.done && m.date), []);
-    if (ms.length) ics = mergeIcs(ics, remind.icsForMilestones(ms, { bagsById }));
+    if (ms.length) ics = mergeIcs(ics, remind.icsForMilestones(ms, { bagsById, profile: s.profile, appUrl: url }));
+    if (!ics) {
+      toast("Keine Termine mit Datum", { icon: "calendar", sub: "Gib Aufgaben ein Datum – dann kommen sie in den Kalender" });
+      return;
+    }
     remind
       .deliverFile(daily ? "arbeitstaschen-wecker.ics" : "arbeitstaschen-termine.ics", "text/calendar", ics)
       .then((how) => {
@@ -335,7 +339,7 @@ export function enableNotify() {
     .then((perm) => {
       if (perm === "granted") {
         toast("Mitteilungen sind an", { icon: "bell", sub: "Ich erinnere dich an deinen Tag" });
-        safe(() => remind.test());
+        Promise.resolve(safe(() => remind.test())).catch(() => {});
       } else if (perm === "denied") toast("Mitteilungen blockiert", { icon: "bellOff", tone: "red", sub: "In den Systemeinstellungen erlauben" });
       else if (perm === "unsupported") toast(isStandalone() ? "Mitteilungen werden hier nicht unterstützt" : "Erst als App installieren", { icon: "info" });
       app.render();

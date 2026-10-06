@@ -102,7 +102,7 @@ function dragToClose(s) {
       armed = box.scrollTop <= 0;
       y0 = e.touches[0].clientY;
       dy = 0;
-      t0 = Date.now();
+      t0 = performance.now();
       active = false;
     },
     { passive: true },
@@ -134,7 +134,7 @@ function dragToClose(s) {
     }
     active = armed = false;
     box.classList.remove("dragging");
-    const v = dy / Math.max(1, Date.now() - t0);
+    const v = dy / Math.max(1, performance.now() - t0);
     if (dy > 130 || (dy > 50 && v > 0.6)) closeSheet(s);
     else box.style.transform = "";
   };
@@ -300,7 +300,7 @@ function alertBox({ title, text = "", input = null, buttons }) {
       inp.select();
     }
     requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add("open")));
-    if (!inp) setTimeout(() => wrap.querySelector(".alert-btns button:last-child")?.focus({ preventScroll: true }), 40);
+    if (!inp && matchMedia("(pointer: fine)").matches) setTimeout(() => wrap.querySelector(".alert-btns button:last-child")?.focus({ preventScroll: true }), 40);
   });
 }
 

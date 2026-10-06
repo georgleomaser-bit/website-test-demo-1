@@ -6,7 +6,7 @@ import { haptic } from "./fx.js";
 let suppressClick = 0; // Klicks direkt nach einer Geste schlucken
 const OPENW = 156;
 
-export const gestureBusy = () => Date.now() < suppressClick;
+export const gestureBusy = () => performance.now() < suppressClick;
 
 // ---------- Wischen (nur Touch/Stift) ----------
 let S = null;
@@ -73,7 +73,7 @@ function swipeUp(e) {
   const s = S;
   S = null;
   if (s.locked !== "x") return;
-  suppressClick = Date.now() + 350;
+  suppressClick = performance.now() + 350;
   const { row, inner, d, w, id } = s;
   row.classList.remove("swiping", "sw-commit-r", "sw-commit-l");
   inner.style.transform = "";
@@ -136,7 +136,7 @@ function touchStart(e) {
   P.timer = setTimeout(() => {
     if (!P) return;
     P.lifted = true;
-    suppressClick = Date.now() + 700;
+    suppressClick = performance.now() + 700;
     if (P.drag) {
       P.el.classList.add("lifted");
       try {
@@ -157,9 +157,9 @@ function touchEnd() {
   const p = P;
   if (D) {
     endDrag(true);
-    suppressClick = Date.now() + 400;
+    suppressClick = performance.now() + 400;
   } else if (p.lifted && p.el.hasAttribute("data-menu")) {
-    suppressClick = Date.now() + 400;
+    suppressClick = performance.now() + 400;
     runMenu(p.el, { x: p.x, y: p.y });
   }
   cancelPress();
@@ -296,7 +296,7 @@ function mouseUp(e) {
   if (e.pointerType !== "mouse") return;
   if (D) {
     endDrag(e.type === "pointerup");
-    suppressClick = Date.now() + 300;
+    suppressClick = performance.now() + 300;
   }
   M = null;
 }
@@ -354,7 +354,7 @@ export function initGestures() {
   document.addEventListener(
     "click",
     (e) => {
-      if (Date.now() < suppressClick) {
+      if (performance.now() < suppressClick) {
         e.preventDefault();
         e.stopPropagation();
         return;

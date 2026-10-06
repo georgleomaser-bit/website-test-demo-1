@@ -4,7 +4,7 @@ import * as dates from "../dates.js";
 import * as pm from "../pm.js";
 import { esc } from "../util.js";
 import { icon } from "./icons.js";
-import { app, on, today, safe, bagVars, isoWeek } from "./core.js";
+import { app, on, today, safe, bagVars, isoWeek, dayTitle } from "./core.js";
 import { taskRow, sec, empty, largeTitle } from "./components.js";
 import { onDrop } from "./gestures.js";
 import { openMenu } from "./sheet.js";
@@ -63,7 +63,7 @@ export function render() {
     });
     const tasks = (d.tasks || []).slice().sort((a, b) => (a.time ? 0 : 1) - (b.time ? 0 : 1) || String(a.time || "").localeCompare(String(b.time || "")) || (b.prio || 0) - (a.prio || 0));
     agenda += `<section class="aday${diff === 0 ? " is-today" : ""}" id="day-${d.date}" data-key="day-${d.date}" data-drop="day" data-day="${d.date}">
-<header class="aday-h"><div class="aday-t"><h3>${esc(d.label || safe(() => dates.relDay(d.date, now), d.date))}</h3><small>${esc(safe(() => dates.fmtDay(d.date), d.date))}</small></div>${load ? `<span class="load ${loadCls}" title="Geschätzte Arbeitszeit">${icon("hourglass")}${esc(safe(() => dates.fmtDuration(load), load + " Min."))}${loadCls === "red" ? " · zu voll" : ""}</span>` : ""}<button type="button" class="btn-round sm" data-act="new-task" data-due="${d.date}" aria-label="Aufgabe für diesen Tag">${icon("plus")}</button></header>
+<header class="aday-h"><div class="aday-t"><h3>${esc(dayTitle(d.date).title)}</h3><small>${esc(dayTitle(d.date).sub)}</small></div>${load ? `<span class="load ${loadCls}" title="Geschätzte Arbeitszeit">${icon("hourglass")}${esc(safe(() => dates.fmtDuration(load), load + " Min."))}${loadCls === "red" ? " · zu voll" : ""}</span>` : ""}<button type="button" class="btn-round sm" data-act="new-task" data-due="${d.date}" aria-label="Aufgabe für diesen Tag">${icon("plus")}</button></header>
 <div class="card list">${ms.join("")}${tasks.map((t) => taskRow(t, { date: false, drag: true })).join("")}</div>
 </section>`;
   }

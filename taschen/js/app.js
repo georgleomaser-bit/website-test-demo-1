@@ -144,7 +144,8 @@ function route({ transition = true } = {}) {
       doPaint();
     }
   } else doPaint();
-  $("main")?.focus({ preventScroll: true });
+  // Fokus für Screenreader/Tastatur auf den Inhalt – aber nie aus einem offenen Sheet oder Eingabefeld reißen
+  if (!topSheet() && !/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.nodeName || "")) $("main")?.focus({ preventScroll: true });
 }
 const parseKeyView = (k) => k.split("/")[0];
 
@@ -336,9 +337,29 @@ function bind() {
 
 const typing = (el) => !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.nodeName));
 
+function trapTab(e) {
+  const s = topSheet();
+  const root = document.querySelector(".alert-wrap .alert") || document.querySelector(".menu-wrap .menu") || s?.box || (onboardingOpen() ? $("onboarding") : null);
+  if (!root) return;
+  const items = [...root.querySelectorAll('button:not([disabled]), [href], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((n) => n.offsetParent !== null);
+  if (!items.length) return;
+  const first = items[0], last = items[items.length - 1];
+  if (!root.contains(document.activeElement)) {
+    e.preventDefault();
+    first.focus();
+  } else if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
 function onKey(e) {
   const mod = e.metaKey || e.ctrlKey;
   const k = e.key;
+  if (k === "Tab") return trapTab(e);
   if (k !== "Escape" && handle("keydown", e)) return;
   if (k === "Escape") {
     if (menuOpen()) return closeMenu();

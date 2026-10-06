@@ -45,7 +45,7 @@ export function sidebar() {
     return `<a class="sb-bag${on ? " on" : ""}${b.status !== "aktiv" ? " dim" : ""}" href="#tasche/${b.id}" data-key="sb-${b.id}" data-menu="bag" data-id="${b.id}" style="${bagVars(b)}" ${on ? 'aria-current="page"' : ""}><span class="sb-emoji">${esc(b.emoji)}</span><span class="sb-t">${esc(b.name)}</span>${st && st.overdue ? `<span class="sb-od" title="${st.overdue} überfällig"></span>` : ""}${ring(st ? st.pct : 0, { size: 20, stroke: 3, label: false, cls: "sb-ring" })}${st && st.open ? `<span class="sb-n soft">${st.open}</span>` : ""}</a>`;
   };
   return `<div class="sb-in">
-<div class="sb-brand">${logo()}<span class="sb-bt"><b>Arbeitstaschen</b><small><i class="sdot ${dot}"></i>${esc(label)}${sy.state === "idle" && sy.lastSync ? ` · ${esc(relTime(sy.lastSync))}` : ""}</small></span></div>
+<a class="sb-brand" href="#einstellungen/sync" title="Sync auf allen Geräten">${logo()}<span class="sb-bt"><b>Arbeitstaschen</b><small><i class="sdot ${dot}"></i>${esc(label)}${sy.state === "idle" && sy.lastSync ? ` · ${esc(relTime(sy.lastSync))}` : ""}</small></span></a>
 <button type="button" class="sb-search" data-act="search">${icon("search")}<span>Suchen</span><kbd>${modKey()}K</kbd></button>
 <button type="button" class="sb-new" data-act="fab">${icon("plus")}<span>Neue Aufgabe</span><kbd>N</kbd></button>
 <nav class="sb-nav" aria-label="Bereiche">

@@ -1,6 +1,7 @@
 // Arbeitstaschen – KI-Projektmanager in der Oberfläche: Anfrage stellen, Antwort zeigen, Vorschläge übernehmen
 import * as store from "../store.js";
 import * as ai from "../ai.js";
+import * as dates from "../dates.js";
 import { esc } from "../util.js";
 import { icon } from "./icons.js";
 import { app, on, safe } from "./core.js";
@@ -39,7 +40,7 @@ function view() {
 ${res.busy ? `<div class="ai-think"><span class="spinner"></span><p>Dein Projektmanager denkt nach …</p></div>` : ""}
 ${res.error ? `<div class="note-box red">${esc(res.error)}</div>` : ""}
 ${res.text ? `<div class="prose">${prose(res.text)}</div>` : ""}
-${items.length ? `<div class="card list ai-items">${items.map((it, i) => `<button type="button" class="ai-item${res.picked.has(i) ? " on" : ""}" data-act="ai-pick" data-i="${i}" aria-pressed="${res.picked.has(i)}"><span class="ai-cb">${icon("check")}</span><span class="ai-t">${esc(it.title)}${it.due || it.prio ? `<small>${[it.due ? esc(it.due) : "", it.prio ? esc(PRIOS[it.prio]?.label || "") : ""].filter(Boolean).join(" · ")}</small>` : ""}</span></button>`).join("")}</div>` : ""}
+${items.length ? `<div class="card list ai-items">${items.map((it, i) => `<button type="button" class="ai-item${res.picked.has(i) ? " on" : ""}" data-act="ai-pick" data-i="${i}" aria-pressed="${res.picked.has(i)}"><span class="ai-cb">${icon("check")}</span><span class="ai-t">${esc(it.title)}${it.due || it.prio ? `<small>${[it.due ? esc(safe(() => dates.relDay(it.due, app.now), it.due)) : "", it.prio ? esc(PRIOS[it.prio]?.label || "") : ""].filter(Boolean).join(" · ")}</small>` : ""}</span></button>`).join("")}</div>` : ""}
 ${items.length && res.apply ? `<button type="button" class="btn primary wide" data-act="ai-apply"${res.picked.size ? "" : " disabled"}>${icon("plus")}<span>${esc(res.applyLabel || "Übernehmen")} (${res.picked.size})</span></button>` : ""}
 <p class="fine">Die KI sieht nur Titel, Termine und Prioritäten – keine Dateien. Antworten können danebenliegen.</p>
 </div>`;

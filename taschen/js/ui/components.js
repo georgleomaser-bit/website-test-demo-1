@@ -28,7 +28,7 @@ export function taskMeta(t, o = {}) {
   const di = dueInfo(t);
   if (di && o.date !== false) m.push(`<span class="m ${di.cls}">${icon("calendar")}${esc(di.label)}</span>`);
   if (t.time && o.time !== false) m.push(`<span class="m${di && di.cls ? " " + di.cls : ""}">${icon("clock")}${esc(safe(() => dates.fmtTime(t.time), t.time))}</span>`);
-  if (t.plan === today() && !t.done && o.plan !== false) m.push(`<span class="m accent">${icon("starFill")}Heute</span>`);
+  if (t.plan === today() && !t.done && o.plan !== false && t.due !== today()) m.push(`<span class="m accent">${icon("starFill")}Heute</span>`);
   if (o.bag !== false) {
     if (bag) m.push(`<span class="m bagm" style="${bagVars(bag)}"><i class="bdot"></i>${esc(bag.emoji)} ${esc(bag.name)}</span>`);
     else if (o.inbox) m.push(`<span class="m">${icon("tray")}Eingang</span>`);
@@ -56,13 +56,12 @@ export function taskRow(t, o = {}) {
   const done = !!t.done || pend;
   const bag = t.bag ? store.bag(t.bag) : null;
   const meta = taskMeta(t, o);
-  const prio = t.prio > 0 && !done ? `<span class="prio p${t.prio}" aria-label="Priorität ${esc(PRIOS[t.prio]?.label || "")}">${esc(PRIOS[t.prio]?.mark || "")}</span>` : "";
-  const flag = t.prio === 3 && !done ? `<span class="pflag">${icon("flag")}</span>` : "";
+  const prio = t.prio > 0 && !done ? (t.prio === 3 ? `<span class="pflag" aria-label="Priorität hoch">${icon("flag")}</span>` : `<span class="prio p${t.prio}" aria-label="Priorität ${esc(PRIOS[t.prio]?.label || "")}">${esc(PRIOS[t.prio]?.mark || "")}</span>`) : "";
   return `<div class="task${done ? " done" : ""}${pend ? " checking" : ""}${t.prio === 3 ? " p3" : ""}${o.compact ? " compact" : ""}${o.cls ? " " + o.cls : ""}" data-key="t-${t.id}" data-task="${t.id}" data-menu="task" data-id="${t.id}"${o.drag ? ` data-drag="task"` : ""} style="${bagVars(bag)}">
 <div class="swipe-bg" aria-hidden="true"><span class="sw-done">${icon("check")}<b>${t.done ? "Öffnen" : "Erledigt"}</b></span><span class="sw-acts"><button type="button" tabindex="-1" class="sw-btn orange" data-act="task-tomorrow" data-id="${t.id}">${icon("sunrise")}<b>Morgen</b></button><button type="button" tabindex="-1" class="sw-btn red" data-act="task-delete" data-id="${t.id}">${icon("trash")}<b>Löschen</b></button></span></div>
 <div class="task-in">
 <button class="check" type="button" data-act="toggle" data-id="${t.id}" aria-label="${done ? "Wieder öffnen" : "Erledigen"}: ${esc(t.title)}" aria-pressed="${done}">${CHECK}</button>
-<button class="task-main" type="button" data-act="task" data-id="${t.id}"><span class="task-title">${prio}${esc(t.title)}${flag}</span>${meta ? `<span class="task-meta">${meta}</span>` : ""}</button>
+<button class="task-main" type="button" data-act="task" data-id="${t.id}"><span class="task-title">${prio}${esc(t.title)}</span>${meta ? `<span class="task-meta">${meta}</span>` : ""}</button>
 <span class="task-hover"><button type="button" class="hv" data-act="task-plan" data-id="${t.id}" title="${t.plan === today() ? "Aus Heute entfernen" : "Für heute einplanen"}" aria-label="Für heute einplanen">${icon(t.plan === today() ? "starFill" : "star")}</button><button type="button" class="hv" data-act="task-menu" data-id="${t.id}" title="Mehr" aria-label="Mehr Aktionen">${icon("ellipsis")}</button></span>
 </div>${o.extra || ""}
 </div>`;

@@ -71,7 +71,7 @@ export function openInstallHelp() {
   const pf = platform();
   const tabs = [["iphone", "iPhone"], ["ipad", "iPad"], ["mac", "Mac"]];
   let cur = pf === "mac-safari" ? "mac" : pf === "other" ? "iphone" : pf;
-  const view = () => `${sheetHead("Als App installieren", { sub: "Einmal einrichten – dann wie eine echte App" })}
+  const view = () => `${sheetHead("Als App installieren", { sub: "Einmal einrichten, fertig" })}
 <div class="sheet-pad inst-help">
 <div class="inst-tabs">${tabs.map(([id, l]) => `<button type="button" class="chip${cur === id ? " on" : ""}" data-act="inst-tab" data-v="${id}">${icon(id === "mac" ? "laptop" : "phone")}<span>${l}</span></button>`).join("")}</div>
 <div class="inst-art inst-${cur}" aria-hidden="true"><div class="ia-dev"><div class="ia-screen"><div class="ia-app">${logo()}</div><div class="ia-bar">${cur === "mac" ? `<span class="ia-menu">Ablage › <b>Zum Dock hinzufügen …</b></span>` : `<span class="ia-share">${icon("share")}</span>`}</div></div></div></div>

@@ -191,6 +191,13 @@ export function nextWeekISO() {
   return dates.addDays(start, 7);
 }
 
+// Tagesbeschriftung ohne Doppelungen: relativ („Morgen“) + Datum, sonst nur das Datum
+export function dayTitle(iso) {
+  const rel = safe(() => dates.relDay(iso, app.now), iso);
+  const full = safe(() => dates.fmtDay(iso), iso);
+  return /\d/.test(rel) ? { title: full, sub: "" } : { title: rel, sub: full };
+}
+
 export function relTime(ms) {
   if (!ms) return "";
   const s = Math.round((Date.now() - ms) / 1000);

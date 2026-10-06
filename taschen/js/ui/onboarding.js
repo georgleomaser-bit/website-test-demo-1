@@ -95,7 +95,7 @@ function next() {
 function finish() {
   if (!ob) return;
   store.setProfile({ onboarded: true, name: ob.name.trim(), dayStart: ob.dayStart, dayEnd: ob.dayEnd });
-  safe(() => store.requestPersist());
+  Promise.resolve(safe(() => store.requestPersist())).catch(() => {});
   ob = null;
   const o = el();
   document.documentElement.classList.remove("ob-on");
