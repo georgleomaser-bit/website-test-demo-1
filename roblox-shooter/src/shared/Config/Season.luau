@@ -99,7 +99,7 @@ local function parseIso(text: any): number?
 	end
 	return ((((tonumber(y) :: number) * 12 + month) * 31 + day) * 24 + (tonumber(h) :: number)) * 3600
 		+ (tonumber(mi) :: number) * 60
-		+ (tonumber(s) :: number)
+		+ tonumber(s) :: number
 end
 
 local function isNumber(v: any): boolean
@@ -143,10 +143,10 @@ function Season.Validate(Config: any): { string }
 		end
 		local start, finish = parseIso(season.StartUtc), parseIso(season.EndUtc)
 		if not start then
-			err(p .. ".StartUtc", "Datum \"JJJJ-MM-TTT00:00:00Z\" erwartet")
+			err(p .. ".StartUtc", 'Datum "JJJJ-MM-TTT00:00:00Z" erwartet')
 		end
 		if not finish then
-			err(p .. ".EndUtc", "Datum \"JJJJ-MM-TTT00:00:00Z\" erwartet")
+			err(p .. ".EndUtc", 'Datum "JJJJ-MM-TTT00:00:00Z" erwartet')
 		end
 		if start and finish and finish <= start then
 			err(p .. ".EndUtc", "muss nach StartUtc liegen")
@@ -168,10 +168,10 @@ function Season.Validate(Config: any): { string }
 				continue
 			end
 			for key, reward in pairs(rewards) do
-				local rp = ("%s.%s[\"%s\"]"):format(p, track, tostring(key))
+				local rp = ('%s.%s["%s"]'):format(p, track, tostring(key))
 				local tier = tonumber(key)
 				if type(key) ~= "string" or tier == nil or tier < 1 or tier > tiers or tier % 1 ~= 0 then
-					err(rp, "Schlüssel muss eine Stufe \"1\"…\"" .. tostring(tiers) .. "\" (Text) sein")
+					err(rp, 'Schlüssel muss eine Stufe "1"…"' .. tostring(tiers) .. '" (Text) sein')
 				end
 				if type(reward) ~= "table" or next(reward) == nil then
 					err(rp, "Belohnung erwartet")

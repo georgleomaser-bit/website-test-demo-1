@@ -525,12 +525,12 @@ function Bots.Validate(config: any): { string }
 	end
 	for key, v in pairs(Bots.Slide) do
 		if not isNum(v) or v <= 0 then
-			add("Config.Bots.Slide." .. key .. ": Zahl > 0 erwartet")
+			add("Config.Bots.Slide." .. tostring(key) .. ": Zahl > 0 erwartet")
 		end
 	end
 	for key, v in pairs(Bots.Adaptive) do
 		if not isNum(v) or v < 0 then
-			add("Config.Bots.Adaptive." .. key .. ": Zahl ≥ 0 erwartet")
+			add("Config.Bots.Adaptive." .. tostring(key) .. ": Zahl ≥ 0 erwartet")
 		end
 	end
 	if not (isNum(Bots.MmrTiers.Easy) and isNum(Bots.MmrTiers.Hard)) or Bots.MmrTiers.Easy > Bots.MmrTiers.Hard then
@@ -576,7 +576,7 @@ function Bots.Validate(config: any): { string }
 	end
 	for key, id in pairs(Bots.Animations) do
 		if type(id) ~= "string" or not string.match(id, "^rbxassetid://%d+$") then
-			add("Config.Bots.Animations." .. key .. ": rbxassetid://<Zahl> erwartet")
+			add("Config.Bots.Animations." .. tostring(key) .. ": rbxassetid://<Zahl> erwartet")
 		end
 	end
 	if typeof(Bots.NameplateColor) ~= "Color3" then

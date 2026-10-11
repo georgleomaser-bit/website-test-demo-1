@@ -10,6 +10,9 @@
 --    Weg-Budget (32 × SpeedMult × 1.15 + 6 Studs/s, Vorrat 1 s) · Teleport > 40 Studs ohne Gnade ·
 --    Höhe über letztem Bodenkontakt · Fliegen (> 3 s Luft ohne Fallen, Mondsprung 6 s) · Noclip (Strahl zwischen
 --    zwei Messungen, nur echtes Durchqueren einer Wand zählt) · Verstoß -> Zurücksetzen + Verdachtspunkte.
+--    Skill-Bewegung (docs/SKILL-WUENSCHE.md: Rutsch-Sprung-Ketten, Doppelsprung, Wand-Absprung, Schwerkraft-Lift)
+--    ist im Budget eingeplant (SkillAirJumps, Kontext-Regeln, Lobby-Schwerkraft) und gibt keinen Fehlalarm;
+--    Lag-Hänger (eingefrorene Position bei Bewegung) werden als Nachholen gewertet, nicht als Teleport.
 --  Verdacht (C12.4): Gewichte aus Config.Security.Weights, Abbau 1 Punkt je 30 s, ≥ 25 Prüf-Flag (gespeichert in
 --    CC_Mod_v1 F_<yyyymmdd>_<shard>), ≥ 60 Kick. Honeypot-Remote "GrantCoins" = +100, Kick, Flag.
 --  Meldungen (C9 "Report"): 3 pro 10 min, Server hängt einen Statistik-Schnappschuss an (R_<yyyymmdd>_<shard>).
@@ -286,6 +289,21 @@ local function sanitizeEvidence(evidence: any): { [string]: any }
 		end
 	end
 	return clean
+end
+
+-- Auf höchstens maxBytes kürzen, ohne ein UTF-8-Zeichen zu zerschneiden (Bann-Gründe zählen Bytes)
+local function truncate(text: string, maxBytes: number): string
+	if #text <= maxBytes then
+		return text
+	end
+	local cut = maxBytes
+	for _ = 1, 4 do
+		if cut <= 0 or utf8.len(string.sub(text, 1, cut)) ~= nil then
+			break
+		end
+		cut -= 1
+	end
+	return string.sub(text, 1, math.max(0, cut))
 end
 
 local function normalizeReason(reason: any): string
@@ -670,13 +688,13 @@ local function autoBan(p: Player, evidence: string): boolean
 	end
 	local auto = SEC.AutoBan
 	local seconds = math.max(60, math.floor((tonumber(auto.Days) or 1) * 86400))
-	local display = string.sub(L(p, "admin.acBanReason"), 1, SEC.BanDisplayMax or 400)
+	local display = truncate(L(p, "admin.acBanReason"), SEC.BanDisplayMax or 400)
 	local ok, err = pcall(function()
 		Players:BanAsync({
 			UserIds = { p.UserId },
 			Duration = seconds,
 			DisplayReason = display,
-			PrivateReason = string.sub(evidence, 1, SEC.BanPrivateMax or 1000),
+			PrivateReason = truncate(evidence, SEC.BanPrivateMax or 1000),
 			ApplyToUniverse = true,
 			ExcludeAltAccounts = false,
 		})

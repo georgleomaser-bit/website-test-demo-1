@@ -253,6 +253,11 @@ Client.Hud = {
 	LowAmmo = 0.25, -- Anteil des Magazins: doppelter Tick
 	MultiKillWindow = 4, -- DOUBLE!/TRIPLE!/QUAD! (Team/FFA)
 	KillBanner = 1.6,
+	-- Treffer-Gefühl (docs/SKILL-WUENSCHE.md): kurzer "Treffer-Stopp" = Marker friert ein, andere
+	-- Kampf-Sounds ducken sich, Mini-Ruck der Kamera; beim Pop zusätzlich FOV-Punch (B14.1)
+	HitStopKill = 0.07,
+	HitStopHead = 0.04,
+	FovPunch = 3,
 }
 
 -- Tracer (Beam zwischen zwei Attachments, ASSETS §5)
@@ -282,7 +287,10 @@ local function checkValue(errors: { string }, path: string, entry: SchemaEntry, 
 		if lo == nil or hi == nil or lo > hi then
 			table.insert(errors, path .. ": Schema braucht Min ≤ Max")
 		elseif value < lo or value > hi then
-			table.insert(errors, ("%s: Standard %s außerhalb %s..%s"):format(path, tostring(value), tostring(lo), tostring(hi)))
+			table.insert(
+				errors,
+				("%s: Standard %s außerhalb %s..%s"):format(path, tostring(value), tostring(lo), tostring(hi))
+			)
 		end
 		if entry.Integer and value % 1 ~= 0 then
 			table.insert(errors, path .. ": ganze Zahl erwartet")

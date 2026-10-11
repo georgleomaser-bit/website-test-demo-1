@@ -41,12 +41,7 @@ function Damage.Falloff(def: Types.WeaponDef, dist: number): number
 	return math.clamp((d - s) / (e - s), 0, 1)
 end
 
-function Damage.Compute(
-	def: Types.WeaponDef,
-	dist: number,
-	region: "Head" | "Body",
-	rules: Types.ContextRules?
-): number
+function Damage.Compute(def: Types.WeaponDef, dist: number, region: "Head" | "Body", rules: Types.ContextRules?): number
 	local damage = math.max(0, finiteOr(def.Damage, 0))
 	local minMult = finiteOr(def.MinMult, 1)
 	local base = lerp(damage, damage * minMult, Damage.Falloff(def, dist))

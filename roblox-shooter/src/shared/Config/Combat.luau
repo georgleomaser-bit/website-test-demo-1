@@ -76,7 +76,9 @@ local Combat = {
 	-- -----------------------------------------------------------------
 	-- 7) ERGÄNZUNGEN VON WP3 (zentral statt fest im Code)
 	-- -----------------------------------------------------------------
-	MovingSpeed = 6, -- ab diesem Tempo (Studs/s) zählt der Server "bewegt" für SpreadMove (Untergrenze)
+	MovingSpeed = 10, -- ab diesem Tempo (Studs/s) rechnet der Server SpreadMove in die Untergrenze ein.
+	-- Bewusst großzügig (Gehen = 16): der Client darf SpreadMove schon früher addieren, nie später.
+	AdsGrace = 0.1, -- Zielen gilt AdsTime − 0.1 s nach dem Anlegen als "fertig" (C10 Schritt 7)
 	ThrowChargedSpeed = 90, -- Wurf voll aufgeladen (0.5 s halten); Tippen = Projectile.Speed (70)
 	ThrowFullHold = 0.5, -- so lange halten = charge 1.0 (Client)
 	KillYHz = 5, -- Prüftakt für Sturz unter KillY, fehlende Teile, Regeneration
@@ -115,7 +117,12 @@ function Combat.Validate(_config: any): { string }
 		elseif value < min or (max ~= nil and value > max) then
 			table.insert(
 				errors,
-				("Config.Combat.%s: %s liegt außerhalb [%s, %s]"):format(path, tostring(value), tostring(min), tostring(max or "∞"))
+				("Config.Combat.%s: %s liegt außerhalb [%s, %s]"):format(
+					path,
+					tostring(value),
+					tostring(min),
+					tostring(max or "∞")
+				)
 			)
 		end
 	end
@@ -153,6 +160,7 @@ function Combat.Validate(_config: any): { string }
 	num("ScopeGlintAfter", c.ScopeGlintAfter, 0, 5)
 	num("ScopeHitKick", c.ScopeHitKick, 0, 20)
 	num("MovingSpeed", c.MovingSpeed, 0, 50)
+	num("AdsGrace", c.AdsGrace, 0, 1)
 	num("ThrowChargedSpeed", c.ThrowChargedSpeed, 1, 500)
 	num("ThrowFullHold", c.ThrowFullHold, 0.05, 5)
 	num("KillYHz", c.KillYHz, 1, 30)

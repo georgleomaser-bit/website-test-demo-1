@@ -20,6 +20,12 @@
 --        + (speed > Config.Combat.MovingSpeed ? SpreadMove : 0) + (airborne ? SpreadAir : 0).
 --        Ohne Bloom (der Server nimmt max(Client-Anspruch, MinScale)).
 --    Spread.MaxBloomChain                  Obergrenze der Kettenlänge (Schleifen-Grenze)
+--  Ergänzungen von WP3 (Besitzer-Wunsch docs/SKILL-WUENSCHE.md – Client und Server rechnen gleich):
+--    Spread.Chain(def, shotTimes, t): number       Anzahl vorheriger Schüsse in der laufenden Kette
+--    Spread.FirstShot(def, shotTimes, t): number   def.FirstShotMult beim ersten Schuss einer Kette, sonst 1
+--    Spread.Recoil(def, index, seed?): (pitchDeg, yawDeg)
+--        Rückstoß des index-ten Schusses der Kette (1 = erster). Mit def.RecoilPattern fest und lernbar,
+--        sonst RecoilPitch hoch + RecoilYaw zufällig ± (aus seed deterministisch).
 --
 --  Client-Formel (B11.1, WP4): lerp(SpreadHip, SpreadAds, adsAlpha) + Move + Air + Bloom (+ Rutschen).
 --  Solange das Zielen noch nicht "fertig" ist (AdsTime − 0.1 s), rechnet der Server mit SpreadHip.
@@ -36,7 +42,7 @@ local TAU = math.pi * 2
 Spread.MaxBloomChain = 64
 
 -- Startwerte = Config.Combat (zur Laufzeit von dort gelesen, damit es nur EINE Quelle gibt)
-local movingSpeed = 6
+local movingSpeed = 10
 
 do
 	local ok, combat = pcall(function()
@@ -160,22 +166,18 @@ end
 -- ---------------------------------------------------------------------
 -- 4) BLOOM
 -- ---------------------------------------------------------------------
-function Spread.Bloom(def: Types.WeaponDef, shotTimes: { number }, t: number): number
-	local perShot = finiteOr(def.BloomPerShot, 0)
-	local maxBloom = finiteOr(def.BloomMax, 0)
-	if perShot <= 0 or maxBloom <= 0 then
-		return 0
-	end
+function Spread.Chain(def: Types.WeaponDef, shotTimes: { number }, t: number): number
 	local gapLimit = math.max(0, finiteOr(def.Interval, 0)) * 1.6
 	local chain = 0
-	local prev = finiteOr(t, 0)
+	local now = finiteOr(t, 0)
+	local prev = now
 	local count = #shotTimes
 	local stop = math.max(1, count - Spread.MaxBloomChain * 2)
 	for i = count, stop, -1 do
 		local st = shotTimes[i]
 		if type(st) == "number" and st == st then
 			local gap = prev - st
-			if math.abs(gap) < 1e-4 and prev == t then
+			if prev == now and math.abs(gap) < 1e-4 then
 				continue -- derselbe Schuss (schon eingetragen) zählt nicht
 			end
 			if gap < 0 then
@@ -191,7 +193,56 @@ function Spread.Bloom(def: Types.WeaponDef, shotTimes: { number }, t: number): n
 			end
 		end
 	end
-	return math.min(maxBloom, perShot * chain)
+	return chain
+end
+
+function Spread.Bloom(def: Types.WeaponDef, shotTimes: { number }, t: number): number
+	local perShot = finiteOr(def.BloomPerShot, 0)
+	local maxBloom = finiteOr(def.BloomMax, 0)
+	if perShot <= 0 or maxBloom <= 0 then
+		return 0
+	end
+	return math.min(maxBloom, perShot * Spread.Chain(def, shotTimes, t))
+end
+
+function Spread.FirstShot(def: Types.WeaponDef, shotTimes: { number }, t: number): number
+	local mult = (def :: any).FirstShotMult
+	if type(mult) ~= "number" or mult ~= mult or mult >= 1 or mult < 0 then
+		return 1
+	end
+	if Spread.Chain(def, shotTimes, t) > 0 then
+		return 1
+	end
+	return mult
+end
+
+function Spread.Recoil(def: Types.WeaponDef, index: number, seed: number?): (number, number)
+	local pitch = math.max(0, finiteOr(def.RecoilPitch, 0))
+	local yaw = math.max(0, finiteOr(def.RecoilYaw, 0))
+	local n = math.max(1, math.floor(finiteOr(index, 1)))
+	local pattern = (def :: any).RecoilPattern
+	if type(pattern) == "table" and #pattern > 0 then
+		local len = math.min(#pattern, Spread.MaxBloomChain)
+		local loopFrom = math.clamp(math.floor(finiteOr((def :: any).RecoilLoopFrom or 1, 1)), 1, len)
+		local i = n
+		if i > len then
+			local loopLen = len - loopFrom + 1
+			i = loopFrom + ((i - len - 1) % loopLen)
+		end
+		local step = pattern[i]
+		if type(step) == "table" then
+			local p = finiteOr(tonumber(step[1]) or 1, 1)
+			local y = math.clamp(finiteOr(tonumber(step[2]) or 0, 0), -1.5, 1.5)
+			return pitch * p, yaw * y
+		end
+	end
+	-- ohne Muster: zufälliger Seitenkick ±RecoilYaw, aus seed + index deterministisch
+	local state = toU32((seed or 0) + n * 0x9E37)
+	if state == 0 then
+		state = 0x6D2B79F5
+	end
+	state = xorshift(xorshift(state))
+	return pitch, yaw * ((state / TWO32) * 2 - 1)
 end
 
 -- ---------------------------------------------------------------------

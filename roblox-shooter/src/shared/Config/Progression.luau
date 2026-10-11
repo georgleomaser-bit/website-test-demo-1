@@ -456,7 +456,7 @@ function Progression.Validate(Config: any): { string }
 	end
 	for level, title in pairs(lr.Titles) do
 		if not isNumber(level) or type(title) ~= "string" or string.sub(title, 1, 3) ~= "TT_" then
-			err("LevelRewards.Titles[" .. tostring(level) .. "]", "Level -> \"TT_…\" erwartet")
+			err("LevelRewards.Titles[" .. tostring(level) .. "]", 'Level -> "TT_…" erwartet')
 		end
 	end
 
@@ -481,7 +481,7 @@ function Progression.Validate(Config: any): { string }
 				end
 			elseif key == "Title" then
 				if value ~= "Master" then
-					err("Mastery.Rewards[" .. i .. "].Title", "\"Master\" erwartet")
+					err("Mastery.Rewards[" .. i .. "].Title", '"Master" erwartet')
 				end
 			elseif not GRANT_FIELDS[key] then
 				err("Mastery.Rewards[" .. i .. "]." .. tostring(key), "unbekanntes Feld")
@@ -627,7 +627,7 @@ function Progression.Validate(Config: any): { string }
 			for key, value in pairs(def.Reward) do
 				if key == "Title" then
 					if type(value) ~= "string" or string.sub(value, 1, 3) ~= "TT_" then
-						err(p .. ".Reward.Title", "\"TT_…\" erwartet")
+						err(p .. ".Reward.Title", '"TT_…" erwartet')
 					end
 				elseif key ~= "Coins" and key ~= "Gems" then
 					err(p .. ".Reward." .. tostring(key), "nur Coins, Gems, Title erlaubt")
@@ -658,7 +658,7 @@ function Progression.Validate(Config: any): { string }
 		if def.Expires ~= nil then
 			local y, mo, d = string.match(tostring(def.Expires), "^(%d%d%d%d)%-(%d%d)%-(%d%d)")
 			if not (y and mo and d) then
-				err(p .. ".Expires", "Datum \"YYYY-MM-DDTHH:MM:SSZ\" erwartet")
+				err(p .. ".Expires", 'Datum "YYYY-MM-DDTHH:MM:SSZ" erwartet')
 			end
 		end
 	end

@@ -641,7 +641,10 @@ function Shop.Validate(Config: any): { string }
 				if def == nil then
 					table.insert(errors, ipath .. ": unbekannte Kosmetik " .. tostring(item.Id))
 				elseif def.Rarity ~= item.Rarity then
-					table.insert(errors, ipath .. ".Rarity: passt nicht zu Config.Cosmetics (" .. tostring(def.Rarity) .. ")")
+					table.insert(
+						errors,
+						ipath .. ".Rarity: passt nicht zu Config.Cosmetics (" .. tostring(def.Rarity) .. ")"
+					)
 				elseif def.Source ~= "Catalog" and def.Source ~= "Coins" then
 					table.insert(errors, ipath .. ": nur Katalog-/Münz-Items gehören in eine Kiste")
 				end

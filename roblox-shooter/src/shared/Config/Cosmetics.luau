@@ -339,10 +339,17 @@ Cosmetics.Wraps = {
 	W_MPrism = {
 		Name = { de = "Prisma", en = "Prism" },
 		Rarity = "Mythic",
-		Roles = roles(rgb(255, 120, 200), rgb(120, 220, 255), rgb(255, 255, 140), rgb(170, 255, 170), rgb(170, 140, 255), {
-			Body = "Glass",
-			Metal = "Glass",
-		}),
+		Roles = roles(
+			rgb(255, 120, 200),
+			rgb(120, 220, 255),
+			rgb(255, 255, 140),
+			rgb(170, 255, 170),
+			rgb(170, 140, 255),
+			{
+				Body = "Glass",
+				Metal = "Glass",
+			}
+		),
 		Source = "Mastery",
 		MasteryTier = 10,
 	},
@@ -791,7 +798,10 @@ function Cosmetics.Validate(Config: any): { string }
 			if type(r) ~= "table" or typeof(r.Color) ~= "Color3" then
 				table.insert(errors, ("%s.Roles.%s: { Color = Color3, Material } erwartet"):format(path, role))
 			elseif not Cosmetics.Materials[r.Material] then
-				table.insert(errors, ("%s.Roles.%s.Material: nicht erlaubt (%s)"):format(path, role, tostring(r.Material)))
+				table.insert(
+					errors,
+					("%s.Roles.%s.Material: nicht erlaubt (%s)"):format(path, role, tostring(r.Material))
+				)
 			end
 		end
 		if def.Roles and def.Roles.Tip ~= nil then
@@ -845,13 +855,13 @@ function Cosmetics.Validate(Config: any): { string }
 				table.insert(errors, path .. ".Color: Helligkeit ≥ 0.5 erwartet")
 			end
 		elseif def.Color ~= "Team" and def.Color ~= "Rainbow" then
-			table.insert(errors, path .. ".Color: Color3, \"Team\" oder \"Rainbow\" erwartet")
+			table.insert(errors, path .. '.Color: Color3, "Team" oder "Rainbow" erwartet')
 		end
 		if type(def.Width0) ~= "number" or type(def.Width1) ~= "number" or def.Width0 <= 0 or def.Width1 <= 0 then
 			table.insert(errors, path .. ".Width0/Width1: Zahlen > 0 erwartet")
 		end
 		if def.Texture ~= "" and def.Texture ~= GRADIENT then
-			table.insert(errors, path .. ".Texture: nur gradient.png oder \"\" (ASSETS.md)")
+			table.insert(errors, path .. '.Texture: nur gradient.png oder "" (ASSETS.md)')
 		end
 	end
 	-- Exklusiv: nur Pass-Items, Saison-Id ≥ 1

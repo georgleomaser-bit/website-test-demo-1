@@ -99,9 +99,7 @@ local function applyProps(handle: Handle, props: Props?)
 	if p.Depth then
 		handle.Depth = p.Depth
 	end
-	highlight.DepthMode = if os.clock() < handle.PulseUntil
-		then Enum.HighlightDepthMode.AlwaysOnTop
-		else handle.Depth
+	highlight.DepthMode = if os.clock() < handle.PulseUntil then Enum.HighlightDepthMode.AlwaysOnTop else handle.Depth
 end
 
 function Highlights.Release(handle: any)

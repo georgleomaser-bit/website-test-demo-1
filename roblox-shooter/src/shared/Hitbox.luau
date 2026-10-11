@@ -8,7 +8,7 @@
 --  Region = näherer Eintrittspunkt; der Kopf gewinnt einen Gleichstand innerhalb HeadTieBreak (0.5 Studs).
 --
 --  Öffentliche API:
---    Hitbox.Ray(origin, dir, range, root, head, headRadius, tol): ("Head" | "Body")?, number?
+--    Hitbox.Ray(origin, dir, range, root, head, headRadius, tol): (("Head" | "Body")?, number?)
 --        Strahl gegen beide Formen; Rückgabe Region + Entfernung des Eintrittspunkts (<= range), sonst nil.
 --        Liegt origin schon in einer Form, ist die Entfernung 0.
 --    Hitbox.PointDistance(p, root, head): number
@@ -132,7 +132,7 @@ function Hitbox.Ray(
 	head: Vector3,
 	headRadius: number,
 	tol: number
-): ("Head" | "Body")?, number?
+): (("Head" | "Body")?, number?)
 	if not (finiteVec(origin) and finiteVec(dir) and finiteVec(head) and finite(range)) then
 		return nil, nil
 	end

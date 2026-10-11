@@ -525,7 +525,10 @@ function ProgressMath.RewriteChat(text: string, rewrites: any, lang: string): st
 	local parts: { string } = {}
 	local changed = false
 	local last = 1
-	for startPos: number, word: string, endPos: number in string.gmatch(text, WORD_PATTERN) do
+	-- Positions-Captures "()" liefern zur Laufzeit Zahlen (Typ-Prüfer kennt nur Text)
+	for startCap, word, endCap in string.gmatch(text, WORD_PATTERN) do
+		local startPos = tonumber(startCap) or 1
+		local endPos = tonumber(endCap) or (#text + 1)
 		local out = replacement(word)
 		if out then
 			table.insert(parts, string.sub(text, last, startPos - 1))

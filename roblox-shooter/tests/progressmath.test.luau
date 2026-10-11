@@ -80,10 +80,7 @@ end
 -- 2) Elo (B16.6)
 eq("Expected gleich", ProgressMath.Expected(1000, 1000), 0.5)
 check("Expected +400 ≈ 0.909", math.abs(ProgressMath.Expected(1400, 1000) - 10 / 11) < 1e-9)
-check(
-	"Expected-Summe = 1",
-	math.abs(ProgressMath.Expected(1234, 987) + ProgressMath.Expected(987, 1234) - 1) < 1e-12
-)
+check("Expected-Summe = 1", math.abs(ProgressMath.Expected(1234, 987) + ProgressMath.Expected(987, 1234) - 1) < 1e-12)
 eq("EloDelta gleich, Sieg K40", ProgressMath.EloDelta(1000, 1000, 1, 40), 20)
 eq("EloDelta gleich, Niederlage K40", ProgressMath.EloDelta(1000, 1000, 0, 40), -20)
 eq("EloDelta gleich, Remis", ProgressMath.EloDelta(1000, 1000, 0.5, 24), 0)
@@ -268,9 +265,31 @@ ProgressMath.Configure({ Curve = { Base = 250, Step = 50, MaxLevel = 100 } })
 eq("Configure zurück", ProgressMath.TotalForLevel(100), 267300)
 
 -- 9) Match-Belohnung (WP8-Abnahme 1): 1v1-Sieg gegen Menschen ≈ 270 XP / ≈ 159 Coins
-local XP_CFG = { Played = 40, Win = 60, Round = 12, Elim = 15, Assist = 7, HeadElim = 5, MeleeElim = 10, Mvp = 20, CrownDefence = 15 }
-local COIN_CFG = { Played = 30, Round = 10, Elim = 6, Assist = 3, HeadElim = 2, Win = 50, Mvp = 15, StreakStep = 5,
-	StreakCap = 30, BotMult = 0.6, BotMin = 15, DrawBonus = 0.1 }
+local XP_CFG = {
+	Played = 40,
+	Win = 60,
+	Round = 12,
+	Elim = 15,
+	Assist = 7,
+	HeadElim = 5,
+	MeleeElim = 10,
+	Mvp = 20,
+	CrownDefence = 15,
+}
+local COIN_CFG = {
+	Played = 30,
+	Round = 10,
+	Elim = 6,
+	Assist = 3,
+	HeadElim = 2,
+	Win = 50,
+	Mvp = 15,
+	StreakStep = 5,
+	StreakCap = 30,
+	BotMult = 0.6,
+	BotMin = 15,
+	DrawBonus = 0.1,
+}
 local win1v1 = { Won = true, RoundsWon = 4, Elims = 5, Assists = 0, Headshots = 2, MeleeElims = 0, Mvp = true }
 local winXp = ProgressMath.MatchXp(win1v1, XP_CFG) + 5 -- + GG
 check("1v1-Sieg ≈ 270 XP", winXp >= 240 and winXp <= 300, tostring(winXp))
@@ -284,15 +303,31 @@ check("1v1-Niederlage ≈ 62 Coins", lossCoins >= 50 and lossCoins <= 80, tostri
 eq("Practice 0 Coins", ProgressMath.MatchCoins(win1v1, COIN_CFG, { Practice = true }), 0)
 eq("Bots ×0.6", ProgressMath.MatchCoins(win1v1, COIN_CFG, { VsBots = true }), math.floor(winCoins * 0.6 + 0.5))
 eq("Bots mindestens 15", ProgressMath.MatchCoins({}, COIN_CFG, { VsBots = true }), 18)
-eq("Bots mindestens 15 (leer)", ProgressMath.MatchCoins({}, { Played = 0, BotMult = 0.6, BotMin = 15 }, { VsBots = true }), 15)
+eq(
+	"Bots mindestens 15 (leer)",
+	ProgressMath.MatchCoins({}, { Played = 0, BotMult = 0.6, BotMin = 15 }, { VsBots = true }),
+	15
+)
 eq("Serie 1 ohne Bonus", ProgressMath.MatchCoins({ Won = true }, COIN_CFG, { Streak = 1 }), 80)
 eq("Serie 3 +10", ProgressMath.MatchCoins({ Won = true }, COIN_CFG, { Streak = 3 }), 90)
 eq("Serie 20 gedeckelt +30", ProgressMath.MatchCoins({ Won = true }, COIN_CFG, { Streak = 20 }), 110)
 eq("Comeback +25 %", ProgressMath.MatchCoins({}, COIN_CFG, { Comeback = true, ComebackBonus = 0.25 }), 38)
 eq("Event ×2", ProgressMath.MatchCoins({}, COIN_CFG, { EventMult = 2 }), 60)
 eq("Event gedeckelt ×2", ProgressMath.MatchCoins({}, COIN_CFG, { EventMult = 99 }), 60)
-eq("Krone Mensch +40", ProgressMath.MatchCoins({ CrownDefences = 1, CrownVsHuman = 1 }, COIN_CFG, { CrownHumanCoins = 40, CrownBotCoins = 10 }), 70)
-eq("Krone Bot +10", ProgressMath.MatchCoins({ CrownDefences = 1 }, COIN_CFG, { CrownHumanCoins = 40, CrownBotCoins = 10 }), 40)
+eq(
+	"Krone Mensch +40",
+	ProgressMath.MatchCoins(
+		{ CrownDefences = 1, CrownVsHuman = 1 },
+		COIN_CFG,
+		{ CrownHumanCoins = 40, CrownBotCoins = 10 }
+	),
+	70
+)
+eq(
+	"Krone Bot +10",
+	ProgressMath.MatchCoins({ CrownDefences = 1 }, COIN_CFG, { CrownHumanCoins = 40, CrownBotCoins = 10 }),
+	40
+)
 eq("Unentschieden +10 %", ProgressMath.MatchCoins({ Draw = true }, COIN_CFG, {}), 33)
 eq("MatchXp leer = Played", ProgressMath.MatchXp({}, XP_CFG), 40)
 eq("MatchXp NaN-sicher", ProgressMath.MatchXp({ Elims = 0 / 0 }, XP_CFG), 40)
@@ -322,11 +357,19 @@ eq("Chat Satzzeichen", ProgressMath.RewriteChat("...ez?!", REWRITES, "de"), "...
 local function fakeT(key: string, ...: any): string
 	return key .. "=" .. table.concat({ ... }, ",")
 end
-eq("Describe Coins+Keys", ProgressMath.DescribeReward({ Keys = 1, Coins = 150 }, fakeT), "prog.r.coins=150 + prog.r.keys=1")
+eq(
+	"Describe Coins+Keys",
+	ProgressMath.DescribeReward({ Keys = 1, Coins = 150 }, fakeT),
+	"prog.r.coins=150 + prog.r.keys=1"
+)
 eq("Describe Boost Minuten", ProgressMath.DescribeReward({ XpBoostSeconds = 900 }, fakeT), "prog.r.xpBoost=15")
-eq("Describe Kosmetik", ProgressMath.DescribeReward({ Cosmetic = "C_Ghost" }, fakeT, function(id)
-	return "<" .. id .. ">"
-end), "<C_Ghost>")
+eq(
+	"Describe Kosmetik",
+	ProgressMath.DescribeReward({ Cosmetic = "C_Ghost" }, fakeT, function(id)
+		return "<" .. id .. ">"
+	end),
+	"<C_Ghost>"
+)
 eq("Describe leer", ProgressMath.DescribeReward(nil, fakeT), "")
 
 print(("[progressmath.test] %d/%d PASS"):format(passed, passed + failed))
