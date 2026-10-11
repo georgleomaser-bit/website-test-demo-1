@@ -2700,6 +2700,11 @@ local function tickFfaFill(m: any)
 	end
 end
 
+-- Phase frisch lesen (Aufrufe dazwischen können das Match schließen)
+local function phaseOf(m: any): string
+	return m.Phase
+end
+
 -- Laden fertig? Alle Menschen haben "ArenaReady" gesendet (oder Zeit um) -> Intro
 local function checkLoadDone(m: any, timeout: boolean)
 	if m.Phase ~= "Load" or not m.Arena then
@@ -2724,12 +2729,12 @@ local function checkLoadDone(m: any, timeout: boolean)
 	for _, e in ipairs(humanEntries(m)) do
 		if not e.Combatant then
 			removeEntry(m, e, "NoSpawn")
-			if m.Phase == "Closed" then
+			if phaseOf(m) == "Closed" then
 				return
 			end
 		end
 	end
-	if m.Phase == "Load" then
+	if phaseOf(m) == "Load" then
 		-- ein Team ohne Mitglieder (z. B. Bot-Budget beim Laden erschöpft) -> abbrechen statt Freilos
 		if not m.Ffa and (teamMembers(m, 1) == 0 or teamMembers(m, 2) == 0) then
 			cancelMatch(m, "match.botsBusy")

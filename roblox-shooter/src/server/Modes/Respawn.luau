@@ -15,7 +15,7 @@
 --    Respawn.Leader(scores, tiebreak?): (id?, tie)       höchste Punktzahl; Gleichstand -> tiebreak[id] höher gewinnt
 --
 --  m.Api (von MatchService): Now(), Send(kind, data), GoLive(), Combatants(): { Combatant },
---    Respawn(c), Heal(c, amount), TeamOf(id): number, DamageOf(id): number
+--    Respawn(c), Heal(c, amount), TeamOf(id): number, DamageTable(): { [id]: Schaden }
 -- =====================================================================
 
 local Respawn = {}

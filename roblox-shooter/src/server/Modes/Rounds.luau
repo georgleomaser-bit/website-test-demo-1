@@ -19,9 +19,10 @@
 --    Rounds.BuildRules(modeKey, mutatorKey?, modesCfg): ContextRules
 --    Rounds.MatchPointTeams(score, roundsToWin): { number }
 --
---  m.Api (von MatchService): Now(), Send(kind, data), BeginRound(suddenDeath), GoLive(), StartOvertime(zoneOpenOnly),
+--  m.Api (von MatchService): Now(), Send(kind, data), BeginRound(suddenDeath), GoLive(), StartOvertime(endsAt),
 --    AliveByTeam(): { [team]: { Combatant } }, TeamHp(team), TeamDamage(team), ZonePresence(): { [team]: number },
---    AllReady(): boolean, RoundEnded(info), ZoneUpdate(team, progress, contested), AntiCamp(untilT), Combatant(id)
+--    AllReady(): boolean, RoundEnded(info), ZoneUpdate(team, progress, contested), AntiCamp(untilT)
+--  Zusätzlich: Rounds.OnDamage(m, attacker, victim, dealt) (FLAWLESS/Anti-Camp), Rounds.Forfeit(m, winner)
 -- =====================================================================
 
 local Rounds = {}
