@@ -70,7 +70,8 @@ local MAX_MATCHES = 24
 local MAX_ROSTER = 32
 local ERROR_LOG_EVERY = 10
 local RANDOM_VOTE = 4 -- Vote-Index "Zufall"
-local DEFAULT_LOADOUT = { Primary = "PopRifle", Secondary = "PipPistol", Melee = "BoxingGloves", Utility = "PopGrenade" }
+local DEFAULT_LOADOUT =
+	{ Primary = "PopRifle", Secondary = "PipPistol", Melee = "BoxingGloves", Utility = "PopGrenade" }
 local SLOTS: { Types.SlotName } = { "Primary", "Secondary", "Melee", "Utility" }
 local RULESET_PHASES = { Prep = true, Live = true, Overtime = true, RoundEnd = true }
 local LIVE_PHASES = { Live = true, Overtime = true }
@@ -296,7 +297,9 @@ local function mapsFor(modeKey: string, teamSize: number): { string }
 		if type(maps) == "table" then
 			for key, def in pairs(maps) do
 				if type(def) == "table" and not def.Fixed and type(def.Modes) == "table" then
-					local sizeOk = modeKey == "FFA" or type(def.TeamSizes) ~= "table" or table.find(def.TeamSizes, teamSize) ~= nil
+					local sizeOk = modeKey == "FFA"
+						or type(def.TeamSizes) ~= "table"
+						or table.find(def.TeamSizes, teamSize) ~= nil
 					if table.find(def.Modes, modeKey) and sizeOk then
 						table.insert(result, key)
 					end
@@ -1297,7 +1300,16 @@ local function buildMe(m: any, e: Entry, before: any, after: any, r: Types.Playe
 		Score = if m.Ffa and m.Scores then (m.Scores[e.Id] or 0) else nil,
 	}
 	if not before or not after then
-		return { XpGain = 0, Level = 1, XpInLevel = 0, XpNext = 0, Coins = 0, Mvp = r.Mvp, Stats = stats, QuestTicks = {} }
+		return {
+			XpGain = 0,
+			Level = 1,
+			XpInLevel = 0,
+			XpNext = 0,
+			Coins = 0,
+			Mvp = r.Mvp,
+			Stats = stats,
+			QuestTicks = {},
+		}
 	end
 	local level, inLevel = after.Level, after.XP
 	if ProgressMath and type(ProgressMath.LevelFromTotal) == "function" then
@@ -1419,7 +1431,9 @@ local function closeMatch(m: any, reason: string)
 		local p = e.Player
 		if p and not e.Removed then
 			local stays = crown
-				and ((crownWinner ~= nil and p == crownWinner) or (noWinner and m.CrownKing ~= nil and p == m.CrownKing))
+				and (
+					(crownWinner ~= nil and p == crownWinner) or (noWinner and m.CrownKing ~= nil and p == m.CrownKing)
+				)
 			if stays then
 				-- König bleibt in der Grube (B4)
 				local c = e.Combatant

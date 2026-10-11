@@ -249,7 +249,9 @@ local function redraw()
 			Position = UDim2.fromOffset(4, 3),
 			Size = UDim2.fromOffset(ROW_H - 6, ROW_H - 6),
 			BackgroundColor3 = UI.Theme.PanelLight,
-			Image = if p and id > 0 and not r.IsBot
+			Image = if p
+					and id > 0
+					and not r.IsBot
 				then ("rbxthumb://type=AvatarHeadShot&id=%d&w=48&h=48"):format(id)
 				else FACE,
 			ZIndex = 43,

@@ -772,7 +772,9 @@ function Viewmodel.Equip(key: string, cos: { Skin: string, Wrap: string, Charm: 
 		local ok, charm = pcall(cosmetics.BuildCharm, charmId)
 		if ok and typeof(charm) == "Instance" and charm:IsA("Model") then
 			charm.Parent = c
-			local pivot = charm:GetPivot()
+			-- Aufhängepunkt: Attachment "Hook" am PrimaryPart (CosmeticModels), sonst der Pivot
+			local hook = charm:FindFirstChild("Hook", true)
+			local pivot = if hook and hook:IsA("Attachment") then CFrame.new(hook.WorldPosition) else charm:GetPivot()
 			for _, part in ipairs(charm:GetDescendants()) do
 				if part:IsA("BasePart") then
 					addEntry(part, pivot:ToObjectSpace(part.CFrame), "Charm")
@@ -926,7 +928,11 @@ function Viewmodel.HideFor(reason: string, on: boolean)
 	if type(reason) ~= "string" then
 		return
 	end
-	hiddenFor[reason] = if on then true else nil
+	if on then
+		hiddenFor[reason] = true
+	else
+		hiddenFor[reason] = nil
+	end
 	applyParent()
 end
 

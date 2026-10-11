@@ -8,8 +8,8 @@
 --    1) Raster (Config.Maps.Nav.Grid = 6): pro Spalte Strahlen nach unten, bis zu 4 Ebenen
 --       (Brücken, Wehrgänge, Dächer). Begehbar = Fläche zeigt nach oben (Normal.Y ≥ 0.7) und
 --       Kopffreiheit ≥ Headroom (5.5) – auch kein Teil, in dem der Punkt steckt.
---    2) Extra-Knoten: CoverNodes (A + gespiegelt, Cover = true), Zone, Stützpunkte auf Brücken
---       (Teile mit Namen "Bridge", auch schräge).
+--    2) Extra-Knoten: CoverNodes (A + gespiegelt, Cover = true), Zone, Stützpunkte auf Brücken,
+--       Wehrgängen und Rampen (Teile mit Namen "Bridge"/"Walkway"/"Ramp", auch schräg gedrehte).
 --    3) Kanten zu den 8 Rasternachbarn (Extras: alle Knoten im Umkreis 1.5 Raster):
 --       Höhenunterschied ≤ StepMax (4.5), freier Weg auf Knie- und Kopfhöhe über dem höheren
 --       Knoten, Boden unter der Mitte (keine Kante über Löcher/Leere).
@@ -59,7 +59,9 @@ type Ctx = {
 
 local MAX_LEVELS = 4 -- Ebenen pro Rasterspalte
 local MAX_ATTEMPTS = 4
-local GRID_OFFSET = 0.37 -- Raster nicht genau auf Teilekanten (viele Kanten liegen auf Vielfachen von 6)
+-- Raster-Versatz: nie genau auf Teilekanten (viele liegen auf Vielfachen von 6). Zwei Versuche je Map,
+-- der bessere gewinnt (schmale Durchgänge zwischen zwei Rasterreihen werden so trotzdem erfasst).
+local GRID_OFFSETS = { 0.37, 3.37, 1.87 }
 local EDGE_MARGIN = 1.2 -- Abstand zu den Außengrenzen
 local NORMAL_MIN = 0.7
 local KNEE = 1.0
@@ -150,6 +152,26 @@ local function projectTo(ctx: Ctx, p: Vector3, maxDy: number): Vector3?
 	return Vector3.new(p.X, best, p.Z)
 end
 
+-- Wie projectTo, steckt der Punkt in einem Teil (z. B. Deckungs-Punkt in der Deckung), wird im
+-- Umkreis bis 3.5 Studs die nächste passende Fläche gesucht.
+local NUDGE_RADII = { 1.5, 2.5, 3.5 }
+local function projectNear(ctx: Ctx, p: Vector3, maxDy: number): Vector3?
+	local direct = projectTo(ctx, p, maxDy)
+	if direct then
+		return direct
+	end
+	for _, r in ipairs(NUDGE_RADII) do
+		for k = 0, 7 do
+			local angle = k * math.pi / 4
+			local found = projectTo(ctx, p + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r), maxDy)
+			if found then
+				return found
+			end
+		end
+	end
+	return nil
+end
+
 -- Darf ein Bot von a nach b gehen/springen?
 local function canLink(ctx: Ctx, a: Vector3, b: Vector3): boolean
 	if math.abs(a.Y - b.Y) > ctx.Step then
@@ -202,10 +224,13 @@ local function topOf(model: Model, origin: CFrame): number
 	return top + 1
 end
 
-local function bridgeSamples(ctx: Ctx, model: Model): { Vector3 }
-	local out: { Vector3 } = {}
+-- Stützpunkte auf schmalen/schrägen Laufflächen (auch schräg gedrehte Brücken), die das Raster verfehlen kann
+local SAMPLE_NAMES: { [string]: boolean } = { Bridge = true, Walkway = true, Ramp = true }
+
+local function surfaceSamples(ctx: Ctx, model: Model): { { P: Vector3, MaxDy: number } }
+	local out: { { P: Vector3, MaxDy: number } } = {}
 	for _, inst in ipairs(model:GetChildren()) do
-		if inst:IsA("BasePart") and inst.Name == "Bridge" then
+		if inst:IsA("BasePart") and SAMPLE_NAMES[inst.Name] then
 			local cf = ctx.Origin:ToObjectSpace(inst.CFrame)
 			local size = inst.Size
 			local alongZ = size.Z >= size.X
@@ -214,7 +239,7 @@ local function bridgeSamples(ctx: Ctx, model: Model): { Vector3 }
 			for i = 0, count - 1 do
 				local t = if count == 1 then 0 else -((length - 2) / 2) + i * ((length - 2) / (count - 1))
 				local localOffset = if alongZ then Vector3.new(0, size.Y / 2, t) else Vector3.new(t, size.Y / 2, 0)
-				table.insert(out, cf:PointToWorldSpace(localOffset))
+				table.insert(out, { P = cf:PointToWorldSpace(localOffset), MaxDy = size.Y + 1 })
 			end
 		end
 	end
@@ -228,7 +253,7 @@ type Attempt = {
 	ZoneIndex: number?,
 }
 
-local function attempt(ctx: Ctx, layout: Types.MapLayout, model: Model, grid: number): Attempt
+local function attempt(ctx: Ctx, layout: Types.MapLayout, model: Model, grid: number, offset: number): Attempt
 	local nodes: { Node } = {}
 	local adj: { { number } } = {}
 	local edgeCount = 0
@@ -265,14 +290,14 @@ local function attempt(ctx: Ctx, layout: Types.MapLayout, model: Model, grid: nu
 	end
 
 	-- 1) Raster
-	local ixMin = math.ceil((minX - GRID_OFFSET) / grid)
-	local ixMax = math.floor((maxX - GRID_OFFSET) / grid)
-	local izMin = math.ceil((minZ - GRID_OFFSET) / grid)
-	local izMax = math.floor((maxZ - GRID_OFFSET) / grid)
+	local ixMin = math.ceil((minX - offset) / grid)
+	local ixMax = math.floor((maxX - offset) / grid)
+	local izMin = math.ceil((minZ - offset) / grid)
+	local izMax = math.floor((maxZ - offset) / grid)
 	for ix = ixMin, ixMax do
 		for iz = izMin, izMax do
-			local x = ix * grid + GRID_OFFSET
-			local z = iz * grid + GRID_OFFSET
+			local x = ix * grid + offset
+			local z = iz * grid + offset
 			local key = colKey(ix, iz)
 			for _, y in ipairs(surfacesAt(ctx, x, z)) do
 				local index = addNode(Vector3.new(x, y, z), false, key, "Grid")
@@ -310,8 +335,8 @@ local function attempt(ctx: Ctx, layout: Types.MapLayout, model: Model, grid: nu
 	local extras: { number } = {}
 	local zoneIndex: number? = nil
 	-- Zonen-Mitte kann in einem Teil stecken (Crown Ring: Kiste) -> Punkte im Zonenkreis probieren
-	for _, offset in ipairs(ZONE_PROBES) do
-		local zoneP = projectTo(ctx, layout.Zone + offset, 3)
+	for _, probe in ipairs(ZONE_PROBES) do
+		local zoneP = projectTo(ctx, layout.Zone + probe, 3)
 		if zoneP then
 			zoneIndex = addNode(zoneP, false, nil, "Zone")
 			table.insert(extras, zoneIndex :: number)
@@ -319,17 +344,17 @@ local function attempt(ctx: Ctx, layout: Types.MapLayout, model: Model, grid: nu
 		end
 	end
 	for _, p in ipairs(MapKit.CoverPoints(layout)) do
-		local projected = projectTo(ctx, p, 3)
+		local projected = projectNear(ctx, p, 3)
 		if projected then
 			table.insert(extras, addNode(projected, true, nil, "Cover"))
 		else
 			warn(("[Nav] %s: Deckungs-Knoten %s hat keinen Boden"):format(layout.Key, tostring(p)))
 		end
 	end
-	for _, p in ipairs(bridgeSamples(ctx, model)) do
-		local projected = projectTo(ctx, p, 1)
+	for _, sample in ipairs(surfaceSamples(ctx, model)) do
+		local projected = projectTo(ctx, sample.P, sample.MaxDy)
 		if projected then
-			table.insert(extras, addNode(projected, false, nil, "Bridge"))
+			table.insert(extras, addNode(projected, false, nil, "Surface"))
 		end
 	end
 	local radius = grid * 1.5
@@ -404,7 +429,6 @@ end
 function NavBuilder.Build(model: Model, layout: Types.MapLayout, origin: CFrame): (Types.NavGraph, Report)
 	local grid, headroom, stepMax, maxNodes = settings()
 	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
 	params.IncludeInstances = { model }
 	params.RespectCanCollide = true
 	params.IgnoreWater = true
@@ -417,17 +441,22 @@ function NavBuilder.Build(model: Model, layout: Types.MapLayout, origin: CFrame)
 		BottomY = (layout.KillY or -40) + 1,
 	}
 
-	local result: Attempt? = nil
-	local keep: { [number]: boolean } = {}
-	local kept = 0
-	local pruned = 0
-	local lost = 0
-	local attempts = 0
-	for _ = 1, MAX_ATTEMPTS do
-		attempts += 1
-		local current = attempt(ctx, layout, model, grid)
+	type Trial = {
+		Result: Attempt,
+		Keep: { [number]: boolean },
+		Kept: number,
+		Pruned: number,
+		Lost: number,
+		Grid: number,
+		ZoneOk: boolean,
+		BadSpawns: { string },
+	}
+	local spawnA, spawnB, spawnFfa = MapKit.SpawnCFrames(layout)
+
+	-- Ein Versuch mit Raster/Versatz: Hauptkomponente bestimmen, Rest entfernen, Spawns prüfen
+	local function trial(gridSize: number, offset: number): Trial
+		local current = attempt(ctx, layout, model, gridSize, offset)
 		local comp, sizes = components(current.Adj)
-		-- Hauptkomponente: die mit der Zone, sonst die größte
 		local main = 0
 		if current.ZoneIndex then
 			main = comp[current.ZoneIndex :: number]
@@ -440,29 +469,88 @@ function NavBuilder.Build(model: Model, layout: Types.MapLayout, origin: CFrame)
 				end
 			end
 		end
-		keep = {}
-		kept, pruned, lost = 0, 0, 0
-		local lostIds: { [number]: boolean } = {}
+		local keep: { [number]: boolean } = {}
+		local kept, pruned, lost = 0, 0, 0
+		local lowest = math.huge
 		for i, node in ipairs(current.Nodes) do
 			if comp[i] == main then
 				keep[i] = true
 				kept += 1
-			else
+				lowest = math.min(lowest, node.P.Y)
+			end
+		end
+		-- Verlorene Inseln: Dächer/Kistendeckel sind normal; verdächtig sind Inseln mit Deckungs-Knoten
+		-- oder auf Bodenhöhe (bis StepMax über dem tiefsten erreichbaren Knoten)
+		local suspicious: { [number]: boolean } = {}
+		for i, node in ipairs(current.Nodes) do
+			if not keep[i] then
 				pruned += 1
 				local id = comp[i]
-				if (sizes[id] >= 3 or node.Cover) and not lostIds[id] then
-					lostIds[id] = true
+				if not suspicious[id] and (node.Cover or node.P.Y <= lowest + ctx.Step) then
+					suspicious[id] = true
 					lost += 1
 				end
 			end
 		end
-		result = current
-		if kept <= maxNodes then
-			break
+		local bad: { string } = {}
+		local function checkSpawns(list: { CFrame }, label: string)
+			for index, cf in ipairs(list) do
+				local ground = cf.Position - Vector3.new(0, 3, 0)
+				if not nearestIn(current.Nodes, keep, ground, gridSize * 1.5 + 1, 2.5) then
+					table.insert(bad, ("%s%d"):format(label, index))
+				end
+			end
 		end
-		grid += 1
+		checkSpawns(spawnA, "A")
+		checkSpawns(spawnB, "B")
+		checkSpawns(spawnFfa, "FFA")
+		return {
+			Result = current,
+			Keep = keep,
+			Kept = kept,
+			Pruned = pruned,
+			Lost = lost,
+			Grid = gridSize,
+			ZoneOk = current.ZoneIndex ~= nil and keep[current.ZoneIndex :: number] == true,
+			BadSpawns = bad,
+		}
 	end
-	local final = result :: Attempt
+
+	local function score(t: Trial): number
+		return (if t.ZoneOk then 100000 else 0)
+			- #t.BadSpawns * 1000
+			- t.Lost * 100
+			- (if t.Kept > maxNodes then 50000 else 0)
+			+ math.min(t.Kept, maxNodes) * 0.01
+	end
+
+	local best: Trial? = nil
+	local attempts = 0
+	for _, offset in ipairs(GRID_OFFSETS) do
+		local gridSize = grid
+		local current: Trial? = nil
+		for _ = 1, MAX_ATTEMPTS do
+			attempts += 1
+			current = trial(gridSize, offset)
+			if (current :: Trial).Kept <= maxNodes then
+				break
+			end
+			gridSize += 1
+		end
+		local candidate = current :: Trial
+		if best == nil or score(candidate) > score(best :: Trial) then
+			best = candidate
+		end
+		local b = best :: Trial
+		if b.ZoneOk and #b.BadSpawns == 0 and b.Lost == 0 and b.Kept <= maxNodes then
+			break -- gut genug, zweiter Versatz unnötig
+		end
+	end
+	local chosen = best :: Trial
+	local final = chosen.Result
+	local keep = chosen.Keep
+	local kept, pruned, lost = chosen.Kept, chosen.Pruned, chosen.Lost
+	grid = chosen.Grid
 
 	-- Neu nummerieren (nur Hauptkomponente)
 	local newIndex: { [number]: number } = {}
@@ -491,21 +579,8 @@ function NavBuilder.Build(model: Model, layout: Types.MapLayout, origin: CFrame)
 		end
 	end
 
-	-- Zone und Spawns erreichbar?
-	local zoneOk = final.ZoneIndex ~= nil and keep[final.ZoneIndex :: number] == true
-	local badSpawns: { string } = {}
-	local a, b, ffa = MapKit.SpawnCFrames(layout)
-	local function checkSpawns(list: { CFrame }, label: string)
-		for index, cf in ipairs(list) do
-			local ground = cf.Position - Vector3.new(0, 3, 0)
-			if not nearestIn(final.Nodes, keep, ground, grid * 1.5 + 1, 2.5) then
-				table.insert(badSpawns, ("%s%d"):format(label, index))
-			end
-		end
-	end
-	checkSpawns(a, "A")
-	checkSpawns(b, "B")
-	checkSpawns(ffa, "FFA")
+	local zoneOk = chosen.ZoneOk
+	local badSpawns = chosen.BadSpawns
 
 	if kept > maxNodes then
 		warn(("[Nav] %s: %d Knoten (Grenze %d) auch mit Raster %d"):format(layout.Key, kept, maxNodes, grid))
@@ -540,7 +615,6 @@ end
 -- ---------------------------------------------------------------------
 function NavBuilder.SpawnBlockers(model: Model, layout: Types.MapLayout, origin: CFrame, box: Vector3): { string }
 	local params = OverlapParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
 	params.IncludeInstances = { model }
 	params.RespectCanCollide = true
 	params.MaxParts = 4

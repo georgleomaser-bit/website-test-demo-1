@@ -88,6 +88,20 @@ for _, tile in ipairs(MapKit.Checker(Vector2.new(-40, -60), Vector2.new(40, 60),
 	table.insert(parts, tile)
 end
 
+-- Kulisse: Wand-Lisenen, Spielzeug-Stapel hinter den Mauern, Ballons (nur Deko)
+for _, piece in
+	ipairs(MapKit.Scenery({
+		Size = V(80, 16, 120),
+		WallHeight = 16,
+		Seed = 23,
+		Colors = { "Red", "Blue", "Yellow", "Mint", "Lilac" },
+		Pilaster = "Lilac",
+		Balloons = 4,
+	}))
+do
+	table.insert(parts, piece)
+end
+
 local layout: Types.MapLayout = {
 	Key = "BlockYard",
 	Size = V(80, 16, 120),

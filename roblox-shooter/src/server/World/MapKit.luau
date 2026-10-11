@@ -14,6 +14,8 @@
 --    MapKit.SpawnCFrames(layout): (A, B, FFA)           lokale CFrames (A Blick +Z, B Blick −Z, FFA zur Mitte)
 --    MapKit.CoverPoints(layout): { Vector3 }            CoverNodes A + gespiegelt (ohne Doppelte)
 --    MapKit.Checker(min, max, tile, color): { MapPart } Deko-Bodenfliesen (punktsymmetrisch, Center)
+--    MapKit.Scenery(opts): { MapPart }                  Kulisse: Wand-Lisenen, Spielzeug-Stapel, Ballons
+--    MapKit.Clouds(seed, count, spreadX, minZ, maxZ)    Wolken-Haufen (Insel-Maps)
 --    MapKit.part(props) / wedge(props) / cyl(props, center, height, diameter) / ball(props, center, d)
 --    MapKit.sign(part, face, lines, opts?): SurfaceGui  Schrift FredokaOne + dicke schwarze Kontur
 --    MapKit.surfaceLetter(part, text, faces, color?)    großer Buchstabe auf Flächen (BlockYard, Lobby)
@@ -226,6 +228,144 @@ function MapKit.Checker(minXZ: Vector2, maxXZ: Vector2, tile: number, y: number,
 					Center = true,
 				})
 			end
+		end
+	end
+	return out
+end
+
+-- Kulisse für ummauerte Arenen (A4-Optik, nur Deko): Lisenen an den Wand-Innenseiten und
+-- Spielzeug-Stapel außerhalb der Wände, die über die Mauerkrone ragen, dazu Ballons.
+-- Erzeugt die A-Hälfte (Nordwand + ganze Westseite); MapKit spiegelt den Rest. Deterministisch (Seed).
+export type SceneryOpts = {
+	Size: Vector3,
+	WallHeight: number,
+	Seed: number,
+	Colors: { string | Color3 },
+	Pilaster: (string | Color3)?,
+	Balloons: number?,
+}
+
+local function lcg(seed: number): () -> number
+	local state = math.floor(math.abs(seed)) % 2147483647 + 1
+	return function(): number
+		state = (state * 16807) % 2147483647
+		return state / 2147483647
+	end
+end
+
+function MapKit.Scenery(o: SceneryOpts): { Types.MapPart }
+	local out: { Types.MapPart } = {}
+	local hx, hz, h = o.Size.X / 2, o.Size.Z / 2, o.WallHeight
+	local rand = lcg(o.Seed)
+	local colorCount = #o.Colors
+	local colorIndex = 0
+	local function nextColor(): string | Color3
+		colorIndex += 1
+		return o.Colors[(colorIndex - 1) % colorCount + 1]
+	end
+	-- 1) Lisenen (Innenseite der Nordwand, ganze Westwand)
+	if o.Pilaster then
+		local nx = math.max(2, math.floor(2 * hx / 12))
+		for i = 1, nx - 1 do
+			table.insert(out, {
+				Shape = "Block",
+				Tag = "DecoPilaster",
+				Pos = Vector3.new(-hx + i * (2 * hx / nx), h / 2, -hz + 0.15),
+				Size = Vector3.new(1.2, h - 1, 0.3),
+				Color = o.Pilaster,
+			})
+		end
+		local nz = math.max(2, math.floor(2 * hz / 12))
+		for i = 1, nz - 1 do
+			table.insert(out, {
+				Shape = "Block",
+				Tag = "DecoPilaster",
+				Pos = Vector3.new(-hx + 0.15, h / 2, -hz + i * (2 * hz / nz)),
+				Size = Vector3.new(0.3, h - 1, 1.2),
+				Color = o.Pilaster,
+			})
+		end
+	end
+	-- 2) Spielzeug-Stapel außen (Säule aus der Tiefe + kleinerer Klotz + Kugel)
+	local function stack(x: number, z: number)
+		local base = 6 + rand() * 5
+		local top = h + 2 + rand() * 8
+		local bottom = -18
+		table.insert(out, {
+			Shape = "Block",
+			Tag = "DecoStack",
+			Pos = Vector3.new(x, (top + bottom) / 2, z),
+			Size = Vector3.new(base, top - bottom, base),
+			Color = nextColor(),
+		})
+		local cap = base * (0.55 + rand() * 0.2)
+		local capH = 3 + rand() * 3
+		table.insert(out, {
+			Shape = "Block",
+			Tag = "DecoStack",
+			Pos = Vector3.new(x, top + capH / 2, z),
+			Size = Vector3.new(cap, capH, cap),
+			Rot = Vector3.new(0, rand() * 40 - 20, 0),
+			Color = nextColor(),
+		})
+		local ball = cap * 0.7
+		table.insert(out, {
+			Shape = "Ball",
+			Tag = "DecoStack",
+			Pos = Vector3.new(x, top + capH + ball / 2, z),
+			Size = Vector3.new(ball, ball, ball),
+			Color = nextColor(),
+		})
+	end
+	local countN = math.max(2, math.floor(2 * hx / 18))
+	for i = 1, countN do
+		local x = -hx + (i - 0.5) * (2 * hx / countN) + (rand() - 0.5) * 4
+		stack(x, -hz - 8 - rand() * 12)
+	end
+	local countW = math.max(2, math.floor(2 * hz / 18))
+	for i = 1, countW do
+		local z = -hz + (i - 0.5) * (2 * hz / countW) + (rand() - 0.5) * 4
+		stack(-hx - 8 - rand() * 12, z)
+	end
+	-- 3) Ballons über der Kulisse
+	for _ = 1, o.Balloons or 3 do
+		local x = (rand() * 2 - 1) * (hx + 10)
+		local z = -hz - 12 - rand() * 14
+		local y = h + 14 + rand() * 10
+		table.insert(out, {
+			Shape = "Ball",
+			Tag = "DecoBalloon",
+			Pos = Vector3.new(x, y, z),
+			Size = Vector3.new(4, 4, 4),
+			Color = nextColor(),
+		})
+		table.insert(out, {
+			Shape = "Block",
+			Tag = "DecoString",
+			Pos = Vector3.new(x, y - 4.5, z),
+			Size = Vector3.new(0.12, 5, 0.12),
+			Color = "PureWhite",
+		})
+	end
+	return out
+end
+
+-- Wolken-Haufen (je 3 weiße Kugeln) rund um eine Insel-Map (A-Hälfte, z < 0; Rest gespiegelt)
+function MapKit.Clouds(seed: number, count: number, spreadX: number, minZ: number, maxZ: number): { Types.MapPart }
+	local out: { Types.MapPart } = {}
+	local rand = lcg(seed)
+	for _ = 1, count do
+		local center = Vector3.new((rand() * 2 - 1) * spreadX, -14 - rand() * 16, minZ + rand() * (maxZ - minZ))
+		for k = 1, 3 do
+			local d = 6 + rand() * 6
+			table.insert(out, {
+				Shape = "Ball",
+				Tag = "DecoCloud",
+				Pos = center + Vector3.new((k - 2) * d * 0.6, rand() * 2, (rand() - 0.5) * 4),
+				Size = Vector3.new(d, d, d),
+				Color = "PureWhite",
+				Transparency = 0.1,
+			})
 		end
 	end
 	return out

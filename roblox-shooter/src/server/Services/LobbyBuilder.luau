@@ -654,19 +654,15 @@ local function buildCrownArea(parent: Folder)
 		local angle = math.rad(i * 72)
 		local pos = crownCf.Position + V(math.cos(angle) * 2.4, 1.6, math.sin(angle) * 2.4)
 		deco({ Name = "CrownSpike", CFrame = CFrame.new(pos), Size = V(1, 1.8, 1), Color = C("Gold"), Parent = area })
-		MapKit.ball(
-			{
-				Name = "CrownGem",
-				Color = RAINBOW[(i % #RAINBOW) + 1],
-				Material = NEON,
-				CanCollide = false,
-				CanQuery = false,
-				CastShadow = false,
-				Parent = area,
-			},
-			pos + V(0, 1.2, 0),
-			0.8
-		)
+		MapKit.ball({
+			Name = "CrownGem",
+			Color = RAINBOW[(i % #RAINBOW) + 1],
+			Material = NEON,
+			CanCollide = false,
+			CanQuery = false,
+			CastShadow = false,
+			Parent = area,
+		}, pos + V(0, 1.2, 0), 0.8)
 	end
 end
 
@@ -1363,19 +1359,15 @@ local function buildDeco(parent: Folder)
 			Color = C("Charcoal"),
 			Parent = decoFolder,
 		})
-		MapKit.ball(
-			{
-				Name = "LampGlow",
-				Color = C("Cream"),
-				Material = NEON,
-				CanCollide = false,
-				CanQuery = false,
-				CastShadow = false,
-				Parent = decoFolder,
-			},
-			V(l[1], 7.5, l[2]),
-			1.4
-		)
+		MapKit.ball({
+			Name = "LampGlow",
+			Color = C("Cream"),
+			Material = NEON,
+			CanCollide = false,
+			CanQuery = false,
+			CastShadow = false,
+			Parent = decoFolder,
+		}, V(l[1], 7.5, l[2]), 1.4)
 	end
 	-- Bänke um den Platz
 	for i = 0, 3 do
@@ -1420,18 +1412,14 @@ local function buildDeco(parent: Folder)
 		})
 		for k = -1, 1 do
 			local flowerPos = CFrame.lookAt(pos, V(0, 0, 0)) * CFrame.new(k, 1.4, 0)
-			MapKit.ball(
-				{
-					Name = "Flower",
-					Color = flowerColors[((i + k) % #flowerColors) + 1],
-					CanCollide = false,
-					CanQuery = false,
-					CastShadow = false,
-					Parent = decoFolder,
-				},
-				flowerPos.Position,
-				0.8
-			)
+			MapKit.ball({
+				Name = "Flower",
+				Color = flowerColors[((i + k) % #flowerColors) + 1],
+				CanCollide = false,
+				CanQuery = false,
+				CastShadow = false,
+				Parent = decoFolder,
+			}, flowerPos.Position, 0.8)
 		end
 	end
 	-- Ballons über dem Platz (schweben, nur Optik)
@@ -1439,18 +1427,14 @@ local function buildDeco(parent: Folder)
 	for i = 0, 5 do
 		local angle = math.rad(i * 60 + 15)
 		local pos = V(math.cos(angle) * 12, 22 + (i % 3) * 2.5, math.sin(angle) * 12)
-		MapKit.ball(
-			{
-				Name = "Balloon",
-				Color = balloonColors[i + 1],
-				CanCollide = false,
-				CanQuery = false,
-				CastShadow = false,
-				Parent = decoFolder,
-			},
-			pos,
-			3
-		)
+		MapKit.ball({
+			Name = "Balloon",
+			Color = balloonColors[i + 1],
+			CanCollide = false,
+			CanQuery = false,
+			CastShadow = false,
+			Parent = decoFolder,
+		}, pos, 3)
 		deco({
 			Name = "BalloonString",
 			CFrame = CFrame.new(pos - V(0, 3.5, 0)),

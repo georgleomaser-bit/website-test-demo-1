@@ -209,7 +209,8 @@ Maps.Moods = MOODS
 Maps.LobbyMood = "Day" -- Lobby, Range und Crown Ring
 Maps.StagingOrigin = Vector3.new(0, 3000, 0) -- hier steht jede Map beim Boot kurz für Nav-Graph + Spawn-Prüfung
 Maps.CrownOrigin = Vector3.new(95, -6, 0) -- Welt-Ursprung des Crown Rings (Grubenboden-Oberkante)
-Maps.Nav = { Grid = 6, Headroom = 5.5, StepMax = 4.5, MaxNodes = 300 }
+-- MaxNodes 400 statt 300 (C15): M-Maps brauchen bei Raster 6 inkl. Deckungs-/Zonen-/Brücken-Knoten ~310
+Maps.Nav = { Grid = 6, Headroom = 5.5, StepMax = 4.5, MaxNodes = 400 }
 Maps.DefaultKillY = -40 -- lokal unter der Map-Oberkante (gilt, wenn eine Map keine eigene KillY hat)
 Maps.BarrierCeiling = 40 -- Decke der automatischen Barrieren (B8.1)
 Maps.NeonShare = 0.08 -- Richtwert: höchstens ~8 % Neon-Teile pro Map (A4)

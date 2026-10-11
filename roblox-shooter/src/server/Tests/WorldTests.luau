@@ -61,6 +61,7 @@ local function withEachMap(services: any, fn: (model: Model, layout: any, info: 
 		if not ok then
 			table.insert(failures, key .. ": " .. tostring(err))
 		end
+		task.wait() -- Server-Takt nicht blockieren (Tests dürfen yielden)
 	end
 	check(#failures == 0, table.concat(failures, " | "))
 end
@@ -124,7 +125,7 @@ tests.NavReachable = function(services: any)
 	withEachMap(services, function(model, layout)
 		local nav, report = NavBuilder.Build(model, layout, TEST_ORIGIN)
 		check(#nav.Nodes > 0, "Nav-Graph leer")
-		check(#nav.Nodes <= math.max(300, tonumber(Config.Maps.Nav.MaxNodes) or 300), "zu viele Knoten")
+		check(#nav.Nodes <= (tonumber(Config.Maps.Nav.MaxNodes) or 400), "zu viele Knoten")
 		local reached = NavBuilder.Reachable(nav, 1)
 		local count = 0
 		for _ in pairs(reached) do

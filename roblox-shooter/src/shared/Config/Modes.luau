@@ -244,7 +244,10 @@ local MUTATORS: { [string]: MutatorDef } = {
 	},
 	Instapop = {
 		Name = { de = "Sofort-Pop", en = "Instapop" },
-		Desc = { de = "Fünffacher Schaden – ein Treffer, ein Pop!", en = "Five times the damage – one hit, one pop!" },
+		Desc = {
+			de = "Fünffacher Schaden – ein Treffer, ein Pop!",
+			en = "Five times the damage – one hit, one pop!",
+		},
 		Rules = {
 			ForcedLoadout = {
 				Primary = "Longshot",
@@ -262,7 +265,8 @@ Modes.Mutators = MUTATORS
 -- ---------------------------------------------------------------------
 -- 3) ROTATION – Tages-Mutator (Admin-Override lokal oder global möglich)
 -- ---------------------------------------------------------------------
-Modes.Rotation = { "MoonJump", "HeadsOnly", "Turbo", "BigHeads", "MeleeMayhem", "SnipersOnly", "LuckyLoadout", "Instapop" }
+Modes.Rotation =
+	{ "MoonJump", "HeadsOnly", "Turbo", "BigHeads", "MeleeMayhem", "SnipersOnly", "LuckyLoadout", "Instapop" }
 
 -- ---------------------------------------------------------------------
 -- 4) GRUND-REGELN jedes Match-Kontexts (Types.ContextRules)
@@ -433,7 +437,10 @@ local function checkRules(errors: { string }, path: string, rules: any, weaponOf
 				if def == nil then
 					table.insert(errors, path .. ".ForcedLoadout." .. slot .. ": unbekannte Waffe " .. key)
 				elseif def.Slot ~= slot then
-					table.insert(errors, path .. ".ForcedLoadout." .. slot .. ": " .. key .. " passt nicht in diesen Platz")
+					table.insert(
+						errors,
+						path .. ".ForcedLoadout." .. slot .. ": " .. key .. " passt nicht in diesen Platz"
+					)
 				end
 			end
 		end

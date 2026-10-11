@@ -184,11 +184,7 @@ function Rounds.BuildRules(modeKey: string, mutatorKey: string?, modesCfg: any):
 		end
 		for key, value in pairs(src) do
 			if type(value) == "table" then
-				local copy = {}
-				for k, v in pairs(value) do
-					copy[k] = v
-				end
-				rules[key] = copy
+				rules[key] = table.clone(value)
 			else
 				rules[key] = value
 			end
@@ -426,6 +422,11 @@ function Rounds.Start(m: any)
 	beginPrep(m)
 end
 
+-- Phase frisch lesen (stepZone kann die Runde beenden)
+local function phaseOf(m: any): string
+	return m.Phase
+end
+
 function Rounds.Tick(m: any, dt: number)
 	if m.MatchOver and m.Phase ~= "RoundEnd" then
 		return
@@ -439,7 +440,7 @@ function Rounds.Tick(m: any, dt: number)
 		end
 	elseif phase == "Live" then
 		stepZone(m, dt)
-		if m.Phase ~= "Live" then
+		if phaseOf(m) ~= "Live" then
 			return
 		end
 		-- Team leer (z. B. verlassen/AFK mitten in der Runde) -> Runde sofort entscheiden
@@ -461,7 +462,7 @@ function Rounds.Tick(m: any, dt: number)
 		end
 	elseif phase == "Overtime" then
 		stepZone(m, dt)
-		if m.Phase ~= "Overtime" then
+		if phaseOf(m) ~= "Overtime" then
 			return
 		end
 		local teams = aliveTeams(m)

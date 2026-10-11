@@ -70,6 +70,7 @@ type QEntry = {
 	HeldSince: number?,
 	HeldTotal: number,
 	HoldReason: string?,
+	PrevHold: string?, -- Grund aus dem letzten Matcher-Takt (Meldung nur bei Wechsel)
 }
 
 type PlayerInfo = { Mmr: number, Matches: number, Rookie: boolean, Input: string }
@@ -254,7 +255,8 @@ function QueueService._Compatible(a: Aggregate, b: Aggregate, waited: number, cf
 	if waited < (cfg.InputMatchSeconds or 6) and a.Input ~= b.Input and a.Input ~= "Mixed" and b.Input ~= "Mixed" then
 		return false
 	end
-	local window = (cfg.MmrWindow or 200) + (cfg.MmrWiden or 50) * math.floor(waited / math.max(0.1, cfg.MmrWidenEvery or 3))
+	local window = (cfg.MmrWindow or 200)
+		+ (cfg.MmrWiden or 50) * math.floor(waited / math.max(0.1, cfg.MmrWidenEvery or 3))
 	return math.abs(a.Mmr - b.Mmr) <= window
 end
 
@@ -565,7 +567,11 @@ function QueueService.Leave(p: Player)
 	removeFromLine(p)
 end
 
-function QueueService.Join(p: Player, modeKey: string, source: { Pad: number?, Side: ("A" | "B")? }?): (boolean, string?)
+function QueueService.Join(
+	p: Player,
+	modeKey: string,
+	source: { Pad: number?, Side: ("A" | "B")? }?
+): (boolean, string?)
 	local def = modeDef(modeKey)
 	if not def or def.Queue ~= true then
 		return false, text(p, "match.unknownMode")
@@ -644,6 +650,7 @@ function QueueService.Join(p: Player, modeKey: string, source: { Pad: number?, S
 		HeldSince = nil,
 		HeldTotal = 0,
 		HoldReason = nil,
+		PrevHold = nil,
 	}
 	table.insert(list, entry)
 	entryOf[p] = entry
@@ -796,21 +803,27 @@ local function hold(entries: { QEntry }, reason: string)
 			entry.HeldSince = t
 		end
 		if entry.HoldReason ~= reason then
+			local changed = entry.PrevHold ~= reason
 			entry.HoldReason = reason
-			for _, p in ipairs(entry.Players) do
-				notifyThrottled(p, if reason == "Bots" then "match.botsBusy" else "match.arenasFull", nil, "Info")
+			if changed then
+				for _, p in ipairs(entry.Players) do
+					notifyThrottled(p, if reason == "Bots" then "match.botsBusy" else "match.arenasFull", nil, "Info")
+				end
 			end
 		end
 	end
 end
 
-local function unhold(entries: { QEntry })
+-- Zu Beginn jedes Matcher-Durchlaufs: gehaltene Zeit gutschreiben (Bot-Timer pausiert nur, solange
+-- wirklich gehalten wird); hold() setzt den Zustand im selben Takt wieder, wenn es weiter klemmt.
+local function releaseHolds(list: { QEntry })
 	local t = now()
-	for _, entry in ipairs(entries) do
+	for _, entry in ipairs(list) do
 		if entry.HeldSince then
 			entry.HeldTotal += t - entry.HeldSince
 			entry.HeldSince = nil
 		end
+		entry.PrevHold = entry.HoldReason
 		entry.HoldReason = nil
 	end
 end
@@ -823,14 +836,6 @@ local function playersOf(entries: { QEntry }): { Player }
 		end
 	end
 	return list
-end
-
-local function countOf(entries: { QEntry }): number
-	local n = 0
-	for _, entry in ipairs(entries) do
-		n += #entry.Players
-	end
-	return n
 end
 
 -- Match bauen (Bots füllt MatchService.Create bis zur Teamgröße auf)
@@ -921,10 +926,6 @@ local function buildUnits(list: { QEntry }): { Unit }
 	return units
 end
 
-local function unitEntries(u: Unit): { QEntry }
-	return if u.B then { u.A, u.B } else { u.A }
-end
-
 local function fillDue(entries: { QEntry }, anchor: QEntry, t: number): boolean
 	local rookie = false
 	for _, entry in ipairs(entries) do
@@ -954,6 +955,58 @@ local function compatibleWith(group: { QEntry }, candidate: { QEntry }, t: numbe
 	return true
 end
 
+-- Reine Team-Bildung (testbar): ab einem Anker-Eintrag (älteste zuerst) passende Einheiten auf zwei Teams
+-- der Größe n verteilen. Einheit = { A = Eintrag, B = gekoppelter Gegner (andere Pad-Hälfte)? }.
+-- compatible(group, members) entscheidet über die Regeln (Eingabegruppe, MMR, Neulings-Schutz).
+function QueueService._FormTeams(
+	units: { any },
+	anchor: any,
+	n: number,
+	compatible: ({ any }, { any }) -> boolean
+): ({ any }, { any }, { any }, number, number)
+	local t1: { any } = { anchor.A }
+	local t2: { any } = if anchor.B then { anchor.B } else {}
+	local group: { any } = if anchor.B then { anchor.A, anchor.B } else { anchor.A }
+	local n1 = #anchor.A.Players
+	local n2 = if anchor.B then #anchor.B.Players else 0
+	for _, u in ipairs(units) do
+		if n1 >= n and n2 >= n then
+			break
+		end
+		if u ~= anchor then
+			local members = if u.B then { u.A, u.B } else { u.A }
+			if compatible(group, members) then
+				local a1 = #u.A.Players
+				local b1 = if u.B then #u.B.Players else 0
+				local placed = false
+				if n1 + a1 <= n and n2 + b1 <= n then
+					table.insert(t1, u.A)
+					if u.B then
+						table.insert(t2, u.B)
+					end
+					n1 += a1
+					n2 += b1
+					placed = true
+				elseif n2 + a1 <= n and n1 + b1 <= n then
+					table.insert(t2, u.A)
+					if u.B then
+						table.insert(t1, u.B)
+					end
+					n2 += a1
+					n1 += b1
+					placed = true
+				end
+				if placed then
+					for _, m in ipairs(members) do
+						table.insert(group, m)
+					end
+				end
+			end
+		end
+	end
+	return t1, t2, group, n1, n2
+end
+
 -- Ein Durchlauf für einen Duell-Modus; true = ein Match wurde gebaut
 local function matchDuel(modeKey: string, def: any, t: number): boolean
 	local list = queues[modeKey]
@@ -963,6 +1016,7 @@ local function matchDuel(modeKey: string, def: any, t: number): boolean
 	table.sort(list, function(a, b)
 		return a.Since < b.Since
 	end)
+	releaseHolds(list)
 	local n = def.TeamSize or 1
 	-- (1) volle Pads -> sofort
 	for _, pad in ipairs(pads) do
@@ -978,44 +1032,11 @@ local function matchDuel(modeKey: string, def: any, t: number): boolean
 	end
 	-- (2) Menschen kombinieren, (3) Bot-Füllung
 	local units = buildUnits(list)
+	local function compatible(group: { QEntry }, members: { QEntry }): boolean
+		return compatibleWith(group, members, t)
+	end
 	for _, anchor in ipairs(units) do
-		local t1: { QEntry } = { anchor.A }
-		local t2: { QEntry } = if anchor.B then { anchor.B :: QEntry } else {}
-		local group = unitEntries(anchor)
-		local n1, n2 = countOf(t1), countOf(t2)
-		for _, u in ipairs(units) do
-			if n1 >= n and n2 >= n then
-				break
-			end
-			if u ~= anchor then
-				local members = unitEntries(u)
-				if compatibleWith(group, members, t) then
-					local a1 = #u.A.Players
-					local b1 = if u.B then #(u.B :: QEntry).Players else 0
-					if n1 + a1 <= n and n2 + b1 <= n then
-						table.insert(t1, u.A)
-						if u.B then
-							table.insert(t2, u.B :: QEntry)
-						end
-						n1 += a1
-						n2 += b1
-						for _, m in ipairs(members) do
-							table.insert(group, m)
-						end
-					elseif n2 + a1 <= n and n1 + b1 <= n then
-						table.insert(t2, u.A)
-						if u.B then
-							table.insert(t1, u.B :: QEntry)
-						end
-						n2 += a1
-						n1 += b1
-						for _, m in ipairs(members) do
-							table.insert(group, m)
-						end
-					end
-				end
-			end
-		end
+		local t1, t2, group, n1, n2 = QueueService._FormTeams(units, anchor, n, compatible)
 		if n1 == n and n2 == n then
 			if tryCreate(modeKey, { t1, t2 }, 0) then
 				return true
@@ -1038,6 +1059,7 @@ local function matchFfa(modeKey: string, def: any, t: number): boolean
 	table.sort(list, function(a, b)
 		return a.Since < b.Since
 	end)
+	releaseHolds(list)
 	local maxPlayers = def.MaxPlayers or 8
 	local anchor = list[1]
 	local group: { QEntry } = { anchor }
@@ -1239,7 +1261,9 @@ local function matcherTick(_dt: number)
 		if def and def.Queue then
 			local ok, err = pcall(function()
 				while created < MAX_CREATES_PER_TICK do
-					local made = if def.Ruleset == "Respawn" then matchFfa(modeKey, def, t) else matchDuel(modeKey, def, t)
+					local made = if def.Ruleset == "Respawn"
+						then matchFfa(modeKey, def, t)
+						else matchDuel(modeKey, def, t)
 					if not made then
 						break
 					end
@@ -1276,12 +1300,20 @@ local function loadPads()
 		return
 	end
 	for _, pad in ipairs(list) do
-		if type(pad) == "table" and type(pad.Id) == "number" and modeDef(pad.Mode) and typeof(pad.Part) == "Instance" then
+		local part = if type(pad) == "table" then pad.Part else nil
+		if
+			type(pad) == "table"
+			and type(pad.Id) == "number"
+			and modeDef(pad.Mode)
+			and typeof(part) == "Instance"
+			and part:IsA("BasePart")
+		then
+			local basePart = part :: BasePart
 			table.insert(pads, {
 				Id = pad.Id,
 				Mode = pad.Mode,
-				Part = pad.Part,
-				Center = if typeof(pad.Center) == "Vector3" then pad.Center else pad.Part.Position,
+				Part = basePart,
+				Center = if typeof(pad.Center) == "Vector3" then pad.Center else basePart.Position,
 				SeatsA = if type(pad.SeatsA) == "table" then pad.SeatsA else {},
 				SeatsB = if type(pad.SeatsB) == "table" then pad.SeatsB else {},
 			})
@@ -1527,7 +1559,7 @@ end
 -- ---------------------------------------------------------------------
 -- 10) REQUEST-AKTIONEN (C9)
 -- ---------------------------------------------------------------------
-local function reply(p: Player, ok: boolean, message: string?): Reply
+local function reply(_p: Player, ok: boolean, message: string?): Reply
 	return { Ok = ok, Message = message }
 end
 

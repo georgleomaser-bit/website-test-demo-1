@@ -12,6 +12,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Types = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"))
+local MapKit = require(script.Parent.Parent:WaitForChild("MapKit"))
 
 local V = Vector3.new
 local RED = Color3.fromRGB(235, 60, 70)
@@ -87,6 +88,20 @@ local parts: { Types.MapPart } = {
 	{ Shape = "Cylinder", Tag = "DecoBollardCap", Pos = V(-28, 2.1, -10), Size = V(1.9, 0.2, 1.9), Color = RED },
 	{ Shape = "Cylinder", Tag = "DecoBollardCap", Pos = V(8, 2.1, -10), Size = V(1.9, 0.2, 1.9), Color = RED },
 }
+
+-- Kulisse: Wand-Lisenen, Spielzeug-Stapel hinter den Mauern, Ballons (nur Deko)
+for _, piece in
+	ipairs(MapKit.Scenery({
+		Size = V(64, 18, 150),
+		WallHeight = 18,
+		Seed = 41,
+		Colors = { "Mint", "Yellow", "Lilac", "PureWhite", "Pink" },
+		Pilaster = "PureWhite",
+		Balloons = 4,
+	}))
+do
+	table.insert(parts, piece)
+end
 
 local layout: Types.MapLayout = {
 	Key = "CandyDocks",

@@ -12,6 +12,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Types = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"))
+local MapKit = require(script.Parent.Parent:WaitForChild("MapKit"))
 
 local V = Vector3.new
 
@@ -116,6 +117,11 @@ local parts: { Types.MapPart } = {
 	{ Shape = "Ball", Tag = "DecoBloom", Pos = V(5, 4.2, -61), Size = V(1.4, 1.4, 1.4), Color = "Pink" },
 	{ Shape = "Block", Tag = "DecoSpawnPlate", Pos = V(0, 0.05, -48), Size = V(24, 0.1, 6), Color = "TeamA" },
 }
+
+-- Kulisse: Wolken-Haufen unter und neben den Inseln (nur Deko)
+for _, cloud in ipairs(MapKit.Clouds(61, 6, 60, -80, -5)) do
+	table.insert(parts, cloud)
+end
 
 local layout: Types.MapLayout = {
 	Key = "SkyGarden",

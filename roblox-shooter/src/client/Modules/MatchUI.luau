@@ -963,15 +963,6 @@ local function onStart(data: any)
 	refreshTopBar()
 end
 
-local function rosterBySlot(slot: number): RosterEntry?
-	for _, entry in pairs(roster) do
-		if entry.Slot == slot then
-			return entry
-		end
-	end
-	return nil
-end
-
 local function onIntro(data: any)
 	if not match then
 		return
@@ -1042,7 +1033,12 @@ local function onIntro(data: any)
 			local extra = ""
 			local lo = loadouts[entry.Slot]
 			if lo then
-				extra = ("%s · %s · %s · %s"):format(weaponShort(lo.P), weaponShort(lo.S), weaponShort(lo.M), weaponShort(lo.U))
+				extra = ("%s · %s · %s · %s"):format(
+					weaponShort(lo.P),
+					weaponShort(lo.S),
+					weaponShort(lo.M),
+					weaponShort(lo.U)
+				)
 			elseif entry.Finisher ~= "" then
 				extra = T("match.intro.finisher", finisherName(entry.Finisher))
 			end
@@ -1375,7 +1371,9 @@ local function onRecap(data: any)
 		Position = UDim2.fromOffset(10, 10),
 		Size = UDim2.fromOffset(64, 64),
 		BackgroundColor3 = UI.Theme.PanelLight,
-		Image = if killerId and killerId > 0 and not isBot
+		Image = if killerId
+				and killerId > 0
+				and not isBot
 			then ("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150"):format(killerId)
 			else FACE,
 		ZIndex = 29,
@@ -1553,7 +1551,10 @@ local function onRoundEnd(data: any)
 	local clutch = data.Clutch
 	if type(clutch) == "table" and tonumber(clutch.Id) == match.MyId then
 		local xp = tonumber(clutch.Xp) or 0
-		showNotice(T("match.clutchYou", tonumber(clutch.Vs) or 2) .. (if xp > 0 then "  " .. T("match.bonusXp", xp) else ""), 3)
+		showNotice(
+			T("match.clutchYou", tonumber(clutch.Vs) or 2) .. (if xp > 0 then "  " .. T("match.bonusXp", xp) else ""),
+			3
+		)
 		confetti(1.5)
 	elseif type(clutch) == "table" then
 		local name = nameOf(tonumber(clutch.Id))
@@ -1858,7 +1859,9 @@ local function onEnd(data: any)
 		passLine = T("match.result.free", free)
 	end
 	if prem ~= "" then
-		passLine ..= (if passLine ~= "" then "   ·   " else "") .. T("match.result.premium", prem) .. (if premium then "" else " 🔒")
+		passLine ..= (if passLine ~= "" then "   ·   " else "") .. T("match.result.premium", prem) .. (if premium
+			then ""
+			else " 🔒")
 	end
 	label({
 		Position = UDim2.fromOffset(20, 262),
@@ -1880,7 +1883,10 @@ local function onEnd(data: any)
 			local goal = tonumber(q.Goal) or 1
 			local p = tonumber(q.P) or 0
 			local mark = if p >= goal then "✅" else "▶"
-			table.insert(questLines, ("%s %s  %d/%d"):format(mark, T("prog.q." .. tostring(q.Id), goal), math.min(p, goal), goal))
+			table.insert(
+				questLines,
+				("%s %s  %d/%d"):format(mark, T("prog.q." .. tostring(q.Id), goal), math.min(p, goal), goal)
+			)
 		end
 	end
 	label({

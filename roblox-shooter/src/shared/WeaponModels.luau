@@ -427,7 +427,7 @@ define(
 	pal(SILVER, CHARCOAL, rgb(90, 200, 255), SILVER, rgb(30, 30, 36)),
 	points(at(0, 3.7, 0), at(0, 0.8, 0), at(0, -0.5, 0.05), at(0, -0.25, 0)),
 	{
-		cylY("Metal", 0.22, 0.9, at(0, 0.1, 0), { M = "Foil" }),
+		cylY("Body", 0.22, 0.9, at(0, 0.1, 0), { M = "Foil" }),
 		cylY("Grip", 0.25, 0.5, at(0, 0, 0), { M = "Fabric" }),
 		blk("Detail", v3(0.5, 0.12, 0.22), at(0, 0.6, 0)),
 		cylY("Detail", 0.28, 0.14, at(0, -0.38, 0), { N = "Mag" }),

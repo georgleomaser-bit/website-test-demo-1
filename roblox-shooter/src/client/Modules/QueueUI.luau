@@ -51,7 +51,6 @@ local statusBar: Frame? = nil
 local statusTitle: TextLabel? = nil
 local statusLine: TextLabel? = nil
 local botsNowButton: any = nil
-local cancelButton: any = nil
 local padViews: { PadView } = {}
 local padFolder: Folder? = nil
 local ghostPool: { Model } = {}
@@ -172,7 +171,11 @@ local function buildWindow()
 			Size = UDim2.fromOffset(132, 78),
 			Text = modeName(mode),
 			Sub = searchingText(mode),
-			Color = if i == 1 then theme.Green elseif i == 2 then theme.Blue elseif i == 3 then theme.Purple else theme.Red,
+			Color = if i == 1
+				then theme.Green
+				elseif i == 2 then theme.Blue
+				elseif i == 3 then theme.Purple
+				else theme.Red,
 			MaxText = 22,
 		}, function()
 			joinMode(mode)
@@ -243,7 +246,11 @@ local function buildWindow()
 			Parent = bots,
 			Size = UDim2.fromOffset(104, 56),
 			Text = T("bot.diff." .. diff),
-			Color = if i <= 2 then theme.Green elseif i == 3 then theme.Blue elseif i == 4 then theme.Orange else theme.Red,
+			Color = if i <= 2
+				then theme.Green
+				elseif i == 3 then theme.Blue
+				elseif i == 4 then theme.Orange
+				else theme.Red,
 			MaxText = 18,
 		}, function()
 			request("PracticeStart", diff, function(result)
@@ -332,7 +339,7 @@ local function buildStatusBar()
 	}, function()
 		request("FillBots")
 	end)
-	cancelButton = UI.Button({
+	UI.Button({
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -8, 0.5, 0),
 		Size = UDim2.fromOffset(52, 54),
@@ -569,7 +576,10 @@ local function refreshPads()
 			if ffa then
 				setText(view.Counts, ("%d / %d"):format(countA, countA + needA))
 			else
-				setText(view.Counts, ("%d/%d  %s  %d/%d"):format(countA, countA + needA, T("match.pad.vs"), countB, countB + needB))
+				setText(
+					view.Counts,
+					("%d/%d  %s  %d/%d"):format(countA, countA + needA, T("match.pad.vs"), countB, countB + needB)
+				)
 			end
 			local status
 			if phase == "Vote" then

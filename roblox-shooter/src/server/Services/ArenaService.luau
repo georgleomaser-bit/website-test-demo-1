@@ -281,7 +281,7 @@ end
 
 local function mapParams(model: Instance): RaycastParams
 	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
+	-- Nur IncludeInstances setzen: FilterType gilt nur für FilterDescendantsInstances (bleibt leer/Exclude)
 	params.IncludeInstances = { model }
 	return params
 end

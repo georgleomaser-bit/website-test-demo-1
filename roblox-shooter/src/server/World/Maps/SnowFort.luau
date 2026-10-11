@@ -11,6 +11,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Types = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Types"))
+local MapKit = require(script.Parent.Parent:WaitForChild("MapKit"))
 
 local V = Vector3.new
 
@@ -75,6 +76,20 @@ local parts: { Types.MapPart } = {
 	{ Shape = "Block", Tag = "DecoFlag", Pos = V(1.6, 14.8, -40), Size = V(3, 2, 0.2), Color = "TeamA" },
 	{ Shape = "Block", Tag = "DecoSpawnPlate", Pos = V(0, 0.05, -50), Size = V(26, 0.1, 6), Color = "TeamA" },
 }
+
+-- Kulisse: Wand-Lisenen, Spielzeug-Stapel hinter den Mauern, Ballons (nur Deko)
+for _, piece in
+	ipairs(MapKit.Scenery({
+		Size = V(90, 16, 120),
+		WallHeight = 16,
+		Seed = 53,
+		Colors = { "SnowWall", "PureWhite", "Pond", "Pine" },
+		Pilaster = "Pond",
+		Balloons = 3,
+	}))
+do
+	table.insert(parts, piece)
+end
 
 local layout: Types.MapLayout = {
 	Key = "SnowFort",

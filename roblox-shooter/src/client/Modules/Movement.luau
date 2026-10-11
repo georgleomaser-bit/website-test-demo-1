@@ -472,7 +472,9 @@ local function step(dt: number)
 	-- Rutschen starten
 	if not sliding and grounded and wantsSlide(now) then
 		local speedNow = horizontal(r.AssemblyLinearVelocity).Magnitude
-		if (sprinting or speedNow >= slideCfg("MinSpeed")) and now - lastSlideStart >= slideCfg("Cooldown") then
+		-- "aus Sprint (Tempo ≥ 18)": Schwelle skaliert mit langsameren Mutatoren (BaseSpeed < Walk)
+		local minSlide = slideCfg("MinSpeed") * math.min(1, base / math.max(cfgNum(p, "Walk", 16), 1)) - 0.5
+		if (sprinting or carry ~= nil) and speedNow >= minSlide and now - lastSlideStart >= slideCfg("Cooldown") then
 			startSlide(now, slideCfg("Start"), false)
 		end
 	end
