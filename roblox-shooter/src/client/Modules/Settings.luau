@@ -476,20 +476,23 @@ local function numberRow(parent: Instance, order: number, path: string, entry: a
 			setFromX(input.Position.X)
 		end
 	end)
-	table.insert(rowConns, UserInputService.InputChanged:Connect(function(input: InputObject)
-		local active = dragging
-		if not active or not track.Parent then
-			return
-		end
-		if
-			(
-				active.UserInputType == Enum.UserInputType.MouseButton1
-				and input.UserInputType == Enum.UserInputType.MouseMovement
-			) or input == active
-		then
-			setFromX(input.Position.X)
-		end
-	end))
+	table.insert(
+		rowConns,
+		UserInputService.InputChanged:Connect(function(input: InputObject)
+			local active = dragging
+			if not active or not track.Parent then
+				return
+			end
+			if
+				(
+					active.UserInputType == Enum.UserInputType.MouseButton1
+					and input.UserInputType == Enum.UserInputType.MouseMovement
+				) or input == active
+			then
+				setFromX(input.Position.X)
+			end
+		end)
+	)
 	table.insert(
 		rowConns,
 		UserInputService.InputEnded:Connect(function(input: InputObject)

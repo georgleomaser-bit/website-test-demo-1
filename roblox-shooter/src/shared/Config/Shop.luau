@@ -15,6 +15,9 @@
 --    Shop.IsCrateItem(id): boolean             liegt in irgendeiner Kiste
 --    Shop.ParseUtc("2026-10-15T00:00:00Z"): number?   Sekunden seit 1970 (UTC)
 --    Shop.SeasonIdAt(seasons, now): number     aktive Saison (Fallback-Regel B21.2)
+--    Shop.PriceOf(cosmetics, id, currency, seasonId, featured?): number?   EINE Preisregel für Server + Shop-UI
+--    Shop.FeaturedPool(cosmetics, seasonId): { string }   Rampenlicht-Kandidaten (alphabetisch)
+--    Shop.PickFeatured(pool, utcDay, count?): { string }  6 Items des Tages, deterministisch (überall gleich)
 --    Shop.Validate(Config): { string }
 -- =====================================================================
 
