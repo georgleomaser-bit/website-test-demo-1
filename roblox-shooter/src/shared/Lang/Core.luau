@@ -2,6 +2,8 @@
 --  CLUTCH CLASH – Texte "core." (Shared/Lang/Core)
 --  Besitzer: WP1 (Core & Plattform). Nur Schlüssel mit Präfix "core.".
 --  Platzhalter wie string.format: %s = Text, %d = ganze Zahl.
+--  Pflicht-Schlüssel (C16): core.gameName, core.loading, core.error, core.noAnswer, core.studioNoSave.
+--  Vom Server benutzt: core.tooFast, core.unknownAction, core.invalid, core.studioNoApi, core.loadFailed.
 -- =====================================================================
 
 return {
@@ -21,8 +23,6 @@ return {
 		["core.settingsSaved"] = "Einstellungen gespeichert",
 		["core.loadFailed"] = "Dein Spielstand konnte nicht geladen werden. Bitte tritt erneut bei. (Roblox-Server ausgelastet)",
 		["core.dataReset"] = "Dein Spielstand wurde zurückgesetzt.",
-		["core.leaderLevel"] = "Level",
-		["core.leaderWins"] = "Siege",
 	},
 	en = {
 		["core.gameName"] = "CLUTCH CLASH",
@@ -40,7 +40,5 @@ return {
 		["core.settingsSaved"] = "Settings saved",
 		["core.loadFailed"] = "Your progress could not be loaded. Please rejoin. (Roblox servers are busy)",
 		["core.dataReset"] = "Your progress has been reset.",
-		["core.leaderLevel"] = "Level",
-		["core.leaderWins"] = "Wins",
 	},
 }

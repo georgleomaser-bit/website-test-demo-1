@@ -7,13 +7,15 @@
 --    Net.RemoteList                      alle Remotes { Name, Class } (Server erzeugt sie: Services/Remotes)
 --    Net.GetRemotes(): { [string]: Instance }   Client: WaitForChild je Name (10 s), gecacht
 --    Net.EncodeLook(pitchDeg, flags, seq): buffer           4 Byte: i8 pitch, u8 flags, u16 seq
---    Net.DecodeLook(b): (pitch, flags, seq)?                nil bei falscher Größe / pitch außerhalb ±80
+--    Net.DecodeLook(b): (pitch?, flags, seq)                pitch = nil bei falscher Größe / pitch außerhalb ±80
 --    Net.EncodeLookBatch(seq, entries): buffer              u16 seq, u8 n, n × (u8 slot, i8 pitch, u8 flags)
---    Net.DecodeLookBatch(b): (seq, entries)?
+--    Net.DecodeLookBatch(b): (seq?, entries)                seq = nil bei kaputtem Paket (entries dann leer)
 --    Net.EncodeFx(entries, origin): buffer                  u8 n, n × (u8 kind, u8 slot, u8 weapon, i16×3, i16×3)
 --    Net.DecodeFx(b, origin): entries?                      Positionen relativ zum Arena-Ursprung ×10
 --    Net.LookFlags = { Ads = 1, Sprint = 2, Slide = 4, Reload = 8, Block = 16, Air = 32, Swing = 64 }
 --  Alle Zahlen werden vor dem Schreiben geklemmt/gerundet (nie Fehler beim Kodieren, auch bei NaN).
+--  Hinweis: Luau kann "(a, b, c)?" nicht ausdrücken -> ein kaputtes Paket erkennt man am ERSTEN
+--  Rückgabewert nil:  local pitch, flags, seq = Net.DecodeLook(b); if pitch == nil then return end
 -- =====================================================================
 
 local Net = {}
@@ -138,13 +140,13 @@ function Net.EncodeLook(pitchDeg: number, flags: number, seq: number): buffer
 	return b
 end
 
-function Net.DecodeLook(b: buffer): (number, number, number)?
+function Net.DecodeLook(b: buffer): (number?, number, number)
 	if typeof(b) ~= "buffer" or buffer.len(b) ~= Net.LookSize then
-		return nil
+		return nil, 0, 0
 	end
 	local pitch = buffer.readi8(b, 0)
 	if pitch < -Net.MaxPitch or pitch > Net.MaxPitch then
-		return nil
+		return nil, 0, 0
 	end
 	return pitch, buffer.readu8(b, 1), buffer.readu16(b, 2)
 end
@@ -167,13 +169,13 @@ function Net.EncodeLookBatch(seq: number, entries: { LookEntry }): buffer
 	return b
 end
 
-function Net.DecodeLookBatch(b: buffer): (number, { LookEntry })?
+function Net.DecodeLookBatch(b: buffer): (number?, { LookEntry })
 	if typeof(b) ~= "buffer" or buffer.len(b) < 3 then
-		return nil
+		return nil, {}
 	end
 	local n = buffer.readu8(b, 2)
 	if n > Net.MaxLookBatch or buffer.len(b) ~= 3 + n * 3 then
-		return nil
+		return nil, {}
 	end
 	local entries: { LookEntry } = table.create(n)
 	for i = 1, n do

@@ -77,7 +77,8 @@ function Util.FormatNumber(n: number): string
 	local v = n / scale
 	local text: string
 	if v >= 100 then
-		text = string.format("%.0f", math.floor(v + EPS)) -- %.0f: kein Überlauf bei riesigen Zahlen
+		-- relativer Puffer (über "Dc" hinaus wird v sehr groß); %.0f: kein Überlauf bei riesigen Zahlen
+		text = string.format("%.0f", math.floor(v * (1 + EPS)))
 	elseif v >= 10 then
 		text = string.format("%.1f", math.floor(v * 10 + EPS) / 10)
 	else
@@ -132,7 +133,7 @@ end
 
 -- Liste der Schlüssel (zum sicheren Durchlaufen, während die Tabelle sich ändert)
 function Util.Snapshot<K, V>(t: { [K]: V }): { K }
-	local keys = {}
+	local keys: { K } = {}
 	for k in pairs(t) do
 		table.insert(keys, k)
 	end
