@@ -1,0 +1,1 @@
+-- Leer: ersetzt das Standard-Health-Script (Lebensregeneration steuert der Server, siehe DESIGN.md B13)

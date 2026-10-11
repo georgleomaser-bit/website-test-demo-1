@@ -1,0 +1,25 @@
+{
+  "name": "ClutchClash",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": { "Shared": { "$path": "src/shared" } },
+    "ServerScriptService": { "Server": { "$path": "src/server" } },
+    "StarterPlayer": {
+      "$properties": {
+        "CameraMode": "Classic",
+        "EnableMouseLockOption": false,
+        "CharacterWalkSpeed": 16,
+        "CharacterUseJumpPower": false,
+        "CharacterJumpHeight": 7.2,
+        "CameraMaxZoomDistance": 14
+      },
+      "StarterPlayerScripts": { "Client": { "$path": "src/client" } },
+      "StarterCharacterScripts": { "$path": "src/character" }
+    },
+    "Players": { "$properties": { "BanningEnabled": true, "CharacterAutoLoads": true, "RespawnTime": 3 } },
+    "Lighting": { "$properties": { "Technology": "ShadowMap" } },
+    "Workspace": { "$properties": { "StreamingEnabled": false, "RejectCharacterDeletions": "Enabled", "ReplicateInstanceDestroySetting": "Enabled" } },
+    "TextChatService": { "$properties": { "ChatVersion": "TextChatService" } },
+    "StarterGui": { "$properties": { "ResetPlayerGuiOnSpawn": false } }
+  }
+}
