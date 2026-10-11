@@ -43,8 +43,10 @@ local RARE_INFINITY = Config.RarityIndex.Infinity or 12
 local RARE_MODES: { [string]: boolean } = { Nest = true, Ground = true, Base = true }
 local PILLAR_HEIGHT = 28
 
-local GREEN = Color3.fromRGB(120, 255, 120)
-local YELLOW = Color3.fromRGB(255, 230, 90)
+local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
+local GREEN = Color3.fromRGB(90, 255, 100) -- Geld / Einkommen
+local YELLOW = Color3.fromRGB(255, 225, 60) -- Preis
 local HATCH_COLOR = Color3.fromRGB(255, 220, 120)
 
 function MeteorFactory.GetSize(entry): number
@@ -53,23 +55,198 @@ function MeteorFactory.GetSize(entry): number
 	return rarity.Size * (1 + 0.025 * ((entry.Lv or 1) - 1))
 end
 
-local function makeLabel(parent: Instance, name: string, order: number, textSize: number): TextLabel
+-- Farbverlauf durch alle Regenbogenfarben (Säule + Aura der Secret/Admin-Eier, Schilder ab Infinity)
+local function rainbowSequence(): ColorSequence
+	local keys = {}
+	for i = 0, 6 do
+		table.insert(keys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6, 0.85, 1)))
+	end
+	return ColorSequence.new(keys)
+end
+
+-- Kräftigere Farbe (Roblox-Look): satter + etwas heller. Grau bleibt grau, sehr Dunkles bleibt dunkel.
+-- amount = Stärke (1 = wie bei den Eiern); die AlienFactory nimmt weniger.
+function MeteorFactory.Vivid(color: Color3, amount: number?): Color3
+	local k = amount or 1
+	local h, s, v = color:ToHSV()
+	if s > 0.12 then
+		s += (1 - s) * VIVID_SAT * k
+	end
+	if v > 0.25 then
+		v += (1 - v) * VIVID_VAL * k
+	end
+	return Color3.fromHSV(h, s, v)
+end
+
+-- -------------------------------------------------------------------
+-- SCHILD-STIL (wie Steal a Brainrot) – auch die AlienFactory baut ihre Schilder hiermit:
+-- KEIN Kasten (das Frame "Frame" bleibt, ist aber komplett unsichtbar), nur Text in FredokaOne
+-- mit dicker schwarzer Kontur. Aufbau: BillboardGui "Info" > Frame "Frame" > NameLabel,
+-- RarityLabel, ValueLabel (Namen werden gesucht – nicht ändern!).
+--   NameLabel   = Name (weiß), davor evtl. die Mutation in ihrer Farbe (RichText)
+--   RarityLabel = Seltenheit in Seltenheitsfarbe; ab Mythic mit Farbverlauf (UIGradient
+--                 "RarityGradient", statisch – der Client darf ihn lokal animieren)
+--   ValueLabel  = Preis (gelb) bzw. Einkommen "$12/s" (grün)
+-- -------------------------------------------------------------------
+local INFO_SIZE = UDim2.fromOffset(300, 82)
+local NAME_TEXT = 22
+local RARITY_TEXT = 18
+local VALUE_TEXT = 20
+local MUT_TEXT = 17 -- Mutation vor dem Namen etwas kleiner
+local STROKE_NAME = 3
+local STROKE_TEXT = 2.5
+local GRADIENT_NAME = "RarityGradient"
+local GRADIENT_FROM = Config.RarityIndex.Mythic or 6 -- ab dieser Seltenheit: Farbverlauf
+local rgb = Color3.fromRGB
+-- Verlauf (links, Mitte, rechts) je Seltenheit; Infinity/Admin = Regenbogen.
+-- Unbekannte hohe Seltenheiten bekommen automatisch einen hellen Glanz in ihrer Farbe.
+local RARITY_GRADIENTS: { [string]: { Color3 } } = {
+	Mythic = { rgb(255, 60, 90), rgb(255, 170, 70), rgb(255, 60, 160) },
+	Celestial = { rgb(90, 230, 255), rgb(255, 255, 255), rgb(90, 140, 255) },
+	Divine = { rgb(255, 225, 110), rgb(255, 255, 230), rgb(255, 180, 60) },
+	Secret = { rgb(255, 255, 255), rgb(160, 235, 255), rgb(255, 180, 240) },
+	Godly = { rgb(255, 210, 0), rgb(255, 250, 190), rgb(255, 140, 0) },
+	Cosmic = { rgb(110, 90, 255), rgb(230, 100, 255), rgb(80, 200, 255) },
+}
+local RAINBOW_RARITIES: { [string]: boolean } = { Infinity = true, Admin = true }
+
+local function gradientSequence(rarityName: string, color: Color3): ColorSequence
+	if RAINBOW_RARITIES[rarityName] then
+		return rainbowSequence()
+	end
+	local keys = RARITY_GRADIENTS[rarityName] or { color, color:Lerp(WHITE, 0.55), color }
+	return ColorSequence.new({
+		ColorSequenceKeypoint.new(0, keys[1]),
+		ColorSequenceKeypoint.new(0.5, keys[2]),
+		ColorSequenceKeypoint.new(1, keys[3]),
+	})
+end
+
+-- RichText: Sonderzeichen im Namen dürfen keine Tags werden
+local function escapeRich(text: string): string
+	return (text:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+end
+
+local function colored(text: string, color: Color3): string
+	return '<font color="#' .. color:ToHex() .. '">' .. text .. "</font>"
+end
+
+-- Jeder Buchstabe in einer anderen Regenbogenfarbe (für die Regenbogen-Mutation)
+local function rainbowText(text: string): string
+	local count = math.max(1, utf8.len(text) or #text)
+	local parts = {}
+	local i = 0
+	for _, code in utf8.codes(text) do
+		table.insert(parts, colored(escapeRich(utf8.char(code)), Color3.fromHSV(i / count * 0.85, 0.75, 1)))
+		i += 1
+	end
+	return table.concat(parts)
+end
+
+-- "🔥 LAVA" vor dem Namen: Symbol + Mutationsname in Mutationsfarbe (Regenbogen = bunte Buchstaben)
+function MeteorFactory.MutationPrefix(icon: string?, name: string, color: Color3?, rainbow: boolean?): string
+	local upper = string.upper(name)
+	local word = if rainbow then rainbowText(upper) else colored(escapeRich(upper), color or WHITE)
+	local iconText = if icon and icon ~= "" then icon .. " " else ""
+	return '<font size="' .. MUT_TEXT .. '">' .. iconText .. word .. "</font>  "
+end
+
+-- Name-Zeile: immer weiß (prefix = MutationPrefix oder nil)
+function MeteorFactory.SetNameText(label: TextLabel, name: string, prefix: string?)
+	label.RichText = true
+	label.TextColor3 = WHITE
+	label.Text = (prefix or "") .. escapeRich(name)
+end
+
+-- Seltenheits-Zeile: Seltenheitsfarbe, ab Mythic Farbverlauf. extra = Zusatz dahinter (z.B. die
+-- Alien-Stufe "Ultra") in extraColor (beim Farbverlauf färbt der Verlauf alles).
+function MeteorFactory.SetRarityText(
+	label: TextLabel,
+	rarityName: string,
+	text: string,
+	extra: string?,
+	extraColor: Color3?
+)
+	local rarity = Config.RaritiesByName[rarityName]
+	local color: Color3 = if rarity and typeof(rarity.Color) == "Color3" then rarity.Color else WHITE
+	local index = Config.RarityIndex[rarityName] or 1
+	local old = label:FindFirstChild(GRADIENT_NAME)
+	local body = escapeRich(text)
+	label.RichText = true
+	if index >= GRADIENT_FROM then
+		local gradient: UIGradient
+		if old and old:IsA("UIGradient") then
+			gradient = old
+		else
+			gradient = Instance.new("UIGradient")
+			gradient.Name = GRADIENT_NAME
+			gradient.Parent = label
+		end
+		gradient.Color = gradientSequence(rarityName, color)
+		label.TextColor3 = WHITE -- Weiß x Verlauf = reine Verlaufsfarben (die Kontur bleibt schwarz)
+		if extra then
+			body ..= "  •  " .. escapeRich(extra)
+		end
+	else
+		if old then
+			old:Destroy()
+		end
+		label.TextColor3 = color
+		if extra then
+			local extraText = escapeRich(extra)
+			body ..= "  •  " .. (if extraColor then colored(extraText, extraColor) else extraText)
+		end
+	end
+	label.Text = body
+end
+
+local function makeLabel(parent: Instance, name: string, order: number, textSize: number, stroke: number): TextLabel
 	local label = Instance.new("TextLabel")
 	label.Name = name
 	label.BackgroundTransparency = 1
-	label.Size = UDim2.new(1, 0, 0, textSize + 4)
+	label.BorderSizePixel = 0
+	label.Size = UDim2.new(1, 0, 0, textSize + 6)
 	label.LayoutOrder = order
 	label.Font = Enum.Font.FredokaOne
 	label.TextSize = textSize
-	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextColor3 = WHITE
 	label.Text = ""
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.new(0, 0, 0)
-	stroke.Parent = label
+	local outline = Instance.new("UIStroke")
+	outline.Thickness = stroke
+	outline.Color = BLACK
+	outline.LineJoinMode = Enum.LineJoinMode.Round
+	outline.Parent = label
 	label.Parent = parent
 	return label
 end
+
+-- Baut das Schild "Info" (BillboardGui > Frame > NameLabel/RarityLabel/ValueLabel), noch ohne Parent.
+-- Der Aufrufer setzt StudsOffset + Parent.
+function MeteorFactory.BuildInfo(maxDistance: number): BillboardGui
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Info"
+	gui.Size = INFO_SIZE
+	gui.MaxDistance = maxDistance
+	gui.LightInfluence = 0
+	-- unsichtbares Frame (kein Kasten, keine Kontur) – wird gesucht, deshalb bleibt es
+	local frame = Instance.new("Frame")
+	frame.Name = "Frame"
+	frame.BackgroundTransparency = 1
+	frame.BorderSizePixel = 0
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.Parent = gui
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+	layout.Parent = frame
+	makeLabel(frame, "NameLabel", 1, NAME_TEXT, STROKE_NAME)
+	makeLabel(frame, "RarityLabel", 2, RARITY_TEXT, STROKE_TEXT)
+	makeLabel(frame, "ValueLabel", 3, VALUE_TEXT, STROKE_TEXT)
+	return gui
+end
+
+MeteorFactory.MoneyColor = GREEN
 
 -- mode: "Ground"/"Nest" (zeigt Preis), "Base" (Schlüpf-Countdown bzw. Einkommen + Level),
 --       "Carry" (getragen: Schlüpfen pausiert)
@@ -89,18 +266,17 @@ function MeteorFactory.UpdateLabel(part: BasePart, entry, mode: string, price: n
 	if not nameLabel or not rarityLabel or not valueLabel then
 		return
 	end
-	local rarity = Config.RaritiesByName[def.Rarity]
 	local mut = Config.MutationsByName[entry.Mut] or Config.Mutations[1]
 
-	nameLabel.Text = def.Name
-	nameLabel.TextColor3 = rarity.Color
-	local tag = def.Rarity == "Admin" and "👑 ADMIN" or def.Rarity
+	-- Name weiß; eine Mutation steht farbig davor (gleiche Symbole wie an den Aliens und auf der
+	-- Schlüpf-Karte: Config.Mutations -> Icon)
+	local prefix = nil
 	if mut.Name ~= "Normal" then
-		-- gleiche Symbole wie an den Aliens und auf der Schlüpf-Karte (Config.Mutations -> Icon)
-		tag = (if type(mut.Icon) == "string" then mut.Icon .. " " else "") .. mut.Name .. " • " .. tag
+		local icon = if type(mut.Icon) == "string" then mut.Icon else nil
+		prefix = MeteorFactory.MutationPrefix(icon, mut.Name, mut.Color, mut.Rainbow == true)
 	end
-	rarityLabel.Text = tag
-	rarityLabel.TextColor3 = mut.Color or rarity.Color
+	MeteorFactory.SetNameText(nameLabel, def.Name, prefix)
+	MeteorFactory.SetRarityText(rarityLabel, def.Rarity, if def.Rarity == "Admin" then "👑 ADMIN" else def.Rarity)
 	if mode == "Ground" or mode == "Nest" then
 		if price and price <= 0 then
 			valueLabel.Text = "🎁 GRATIS!"
@@ -190,15 +366,6 @@ local function addSpecialEffects(part: BasePart, def, color: Color3, size: numbe
 			light:SetAttribute("Rainbow", true)
 		end
 	end
-end
-
--- Farbverlauf durch alle Regenbogenfarben (für Säule + Aura der Secret/Admin-Eier)
-local function rainbowSequence(): ColorSequence
-	local keys = {}
-	for i = 0, 6 do
-		table.insert(keys, ColorSequenceKeypoint.new(i / 6, Color3.fromHSV(i / 6, 0.85, 1)))
-	end
-	return ColorSequence.new(keys)
 end
 
 local function rareEmitter(name: string, part: BasePart, props: { [string]: any }): ParticleEmitter
@@ -341,33 +508,45 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	part.CanCollide = false
 	part.CanTouch = false
 	part.CastShadow = size >= SHADOW_MIN_SIZE and mode ~= "Nest"
-	part.Material = isAdmin and Enum.Material.Neon or Enum.Material.Slate
-	part.Color = def.Color
+	-- kräftiges, glattes Plastik in der (satteren) Ei-Farbe; ab Legendary glänzt das Ei
+	part.Material = Enum.Material.SmoothPlastic
+	part.Color = MeteorFactory.Vivid(def.Color)
+	part.Reflectance = if rarityIndex >= RARE_FROM then RARE_SHINE else 0
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
 
+	-- Ei-Form: die Kugel wird optisch etwas schmaler (Size, Hitbox und Prompts bleiben wie bisher)
+	local eggShape = Instance.new("SpecialMesh")
+	eggShape.Name = "EggShape"
+	eggShape.MeshType = Enum.MeshType.Sphere
+	eggShape.Scale = Vector3.new(EGG_WIDTH, 1, EGG_WIDTH)
+	eggShape.Parent = part
+
 	if mut.Name == "Gold" then
-		part.Material = Enum.Material.Foil
+		-- glänzendes Gold (statt Folie)
 		part.Color = mut.Color
+		part.Reflectance = GOLD_SHINE
 	elseif mut.Name == "Diamond" then
-		-- türkises Glas + Glitzern (unten bei den Effekten) – so sieht man den Unterschied zu Frost
+		-- seltener Effekt: türkises Glas + Glitzern (unten) – so sieht man den Unterschied zu Frost
 		part.Material = Enum.Material.Glass
-		part.Transparency = 0.15
+		part.Transparency = 0.1
+		part.Reflectance = 0.2
 		part.Color = mut.Color
-	elseif mut.Name == "Galaxy" or mut.Name == "Lava" then
-		-- Galaxy leuchtet lila, Lava glühend orange (+ kleines Feuer, unten bei den Effekten)
+	elseif mut.Name == "Galaxy" then
+		-- sehr selten: leuchtet lila (+ Glitzern, unten)
 		part.Material = Enum.Material.Neon
+		part.Color = mut.Color
+	elseif mut.Name == "Lava" then
+		-- knallig orange (+ kleines Feuer, unten bei den Effekten)
 		part.Color = mut.Color
 	elseif mut.Name == "Frost" then
 		-- hellblaues Eis: heller und weißlicher als Diamond, dazu fallen Schneeflocken (unten)
-		part.Material = Enum.Material.Glass
-		part.Transparency = 0.1
 		part.Reflectance = 0.15
-		part.Color = mut.Color:Lerp(Color3.new(1, 1, 1), FROST_WHITEN)
+		part.Color = mut.Color:Lerp(WHITE, FROST_WHITEN)
 	elseif mut.Rainbow == true then
-		-- Regenbogen: der Client färbt alle Teile mit dem Attribut "Rainbow" lokal durch
+		-- Regenbogen (sehr selten): der Client färbt alle Teile mit dem Attribut "Rainbow" lokal durch
 		part.Material = Enum.Material.Neon
-		part.Color = mut.Color or Color3.new(1, 1, 1)
+		part.Color = mut.Color or WHITE
 		part:SetAttribute("Rainbow", true)
 	end
 
@@ -375,7 +554,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 	part:SetAttribute("Mutation", mut.Name)
 	part:SetAttribute("Rarity", def.Rarity)
 
-	-- Leuchten / Feuer / Funken nur für seltene Meteore (siehe Tabellen oben)
+	-- Leuchten nur für seltene Meteore (siehe Tabelle oben)
 	local lightFrom = LIGHT_FROM[mode] or 5
 	if rarityIndex >= lightFrom and not isAdmin then
 		local light = Instance.new("PointLight")
@@ -385,15 +564,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		light.Shadows = false
 		light.Parent = part
 	end
-	if rarityIndex >= (FIRE_FROM[mode] or 99) and not isAdmin then
-		local fire = Instance.new("Fire")
-		fire.Color = rarity.Color
-		fire.SecondaryColor = def.Color
-		fire.Size = size * 0.9
-		fire.Heat = 4
-		fire.Parent = part
-	end
-	if mut.Name == "Lava" and not part:FindFirstChildOfClass("Fire") then
+	if mut.Name == "Lava" then
 		-- Lava-Mutation: kleines Feuer. Im Nest startet es AUS (mit Glück-Events sind dort
 		-- viele Lava-Meteore): der Client schaltet nur die nächsten paar ein (Attribut "LavaFire", WorldFX).
 		local fire = Instance.new("Fire")
@@ -411,7 +582,7 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		-- Frost-Mutation: ein paar Schneeflocken rieseln herunter
 		local snow = Instance.new("ParticleEmitter")
 		snow.Name = "FrostSnow"
-		snow.Color = ColorSequence.new(Color3.new(1, 1, 1))
+		snow.Color = ColorSequence.new(WHITE)
 		snow.LightEmission = 0.5
 		snow.LightInfluence = 0
 		snow.Size = NumberSequence.new({
@@ -425,8 +596,10 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		snow.Rate = if mode == "Nest" then 3 else 6
 		snow.Parent = part
 	end
+	-- Glitzern nur noch für die besonderen Mutationen (seltene Eier glitzern über "RareSparkle",
+	-- das der Client nur in Kameranähe einschaltet -> weniger Partikel)
 	local specialMut = mut.Name == "Galaxy" or mut.Name == "Diamond" or mut.Rainbow == true
-	if (rarityIndex >= (SPARKLES_FROM[mode] or 99) or (specialMut and mode ~= "Carry")) and not isAdmin then
+	if specialMut and mode ~= "Carry" and not isAdmin then
 		local sparkles = Instance.new("Sparkles")
 		sparkles.SparkleColor = mut.Color or rarity.Color
 		sparkles.Parent = part
@@ -436,34 +609,17 @@ function MeteorFactory.Create(entry, mode: string, price: number?): BasePart
 		addRareEffects(part, rarityIndex, rarity.Color, size)
 	end
 
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "Info"
-	gui.Size = UDim2.new(0, 220, 0, 70)
-	gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
+	local maxDistance
 	if mode == "Nest" then
-		gui.MaxDistance = 45 + rarityIndex * 8 -- viele Schilder im Nester-Feld: nur in der Nähe zeigen
+		maxDistance = 45 + rarityIndex * 8 -- viele Schilder im Nester-Feld: nur in der Nähe zeigen
 	elseif mode == "Carry" then
-		gui.MaxDistance = 60
+		maxDistance = 60
 	else
-		gui.MaxDistance = 70 + rarityIndex * 15
+		maxDistance = 70 + rarityIndex * 15
 	end
-	gui.LightInfluence = 0
+	local gui = MeteorFactory.BuildInfo(maxDistance)
+	gui.StudsOffset = Vector3.new(0, size / 2 + 1.8, 0)
 	gui.Parent = part
-
-	local frame = Instance.new("Frame")
-	frame.Name = "Frame"
-	frame.BackgroundTransparency = 1
-	frame.Size = UDim2.fromScale(1, 1)
-	frame.Parent = gui
-	local layout = Instance.new("UIListLayout")
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-	layout.Parent = frame
-
-	makeLabel(frame, "NameLabel", 1, 20)
-	makeLabel(frame, "RarityLabel", 2, 15)
-	makeLabel(frame, "ValueLabel", 3, 17)
 
 	MeteorFactory.UpdateLabel(part, entry, mode, price)
 	return part
@@ -487,10 +643,7 @@ function MeteorFactory.Refresh(part: BasePart, entry, mode: string)
 	end
 	local fire = part:FindFirstChildOfClass("Fire")
 	if fire then
-		local mut = Config.MutationsByName[entry.Mut]
-		-- Lava-Feuer bleibt klein, Seltenheits-Feuer wächst mit
-		local onlyLava = mut ~= nil and mut.Name == "Lava" and fire.Color == mut.Color
-		fire.Size = onlyLava and math.max(1.5, size * 0.45) or size * 0.9
+		fire.Size = math.max(1.5, size * 0.45) -- (nur noch das kleine Lava-Feuer)
 	end
 	MeteorFactory.UpdateLabel(part, entry, mode)
 end

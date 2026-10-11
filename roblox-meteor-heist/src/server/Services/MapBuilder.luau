@@ -517,8 +517,8 @@ local function buildNestField(map: Folder): NestFieldInfo
 	-- Schild am Anfang des Felds (vom Spawn-Platz aus zu sehen)
 	local signAnchor = anchorPart("TitleSign", CFrame.new(0, 16, FIELD_MIN_Z + 4), field)
 	worldSign(signAnchor, "Sign", 36, 9, Vector3.zero, 700, {
-		{ Name = "Title", Text = "🥚 EI-RENNEN", Color = Color3.fromRGB(255, 220, 80), Height = 0.6 },
-		{ Name = "Hint", Text = "Schnapp dir Eier! Achtung: Monster!", Color = WHITE, Height = 0.4 },
+		{ Name = "Title", Text = "🥚 EI-RENNEN", Color = Color3.fromRGB(255, 220, 60), Height = 0.6 },
+		{ Name = "Hint", Text = "SCHNAPP DIR EIER! ACHTUNG: MONSTER!", Color = WHITE, Height = 0.4 },
 	})
 
 	return {
@@ -629,21 +629,21 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 	local zoneTop = PLAZA_TOP + 0.3
 	local zonePad = disc("FreeZone", zoneCenter, PLAZA_TOP, 0.3, FREE_ZONE_RADIUS * 2, {
 		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(80, 50, 150),
+		Color = Color3.fromRGB(130, 70, 220),
 		CastShadow = false,
 		Parent = plaza,
 	})
 	zonePad:SetAttribute("Radius", FREE_ZONE_RADIUS)
 	local zoneSign = anchorPart("FreeZoneSign", CFrame.new(0, 15, FREE_ZONE_Z), plaza)
 	worldSign(zoneSign, "Sign", 30, 7, Vector3.zero, 400, {
-		{ Name = "Title", Text = "🎁 GRATIS-ZONE 🎁", Color = Color3.fromRGB(120, 255, 120), Height = 0.6 },
-		{ Name = "Hint", Text = "👑 Hier landen Admin-Meteore!", Color = WHITE, Height = 0.4 },
+		{ Name = "Title", Text = "🎁 GRATIS-ZONE 🎁", Color = Color3.fromRGB(90, 255, 90), Height = 0.6 },
+		{ Name = "Hint", Text = "👑 HIER LANDEN ADMIN-METEORE!", Color = WHITE, Height = 0.4 },
 	})
 
 	-- Ständer für die Bestenliste (die Tafel selbst baut LeaderboardService an LeaderboardCFrame)
 	local boardCF = CFrame.lookAt(LEADERBOARD_POS, Vector3.new(PLAZA_CENTER.X, LEADERBOARD_POS.Y, PLAZA_CENTER.Z))
 	local boardBottom = LEADERBOARD_POS.Y - 12
-	local standColor = Color3.fromRGB(45, 40, 60)
+	local standColor = Color3.fromRGB(242, 243, 243) -- weißer Ständer, die Tafel selbst ist knallblau
 	part({
 		Name = "LeaderboardBase",
 		Size = Vector3.new(42, boardBottom - PLAZA_TOP, 6),
@@ -667,7 +667,7 @@ local function buildPlaza(map: Folder): (CFrame, CFrame, FreeZone)
 		Size = Vector3.new(42, 1.2, 3),
 		CFrame = boardCF * CFrame.new(0, 14.6, 0),
 		Material = Enum.Material.Plastic,
-		Color = Color3.fromRGB(255, 190, 40),
+		Color = Color3.fromRGB(255, 200, 40),
 		CastShadow = false,
 		Parent = plaza,
 	})
@@ -708,6 +708,7 @@ end
 -- -------------------------------------------------------------------
 -- Ein Laufband: lokales -Z = Laufrichtung des Spielers, vorne Konsole + Bogen mit Schild.
 -- Das Band schiebt den Spieler nach hinten (+Z lokal) -> man muss laufen, um draufzubleiben.
+-- Look: dunkles Band, knallige Seitenrahmen in der Stufen-Farbe mit weißen Pfeilen, Bogen in Stufen-Farbe.
 local function buildTreadmill(def: TreadmillDef, order: number, total: number, base: CFrame, parent: Instance)
 	local model = Instance.new("Model")
 	model.Name = def.Id
@@ -717,11 +718,13 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 	model:SetAttribute("Rate", def.Rate)
 
 	local color = def.Color
-	local material = TREADMILL_MATERIALS[def.Id] or Enum.Material.Metal
-	local topTier = order > total - 3 -- die obersten 3 Stufen leuchten extra
+	local dark = color:Lerp(BLACK, 0.35)
+	local material = TREADMILL_MATERIALS[def.Id] or Enum.Material.SmoothPlastic
+	local topTier = order > total - 3 -- die obersten 3 Stufen bekommen nachts ein Licht am Bogen
 
-	local function glowPart(props): Part
-		props.Material = Enum.Material.Neon
+	-- knalliges Teil in der Stufen-Farbe (Regenbogen-Band: der Client färbt es durch)
+	local function colorPart(props): Part
+		props.Material = Enum.Material.SmoothPlastic
 		props.Color = color
 		props.CastShadow = false
 		props.Parent = model
@@ -737,7 +740,7 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		Size = Vector3.new(10.4, 0.6, 22),
 		CFrame = base * CFrame.new(0, 0.3, 0),
 		Material = material,
-		Color = color:Lerp(Color3.new(0, 0, 0), 0.35),
+		Color = dark,
 		Parent = model,
 	})
 	local belt = part({
@@ -745,7 +748,7 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		Size = Vector3.new(8, 0.3, 20),
 		CFrame = base * CFrame.new(0, 0.65, 0),
 		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(32, 32, 38),
+		Color = TREADMILL_BELT_COLOR,
 		CanCollide = true,
 		CanQuery = true, -- Humanoid findet den Boden per Raycast
 		Parent = model,
@@ -769,17 +772,38 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 	ramp.Size = Vector3.new(8, beltTop, TREADMILL_RAMP)
 	local rampCenter = base * CFrame.new(0, beltTop / 2, 10 + TREADMILL_RAMP / 2)
 	ramp.CFrame = CFrame.lookAt(rampCenter.Position, rampCenter.Position + base.LookVector * -1)
-	ramp.Material = Enum.Material.Metal
-	ramp.Color = color:Lerp(Color3.new(0, 0, 0), 0.35)
+	ramp.Material = material
+	ramp.Color = dark
 	ramp.Parent = model
 
-	-- Leuchtende Seitenrahmen
+	-- Knallige Seitenrahmen mit weißen Pfeilen in Laufrichtung (zur Konsole).
+	-- Der Rahmen ist um 90° um seine Längsachse gedreht (Form und Kollision wie vorher: 1.2 breit, 0.9 hoch):
+	-- so liegt seine Seitenfläche "Right" OBEN, und auf einer Seitenfläche ist die Richtung sicher:
+	-- GUI-rechts = lokales -Z = Laufrichtung -> "►" zeigt zur Konsole.
 	for _, s in ipairs({ -1, 1 }) do
-		glowPart({
+		local frame = colorPart({
 			Name = "SideFrame",
-			Size = Vector3.new(1.2, 0.9, 21),
-			CFrame = base * CFrame.new(s * 4.6, 1.05, 0),
+			Size = Vector3.new(0.9, 1.2, 21),
+			CFrame = base * CFrame.new(s * 4.6, 1.05, 0) * CFrame.Angles(0, 0, math.rad(90)),
 		})
+		local gui = Instance.new("SurfaceGui")
+		gui.Name = "Arrows"
+		gui.Face = Enum.NormalId.Right
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 40
+		gui.LightInfluence = 0
+		gui.Parent = frame
+		local arrows = Instance.new("TextLabel")
+		arrows.BackgroundTransparency = 1
+		arrows.Size = UDim2.fromScale(1, 1)
+		arrows.Font = Enum.Font.FredokaOne
+		arrows.TextScaled = true
+		arrows.Text = TREADMILL_ARROWS
+		arrows.TextColor3 = WHITE
+		arrows.TextTransparency = 0.1
+		arrows.TextStrokeColor3 = BLACK -- (eingebaute Kontur statt UIStroke: ein Objekt weniger je Rahmen)
+		arrows.TextStrokeTransparency = 0.2
+		arrows.Parent = gui
 	end
 
 	-- Konsole vorne (man läuft dagegen) + unsichtbare Stoppwand gegen Drüberspringen
@@ -787,17 +811,22 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 		Name = "Console",
 		Size = Vector3.new(8, 3.6, 1.2),
 		CFrame = base * CFrame.new(0, 2.4, -10.6),
-		Material = Enum.Material.Metal,
-		Color = Color3.fromRGB(40, 40, 48),
+		Material = Enum.Material.SmoothPlastic,
+		Color = dark,
 		Parent = model,
 	})
-	local screen = glowPart({
+	-- Display (der Client schreibt "+X 👟" drauf)
+	part({
 		Name = "Screen",
 		Size = Vector3.new(5, 1.4, 0.15),
 		CFrame = base * CFrame.new(0, 3.2, -9.925),
+		Material = Enum.Material.SmoothPlastic,
+		Color = TREADMILL_SCREEN_COLOR,
 		CanCollide = false,
+		CanQuery = false,
+		CastShadow = false,
+		Parent = model,
 	})
-	screen.CanQuery = false
 	part({
 		Name = "FrontStop",
 		Size = Vector3.new(8.4, 12, 0.6),
@@ -820,7 +849,7 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 			Parent = model,
 		})
 	end
-	local beam = glowPart({
+	local beam = colorPart({
 		Name = "Arch",
 		Size = Vector3.new(12.4, 1.2, 1.2),
 		CFrame = base * CFrame.new(0, archHeight + 0.6, -11.6),
@@ -831,18 +860,18 @@ local function buildTreadmill(def: TreadmillDef, order: number, total: number, b
 
 	local free = def.Price <= 0
 	worldSign(beam, "Sign", 14, 5.2, Vector3.new(0, 3.4, 0), 160, {
-		{ Name = "NameLabel", Text = def.Name, Color = color:Lerp(WHITE, 0.45), Height = 0.42 },
+		{ Name = "NameLabel", Text = upper(def.Name), Color = color:Lerp(WHITE, 0.3), Height = 0.42 },
 		{
 			Name = "RateLabel",
 			Text = "+" .. Util.FormatNumber(def.Rate) .. " 👟",
-			Color = Color3.fromRGB(255, 230, 90),
+			Color = Color3.fromRGB(255, 230, 60),
 			Height = 0.3,
 		},
 		{
 			-- Preis (der Client schreibt "Gekauft" / "Dein bestes" darüber, sobald er weiß, was dir gehört)
 			Name = "PriceLabel",
-			Text = free and "Gratis" or Util.FormatCash(def.Price),
-			Color = free and Color3.fromRGB(120, 255, 120) or Color3.fromRGB(255, 220, 90),
+			Text = free and "GRATIS" or Util.FormatCash(def.Price),
+			Color = free and Color3.fromRGB(90, 255, 90) or Color3.fromRGB(255, 220, 60),
 			Height = 0.28,
 		},
 	})
@@ -865,7 +894,7 @@ local function buildTreadmills(map: Folder): (Folder, CFrame)
 		Size = Vector3.new(deckWidth, TREADMILL_DECK_TOP - PLAZA_TOP, deckDepth),
 		Position = Vector3.new(0, (TREADMILL_DECK_TOP + PLAZA_TOP) / 2, deckCenterZ),
 		Material = Enum.Material.Plastic,
-		Color = Color3.fromRGB(55, 65, 95),
+		Color = Color3.fromRGB(13, 105, 172), -- knallblaues Noppen-Deck
 		Parent = zone,
 	})
 	studs(deck)
@@ -874,7 +903,7 @@ local function buildTreadmills(map: Folder): (Folder, CFrame)
 	local zoneSign = anchorPart("ZoneSign", CFrame.new(0, 30, TREADMILL_DECK_MIN_Z + 4), zone)
 	worldSign(zoneSign, "Sign", 56, 11, Vector3.zero, 500, {
 		{ Name = "Title", Text = "🏃 LAUFBÄNDER 👟", Color = Color3.fromRGB(255, 220, 60), Height = 0.6 },
-		{ Name = "Hint", Text = "Laufband kaufen, drauf laufen = schneller!", Color = WHITE, Height = 0.4 },
+		{ Name = "Hint", Text = "KAUFEN + DRAUF LAUFEN = SCHNELLER!", Color = WHITE, Height = 0.4 },
 	})
 
 	for order, def in ipairs(defs) do
