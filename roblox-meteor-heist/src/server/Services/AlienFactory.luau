@@ -1,13 +1,15 @@
 --!strict
 -- Baut das Aussehen eines Aliens (schlüpft aus einem Meteor) im Stil knuffiger Roblox-Pets:
--- wenige, runde, saubere Formen, große glänzende Augen (mit weißem Lichtreflex), Bäckchen,
--- kleiner Mund. Jede Körperform ("Archetype", Aliens.luau) hat EIN klares Erkennungsmerkmal.
+-- wenige, runde, saubere Formen aus SmoothPlastic in kräftigen, satten Farben, große klare Augen
+-- (mit weißem Lichtreflex), Bäckchen, kleiner Mund. Jede Körperform ("Archetype", Aliens.luau) hat
+-- EIN klares Erkennungsmerkmal. Neon nur für kleine Akzente bei hohen Seltenheiten (ab Mythic,
+-- Ultra, Admin: Antennen-Spitzen, Leucht-Augen, Heiligenschein ...), sonst kräftiges Plastik.
 --
 --  * Stufen: Normal = schlicht, Selten = ein Extra-Detail (je Form eins), Ultra = Flügel +
 --    Heiligenschein (King: Flügel + leuchtender Kronen-Edelstein). Admin: immer Flügel + Schein.
---  * Mutationen: Gold (Folie), Diamond (Glas), Galaxy (Neon + Funken), Frost (Eis-Körper,
---    Schnee-Füße, Schneeflocken), Lava (glühender Körper, Vulkangestein, kleines Feuer),
---    Rainbow (alle farbigen Teile mit Attribut "Rainbow" -> der Client färbt sie durch).
+--  * Mutationen: Gold (glänzendes Gold), Diamond (Glas – seltener Effekt), Galaxy (glänzend lila +
+--    Funken), Frost (eisblau, schneeweiße Füße, Schneeflocken), Lava (knallig orange, Vulkangestein,
+--    kleines Feuer), Rainbow (alle farbigen Teile mit Attribut "Rainbow" -> der Client färbt sie durch).
 --  * Umriss (Highlight) nur noch bei Tier "Ultra" + Rarity "Admin" (Roblox zeigt nur ~31 gleichzeitig).
 --  * Pivot (model:GetPivot()) = Bodenmitte -> model:PivotTo(Pad-Oberseite) stellt das Alien aufs Pad.
 --  * Das Gesicht zeigt in Blickrichtung des Pivots (LookVector / lokales -Z).
@@ -17,11 +19,14 @@
 --    mehr ins Budget passt, fällt weg.
 --  * Augen-Teile (Eye, Iris, Pupil, Shine) haben dieselbe Teilgröße wie ihr Auge (kleiner sichtbar per
 --    SpecialMesh.Scale) -> beim Blinzeln (WorldFX) sinken sie alle gleich tief in den Kopf.
+--  * Namensschild "Info" im selben Stil wie über den Eiern (MeteorFactory.BuildInfo): kein Kasten,
+--    Name weiß, Seltenheit farbig (ab Mythic Farbverlauf), Einkommen grün.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config")) :: any
 local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util"))
 local Aliens = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Aliens"))
+local MeteorFactory = require(script.Parent:WaitForChild("MeteorFactory"))
 
 type AlienDef = Aliens.AlienDef
 type Entry = { Id: string, Alien: string?, Mut: string?, Lv: number? }
@@ -76,13 +81,17 @@ local ADMIN_RANK = (Config.RarityIndex and Config.RarityIndex.Admin) or Aliens.R
 local LEVEL_GROWTH = 0.012 -- +1,2% Größe pro Level (Level 20 = +23%)
 local LABEL_GAP = 1.6
 local SHADOW_MIN_VOLUME = 6 -- nur große Teile werfen Schatten (bewegte Schattenwerfer kosten viel)
+local EYE_SIZE = 1.1 -- Augen etwas größer als früher (klarer Roblox-Pet-Blick)
+local COLOR_VIVID = 0.6 -- Körper-/Akzentfarben satter (Stärke für MeteorFactory.Vivid; Eier = 1)
+-- Neon (Leucht-Teile, Rolle "Glow") erst ab dieser Seltenheit (oder bei Ultra/Admin), sonst Plastik
+local GLOW_NEON_RANK = (Config.RarityIndex and Config.RarityIndex.Mythic) or Aliens.RarityRank.Mythic or 6
 local MODE_SCALE: { [string]: number } = { Base = 1, Photo = 1, Carry = 0.55 }
 
 local DARK = Color3.fromRGB(28, 24, 42) -- Augen, Mund
 local WHITE = Color3.fromRGB(250, 250, 255)
 local GOLD = Color3.fromRGB(255, 200, 40)
 local STALK = Color3.fromRGB(250, 238, 214)
-local METAL = Color3.fromRGB(92, 98, 115)
+local METAL = Color3.fromRGB(130, 140, 165)
 local ROCK = Color3.fromRGB(70, 65, 75)
 local BLACK = Color3.new(0, 0, 0)
 local BLUSH = Color3.fromRGB(255, 105, 150)
@@ -107,22 +116,28 @@ local TIER_INDEX: { [string]: number } = { Normal = 1, Selten = 2, Ultra = 3 }
 -- Teile, die der Client als Augen erkennt (Attribut "Eye" -> lokales Blinzeln)
 local EYE_PARTS: { [string]: boolean } = { Eye = true, Pupil = true, Iris = true, Shine = true }
 
+-- Alles SmoothPlastic (Roblox-Pet-Look); nur Diamond ist als seltener Effekt aus Glas.
 local MUT_STYLES: { [string]: MutStyle } = {
-	Gold = { Material = Enum.Material.Foil, Reflectance = 0.1 },
-	Diamond = { Material = Enum.Material.Glass, Transparency = 0.2, Reflectance = 0.15 },
-	Galaxy = { Material = Enum.Material.Neon },
-	-- Eis-Körper, Füße/Antennen wie aus Schnee (+ Schneeflocken, siehe addEffects)
+	-- glänzendes Gold (statt Folie)
+	Gold = { Material = Enum.Material.SmoothPlastic, Reflectance = 0.25 },
+	Diamond = { Material = Enum.Material.Glass, Transparency = 0.1, Reflectance = 0.2 },
+	-- glänzend lila, Füße/Antennen tiefblau (+ Funken, siehe addEffects)
+	Galaxy = {
+		Material = Enum.Material.SmoothPlastic,
+		Reflectance = 0.15,
+		ShadeTint = Color3.fromRGB(30, 20, 110),
+		ShadeAlpha = 0.45,
+	},
+	-- eisblauer Körper, Füße/Antennen schneeweiß (+ Schneeflocken, siehe addEffects)
 	Frost = {
-		Material = Enum.Material.Ice,
-		Reflectance = 0.05,
-		ShadeMaterial = Enum.Material.Snow,
+		Material = Enum.Material.SmoothPlastic,
+		Reflectance = 0.1,
 		ShadeTint = WHITE,
 		ShadeAlpha = 0.55,
 	},
-	-- glühender Körper, Füße/Antennen aus dunklem Vulkangestein (+ kleines Feuer, siehe addEffects)
+	-- knallig oranger Körper, Füße/Antennen aus dunklem Vulkangestein (+ kleines Feuer, siehe addEffects)
 	Lava = {
-		Material = Enum.Material.Neon,
-		ShadeMaterial = Enum.Material.Basalt,
+		Material = Enum.Material.SmoothPlastic,
 		ShadeTint = BLACK,
 		ShadeAlpha = 0.7,
 	},
@@ -203,12 +218,11 @@ local function levelScale(lv: number): number
 	return 1 + LEVEL_GROWTH * (lv - 1)
 end
 
--- Symbol + Name einer Mutation fürs Schild, z.B. "🔥 Lava"
-local function mutationText(mut: any): string
+-- Symbol einer Mutation fürs Schild, z.B. "🔥" (Config.Mutations -> Icon hat Vorrang)
+local function mutationIcon(mut: any): string?
 	local name = tostring(mut.Name)
 	local configIcon = if type(mut.Icon) == "string" and mut.Icon ~= "" then mut.Icon else nil
-	local icon = configIcon or MUT_ICONS[name] or (mut.Rainbow == true and MUT_ICONS.Rainbow) or nil
-	return icon and (icon .. " " .. name) or name
+	return configIcon or MUT_ICONS[name] or (mut.Rainbow == true and MUT_ICONS.Rainbow) or nil
 end
 
 local function luminance(color: Color3): number
@@ -303,30 +317,24 @@ local function styleRole(ctx: Ctx, part: Part, role: string)
 			part:SetAttribute("Rainbow", true)
 		end
 	elseif role == "Glow" then
-		material = Enum.Material.Neon
+		-- Neon nur als kleiner Akzent bei hohen Seltenheiten, sonst kräftiges Plastik in Akzentfarbe
+		if ctx.rank >= GLOW_NEON_RANK or ctx.tier >= 3 or ctx.admin then
+			material = Enum.Material.Neon
+		end
 		if ctx.rainbow then
 			part:SetAttribute("Rainbow", true)
 		end
-	elseif role == "Shine" then
-		material = Enum.Material.Neon
 	elseif role == "Dark" or role == "Metal" then
-		reflectance = 0.2
-	elseif role == "Blush" then
-		transparency = 0.25
+		reflectance = 0.2 -- glänzende Augen
 	elseif role == "Gold" then
-		material = Enum.Material.Foil
-		reflectance = 0.1
-	elseif role == "Rock" then
-		material = Enum.Material.Slate
-	elseif role == "Cape" then
-		material = Enum.Material.Fabric
+		reflectance = 0.25 -- glänzendes Gold (statt Folie)
 	elseif role == "Halo" then
-		material = Enum.Material.Neon
-		transparency = 0.15
+		material = Enum.Material.Neon -- nur Ultra/Admin
 		if ctx.rainbow then
 			part:SetAttribute("Rainbow", true)
 		end
 	end
+	-- Shine (Lichtreflex), Blush, Rock, Cape ...: glattes, deckendes Plastik
 	part.Material = material
 	part.Color = color
 	part.Transparency = transparency
@@ -516,6 +524,7 @@ local function addEyes(ctx: Ctx, face: Face, y: number, spread: number, h: numbe
 		h *= 0.7
 		spread *= 0.75
 	end
+	h *= EYE_SIZE
 	local w, d = h * 0.76, h * 0.5
 	local withShine = room(ctx, n * 2)
 	local glow = luminance(faceColorOf(ctx)) < DARK_FACE
@@ -1318,24 +1327,6 @@ local function addEffects(model: Model, body: Part, alien: AlienDef, mut: any, s
 	end
 end
 
-local function makeLabel(parent: Instance, name: string, order: number, textSize: number): TextLabel
-	local label = Instance.new("TextLabel")
-	label.Name = name
-	label.BackgroundTransparency = 1
-	label.Size = UDim2.new(1, 0, 0, textSize + 4)
-	label.LayoutOrder = order
-	label.Font = Enum.Font.FredokaOne
-	label.TextSize = textSize
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.Text = ""
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
-	stroke.Color = Color3.new(0, 0, 0)
-	stroke.Parent = label
-	label.Parent = parent
-	return label
-end
-
 local function getBody(model: Model): BasePart?
 	local primary = model.PrimaryPart
 	if primary then
@@ -1364,7 +1355,8 @@ end
 -- ÖFFENTLICH
 -- -------------------------------------------------------------------
 
--- Schild aktualisieren: Name, "Stufe • Seltenheit [• 🔥 Mutation]", "$X/s ⚡Lv n"
+-- Schild aktualisieren (Steal-a-Brainrot-Look, siehe MeteorFactory "SCHILD-STIL"):
+-- "[🔥 LAVA] Name" (weiß), "Seltenheit [• Stufe]" (Seltenheitsfarbe, ab Mythic Verlauf), "$X/s ⚡Lv n" (grün)
 function AlienFactory.UpdateLabel(model: Model, entry: Entry)
 	local body = getBody(model)
 	local gui = body and body:FindFirstChild("Info")
@@ -1377,20 +1369,20 @@ function AlienFactory.UpdateLabel(model: Model, entry: Entry)
 	local valueLabel = frame:FindFirstChild("ValueLabel") :: TextLabel?
 	local alien = resolveAlien(entry)
 	local mut = getMutation(entry.Mut)
-	local color = rarityColor(alien.Rarity)
 
 	if nameLabel then
-		nameLabel.Text = alien.Name
-		nameLabel.TextColor3 = color
+		local prefix: string? = nil
+		if mut.Name ~= "Normal" then
+			local mutColor = if typeof(mut.Color) == "Color3" then mut.Color else nil
+			prefix = MeteorFactory.MutationPrefix(mutationIcon(mut), tostring(mut.Name), mutColor, mut.Rainbow == true)
+		end
+		MeteorFactory.SetNameText(nameLabel, alien.Name, prefix)
 	end
 	if rarityLabel then
-		local tag = alien.Tier .. " • " .. alien.Rarity
-		if mut.Name ~= "Normal" then
-			tag ..= " • " .. mutationText(mut)
-		end
-		rarityLabel.Text = tag
-		rarityLabel.TextColor3 = mut.Color
-			or (alien.Tier == "Normal" and color or Aliens.TierColors[alien.Tier] or color)
+		-- Stufe (Selten/Ultra) hinter der Seltenheit in ihrer Farbe; "Normal" wird nicht extra genannt
+		local tier = if alien.Tier ~= "Normal" then alien.Tier else nil
+		local text = if alien.Rarity == "Admin" then "👑 ADMIN" else alien.Rarity
+		MeteorFactory.SetRarityText(rarityLabel, alien.Rarity, text, tier, Aliens.TierColors[alien.Tier])
 	end
 	if valueLabel then
 		-- Unbekannte Alien-Id -> mit dem Ersatz-Alien rechnen, damit Config nicht stolpert
@@ -1400,7 +1392,7 @@ function AlienFactory.UpdateLabel(model: Model, entry: Entry)
 		local lv = levelOf(entry)
 		local lvText = lv >= maxLevel() and "MAX" or tostring(lv)
 		valueLabel.Text = Util.FormatCash(income) .. "/s  ⚡Lv " .. lvText
-		valueLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+		valueLabel.TextColor3 = MeteorFactory.MoneyColor
 	end
 end
 
@@ -1431,8 +1423,8 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 	local ctx: Ctx = {
 		model = model,
 		s = s,
-		color = look.Color,
-		accent = look.Accent,
+		color = MeteorFactory.Vivid(look.Color, COLOR_VIVID),
+		accent = MeteorFactory.Vivid(look.Accent, COLOR_VIVID),
 		eyes = look.Eyes,
 		antennas = look.Antennas,
 		tier = TIER_INDEX[alien.Tier] or 1,
@@ -1482,28 +1474,10 @@ function AlienFactory.Create(entry: Entry, mode: string?): Model
 
 	addEffects(model, body, alien, mut, s, carry)
 
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "Info"
-	gui.Size = UDim2.new(0, 240, 0, 70)
+	-- Schild "Info" (BillboardGui > Frame > NameLabel/RarityLabel/ValueLabel), gleicher Stil wie bei den Eiern
+	local gui = MeteorFactory.BuildInfo(carry and 60 or (70 + rank * 15))
 	gui.StudsOffsetWorldSpace = Vector3.new(0, (ctx.top - bodyY) * s + LABEL_GAP, 0)
-	gui.MaxDistance = carry and 60 or (70 + rank * 15)
-	gui.LightInfluence = 0
 	gui.Parent = body
-
-	local frame = Instance.new("Frame")
-	frame.Name = "Frame"
-	frame.BackgroundTransparency = 1
-	frame.Size = UDim2.fromScale(1, 1)
-	frame.Parent = gui
-	local layout = Instance.new("UIListLayout")
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-	layout.Parent = frame
-
-	makeLabel(frame, "NameLabel", 1, 20)
-	makeLabel(frame, "RarityLabel", 2, 15)
-	makeLabel(frame, "ValueLabel", 3, 17)
 
 	AlienFactory.UpdateLabel(model, entry)
 	return model

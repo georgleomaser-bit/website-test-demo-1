@@ -1,10 +1,12 @@
 -- =====================================================================
---  HUD (immer sichtbar), im knalligen Simulator-Stil:
---   links:        ⭐ STARTER-PAKET (bis gekauft), 🛒 Shop, 👟 Angebot, 🔥 Rebirth, 🎁 Daily
+--  HUD (immer sichtbar), im knalligen Roblox-Simulator-Stil (FredokaOne + schwarze Kontur,
+--  quadratische bunte Knöpfe mit großem Emoji + kurzem Wort, keine dunklen Kästen hinter Anzeigen):
+--   links:        quadratische Knöpfe in 2 Spalten: ⭐ STARTER (bis gekauft, mit Preis-Schild),
+--                 🛒 SHOP, 👟 2X SCHRITTE (Angebot, mit Preis-Schild), 🔥 REBIRTH, 🎁 DAILY
 --   rechts:       Icon-Knöpfe in 2 Spalten (LayoutOrder = Platz, jede Zahl nur einmal!):
 --                 1 🎁 Geschenke, 2 🎡 Glücksrad, 3 📜 Aufgaben (mit Badges), 4 👽 Index, 5 🏃 Laufbänder,
 --                 6 🏠 Home, 7 ☄️ Run (MeteorRun), 8 🏗️ Base (Base), 9 🤝 Handel (Trade), 99 🛠️ Admin
---   unten links:  👟 Schritte (gelb), 💵 Geld (grün), +$/s
+--   unten links:  👟 Schritte (gelb), 💵 Geld (groß + grün), +$/s
 --   oben:         Banner (Meteoritenschauer/Glück, 🥚 Egg Rush, 🏁 Ei-Rennen) bzw. Countdowns bis zum nächsten
 --   unten Mitte:  Wegweiser (🏠 Base beim Tragen / 🏁 Gold-Ei im Rennen / 🥚 nächstes Ei im Egg Rush),
 --                 Trage-Hinweis, Prompt-Hinweis an den Nestern (E = Schnappen gratis, F = Kaufen)
@@ -38,6 +40,8 @@ local EGG_SCAN_INTERVAL = 0.25 -- so oft wird das nächste Ei gesucht
 local HOME_SCAN_INTERVAL = 1 -- so oft wird die eigene Base gesucht (Position bleibt sonst gemerkt)
 local CARRY_WARN = 15 -- ab so wenigen Sekunden wird die Trage-Zeit rot
 local HOLD_SAFETY = 10 -- Sekunden: angehaltene Zähler laufen spätestens dann weiter
+local SQUARE = 86 -- quadratische Menü-Knöpfe links und rechts (gleich groß, auch auf dem Handy ≥ 44 px)
+local SQUARE_GAP = 10
 
 local stepsCounter: UI.Counter
 local cashCounter: UI.Counter
@@ -49,7 +53,7 @@ local incomeLabel: TextLabel
 local infoLabel: TextLabel
 local offerButton: UI.Button? = nil
 local starterButton: UI.Button? = nil
-local starterSubText = "Super-Angebot!"
+local starterSubText = "STARTER"
 local dailyBadge: Frame
 local giftBadge: Frame
 local wheelBadge: Frame
@@ -74,29 +78,35 @@ local showerNextPill: Pill
 local eggNextPill: Pill
 local racePill: Pill
 
+-- color = bunter Banner (Verlauf + Kontur); ohne color = Countdown: nur Text mit Kontur, kein Kasten
 local function makePill(name: string, width: number, height: number, color: Color3?, order: number): Pill
 	local banner = color ~= nil
+	local children: { Instance } = {}
+	if color then
+		children = {
+			UI.Corner(14),
+			UI.Stroke(BLACK, 3),
+			UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(color) }),
+		}
+	end
 	local frame: Frame = UI.Create("Frame", {
 		Name = name,
 		Size = UDim2.fromOffset(width, height),
-		BackgroundColor3 = if banner then WHITE else Theme.PanelDark,
-		BackgroundTransparency = if banner then 0 else 0.15,
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = if banner then 0 else 1,
 		Visible = false,
 		LayoutOrder = order,
 		ZIndex = 5,
 		Parent = topBar,
-	}, { UI.Corner(if banner then 14 else 15), UI.Stroke(BLACK, if banner then 3 else 2) })
-	if color then
-		UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(color), Parent = frame })
-	end
+	}, children)
 	local scale: UIScale = UI.Create("UIScale", { Scale = 0, Parent = frame })
 	local label = UI.Label({
-		Position = UDim2.fromOffset(10, if banner then 4 else 3),
-		Size = UDim2.new(1, -20, 1, if banner then -8 else -6),
+		Position = UDim2.fromOffset(10, if banner then 4 else 2),
+		Size = UDim2.new(1, -20, 1, if banner then -8 else -4),
 		Text = "",
-		TextColor3 = if banner then WHITE else Theme.SubText,
-		MaxText = if banner then 22 else 16,
-		Outline = if banner then 2 else 1,
+		TextColor3 = WHITE,
+		MaxText = if banner then 22 else 20,
+		Outline = if banner then 2.5 else 2,
 		ZIndex = 6,
 		Parent = frame,
 	})
@@ -159,148 +169,128 @@ local lastNavKey = math.huge -- erzwingt das erste Schreiben
 -- ---------------------------------------------------------------------
 -- BAUEN
 -- ---------------------------------------------------------------------
-local function buildLeft()
-	local bar = UI.Create("Frame", {
-		Name = "LeftButtons",
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, 14, 0.5, 0),
-		Size = UDim2.fromOffset(196, 0),
+-- Quadratischer Simulator-Knopf: großes Emoji oben, kurzes Wort in GROSSBUCHSTABEN darunter
+local function squareButton(
+	parent: Instance,
+	icon: string,
+	caption: string,
+	color: Color3,
+	order: number,
+	onClick: () -> ()
+): UI.Button
+	return UI.Button({
+		Size = UDim2.fromOffset(SQUARE, SQUARE),
+		Text = icon,
+		Sub = UI.Upper(caption),
+		Color = color,
+		LayoutOrder = order,
+		MaxText = 42,
+		SubMax = 16,
+		Corner = 16,
+		Parent = parent,
+	}, onClick)
+end
+
+-- Leiste mit quadratischen Knöpfen in 2 Spalten (so passen alle auch auf kleine Handy-Bildschirme)
+local function squareBar(name: string, anchor: Vector2, position: UDim2, align: Enum.HorizontalAlignment): Frame
+	return UI.Create("Frame", {
+		Name = name,
+		AnchorPoint = anchor,
+		Position = position,
+		Size = UDim2.fromOffset(SQUARE * 2 + SQUARE_GAP, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		Parent = ctx.Gui,
 	}, {
-		UI.Create("UIListLayout", { SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 12) }),
+		UI.Create("UIGridLayout", {
+			CellSize = UDim2.fromOffset(SQUARE, SQUARE),
+			CellPadding = UDim2.fromOffset(SQUARE_GAP, SQUARE_GAP),
+			FillDirection = Enum.FillDirection.Horizontal,
+			FillDirectionMaxCells = 2,
+			HorizontalAlignment = align,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
 	})
+end
 
-	-- ⭐ STARTER-PAKET: auffällig (Gold, wackelt), solange nicht gekauft und eingerichtet
+-- Grünes Preis-Schild oben rechts an einem Angebots-Knopf ("99 R$")
+local function priceTag(button: UI.Button, id: number, infoType: Enum.InfoType)
+	local tag = UI.Badge(button, "")
+	UI.FetchPrice(id, infoType, function(price)
+		if price then
+			UI.SetBadge(tag, price .. " R$", Theme.Green, false)
+		end
+	end)
+end
+
+local function buildLeft()
+	local bar = squareBar(
+		"LeftButtons",
+		Vector2.new(0, 0.5),
+		UDim2.new(0, 14, 0.5, 0),
+		Enum.HorizontalAlignment.Left
+	)
+
+	-- ⭐ STARTER-PAKET: auffällig (Gold, weiß glühender Rand, wackelt), solange nicht gekauft und eingerichtet
 	local starter = ctx.Config.ProductsByKey and ctx.Config.ProductsByKey.StarterPack
 	if starter then
-		local button = UI.Button({
-			Size = UDim2.new(1, 0, 0, 76),
-			Text = "⭐ STARTER-PAKET",
-			Sub = "Super-Angebot!",
-			Color = Theme.Gold,
-			LayoutOrder = 0,
-			MaxText = 24,
-			SubMax = 17,
-			Visible = false, -- erst zeigen, wenn der State sagt: noch nicht gekauft
-			Parent = bar,
-		}, function()
+		local button = squareButton(bar, "⭐", starterSubText, Theme.Gold, 0, function()
 			-- nur einmal kaufbar: Windows sperrt den Knopf bis zur Antwort (kein Doppelkauf per Doppelklick)
 			ctx.Windows.BuyStarter()
 		end)
+		button.Frame.Visible = false -- erst zeigen, wenn der State sagt: noch nicht gekauft
 		button.Stroke.Color = Color3.fromRGB(255, 255, 255)
 		TweenService:Create(button.Stroke, OFFER_GLOW_INFO, { Thickness = 5 }):Play()
-		button.Button.Rotation = -2.5
-		TweenService:Create(button.Button, STARTER_WOBBLE_INFO, { Rotation = 2.5 }):Play()
+		-- der ganze Knopf (mit 3D-Kante) wackelt
+		button.Frame.Rotation = -4
+		TweenService:Create(button.Frame, STARTER_WOBBLE_INFO, { Rotation = 4 }):Play()
 		starterButton = button
-		UI.FetchPrice(starter.Id, Enum.InfoType.Product, function(price)
-			if price then
-				starterSubText = "🔥 NUR " .. price .. " R$ 🔥"
-				button.SetSub(starterSubText)
-			end
-		end)
+		priceTag(button, starter.Id, Enum.InfoType.Product)
 	end
 
-	UI.Button({
-		Size = UDim2.new(1, 0, 0, 62),
-		Text = "🛒 Shop",
-		Color = Theme.Red,
-		LayoutOrder = 1,
-		MaxText = 30,
-		Parent = bar,
-	}, function()
+	squareButton(bar, "🛒", "Shop", Theme.Red, 1, function()
 		ctx.Windows.Toggle("Shop")
 	end)
 
 	-- Angebots-Knopf: 2x Schritte (nur wenn eingerichtet und noch nicht gekauft)
 	local boots = ctx.Config.GamePassesByKey and ctx.Config.GamePassesByKey.SpeedBoots
 	if boots then
-		local offer = UI.Button({
-			Size = UDim2.new(1, 0, 0, 74),
-			Text = "👟 2x Schritte",
-			Sub = "JETZT holen!",
-			Color = Theme.Blue,
-			LayoutOrder = 2,
-			MaxText = 26,
-			SubMax = 18,
-			Visible = boots.Id ~= 0,
-			Parent = bar,
-		}, function()
+		local offer = squareButton(bar, "👟", "2x Schritte", Theme.Blue, 2, function()
 			if boots.Id ~= 0 then
 				MarketplaceService:PromptGamePassPurchase(player, boots.Id)
 			end
 		end)
+		offer.Frame.Visible = boots.Id ~= 0
 		-- Goldener, pulsierender Rand -> fällt auf
 		offer.Stroke.Color = Theme.Gold
 		TweenService:Create(offer.Stroke, OFFER_GLOW_INFO, { Thickness = 5 }):Play()
 		offerButton = offer
-		UI.FetchPrice(boots.Id, Enum.InfoType.GamePass, function(price)
-			if price then
-				offer.SetSub("– NUR " .. price .. " R$ –")
-			end
-		end)
+		priceTag(offer, boots.Id, Enum.InfoType.GamePass)
 	end
 
-	UI.Button({
-		Size = UDim2.new(1, 0, 0, 62),
-		Text = "🔥 Rebirth",
-		Color = Theme.Orange,
-		LayoutOrder = 3,
-		MaxText = 30,
-		Parent = bar,
-	}, function()
+	squareButton(bar, "🔥", "Rebirth", Theme.Orange, 3, function()
 		ctx.Windows.Toggle("Rebirth")
 	end)
 
-	local daily = UI.Button({
-		Size = UDim2.new(1, 0, 0, 62),
-		Text = "🎁 Daily",
-		Color = Theme.Purple,
-		LayoutOrder = 4,
-		MaxText = 30,
-		Parent = bar,
-	}, function()
+	local daily = squareButton(bar, "🎁", "Daily", Theme.Purple, 4, function()
 		ctx.Windows.Toggle("Daily")
 	end)
 	dailyBadge = UI.Badge(daily, "!")
 end
 
--- Quadratischer Icon-Knopf rechts (Icon groß, Name klein darunter)
+-- Quadratischer Icon-Knopf rechts (Icon groß, Name klein in GROSSBUCHSTABEN darunter)
 function Hud.AddRightButton(icon: string, caption: string, color: Color3, order: number, onClick: () -> ()): UI.Button
-	return UI.Button({
-		Size = UDim2.fromOffset(86, 86),
-		Text = icon,
-		Sub = caption,
-		Color = color,
-		LayoutOrder = order,
-		MaxText = 40,
-		SubMax = 15,
-		Corner = 16,
-		Parent = rightBar,
-	}, onClick)
+	return squareButton(rightBar, icon, caption, color, order, onClick)
 end
 
 local function buildRight()
-	-- 2 Spalten: so passen alle Knöpfe auch auf kleine Handy-Bildschirme
-	rightBar = UI.Create("Frame", {
-		Name = "RightButtons",
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -14, 0.5, 0),
-		Size = UDim2.fromOffset(86 * 2 + 10, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		BackgroundTransparency = 1,
-		Parent = ctx.Gui,
-	}, {
-		UI.Create("UIGridLayout", {
-			CellSize = UDim2.fromOffset(86, 86),
-			CellPadding = UDim2.fromOffset(10, 10),
-			FillDirection = Enum.FillDirection.Horizontal,
-			FillDirectionMaxCells = 2,
-			HorizontalAlignment = Enum.HorizontalAlignment.Right,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-		}),
-	})
+	rightBar = squareBar(
+		"RightButtons",
+		Vector2.new(1, 0.5),
+		UDim2.new(1, -14, 0.5, 0),
+		Enum.HorizontalAlignment.Right
+	)
+	-- jeder Knopf eine eigene kräftige Farbe (Nachbarn unterscheiden sich)
 	local gifts = Hud.AddRightButton("🎁", "Geschenke", Theme.Purple, 1, function()
 		ctx.Windows.Toggle("Gifts")
 	end)
@@ -309,17 +299,17 @@ local function buildRight()
 		ctx.Windows.Toggle("Wheel")
 	end)
 	wheelBadge = UI.Badge(wheel, "")
-	local quests = Hud.AddRightButton("📜", "Aufgaben", Theme.Cyan, 3, function()
+	local quests = Hud.AddRightButton("📜", "Aufgaben", Theme.Yellow, 3, function()
 		ctx.Windows.Toggle("Quests")
 	end)
 	questBadge = UI.Badge(quests, "")
 	Hud.AddRightButton("👽", "Index", Theme.Green, 4, function()
 		ctx.Windows.Toggle("Index")
 	end)
-	Hud.AddRightButton("🏃", "Laufbänder", Theme.Blue, 5, function()
+	Hud.AddRightButton("🏃", "Laufband", Theme.Blue, 5, function()
 		ctx.Windows.Toggle("Treadmills")
 	end)
-	Hud.AddRightButton("🏠", "Home", Color3.fromRGB(255, 180, 30), 6, function()
+	Hud.AddRightButton("🏠", "Home", Theme.Cyan, 6, function()
 		ctx.Request("Home")
 	end)
 end

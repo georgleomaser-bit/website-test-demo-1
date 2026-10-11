@@ -158,7 +158,7 @@ local function floorBelow(position: Vector3): (Vector3?, BasePart?)
 	return result.Position, if hit:IsA("BasePart") then hit else nil
 end
 
--- Kurzer Eisblock um den Eingefrorenen (nur Optik)
+-- Kurzer Eisblock um den Eingefrorenen (nur Optik): hellblaues, halb durchsichtiges SmoothPlastic (Roblox-Look)
 local function iceEffect(root: BasePart, seconds: number)
 	local ice = Instance.new("Part")
 	ice.Name = "TrapIce"
@@ -169,9 +169,9 @@ local function iceEffect(root: BasePart, seconds: number)
 	ice.CanQuery = false
 	ice.CanTouch = false
 	ice.CastShadow = false
-	ice.Material = Enum.Material.Glass
-	ice.Color = Color3.fromRGB(160, 225, 255)
-	ice.Transparency = 0.45
+	ice.Material = Enum.Material.SmoothPlastic
+	ice.Color = Color3.fromRGB(120, 210, 255)
+	ice.Transparency = 0.4
 	ice.Parent = workspace
 	Debris:AddItem(ice, seconds)
 end
@@ -271,10 +271,10 @@ local function buildTrap(position: Vector3): BasePart
 	trap.CanQuery = false
 	trap.CanTouch = true
 	trap.CastShadow = false
-	trap.Material = Enum.Material.DiamondPlate
-	trap.Color = Color3.fromRGB(70, 70, 80)
+	trap.Material = Enum.Material.SmoothPlastic
+	trap.Color = Color3.fromRGB(99, 95, 98) -- Roblox "Dark stone grey"
 
-	-- Leuchtring + Zähne (nur Optik)
+	-- roter Ring + weiße Zähne (nur Optik, knalliges SmoothPlastic statt Neon/Metall)
 	local ring = Instance.new("Part")
 	ring.Name = "Ring"
 	ring.Shape = Enum.PartType.Cylinder
@@ -285,8 +285,8 @@ local function buildTrap(position: Vector3): BasePart
 	ring.CanQuery = false
 	ring.CanTouch = false
 	ring.CastShadow = false
-	ring.Material = Enum.Material.Neon
-	ring.Color = Color3.fromRGB(255, 60, 60)
+	ring.Material = Enum.Material.SmoothPlastic
+	ring.Color = Color3.fromRGB(255, 50, 50)
 	ring.Parent = trap
 	for i = 1, 8 do
 		local angle = (i / 8) * math.pi * 2
@@ -302,8 +302,8 @@ local function buildTrap(position: Vector3): BasePart
 		tooth.CanQuery = false
 		tooth.CanTouch = false
 		tooth.CastShadow = false
-		tooth.Material = Enum.Material.Metal
-		tooth.Color = Color3.fromRGB(210, 210, 220)
+		tooth.Material = Enum.Material.SmoothPlastic
+		tooth.Color = Color3.fromRGB(242, 243, 243)
 		tooth.Parent = trap
 	end
 	return trap
@@ -542,13 +542,19 @@ local function newTool(id: string, tip: string): Tool
 end
 
 local function buildTemplates()
-	-- 🌀 Speed Coil: Griff mit leuchtenden Spiralringen
+	-- Werkzeuge im Roblox-Look: knallige SmoothPlastic-Farben (kein Neon/Metall)
+	-- 🌀 Speed Coil: Griff mit knallblauen Spiralringen
 	local coil = newTool("SpeedCoil", "🌀 +30% Tempo, solange du sie hältst")
 	local coilHandle =
-		toolPart(coil, "Handle", Vector3.new(0.5, 2.2, 0.5), Color3.fromRGB(60, 60, 75), Enum.Material.Metal)
+		toolPart(coil, "Handle", Vector3.new(0.5, 2.2, 0.5), Color3.fromRGB(27, 42, 53), Enum.Material.SmoothPlastic)
 	for i = 1, 4 do
-		local ring =
-			toolPart(coil, "Ring", Vector3.new(0.25, 1.1, 1.1), Color3.fromRGB(0, 230, 255), Enum.Material.Neon)
+		local ring = toolPart(
+			coil,
+			"Ring",
+			Vector3.new(0.25, 1.1, 1.1),
+			Color3.fromRGB(0, 200, 255),
+			Enum.Material.SmoothPlastic
+		)
 		ring.Shape = Enum.PartType.Cylinder
 		ring.CFrame = coilHandle.CFrame * CFrame.new(0, -0.8 + i * 0.4, 0) * CFrame.Angles(0, 0, math.rad(90))
 		weld(coilHandle, ring)
@@ -558,11 +564,21 @@ local function buildTemplates()
 
 	-- 🪤 Falle: kleine Falle in der Hand
 	local trapTool = newTool("Trap", "🪤 Klick in deiner Base = Falle aufstellen")
-	local trapHandle =
-		toolPart(trapTool, "Handle", Vector3.new(0.4, 1.6, 1.6), Color3.fromRGB(70, 70, 80), Enum.Material.DiamondPlate)
+	local trapHandle = toolPart(
+		trapTool,
+		"Handle",
+		Vector3.new(0.4, 1.6, 1.6),
+		Color3.fromRGB(99, 95, 98),
+		Enum.Material.SmoothPlastic
+	)
 	trapHandle.Shape = Enum.PartType.Cylinder
-	local trapRing =
-		toolPart(trapTool, "Ring", Vector3.new(0.45, 1.1, 1.1), Color3.fromRGB(255, 60, 60), Enum.Material.Neon)
+	local trapRing = toolPart(
+		trapTool,
+		"Ring",
+		Vector3.new(0.45, 1.1, 1.1),
+		Color3.fromRGB(255, 50, 50),
+		Enum.Material.SmoothPlastic
+	)
 	trapRing.Shape = Enum.PartType.Cylinder
 	trapRing.CFrame = trapHandle.CFrame
 	weld(trapHandle, trapRing)
@@ -574,7 +590,7 @@ local function buildTemplates()
 	local cloakHandle =
 		toolPart(cloak, "Handle", Vector3.new(1.2, 1.4, 0.5), Color3.fromRGB(120, 60, 200), Enum.Material.Fabric)
 	local cloakGlow =
-		toolPart(cloak, "Glow", Vector3.new(1.3, 0.2, 0.6), Color3.fromRGB(200, 150, 255), Enum.Material.Neon)
+		toolPart(cloak, "Glow", Vector3.new(1.3, 0.2, 0.6), Color3.fromRGB(200, 150, 255), Enum.Material.SmoothPlastic)
 	cloakGlow.CFrame = cloakHandle.CFrame * CFrame.new(0, 0.6, 0)
 	weld(cloakHandle, cloakGlow)
 	templates.Cloak = cloak

@@ -447,21 +447,25 @@ local function addRaceMarker(part: BasePart)
 	part:SetAttribute("RaceEgg", true)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "RaceMarker"
-	gui.Size = UDim2.fromOffset(170, 46)
+	gui.Size = UDim2.fromOffset(190, 52)
 	gui.StudsOffset = Vector3.new(0, part.Size.Y / 2 + 6, 0)
 	gui.AlwaysOnTop = true
 	gui.MaxDistance = 1000
 	gui.LightInfluence = 0
 	gui.Parent = part
+	-- Roblox-Look: kein Kasten, nur dicke Schrift mit schwarzer Kontur
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
+	label.BorderSizePixel = 0
 	label.Size = UDim2.fromScale(1, 1)
 	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
 	label.Text = "🏁 GOLD-EI"
 	label.TextColor3 = Color3.fromRGB(255, 215, 60)
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
+	stroke.Thickness = 3.5
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = label
 	label.Parent = gui
 end

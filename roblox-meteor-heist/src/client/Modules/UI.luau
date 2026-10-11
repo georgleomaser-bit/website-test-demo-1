@@ -955,30 +955,40 @@ function UI.Window(title: string, width: number, height: number, color: Color3?)
 end
 
 -- ---------------------------------------------------------------------
--- TOASTS (gleiten von rechts herein, rutschen nach oben weg)
+-- TOASTS im Steal-a-Brainrot-Stil: KEIN Kasten – großer farbiger Text mit dicker schwarzer Kontur,
+-- oben in der Mitte gestapelt (neueste unten), ploppt auf, steigt beim Gehen hoch und verblasst.
 -- Normale Frames (keine CanvasGroup) + ein kleiner Vorrat, der wiederverwendet wird.
 -- ---------------------------------------------------------------------
 type ToastEntry = {
-	Container: Frame,
-	Inner: Frame,
+	Container: Frame, -- Platzhalter in der Liste (wächst/schrumpft -> andere rutschen weich nach)
+	Inner: Frame, -- trägt den Text; bewegt sich + ploppt (UIScale), ohne die Liste zu verschieben
 	Scale: UIScale,
-	Panel: Frame,
-	PanelStroke: UIStroke,
-	Gradient: UIGradient,
 	Label: TextLabel,
-	LabelStroke: UIStroke?,
+	LabelStroke: UIStroke,
+	Height: number,
 	Leaving: boolean,
 	Token: number,
 	Kind: string,
 }
 
+-- Textfarbe je Art
 local TOAST_COLORS: { [string]: Color3 } = {
-	Info = Color3.fromRGB(60, 66, 120),
-	Success = Color3.fromRGB(40, 160, 70),
-	Error = Color3.fromRGB(200, 45, 55),
-	Event = Color3.fromRGB(235, 120, 20),
-	Alarm = Color3.fromRGB(230, 20, 30),
-	Announce = Color3.fromRGB(60, 95, 230),
+	Info = WHITE,
+	Success = Color3.fromRGB(90, 255, 90),
+	Error = Color3.fromRGB(255, 80, 80),
+	Event = Color3.fromRGB(255, 205, 45),
+	Alarm = Color3.fromRGB(255, 45, 45),
+	Announce = Color3.fromRGB(110, 210, 255),
+}
+
+-- Schriftgröße je Art (wichtige Meldungen größer)
+local TOAST_TEXT_SIZE: { [string]: number } = {
+	Info = 24,
+	Success = 26,
+	Error = 26,
+	Event = 26,
+	Announce = 28,
+	Alarm = 32,
 }
 
 -- Zu viele Toasts: zuerst fliegt der älteste mit der KLEINSTEN Wichtigkeit raus.
@@ -997,6 +1007,11 @@ local toastCount = 0
 local activeToasts: { ToastEntry } = {}
 local toastPool: { ToastEntry } = {}
 
+-- Position des Texts im Platzhalter (Mitte, damit das Aufploppen aus der Mitte kommt)
+local function toastPosition(height: number, offsetY: number): UDim2
+	return UDim2.new(0.5, 0, 0, height / 2 + offsetY)
+end
+
 local function newToastEntry(): ToastEntry
 	local container: Frame = UI.Create("Frame", {
 		Name = "Toast",
@@ -1006,35 +1021,36 @@ local function newToastEntry(): ToastEntry
 	local toastScale: UIScale = UI.Create("UIScale", { Scale = 1 })
 	local inner: Frame = UI.Create("Frame", {
 		Name = "Inner",
-		Size = UDim2.new(1, 0, 0, TOAST_HEIGHT),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.new(1, 0, 0, TOAST_MIN_HEIGHT),
 		BackgroundTransparency = 1,
 		Parent = container,
 	}, { toastScale })
-	local panelStroke = UI.Stroke(BLACK, 3)
-	local gradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
-	local panel: Frame = UI.Create("Frame", {
-		Name = "Panel",
-		Position = UDim2.fromOffset(3, 3),
-		Size = UDim2.new(1, -6, 1, -6),
-		BackgroundColor3 = WHITE,
-		Parent = inner,
-	}, { UI.Corner(12), panelStroke, gradient })
-	local label = UI.Label({
-		Position = UDim2.fromOffset(14, 6),
-		Size = UDim2.new(1, -28, 1, -12),
-		MaxText = 19,
-		Outline = 2,
-		Parent = inner,
+	local stroke: UIStroke = UI.Create("UIStroke", {
+		Color = BLACK,
+		Thickness = 3,
+		LineJoinMode = Enum.LineJoinMode.Round,
 	})
+	local label: TextLabel = UI.Create("TextLabel", {
+		Name = "Text",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(0, TOAST_TEXT_WIDTH, 1, 0),
+		BackgroundTransparency = 1,
+		Font = UI.Font,
+		TextColor3 = WHITE,
+		TextSize = 24,
+		TextWrapped = true,
+		Text = "",
+		Parent = inner,
+	}, { stroke })
 	return {
 		Container = container,
 		Inner = inner,
 		Scale = toastScale,
-		Panel = panel,
-		PanelStroke = panelStroke,
-		Gradient = gradient,
 		Label = label,
-		LabelStroke = label:FindFirstChildOfClass("UIStroke"),
+		LabelStroke = stroke,
+		Height = TOAST_MIN_HEIGHT,
 		Leaving = false,
 		Token = 0,
 		Kind = "Info",
@@ -1054,25 +1070,17 @@ local function toastToDrop(): ToastEntry
 	return drop
 end
 
--- Ein-/Ausblenden über die Transparenz der einzelnen Teile. Gibt den Tween der Fläche zurück.
+-- Ein-/Ausblenden über die Transparenz von Text + Kontur. Gibt den Tween des Texts zurück.
 local function fadeToast(entry: ToastEntry, info: TweenInfo, transparency: number): Tween
-	local panelTween = TweenService:Create(entry.Panel, info, { BackgroundTransparency = transparency })
-	TweenService:Create(entry.PanelStroke, info, { Transparency = transparency }):Play()
-	TweenService:Create(entry.Label, info, { TextTransparency = transparency }):Play()
-	if entry.LabelStroke then
-		TweenService:Create(entry.LabelStroke, info, { Transparency = transparency }):Play()
-	end
-	panelTween:Play()
-	return panelTween
+	local textTween = TweenService:Create(entry.Label, info, { TextTransparency = transparency })
+	TweenService:Create(entry.LabelStroke, info, { Transparency = transparency }):Play()
+	textTween:Play()
+	return textTween
 end
 
 local function setToastTransparency(entry: ToastEntry, transparency: number)
-	entry.Panel.BackgroundTransparency = transparency
-	entry.PanelStroke.Transparency = transparency
 	entry.Label.TextTransparency = transparency
-	if entry.LabelStroke then
-		entry.LabelStroke.Transparency = transparency
-	end
+	entry.LabelStroke.Transparency = transparency
 end
 
 local function removeToast(entry: ToastEntry)
@@ -1085,7 +1093,8 @@ local function removeToast(entry: ToastEntry)
 	if index then
 		table.remove(activeToasts, index)
 	end
-	TweenService:Create(entry.Inner, TOAST_OUT_INFO, { Position = UDim2.fromOffset(-50, 0) }):Play()
+	-- steigt etwas hoch und verblasst, danach rutschen die anderen nach
+	TweenService:Create(entry.Inner, TOAST_OUT_INFO, { Position = toastPosition(entry.Height, -TOAST_RISE * 2) }):Play()
 	local fade = fadeToast(entry, TOAST_OUT_INFO, 1)
 	fade.Completed:Connect(function()
 		if entry.Token ~= token then
@@ -1114,24 +1123,32 @@ function UI.Toast(text: string, kind: string?)
 		return
 	end
 	toastCount += 1
-	local color = TOAST_COLORS[kind or "Info"] or TOAST_COLORS.Info
+	local key = if kind and TOAST_COLORS[kind] then kind else "Info"
 	local entry = table.remove(toastPool) or newToastEntry()
 	entry.Token += 1
 	entry.Leaving = false
-	entry.Kind = if kind and TOAST_COLORS[kind] then kind else "Info"
+	entry.Kind = key
 	local token = entry.Token
-	entry.Gradient.Color = UI.ButtonSequence(color)
+	-- Höhe passend zum Text (lange Meldungen brechen um, statt winzig zu werden)
+	local textSize = TOAST_TEXT_SIZE[key] or 24
+	local bounds = TextService:GetTextSize(text, textSize, UI.Font, Vector2.new(TOAST_TEXT_WIDTH, 1000))
+	local height = math.max(TOAST_MIN_HEIGHT, math.ceil(bounds.Y) + 10)
+	entry.Height = height
 	entry.Label.Text = text
+	entry.Label.TextSize = textSize
+	entry.Label.TextColor3 = TOAST_COLORS[key]
+	entry.LabelStroke.Thickness = if key == "Alarm" then 4 else 3
+	entry.Inner.Size = UDim2.new(1, 0, 0, height)
+	entry.Inner.Position = toastPosition(height, TOAST_RISE)
 	entry.Container.Size = UDim2.new(1, 0, 0, 0)
 	entry.Container.LayoutOrder = toastCount
-	entry.Inner.Position = UDim2.fromOffset(170, 0)
-	entry.Scale.Scale = 0.8
+	entry.Scale.Scale = 0.5
 	setToastTransparency(entry, 1)
 	entry.Container.Parent = holder
 	table.insert(activeToasts, entry)
-	TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, TOAST_HEIGHT + 4) }):Play()
-	-- gleitet mit Feder herein (schießt etwas über die Mitte und federt zurück) + ploppt elastisch auf
-	TweenService:Create(entry.Inner, TOAST_SLIDE_INFO, { Position = UDim2.fromOffset(0, 0) }):Play()
+	TweenService:Create(entry.Container, TOAST_GROW_INFO, { Size = UDim2.new(1, 0, 0, height + TOAST_GAP) }):Play()
+	-- ploppt auf (schießt etwas über die volle Größe hinaus) und rutscht dabei an seinen Platz
+	TweenService:Create(entry.Inner, TOAST_RISE_INFO, { Position = toastPosition(height, 0) }):Play()
 	TweenService:Create(entry.Scale, TOAST_POP_INFO, { Scale = 1 }):Play()
 	fadeToast(entry, TOAST_FADE_INFO, 0)
 	while #activeToasts > MAX_TOASTS do
@@ -1246,11 +1263,12 @@ function UI.Init(screenGui: ScreenGui)
 	bindCamera()
 	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
 
+	-- Meldungen oben in der Mitte (unter der Banner-Leiste des HUD)
 	toastHolder = UI.Create("Frame", {
 		Name = "Toasts",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 56),
-		Size = UDim2.fromOffset(480, 320),
+		Size = UDim2.fromOffset(TOAST_WIDTH, 320),
 		BackgroundTransparency = 1,
 		ZIndex = 20,
 		Parent = screenGui,

@@ -6,7 +6,9 @@
 --     Nur gebaut, wenn gekauft (SetFloors)
 --   • BASE-LOOK (Config.BaseLooks, Stufe 1-5): Zaun, Laternen, Torbogen, Fahnen, Bodenrand (SetLook)
 -- Lokales System einer Base: -Z = Eingang (zum Nester-Feld), X = Breite, Z = Tiefe.
--- Stil: schlicht, bunt, blockig (Plastic + Noppen), wenig Neon, wenige Teile.
+-- Stil: Roblox-Simulator – knallige Basis-Farbe, blockig (Plastic/SmoothPlastic + Noppen), wenige Teile.
+-- Neon NUR für echte Highlights: rote Laser-Linsen am Eingang, grünes Geld-Pad, Laternen-Köpfe.
+-- Schilder: KEIN Kasten, FredokaOne + dicke schwarze Kontur, kurze Wörter in GROSSBUCHSTABEN.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -64,6 +66,12 @@ local FLAG_COLORS = {
 	Color3.fromRGB(255, 102, 204),
 }
 local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
+local POST_COLOR = Color3.fromRGB(27, 42, 53) -- Laser-Pfosten + Lock-Sockel (Roblox "Black")
+local LASER_COLOR = Color3.fromRGB(255, 40, 40) -- rote Laser-Linsen (wie die Laser beim Abschließen)
+local LOCK_BUTTON_COLOR = Color3.fromRGB(255, 50, 50) -- = PlotService (offen)
+local MONEY_GREEN = Color3.fromRGB(0, 230, 90) -- Geld-Pad + Geld-Felder
+local MONEY_TEXT = Color3.fromRGB(90, 255, 90)
 
 -- Unsichtbare Slot-Anker im Erdgeschoss: versetztes Raster (5-4-5-4 = 18), Reihe 1 nahe Eingang.
 -- Abstand 13 Studs + etwas Zufall (fester Seed: alle Basen gleich).
@@ -131,7 +139,7 @@ local STORIES: { StoryDef } = {
 type LookStyle = {
 	Fence: Color3,
 	FenceMat: Enum.Material,
-	Cap: Color3?, -- Leuchtkante oben auf dem Zaun (nur Stufe 5)
+	Cap: Color3?, -- helle Kante oben auf dem Zaun (nur Stufe 5)
 	Lamp: Color3,
 	Arch: Color3?,
 	ArchMat: Enum.Material,
@@ -180,7 +188,7 @@ local LOOKS: { LookStyle } = {
 	{
 		Fence = Color3.fromRGB(255, 200, 40),
 		FenceMat = Enum.Material.SmoothPlastic,
-		Cap = Color3.fromRGB(255, 240, 150),
+		Cap = Color3.fromRGB(255, 245, 170),
 		Lamp = Color3.fromRGB(255, 230, 90),
 		Arch = Color3.fromRGB(255, 190, 30),
 		ArchMat = Enum.Material.SmoothPlastic,
@@ -231,12 +239,13 @@ end
 local function addStroke(label: GuiObject, thickness: number)
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = thickness
-	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Color = BLACK
 	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = label
 end
 
--- Schild in Studs-Größe (wächst mit der Entfernung mit wie ein echtes Schild)
+-- Schild in Studs-Größe (wächst mit der Entfernung mit wie ein echtes Schild): weiße FredokaOne-Schrift mit
+-- dicker schwarzer Kontur, KEIN Kasten
 local function bigLabel(
 	parent: Instance,
 	width: number,
@@ -297,7 +306,7 @@ local function blockTree(parent: Instance, cf: CFrame, scale: number, color: Col
 	crown.TopSurface = Enum.SurfaceType.Studs
 end
 
--- Laterne: Pfosten + leuchtender Würfel. Nur Würfel namens "LanternLamp" bekommen nachts ein Licht
+-- Laterne: Pfosten + leuchtender Würfel (Neon-Highlight). Nur Würfel namens "LanternLamp" bekommen nachts ein Licht
 -- (GraphicsService) – die Extra-Laternen heißen "LanternGlow" (Lichter-Budget).
 local function lantern(parent: Instance, cf: CFrame, postColor: Color3, lampColor: Color3, lampName: string)
 	local height = 6
@@ -440,7 +449,7 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Size = Vector3.new(PLOT_WIDTH - 2 * POST_SIZE - 0.2, BARRIER_HEIGHT, 0.4),
 		CFrame = cf * CFrame.new(0, top + BARRIER_HEIGHT / 2, GATE_Z),
 		Material = Enum.Material.ForceField,
-		Color = Color3.fromRGB(255, 40, 40),
+		Color = LASER_COLOR,
 		Transparency = 1,
 		CanCollide = false,
 		CanQuery = false,
@@ -454,17 +463,17 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 			Size = Vector3.new(POST_SIZE, BARRIER_HEIGHT, POST_SIZE),
 			CFrame = cf * CFrame.new(s * POST_X, top + BARRIER_HEIGHT / 2, GATE_Z),
 			Material = Enum.Material.Plastic,
-			Color = Color3.fromRGB(60, 60, 70),
+			Color = POST_COLOR,
 			Parent = model,
 		})
 		post.TopSurface = Enum.SurfaceType.Studs
-		-- rote Linse innen (zeigt zur Mitte)
+		-- rote Laser-Linse innen (zeigt zur Mitte) – eins der wenigen Neon-Highlights
 		part({
 			Name = "Lens",
 			Size = Vector3.new(0.2, BARRIER_HEIGHT - 1, 0.6),
 			CFrame = post.CFrame * CFrame.new(-s * (POST_SIZE / 2 + 0.1), 0, 0),
 			Material = Enum.Material.Neon,
-			Color = Color3.fromRGB(255, 60, 60),
+			Color = LASER_COLOR,
 			CanCollide = false,
 			CanQuery = false,
 			CastShadow = false,
@@ -513,19 +522,20 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		floorSlots[floor] = list
 	end
 
-	-- Geld-Pad vorne links
+	-- Geld-Pad vorne links (grünes Kassen-Pad, Neon-Highlight) mit großem grünem Betrag
 	local collectPad = part({
 		Name = "CollectPad",
 		Size = Vector3.new(12, 0.3, 7),
 		CFrame = cf * CFrame.new(-22, top + 0.15, -36),
 		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(60, 220, 90),
+		Color = MONEY_GREEN,
 		CanCollide = false,
 		CanTouch = true,
 		CastShadow = false,
 		Parent = model,
 	})
 	local collectLabel = bigLabel(collectPad, 9, 2.4, Vector3.new(0, 3.5, 0), 120)
+	collectLabel.TextColor3 = MONEY_TEXT
 	collectLabel.Text = "💰 $0"
 
 	-- Großer Lock-Knopf vorne rechts: Sockel (begehbar) + roter Knopf (drückt sich ein, PlotService)
@@ -534,7 +544,7 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Size = Vector3.new(8, 0.6, 8),
 		CFrame = cf * CFrame.new(22, top + 0.3, -36),
 		Material = Enum.Material.Plastic,
-		Color = Color3.fromRGB(60, 60, 70),
+		Color = POST_COLOR,
 		Parent = model,
 	})
 	socket.TopSurface = Enum.SurfaceType.Studs
@@ -544,7 +554,7 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		Size = Vector3.new(5.5, 1.4, 5.5),
 		CFrame = buttonUp,
 		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(230, 60, 60),
+		Color = LOCK_BUTTON_COLOR,
 		CanCollide = false,
 		CanTouch = true,
 		Parent = model,
@@ -560,51 +570,35 @@ local function buildPlot(index: number, cf: CFrame, color: Color3, parent: Insta
 		blockTree(deco, cf * CFrame.new(s * 33, top, 38), 0.9, TREE_COLORS[(index + s) % #TREE_COLORS + 1])
 	end
 
-	-- Großes Namensschild über dem Eingang: Avatar-Kopf + Name (PlotService setzt Bild + Text)
+	-- Großes Namensschild über dem Eingang: Avatar-Kopf + Name (PlotService setzt Bild + Text).
+	-- Roblox-Style: KEIN Kasten – nur der Kopf und dicke weiße Schrift mit schwarzer Kontur.
 	local signPart = anchorPart("Sign", cf * CFrame.new(0, top + 21, -HALF_Z + 2), model)
 	local signGui = Instance.new("BillboardGui")
 	signGui.Name = "NameSign"
-	signGui.Size = UDim2.fromScale(30, 7)
+	signGui.Size = UDim2.fromScale(34, 8)
 	signGui.MaxDistance = 400
 	signGui.LightInfluence = 0
 	signGui.Parent = signPart
-	local board = Instance.new("Frame")
-	board.Name = "Board"
-	board.Size = UDim2.fromScale(1, 1)
-	board.BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.35)
-	board.BackgroundTransparency = 0.1
-	board.Parent = signGui
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.2, 0)
-	corner.Parent = board
-	local boardStroke = Instance.new("UIStroke")
-	boardStroke.Thickness = 4
-	boardStroke.Color = Color3.new(0, 0, 0)
-	boardStroke.Parent = board
 	local signImage = Instance.new("ImageLabel")
 	signImage.Name = "Avatar"
 	signImage.AnchorPoint = Vector2.new(0, 0.5)
-	signImage.Position = UDim2.new(0.02, 0, 0.5, 0)
-	signImage.Size = UDim2.fromScale(0.85, 0.85)
+	signImage.Position = UDim2.new(0.01, 0, 0.5, 0)
+	signImage.Size = UDim2.fromScale(0.95, 0.95)
 	signImage.SizeConstraint = Enum.SizeConstraint.RelativeYY
-	signImage.BackgroundColor3 = WHITE
-	signImage.BackgroundTransparency = 0.2
+	signImage.BackgroundTransparency = 1 -- Avatar-Köpfe haben schon einen durchsichtigen Hintergrund
 	signImage.Image = ""
-	signImage.Parent = board
-	local imageCorner = Instance.new("UICorner")
-	imageCorner.CornerRadius = UDim.new(0.25, 0)
-	imageCorner.Parent = signImage
+	signImage.Parent = signGui
 	local signLabel = Instance.new("TextLabel")
 	signLabel.Name = "Name"
 	signLabel.BackgroundTransparency = 1
-	signLabel.Position = UDim2.fromScale(0.27, 0.1)
-	signLabel.Size = UDim2.fromScale(0.7, 0.8)
+	signLabel.Position = UDim2.fromScale(0.25, 0.05)
+	signLabel.Size = UDim2.fromScale(0.74, 0.9)
 	signLabel.Font = Enum.Font.FredokaOne
 	signLabel.TextScaled = true
 	signLabel.TextColor3 = WHITE
-	signLabel.Text = "Freie Base"
-	addStroke(signLabel, 3)
-	signLabel.Parent = board
+	signLabel.Text = "FREIE BASE"
+	addStroke(signLabel, 4)
+	signLabel.Parent = signGui
 
 	folder("Floors", model)
 	folder("CashPads", model)
@@ -832,14 +826,14 @@ function BaseBuilder.SetLook(plot, level: number)
 		end
 	end
 
-	-- Stufe 5: Leuchtkante auf dem Zaun
+	-- Stufe 5: helle Kante auf dem Zaun (knalliges SmoothPlastic statt Neon)
 	if style.Cap then
 		for _, fencePart in ipairs(plot.Fences) do
 			part({
 				Name = "FenceCap",
 				Size = Vector3.new(fencePart.Size.X, 0.3, fencePart.Size.Z),
 				CFrame = fencePart.CFrame * CFrame.new(0, fencePart.Size.Y / 2 + 0.15, 0),
-				Material = Enum.Material.Neon,
+				Material = Enum.Material.SmoothPlastic,
 				Color = style.Cap,
 				CanCollide = false,
 				CastShadow = false,
@@ -896,11 +890,12 @@ function BaseBuilder.SetLook(plot, level: number)
 		})
 		beam.TopSurface = Enum.SurfaceType.Studs
 		if level >= 4 then
+			-- Zierleiste unter dem Balken in Lampenfarbe (SmoothPlastic statt Neon)
 			part({
 				Name = "ArchGlow",
 				Size = Vector3.new(PLOT_WIDTH + 7.2, 0.4, 2.6),
 				CFrame = beam.CFrame * CFrame.new(0, -0.6, 0),
-				Material = Enum.Material.Neon,
+				Material = Enum.Material.SmoothPlastic,
 				Color = style.Lamp,
 				CanCollide = false,
 				CastShadow = false,
@@ -933,7 +928,8 @@ end
 -- -------------------------------------------------------------------
 -- GELD-FELDER (eins vor jedem besetzten Slot)
 -- -------------------------------------------------------------------
--- Kleines grünes Feld 5 Studs vor dem Slot (Richtung Eingang) mit Betrag-Schild. Gibt (Feld, Label) zurück.
+-- Kleines grünes Feld 5 Studs vor dem Slot (Richtung Eingang) mit Betrag-Schild "+$12/s" (grün, schwarze
+-- Kontur, kein Kasten). Gibt (Feld, Label) zurück.
 function BaseBuilder.MakeCashPad(plot, slot: number): (BasePart?, TextLabel?)
 	local anchor = plot.Slots[slot]
 	if not anchor then
@@ -945,7 +941,7 @@ function BaseBuilder.MakeCashPad(plot, slot: number): (BasePart?, TextLabel?)
 		Size = Vector3.new(4, 0.2, 2.2),
 		CFrame = floorCf * CFrame.new(0, 0.1, -5.6),
 		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(70, 210, 90),
+		Color = MONEY_GREEN,
 		CanCollide = false,
 		CanQuery = false,
 		CanTouch = true,
@@ -962,9 +958,9 @@ function BaseBuilder.MakeCashPad(plot, slot: number): (BasePart?, TextLabel?)
 	label.Size = UDim2.fromScale(1, 1)
 	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
-	label.TextColor3 = Color3.fromRGB(140, 255, 120)
+	label.TextColor3 = MONEY_TEXT
 	label.Text = ""
-	addStroke(label, 2)
+	addStroke(label, 3)
 	label.Parent = gui
 	local container = plot.Model:FindFirstChild("CashPads")
 	if not container then

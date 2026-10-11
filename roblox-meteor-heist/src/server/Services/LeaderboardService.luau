@@ -1,5 +1,6 @@
 -- Globale Bestenliste (alle Server): Top 10 "Meistes Geld verdient" am Spawn-Platz.
 -- Die Tafel steht an PlotService.LeaderboardCFrame (Vorderseite zeigt zur Platzmitte).
+-- Look: knallblaue Tafel, weiße/gold-silber-bronze FredokaOne-Schrift mit dicker schwarzer Kontur (kein Kasten).
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -14,8 +15,24 @@ local Services
 local UPDATE_INTERVAL = 300 -- alle 5 Minuten (schont DataStore-Limits)
 local MAX_VALUE = 9e18
 
+local BOARD_COLOR = Color3.fromRGB(13, 105, 172) -- Roblox "Bright blue"
+local ROW_HEIGHT = 0.1 -- Anteil der Zeilen-Fläche je Zeile (10 Zeilen)
+local ROW_COLORS = {
+	Color3.fromRGB(255, 215, 0), -- #1 Gold
+	Color3.fromRGB(225, 230, 240), -- #2 Silber
+	Color3.fromRGB(255, 160, 90), -- #3 Bronze
+}
+
 local store: OrderedDataStore? = nil
 local rowsFrame: Frame
+
+local function addStroke(label: TextLabel, thickness: number)
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = thickness
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+end
 
 local function buildBoard()
 	local board = Instance.new("Part")
@@ -23,7 +40,7 @@ local function buildBoard()
 	board.Anchored = true
 	board.Size = Vector3.new(36, 24, 1)
 	board.CFrame = Services.PlotService.LeaderboardCFrame
-	board.Color = Color3.fromRGB(25, 20, 35)
+	board.Color = BOARD_COLOR
 	board.Material = Enum.Material.SmoothPlastic
 	board.CanTouch = false
 	board.Parent = Services.PlotService.MapFolder or workspace
@@ -40,8 +57,9 @@ local function buildBoard()
 	title.Size = UDim2.new(1, 0, 0.14, 0)
 	title.Font = Enum.Font.FredokaOne
 	title.TextScaled = true
-	title.TextColor3 = Color3.fromRGB(255, 190, 60)
+	title.TextColor3 = Color3.fromRGB(255, 215, 0)
 	title.Text = "🏆 TOP 10 – MEISTES GELD 🏆"
+	addStroke(title, 6)
 	title.Parent = gui
 
 	rowsFrame = Instance.new("Frame")
@@ -49,9 +67,7 @@ local function buildBoard()
 	rowsFrame.Position = UDim2.new(0.05, 0, 0.16, 0)
 	rowsFrame.Size = UDim2.new(0.9, 0, 0.82, 0)
 	rowsFrame.Parent = gui
-	local layout = Instance.new("UIListLayout")
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.Parent = rowsFrame
+	-- (Zeilen stehen fest untereinander – kein UIListLayout nötig)
 end
 
 local function setRows(rows: { { Name: string, Value: number } })
@@ -61,20 +77,19 @@ local function setRows(rows: { { Name: string, Value: number } })
 		end
 	end
 	if #rows == 0 then
-		rows = { { Name = "Noch keine Einträge – sei der Erste!", Value = -1 } }
+		rows = { { Name = "NOCH KEINE EINTRÄGE – SEI DER ERSTE!", Value = -1 } }
 	end
 	for i, row in ipairs(rows) do
 		local label = Instance.new("TextLabel")
 		label.BackgroundTransparency = 1
-		label.Size = UDim2.new(1, 0, 0.1, 0)
+		label.Position = UDim2.fromScale(0, (i - 1) * ROW_HEIGHT)
+		label.Size = UDim2.new(1, 0, ROW_HEIGHT * 0.92, 0) -- etwas Luft für die Kontur
 		label.LayoutOrder = i
 		label.Font = Enum.Font.FredokaOne
 		label.TextScaled = true
 		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.TextColor3 = i == 1 and Color3.fromRGB(255, 215, 0)
-			or i == 2 and Color3.fromRGB(220, 220, 230)
-			or i == 3 and Color3.fromRGB(230, 150, 90)
-			or Color3.new(1, 1, 1)
+		label.TextColor3 = ROW_COLORS[i] or Color3.new(1, 1, 1)
+		addStroke(label, 4)
 		label.Text = row.Value >= 0 and (("#%d  %s  –  %s"):format(i, row.Name, Util.FormatCash(row.Value)))
 			or row.Name
 		label.Parent = rowsFrame

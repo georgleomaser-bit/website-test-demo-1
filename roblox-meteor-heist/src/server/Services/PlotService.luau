@@ -488,8 +488,12 @@ end
 -- -------------------------------------------------------------------
 -- LOCK
 -- -------------------------------------------------------------------
+-- Farben (nur Optik): rote Laser beim Abschließen, blaues Schild, knallroter Knopf (offen), grau (gesperrt)
 local LOCK_BARRIER_COLOR = Color3.fromRGB(255, 40, 40)
-local SHIELD_BARRIER_COLOR = Color3.fromRGB(60, 170, 255)
+local SHIELD_BARRIER_COLOR = Color3.fromRGB(0, 170, 255)
+local BUTTON_OPEN_COLOR = Color3.fromRGB(255, 50, 50) -- = BaseBuilder
+local BUTTON_LOCKED_COLOR = Color3.fromRGB(110, 110, 120)
+local BUTTON_SHIELD_COLOR = Color3.fromRGB(0, 150, 255)
 
 local function setColor(part: BasePart, color: Color3)
 	if part.Color ~= color then
@@ -508,20 +512,20 @@ function PlotService.UpdateLockVisual(plot)
 		setColor(plot.Barrier, SHIELD_BARRIER_COLOR)
 		setText(plot.LockLabel, text)
 		setText(plot.BarrierLabel, text)
-		setColor(plot.LockPad, Color3.fromRGB(70, 130, 200))
+		setColor(plot.LockPad, BUTTON_SHIELD_COLOR)
 	elseif plot.LockedUntil > now then
 		local text = "🔒 " .. math.ceil(plot.LockedUntil - now) .. "s"
 		plot.Barrier.Transparency = 0.6
 		setColor(plot.Barrier, LOCK_BARRIER_COLOR)
 		setText(plot.LockLabel, text)
 		setText(plot.BarrierLabel, text)
-		setColor(plot.LockPad, Color3.fromRGB(90, 90, 90))
+		setColor(plot.LockPad, BUTTON_LOCKED_COLOR)
 	else
 		plot.Barrier.Transparency = 1
 		setColor(plot.Barrier, LOCK_BARRIER_COLOR)
 		setText(plot.LockLabel, showerActive and "🌠 KEIN LOCK" or "🔒 LOCK")
 		setText(plot.BarrierLabel, "")
-		setColor(plot.LockPad, Color3.fromRGB(230, 60, 60))
+		setColor(plot.LockPad, BUTTON_OPEN_COLOR)
 	end
 end
 
@@ -599,6 +603,11 @@ end
 -- -------------------------------------------------------------------
 -- ZUWEISUNG & TELEPORT
 -- -------------------------------------------------------------------
+-- Namensschild in GROSSBUCHSTABEN ("GEORGS BASE"); string.upper kennt nur A-Z -> Umlaute von Hand
+local function signText(player: Player): string
+	return (string.upper(player.DisplayName .. "s Base"):gsub("ä", "Ä"):gsub("ö", "Ö"):gsub("ü", "Ü"))
+end
+
 local function teleportToPlot(player: Player)
 	local character = player.Character
 	local plot = PlotService.ByPlayer[player]
@@ -618,7 +627,7 @@ function PlotService.AssignPlot(player: Player)
 		if plot.Owner == nil then
 			plot.Owner = player
 			plot.Model:SetAttribute("OwnerUserId", player.UserId)
-			plot.SignLabel.Text = player.DisplayName .. "s Base"
+			plot.SignLabel.Text = signText(player)
 			-- Avatar-Kopf aufs Namensschild (Web-Aufruf -> im Hintergrund, Fehler egal)
 			local image = plot.SignImage
 			if image then
@@ -654,7 +663,7 @@ function PlotService.ReleasePlot(player: Player)
 	PlotService.ByPlayer[player] = nil
 	plot.Owner = nil
 	plot.Model:SetAttribute("OwnerUserId", 0)
-	plot.SignLabel.Text = "Freie Base"
+	plot.SignLabel.Text = "FREIE BASE"
 	if plot.SignImage then
 		plot.SignImage.Image = ""
 	end

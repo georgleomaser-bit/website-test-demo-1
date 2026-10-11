@@ -30,7 +30,7 @@ local NIGHT_LENGTH = tonumber(NIGHT.NightLength) or 180
 local FADE_TIME = tonumber(NIGHT.FadeTime) or 10
 
 local CRATE_SIZE = Vector3.new(3, 2.6, 3)
-local CRATE_COLOR = Color3.fromRGB(150, 100, 55)
+local CRATE_COLOR = Color3.fromRGB(200, 130, 60) -- kräftiges Holz-Orange (nachts gut zu sehen)
 local CRATE_GLOW = Color3.fromRGB(255, 215, 90)
 local CRATE_GLOW_BLOOD = Color3.fromRGB(255, 70, 70)
 local CRATE_REACH = 10 -- Prompt-Reichweite

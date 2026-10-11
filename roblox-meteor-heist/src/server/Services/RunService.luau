@@ -111,18 +111,25 @@ local IMPACT_TO_D = 360
 local FINISH_D = 434 -- Ziellinie
 local END_D = 452 -- Ende des Ziel-Podests
 
+-- Roblox-Obby-Look: knallige SmoothPlastic-Farben. Neon nur für echte Highlights
+-- (Lava, Leuchtstreifen der Tore, Checkpoint-Pads, Ring ums Belohnungs-Ei).
 local COLORS = {
-	Deck = Color3.fromRGB(46, 40, 78),
-	DeckAlt = Color3.fromRGB(60, 44, 96),
-	Edge = Color3.fromRGB(0, 220, 255),
-	Pillar = Color3.fromRGB(70, 70, 86),
+	Deck = Color3.fromRGB(85, 165, 255), -- knallblau / gelb im Wechsel (Obby-Klassiker)
+	DeckAlt = Color3.fromRGB(255, 210, 70),
+	Edge = Color3.fromRGB(255, 255, 255),
+	Pillar = Color3.fromRGB(235, 238, 245),
 	Lava = Color3.fromRGB(255, 90, 20),
-	Stone = Color3.fromRGB(110, 100, 95),
+	Stone = Color3.fromRGB(175, 160, 150),
 	Gate = Color3.fromRGB(255, 140, 40),
+	GatePillar = Color3.fromRGB(255, 255, 255),
 	Finish = Color3.fromRGB(255, 205, 40),
 	Checkpoint = Color3.fromRGB(80, 200, 255),
+	Flag = Color3.fromRGB(255, 255, 255),
 	Spinner = Color3.fromRGB(255, 60, 90),
-	Crater = Color3.fromRGB(40, 30, 30),
+	Post = Color3.fromRGB(60, 120, 255), -- Pfosten der Balken: blau auf dem gelben Deck
+	Crater = Color3.fromRGB(80, 60, 65),
+	RewardEgg = Color3.fromRGB(190, 90, 255),
+	Podium = Color3.fromRGB(250, 250, 255), -- weiß: hebt sich vom gelben Ziel-Deck ab
 }
 local WHITE = Color3.new(1, 1, 1)
 
@@ -313,9 +320,10 @@ local function worldSign(parent: Instance, width: number, height: number, lines:
 	gui.MaxDistance = 400
 	gui.LightInfluence = 0
 	gui.Parent = parent
-	local frame = Instance.new("Frame")
+	local frame = Instance.new("Frame") -- unsichtbar: kein Kasten hinter dem Text
 	frame.Name = "Frame"
 	frame.BackgroundTransparency = 1
+	frame.BorderSizePixel = 0
 	frame.Size = UDim2.fromScale(1, 1)
 	frame.Parent = gui
 	local layout = Instance.new("UIListLayout")
@@ -335,8 +343,9 @@ local function worldSign(parent: Instance, width: number, height: number, lines:
 		label.TextColor3 = line.Color
 		label.Text = line.Text
 		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = 2
+		stroke.Thickness = if line.Name == "Title" then 3 else 2 -- Titel mit dickerer Kontur
 		stroke.Color = Color3.new(0, 0, 0)
+		stroke.LineJoinMode = Enum.LineJoinMode.Round
 		stroke.Parent = label
 		label.Parent = frame
 		labels[line.Name] = label
@@ -437,7 +446,7 @@ local lavaFolder: Folder
 local spinnerFolder: Folder
 local checkpointFolder: Folder
 
--- Lauffläche von d0 bis d1 (x = Versatz zur Mitte), mit Leuchtkanten und Stützen
+-- Lauffläche von d0 bis d1 (x = Versatz zur Mitte), mit weißen Kanten und Stützen
 local function deck(d0: number, d1: number, x: number, width: number, color: Color3)
 	local length = d1 - d0
 	local mid = (d0 + d1) / 2
@@ -454,7 +463,7 @@ local function deck(d0: number, d1: number, x: number, width: number, color: Col
 			Name = "Edge",
 			Size = Vector3.new(0.4, 0.3, length),
 			Position = world(mid, x + s * (width / 2 - 0.2), TOP + 0.15),
-			Material = Enum.Material.Neon,
+			Material = Enum.Material.SmoothPlastic,
 			Color = COLORS.Edge,
 			CanCollide = false,
 			CastShadow = false,
@@ -470,7 +479,7 @@ local function deck(d0: number, d1: number, x: number, width: number, color: Col
 				Name = "Pillar",
 				Size = Vector3.new(1.2, TOP - DECK, 1.2),
 				Position = world(d, x + ox, (TOP - DECK) / 2),
-				Material = Enum.Material.Metal,
+				Material = Enum.Material.SmoothPlastic,
 				Color = COLORS.Pillar,
 				CastShadow = false,
 				Parent = decoFolder,
@@ -516,7 +525,7 @@ local function spinner(
 		Name = name,
 		Size = size,
 		CFrame = pivot * offset,
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.SmoothPlastic,
 		Color = COLORS.Spinner,
 		CastShadow = false,
 		Parent = spinnerFolder,
@@ -534,8 +543,8 @@ local function gate(d: number, color: Color3, height: number)
 			Name = "GatePillar",
 			Size = Vector3.new(1.6, height, 1.6),
 			Position = world(d, s * (half + 0.8), TOP + height / 2),
-			Material = Enum.Material.Metal,
-			Color = Color3.fromRGB(50, 50, 62),
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLORS.GatePillar,
 			Parent = decoFolder,
 		})
 		part({
@@ -553,7 +562,7 @@ local function gate(d: number, color: Color3, height: number)
 		Name = "GateBeam",
 		Size = Vector3.new(WIDTH + 3.2, 1.6, 1.6),
 		Position = world(d, 0, TOP + height + 0.8),
-		Material = Enum.Material.Neon,
+		Material = Enum.Material.SmoothPlastic,
 		Color = color,
 		CastShadow = false,
 		Parent = decoFolder,
@@ -611,15 +620,15 @@ local function checkpointPad(index: number, d: number)
 			Name = "Flag",
 			Size = Vector3.new(0.5, 6, 0.5),
 			Position = world(d, s * (WIDTH / 2 + 0.6), TOP + 3),
-			Material = Enum.Material.Metal,
-			Color = Color3.fromRGB(220, 220, 230),
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLORS.Flag,
 			Parent = decoFolder,
 		})
 		part({
 			Name = "FlagCloth",
 			Size = Vector3.new(0.2, 1.6, 2.4),
 			Position = world(d + 1.2, s * (WIDTH / 2 + 0.6), TOP + 5.2),
-			Material = Enum.Material.Neon,
+			Material = Enum.Material.SmoothPlastic,
 			Color = COLORS.Checkpoint,
 			CanCollide = false,
 			CastShadow = false,
@@ -711,8 +720,8 @@ local function build(map: Instance): Folder
 			Shape = Enum.PartType.Cylinder,
 			Size = Vector3.new(3, 1.4, 1.4),
 			CFrame = CFrame.new(world(d, 0, TOP + 1.5)) * CFrame.Angles(0, 0, math.rad(90)),
-			Material = Enum.Material.Metal,
-			Color = Color3.fromRGB(60, 60, 72),
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLORS.Post,
 			Parent = decoFolder,
 		})
 	end
@@ -734,8 +743,8 @@ local function build(map: Instance): Folder
 			Name = "MillPost",
 			Size = Vector3.new(1.2, 10, 1.2),
 			Position = world(235.6, s * (half + 0.8), TOP + 5),
-			Material = Enum.Material.Metal,
-			Color = Color3.fromRGB(60, 60, 72),
+			Material = Enum.Material.SmoothPlastic,
+			Color = COLORS.Post,
 			Parent = decoFolder,
 		})
 	end
@@ -743,16 +752,16 @@ local function build(map: Instance): Folder
 		Name = "MillBeam",
 		Size = Vector3.new(WIDTH + 2.8, 1, 1),
 		Position = world(235.6, 0, TOP + 10.5),
-		Material = Enum.Material.Metal,
-		Color = Color3.fromRGB(60, 60, 72),
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLORS.Post,
 		Parent = decoFolder,
 	})
 	part({
 		Name = "MillAxle",
 		Size = Vector3.new(0.8, 0.8, 1.6),
 		Position = world(234.8, 0, TOP + 7.5),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(255, 220, 60),
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLORS.Spinner,
 		CanCollide = false,
 		CastShadow = false,
 		Parent = decoFolder,
@@ -761,8 +770,8 @@ local function build(map: Instance): Folder
 		Name = "MillHanger",
 		Size = Vector3.new(0.6, 3, 0.6),
 		Position = world(235.6, 0, TOP + 9),
-		Material = Enum.Material.Metal,
-		Color = Color3.fromRGB(60, 60, 72),
+		Material = Enum.Material.SmoothPlastic,
+		Color = COLORS.Post,
 		CanCollide = false,
 		Parent = decoFolder,
 	})
@@ -794,7 +803,7 @@ local function build(map: Instance): Folder
 			Shape = Enum.PartType.Cylinder,
 			Size = Vector3.new(0.05, size, size),
 			CFrame = CFrame.new(world(d, x, TOP + 0.03)) * CFrame.Angles(0, 0, math.rad(90)),
-			Material = Enum.Material.Slate,
+			Material = Enum.Material.SmoothPlastic,
 			Color = COLORS.Crater,
 			CanCollide = false,
 			CanQuery = false,
@@ -813,7 +822,7 @@ local function build(map: Instance): Folder
 			Name = "Stone",
 			Size = Vector3.new(4, 1.4, 4),
 			Position = world(374 + i * 6.5, half * x, TOP + 0.7),
-			Material = Enum.Material.Slate,
+			Material = Enum.Material.SmoothPlastic,
 			Color = COLORS.Stone,
 			Parent = stoneFolder,
 		})
@@ -841,7 +850,7 @@ local function build(map: Instance): Folder
 		Size = Vector3.new(2, 7, 7),
 		CFrame = CFrame.new(world(podiumD, 0, TOP + 1)) * CFrame.Angles(0, 0, math.rad(90)),
 		Material = Enum.Material.SmoothPlastic,
-		Color = Color3.fromRGB(255, 205, 60),
+		Color = COLORS.Podium,
 		Parent = decoFolder,
 	})
 	part({
@@ -859,8 +868,9 @@ local function build(map: Instance): Folder
 		Name = "RewardEgg",
 		Size = Vector3.new(3, 3, 3),
 		Position = world(podiumD, 0, TOP + 4.6),
-		Material = Enum.Material.Neon,
-		Color = Color3.fromRGB(180, 80, 255),
+		Material = Enum.Material.SmoothPlastic, -- glänzt (Reflectance + Licht) statt Neon -> Ei-Form bleibt sichtbar
+		Color = COLORS.RewardEgg,
+		Reflectance = 0.2,
 		CanCollide = false,
 		CanQuery = false,
 		Parent = decoFolder,

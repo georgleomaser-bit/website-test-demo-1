@@ -288,22 +288,26 @@ local function updateTag(p: Player)
 	if not text then
 		return
 	end
+	-- Roblox-Look: kein Kasten, große FredokaOne-Schrift in Volltonfarbe mit dicker schwarzer Kontur
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "OverheadTag"
-	gui.Size = UDim2.new(0, 120, 0, 28)
+	gui.Size = UDim2.new(0, 150, 0, 36)
 	gui.StudsOffset = Vector3.new(0, 2.6, 0)
 	gui.MaxDistance = 80
 	gui.LightInfluence = 0
 	gui.Enabled = head.Transparency < 1
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
+	label.BorderSizePixel = 0
 	label.Size = UDim2.fromScale(1, 1)
 	label.Font = Enum.Font.FredokaOne
 	label.TextScaled = true
 	label.TextColor3 = color
 	label.Text = text
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
+	stroke.Thickness = 3
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = label
 	label.Parent = gui
 	gui.Parent = head

@@ -866,6 +866,15 @@ local function swing(player: Player, tool: Tool)
 	end
 end
 
+-- Roblox-Look: glänzende/realistische Materialien (Metall, Gold-Folie, Glas) werden knalliges SmoothPlastic –
+-- die Farbe aus Config.Bats bleibt. Holz bleibt Holz.
+local PLASTIC_INSTEAD: { [Enum.Material]: boolean } = {
+	[Enum.Material.Metal] = true,
+	[Enum.Material.Foil] = true,
+	[Enum.Material.Glass] = true,
+	[Enum.Material.DiamondPlate] = true,
+}
+
 local function batPart(tool: Tool, name: string, size: Vector3, color: Color3, material: Enum.Material): Part
 	local p = Instance.new("Part")
 	p.Name = name
@@ -884,7 +893,8 @@ local function batPart(tool: Tool, name: string, size: Vector3, color: Color3, m
 end
 
 -- Blockiger Baseballschläger aus wenigen Teilen, alles entlang +Y des Griffs (Handle):
--- Knauf unten, Griff (Handle), Hals, dicker Schlagteil, Kappe. Hohe Stufen: Leucht-Ringe, König: Krone.
+-- Knauf unten, Griff (Handle), Hals, dicker Schlagteil, Kappe. Hohe Stufen: Leucht-Ringe, König: Krone
+-- (die Neon-Ringe gibt es nur an den 2 seltensten Schlägern – bewusst als "seltener Glanz").
 local function createBatTool(bat): Tool
 	local tool = Instance.new("Tool")
 	tool.Name = bat.Name
@@ -896,6 +906,9 @@ local function createBatTool(bat): Tool
 
 	local color: Color3 = bat.Color
 	local material: Enum.Material = bat.Material or Enum.Material.SmoothPlastic
+	if PLASTIC_INSTEAD[material] then
+		material = Enum.Material.SmoothPlastic
+	end
 	local gripColor: Color3 = bat.Grip or Color3.fromRGB(50, 40, 35)
 	local handle = batPart(tool, "Handle", Vector3.new(0.4, 1.8, 0.4), gripColor, Enum.Material.SmoothPlastic)
 	local function attach(name: string, size: Vector3, y: number, partColor: Color3, partMaterial: Enum.Material): Part

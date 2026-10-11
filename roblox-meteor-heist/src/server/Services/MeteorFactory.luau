@@ -228,6 +228,7 @@ function MeteorFactory.BuildInfo(maxDistance: number): BillboardGui
 	gui.Size = INFO_SIZE
 	gui.MaxDistance = maxDistance
 	gui.LightInfluence = 0
+	gui.ClipsDescendants = false -- lange Namen dürfen breiter als das Schild sein
 	-- unsichtbares Frame (kein Kasten, keine Kontur) – wird gesucht, deshalb bleibt es
 	local frame = Instance.new("Frame")
 	frame.Name = "Frame"
