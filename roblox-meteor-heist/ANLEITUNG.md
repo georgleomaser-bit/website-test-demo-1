@@ -292,7 +292,18 @@ und an den Nestern der Hinweis **„🥚 [E] halten = SCHNAPPEN … 💵 [F] = K
 
 ## 🌍 SCHRITT 4 – Veröffentlichen
 
-1. **File → Publish to Roblox** → neues Spiel erstellen, Namen eingeben (z. B. „☄️ Meteor Heist“).
+1. **File → Publish to Roblox** → neues Spiel erstellen. Beim ersten Mal: Name **Meteor Heist** (ohne Emoji),
+   Beschreibung leer, **Team Create AUS**, Creator = **dein Name**. Den Namen mit Emoji und die Beschreibung
+   trägst du danach im Creator Dashboard ein.
+
+   **Kommt „Save failed“?** Dann so (klappt fast immer):
+   1. Studio ganz schließen (Cmd + Q), neu öffnen, oben rechts muss dein Name stehen. Updates installieren.
+   2. Startseite → **New → Baseplate** (leere Welt) → **File → Publish to Roblox** → Name „Meteor Heist“, Team Create AUS → Create.
+   3. Klappt das: Baseplate schließen, `MeteorHeist.rbxlx` öffnen (Cmd + O).
+   4. **File → Publish to Roblox As…** → „Meteor Heist“ anklicken → den Place anklicken → **Overwrite**.
+   5. Klappt nicht mal die leere Baseplate, liegt es an Roblox oder am Konto, nicht am Spiel:
+      status.roblox.com prüfen, VPN aus, in Studio ab- und wieder anmelden, E-Mail auf roblox.com bestätigen.
+      Dann **View → Output** öffnen und den roten Text an Claude schicken.
 2. **Home → Game Settings → Security** → **„Enable Studio Access to API Services“** = AN → Save.
    (Erst dann speichert das Spiel auch beim Testen in Studio.)
 3. **Spieler pro Server auf 8 setzen** (es gibt genau 8 Basen):
@@ -471,6 +482,7 @@ Studio direkt steuern (Objekte bauen, Skripte einfügen, testen).
 | Knopf **⭐ STARTER-PAKET** fehlt | Die ID von `StarterPack` ist noch `0`, oder du hast es schon gekauft (geht nur 1x) |
 | Zufalls-Produkte oder Dreh-Käufe fehlen im Shop | In manchen Ländern verbietet Roblox Zufalls-Käufe. Dann versteckt das Spiel sie. Das ist richtig so |
 | „Server voll – keine Base frei“ | Max Players auf 8 stellen (Schritt 4.3) |
+| „Save failed“ beim Veröffentlichen | Schritt 4.1: erst eine leere **Baseplate** veröffentlichen (Team Create AUS), dann `MeteorHeist.rbxlx` mit **Publish to Roblox As… → Overwrite** darüberspielen |
 | Rote Fehler im **Output**-Fenster | Text kopieren und mir hier schicken, ich fixe es |
 | Kauf kam nicht an | Roblox wiederholt den Kauf automatisch, bis er verbucht ist. Nichts geht verloren |
 | „🏃 Zu weit weg – lauf näher ran!“ | Näher ans Nest gehen. Das Ei muss direkt vor dir sein |

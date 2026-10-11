@@ -171,7 +171,8 @@ footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line)
         <div class="step-num">SCHRITT 5</div>
         <h3 class="step-title">Auf Roblox hochladen</h3>
         <p class="path"><kbd>File</kbd><em>›</em><kbd>Publish to Roblox</kbd></p>
-        <p>Wähl <strong>Create new experience</strong> (neues Spiel). Bei „Owner“ muss <strong>dein Name</strong> stehen, keine Gruppe. Nur dann bist du automatisch Admin. Name und Beschreibung kopierst du von hier:</p>
+        <p>Wähl <strong>Create new experience</strong> (neues Spiel). Bei „Creator“ muss <strong>dein Name</strong> stehen, keine Gruppe. Nur dann bist du automatisch Admin.</p>
+        <p>Beim ersten Hochladen: Name einfach <strong>Meteor Heist</strong> (ohne Emoji), Beschreibung leer lassen und <strong>Team Create AUS</strong>. Den schönen Namen mit Emoji und die Beschreibung trägst du später im Creator Dashboard ein. Hier zum Kopieren:</p>
         <div class="copy"><div class="copy-head"><span>Name</span><button class="copy-btn" type="button" data-copy="title">Kopieren</button></div><pre id="copy-title">☄️ Meteor Heist</pre></div>
         <div class="copy"><div class="copy-head"><span>Beschreibung (Deutsch)</span><button class="copy-btn" type="button" data-copy="desc-de">Kopieren</button></div><pre id="copy-desc-de">☄️ METEOR HEIST ☄️
 Schnapp dir Alien-Eier aus den Nestern und renn heim – bevor dich ein Monster oder ein Spieler erwischt! In deiner Base schlüpfen ALIENS und bringen dir Geld! 😱
@@ -191,6 +192,17 @@ Schnapp dir Alien-Eier aus den Nestern und renn heim – bevor dich ein Monster 
 
 👍 Like und ⭐ favorisiere das Spiel!</pre></div>
         <p>Fragt Studio nach einem Genre, nimm <strong>Simulation (Untergenre Tycoon)</strong>. Dann auf <kbd>Create</kbd> klicken.</p>
+        <div class="note">
+          <p><strong>Kommt „Save failed“?</strong> Dann so (klappt fast immer):</p>
+          <ol>
+            <li>Studio ganz schließen (<kbd>Cmd</kbd> + <kbd>Q</kbd>) und neu öffnen. Oben rechts muss dein Name stehen. Will Studio ein Update, installier es.</li>
+            <li>Auf der Startseite <kbd>New</kbd> › <strong>Baseplate</strong> (leere Welt) öffnen.</li>
+            <li><span class="path"><kbd>File</kbd><em>›</em><kbd>Publish to Roblox</kbd></span> › Name <strong>Meteor Heist</strong>, <strong>Team Create AUS</strong> › <kbd>Create</kbd>.</li>
+            <li>Klappt das: Baseplate schließen, <code>MeteorHeist.rbxlx</code> wieder öffnen (<kbd>Cmd</kbd> + <kbd>O</kbd>).</li>
+            <li><span class="path"><kbd>File</kbd><em>›</em><kbd>Publish to Roblox As…</kbd></span> › <strong>Meteor Heist</strong> anklicken › den Place anklicken › <kbd>Overwrite</kbd>.</li>
+          </ol>
+          <p>Klappt sogar die leere Baseplate nicht, liegt es an Roblox oder am Konto, nicht am Spiel: auf <a href="https://status.roblox.com" target="_blank" rel="noopener">status.roblox.com</a> schauen, VPN aus, in Studio ab- und wieder anmelden, auf roblox.com die E-Mail bestätigen. Dann <span class="path"><kbd>View</kbd><em>›</em><kbd>Output</kbd></span> öffnen und den roten Text an Claude schicken.</p>
+        </div>
       </div>
     </div>
 
