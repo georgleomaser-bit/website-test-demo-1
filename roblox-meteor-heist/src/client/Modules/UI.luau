@@ -96,7 +96,6 @@ local GOTHAM_FONTS: { [Enum.Font]: boolean } = {
 	[Enum.Font.GothamMedium] = true,
 	[Enum.Font.GothamBold] = true,
 	[Enum.Font.GothamBlack] = true,
-	[Enum.Font.GothamSemibold] = true,
 }
 
 local root: ScreenGui? = nil

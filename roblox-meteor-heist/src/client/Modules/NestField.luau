@@ -590,6 +590,7 @@ type Pop = {
 	Egg: BasePart?,
 	Rest: CFrame,
 	Height: number,
+	Width: number, -- Ei-Form des Servers (SpecialMesh "EggShape"): so schmal ist das Ei
 	Start: number,
 	Landed: boolean,
 }
@@ -623,6 +624,7 @@ local function buildPops()
 			Egg = nil,
 			Rest = HIDDEN_CF,
 			Height = 1,
+			Width = 1,
 			Start = 0,
 			Landed = false,
 		})
@@ -704,6 +706,8 @@ local function onNestEgg(inst: Instance)
 	free.Egg = inst
 	free.Rest = inst.CFrame
 	free.Height = inst.Size.Y
+	local eggShape = inst:FindFirstChild("EggShape")
+	free.Width = if eggShape and eggShape:IsA("SpecialMesh") then eggShape.Scale.X else 1
 	free.Start = animClock
 	free.Landed = false
 	local proxy = free.Proxy
@@ -752,6 +756,7 @@ local function stepPops(count: number): number
 					sx, sy = 1 - w * 0.6, 1 + w
 					y = pop.Height * 0.5 * (sy - 1)
 				end
+				sx *= pop.Width
 				pop.Mesh.Scale = Vector3.new(sx, sy, sx)
 				count += 1
 				moveParts[count] = pop.Proxy

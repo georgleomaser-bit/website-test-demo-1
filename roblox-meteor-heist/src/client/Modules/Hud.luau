@@ -224,12 +224,7 @@ local function priceTag(button: UI.Button, id: number, infoType: Enum.InfoType)
 end
 
 local function buildLeft()
-	local bar = squareBar(
-		"LeftButtons",
-		Vector2.new(0, 0.5),
-		UDim2.new(0, 14, 0.5, 0),
-		Enum.HorizontalAlignment.Left
-	)
+	local bar = squareBar("LeftButtons", Vector2.new(0, 0.5), UDim2.new(0, 14, 0.5, 0), Enum.HorizontalAlignment.Left)
 
 	-- ⭐ STARTER-PAKET: auffällig (Gold, weiß glühender Rand, wackelt), solange nicht gekauft und eingerichtet
 	local starter = ctx.Config.ProductsByKey and ctx.Config.ProductsByKey.StarterPack
@@ -284,12 +279,7 @@ function Hud.AddRightButton(icon: string, caption: string, color: Color3, order:
 end
 
 local function buildRight()
-	rightBar = squareBar(
-		"RightButtons",
-		Vector2.new(1, 0.5),
-		UDim2.new(1, -14, 0.5, 0),
-		Enum.HorizontalAlignment.Right
-	)
+	rightBar = squareBar("RightButtons", Vector2.new(1, 0.5), UDim2.new(1, -14, 0.5, 0), Enum.HorizontalAlignment.Right)
 	-- jeder Knopf eine eigene kräftige Farbe (Nachbarn unterscheiden sich)
 	local gifts = Hud.AddRightButton("🎁", "Geschenke", Theme.Purple, 1, function()
 		ctx.Windows.Toggle("Gifts")
@@ -317,11 +307,12 @@ end
 local function buildStats()
 	local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 	-- Auf dem Handy liegt unten links der Lauf-Stick -> Anzeige oben links
+	-- (nur Text mit dicker Kontur, kein Kasten dahinter)
 	local stats = UI.Create("Frame", {
 		Name = "Stats",
 		AnchorPoint = if touchOnly then Vector2.new(0, 0) else Vector2.new(0, 1),
 		Position = if touchOnly then UDim2.fromOffset(14, 6) else UDim2.new(0, 16, 1, -14),
-		Size = UDim2.fromOffset(380, 156),
+		Size = UDim2.fromOffset(380, 172),
 		BackgroundTransparency = 1,
 		Parent = ctx.Gui,
 	})
@@ -338,37 +329,38 @@ local function buildStats()
 		Parent = stats,
 	})
 	stepsScale.Parent = stepsLabel
+	-- 💵 Geld: die größte Zahl auf dem Bildschirm (grün, dicke Kontur)
 	cashScale = UI.Create("UIScale")
 	local cashLabel = UI.Label({
 		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.fromOffset(0, 76),
-		Size = UDim2.new(1, 0, 0, 52),
+		Position = UDim2.fromOffset(0, 86),
+		Size = UDim2.new(1, 0, 0, 64),
 		Text = "💵 $0",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.Cash,
-		MaxText = 46,
-		Outline = 3,
+		MaxText = 58,
+		Outline = 4,
 		Parent = stats,
 	})
 	cashScale.Parent = cashLabel
 	cashLabelRef = cashLabel
 	incomeLabel = UI.Label({
-		Position = UDim2.fromOffset(2, 104),
-		Size = UDim2.new(1, 0, 0, 24),
+		Position = UDim2.fromOffset(2, 120),
+		Size = UDim2.new(1, 0, 0, 26),
 		Text = "+$0/s",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Color3.fromRGB(190, 255, 170),
-		MaxText = 22,
-		Outline = 2,
+		MaxText = 24,
+		Outline = 2.5,
 		Parent = stats,
 	})
 	infoLabel = UI.Label({
-		Position = UDim2.fromOffset(2, 130),
+		Position = UDim2.fromOffset(2, 148),
 		Size = UDim2.new(1, 0, 0, 22),
 		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = Theme.SubText,
-		MaxText = 18,
+		TextColor3 = WHITE,
+		MaxText = 19,
 		Outline = 2,
 		Parent = stats,
 	})
@@ -432,23 +424,22 @@ local function buildBottom()
 		}),
 	})
 
+	-- Alle Anzeigen hier: nur Text mit dicker schwarzer Kontur, kein Kasten dahinter
 	-- Status (👻 Umhang)
 	statusPill = UI.Create("Frame", {
 		Name = "Status",
-		Size = UDim2.fromOffset(300, 32),
-		BackgroundColor3 = Theme.PanelDark,
-		BackgroundTransparency = 0.1,
+		Size = UDim2.fromOffset(340, 32),
+		BackgroundTransparency = 1,
 		Visible = false,
 		LayoutOrder = 0,
 		Parent = stack,
-	}, { UI.Corner(16), UI.Stroke(BLACK, 2) })
+	})
 	statusLabel = UI.Label({
-		Position = UDim2.fromOffset(10, 3),
-		Size = UDim2.new(1, -20, 1, -6),
+		Size = UDim2.fromScale(1, 1),
 		Text = "",
-		TextColor3 = Color3.fromRGB(200, 210, 255),
-		MaxText = 18,
-		Outline = 2,
+		TextColor3 = Color3.fromRGB(215, 185, 255),
+		MaxText = 24,
+		Outline = 2.5,
 		Parent = statusPill,
 	})
 
@@ -456,27 +447,26 @@ local function buildBottom()
 	navFrame = UI.Create("Frame", {
 		Name = "Navigator",
 		Size = UDim2.fromOffset(440, 46),
-		BackgroundColor3 = Theme.PanelDark,
-		BackgroundTransparency = 0.1,
+		BackgroundTransparency = 1,
 		Visible = false,
 		LayoutOrder = 1,
 		Parent = stack,
-	}, { UI.Corner(14), UI.Stroke(BLACK, 3) })
+	})
 	navArrow = UI.Label({
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0, 28, 0.5, 0),
-		Size = UDim2.fromOffset(40, 40),
+		Size = UDim2.fromOffset(42, 42),
 		Text = "⬆️",
-		MaxText = 34,
+		MaxText = 38,
 		Parent = navFrame,
 	})
 	navLabel = UI.Label({
-		Position = UDim2.fromOffset(54, 5),
-		Size = UDim2.new(1, -64, 1, -10),
+		Position = UDim2.fromOffset(54, 3),
+		Size = UDim2.new(1, -64, 1, -6),
 		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 22,
-		Outline = 2,
+		MaxText = 28,
+		Outline = 3,
 		Parent = navFrame,
 	})
 
@@ -504,18 +494,17 @@ local function buildBottom()
 	hintFrame = UI.Create("Frame", {
 		Name = "PromptHint",
 		Size = UDim2.fromOffset(680, 40),
-		BackgroundColor3 = Theme.PanelDark,
-		BackgroundTransparency = 0.12,
+		BackgroundTransparency = 1,
 		Visible = false,
 		LayoutOrder = 3,
 		Parent = stack,
-	}, { UI.Corner(12), UI.Stroke(BLACK, 2) })
+	})
 	hintLabel = UI.Label({
-		Position = UDim2.fromOffset(10, 4),
-		Size = UDim2.new(1, -20, 1, -8),
+		Position = UDim2.fromOffset(6, 3),
+		Size = UDim2.new(1, -12, 1, -6),
 		Text = "",
-		MaxText = 18,
-		Outline = 2,
+		MaxText = 22,
+		Outline = 2.5,
 		Parent = hintFrame,
 	})
 end
@@ -805,7 +794,7 @@ local function updateStarter(state: any)
 	if starter.Frame.Visible ~= show then
 		starter.Frame.Visible = show
 	end
-	starter.SetSub(if ctx.Windows.StarterPending() then "⏳ Kauf läuft..." else starterSubText)
+	starter.SetSub(if ctx.Windows.StarterPending() then "⏳ KAUF..." else starterSubText)
 end
 
 function Hud.Refresh(state: any)
@@ -913,27 +902,27 @@ function Hud.Tick()
 
 	local rush = rushUntil > now
 	if rush then
-		setPillText(eggPill, "🥚 EGG RUSH " .. Util.FormatTime(rushUntil - now) .. " • schnapp dir die Eier!")
+		setPillText(eggPill, "🥚 EGG RUSH " .. Util.FormatTime(rushUntil - now) .. " • SCHNAPP DIR DIE EIER!")
 	end
 	showPill(eggPill, rush)
 
 	local showShowerNext = showerUntil <= now and nextShower > now
 	if showShowerNext then
-		setPillText(showerNextPill, "🌠 Schauer in " .. Util.FormatTime(nextShower - now))
+		setPillText(showerNextPill, "🌠 SCHAUER IN " .. Util.FormatTime(nextShower - now))
 	end
 	showPill(showerNextPill, showShowerNext)
 	local showRushNext = not rush and nextRush > now
 	if showRushNext then
-		setPillText(eggNextPill, "🥚 Egg Rush in " .. Util.FormatTime(nextRush - now))
+		setPillText(eggNextPill, "🥚 EGG RUSH IN " .. Util.FormatTime(nextRush - now))
 	end
 	showPill(eggNextPill, showRushNext)
 	local raceUntil = tonumber(ReplicatedStorage:GetAttribute("RaceUntil")) or 0
 	local nextRace = tonumber(ReplicatedStorage:GetAttribute("NextRaceAt")) or 0
 	local raceOn = raceUntil > now
 	if raceOn then
-		setPillText(racePill, "🏁 EI-RENNEN " .. Util.FormatTime(raceUntil - now) .. " • Gold-Ei heimbringen!")
+		setPillText(racePill, "🏁 EI-RENNEN " .. Util.FormatTime(raceUntil - now) .. " • GOLD-EI HEIMBRINGEN!")
 	elseif nextRace > now and nextRace - now <= 60 then
-		setPillText(racePill, "🏁 Rennen in " .. Util.FormatTime(nextRace - now))
+		setPillText(racePill, "🏁 RENNEN IN " .. Util.FormatTime(nextRace - now))
 	end
 	showPill(racePill, raceOn or (nextRace > now and nextRace - now <= 60))
 	showerTint.Enabled = showerUntil > now

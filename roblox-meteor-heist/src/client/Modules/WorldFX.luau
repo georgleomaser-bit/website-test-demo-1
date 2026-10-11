@@ -1312,12 +1312,15 @@ local function startWobble(record: HatchRecord)
 	local radius = part.Size.Y / 2
 	local color = crackColor(part)
 	local width = math.clamp(radius * 0.09, 0.06, 0.3)
+	local eggShape = part:FindFirstChild("EggShape")
+	local eggWidth = if eggShape and eggShape:IsA("SpecialMesh") then eggShape.Scale.X else 1
 	for _ = 1, CRACKS_PER_EGG do
 		-- zufällige Stelle in der oberen 3/4-Kugel, Riss liegt tangential auf der Schale
 		local dir = Vector3.new(math.random() - 0.5, math.random() * 0.9 - 0.25, math.random() - 0.5)
 		dir = if dir.Magnitude > 0.05 then dir.Unit else Vector3.yAxis
-		local surface = CFrame.lookAt(dir * radius * 0.97, dir * (radius + 1))
-			* CFrame.Angles(0, 0, math.random() * math.pi * 2)
+		-- Ei-Form des Servers (SpecialMesh "EggShape") ist seitlich schmaler -> Riss sitzt auf der Schale
+		local onShell = Vector3.new(dir.X * eggWidth, dir.Y, dir.Z * eggWidth) * radius * 0.97
+		local surface = CFrame.lookAt(onShell, onShell + dir) * CFrame.Angles(0, 0, math.random() * math.pi * 2)
 		local length = radius * (0.35 + math.random() * 0.3)
 		for segment = 0, 1 do
 			local bend = if segment == 0 then 0.5 else -0.6
