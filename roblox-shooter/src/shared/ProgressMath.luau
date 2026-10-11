@@ -26,6 +26,10 @@
 --    ProgressMath.Seed(a, b): number                      Seed aus zwei Zahlen (Tag, UserId)
 --    ProgressMath.PickDaily(pool, tiers, seed): { string }   je Stufe eine Quest-Id
 --    ProgressMath.PickWeekly(pool, count, seed): { string }  count verschiedene Quest-Ids
+--    ProgressMath.MatchXp(r, xpCfg): number               Basis-XP eines Matches (B16.1, ohne Multiplikatoren)
+--    ProgressMath.MatchCoins(r, coinsCfg, opts): number   Coins eines Matches (B18.2, ohne Tageslimit)
+--    ProgressMath.RewriteChat(text, rewrites, lang): string?  Chat-Umschreibung (B24), nil = unverändert
+--    ProgressMath.DescribeReward(reward, t, nameOf?): string  Belohnung als Text ("150 Coins + 1 Schlüssel")
 -- =====================================================================
 
 local ProgressMath = {}
@@ -405,6 +409,188 @@ function ProgressMath.PickWeekly(pool: { QuestDef }, count: number, seed: number
 		table.insert(result, ids[i])
 	end
 	return result
+end
+
+-- ---------------------------------------------------------------------
+-- 8) MATCH-BELOHNUNG (B16.1 / B18.2) – reine Rechnung, Server ruft sie bei Match-Ende auf
+--    r = Ausschnitt aus Types.PlayerResult (fehlende Felder = 0 / false)
+-- ---------------------------------------------------------------------
+local function field(r: any, key: string): number
+	local v = if type(r) == "table" then r[key] else nil
+	if finite(v) then
+		return math.max(0, v)
+	end
+	return 0
+end
+
+local function flag(r: any, key: string): boolean
+	return type(r) == "table" and r[key] == true
+end
+
+local function cfgNumber(cfg: any, key: string): number
+	local v = if type(cfg) == "table" then cfg[key] else nil
+	return if finite(v) then v else 0
+end
+
+-- Basis-XP: Match beendet + Sieg + Runden + Pops + Assists + Kopf-/Nahkampf-Extra + MVP + Kronen-Verteidigung (Mensch)
+function ProgressMath.MatchXp(r: any, xpCfg: any): number
+	local xp = cfgNumber(xpCfg, "Played")
+	if flag(r, "Won") then
+		xp += cfgNumber(xpCfg, "Win")
+	end
+	xp += field(r, "RoundsWon") * cfgNumber(xpCfg, "Round")
+	xp += field(r, "Elims") * cfgNumber(xpCfg, "Elim")
+	xp += field(r, "Assists") * cfgNumber(xpCfg, "Assist")
+	xp += field(r, "Headshots") * cfgNumber(xpCfg, "HeadElim")
+	xp += field(r, "MeleeElims") * cfgNumber(xpCfg, "MeleeElim")
+	if flag(r, "Mvp") then
+		xp += cfgNumber(xpCfg, "Mvp")
+	end
+	xp += field(r, "CrownVsHuman") * cfgNumber(xpCfg, "CrownDefence")
+	return math.floor(xp + 0.5)
+end
+
+export type CoinOpts = {
+	Practice: boolean?, -- Practice/Tutorial: 0 Coins
+	VsBots: boolean?, -- gegen Bots: ×BotMult, mindestens BotMin
+	Streak: number?, -- Siegesserie NACH diesem Match (nur bei Sieg)
+	Comeback: boolean?, -- +CoinBonus (Comeback-Bonus)
+	ComebackBonus: number?,
+	EventMult: number?, -- Admin-Abuse-Event (1 oder 2)
+	CrownHumanCoins: number?, -- je Kronen-Verteidigung gegen Menschen
+	CrownBotCoins: number?, -- je Kronen-Verteidigung gegen Bots
+}
+
+-- Coins eines Matches (Tageslimit für Bot-Coins rechnet der Server)
+function ProgressMath.MatchCoins(r: any, coinsCfg: any, opts: CoinOpts?): number
+	local o: CoinOpts = opts or {}
+	if o.Practice then
+		return 0
+	end
+	local won = flag(r, "Won")
+	local coins = cfgNumber(coinsCfg, "Played")
+	coins += field(r, "RoundsWon") * cfgNumber(coinsCfg, "Round")
+	coins += field(r, "Elims") * cfgNumber(coinsCfg, "Elim")
+	coins += field(r, "Assists") * cfgNumber(coinsCfg, "Assist")
+	coins += field(r, "Headshots") * cfgNumber(coinsCfg, "HeadElim")
+	if won then
+		coins += cfgNumber(coinsCfg, "Win")
+		-- Siegesserie: +StreakStep je Stufe ab dem 2. Sieg in Folge, höchstens StreakCap
+		local streak = if finite(o.Streak) then math.floor(o.Streak :: number) else 0
+		if streak >= 2 then
+			coins += math.min(cfgNumber(coinsCfg, "StreakCap"), cfgNumber(coinsCfg, "StreakStep") * (streak - 1))
+		end
+	elseif flag(r, "Draw") then
+		coins *= 1 + cfgNumber(coinsCfg, "DrawBonus")
+	end
+	if flag(r, "Mvp") then
+		coins += cfgNumber(coinsCfg, "Mvp")
+	end
+	if o.Comeback then
+		coins *= 1 + (if finite(o.ComebackBonus) then math.max(0, o.ComebackBonus :: number) else 0)
+	end
+	if o.VsBots then
+		coins = math.max(cfgNumber(coinsCfg, "BotMin"), coins * cfgNumber(coinsCfg, "BotMult"))
+	end
+	-- Kronen-Verteidigungen (flach, nach dem Bot-Faktor)
+	local crownHuman = math.min(field(r, "CrownVsHuman"), field(r, "CrownDefences"))
+	local crownBot = math.max(0, field(r, "CrownDefences") - crownHuman)
+	coins += crownHuman * (if finite(o.CrownHumanCoins) then o.CrownHumanCoins :: number else 0)
+	coins += crownBot * (if finite(o.CrownBotCoins) then o.CrownBotCoins :: number else 0)
+	local event = if finite(o.EventMult) then math.clamp(o.EventMult :: number, 1, 2) else 1
+	return math.max(0, math.floor(coins * event + 0.5))
+end
+
+-- ---------------------------------------------------------------------
+-- 9) CHAT-UMSCHREIBUNG (B24) – nur ganze Nachricht oder ganze Wörter,
+--    Groß/Klein egal, Satzzeichen trennen. Bytes ≥ 128 (Umlaute, Emoji) zählen
+--    zum Wort, damit z. B. "Trashübung" NICHT umgeschrieben wird.
+--    rewrites = { [wortKlein] = { de, en } }. Rückgabe nil = nichts geändert.
+-- ---------------------------------------------------------------------
+local WORD_PATTERN = "()([%w\128-\255]+)()"
+local MAX_CHAT_LEN = 400
+
+function ProgressMath.RewriteChat(text: string, rewrites: any, lang: string): string?
+	if type(text) ~= "string" or text == "" or #text > MAX_CHAT_LEN or type(rewrites) ~= "table" then
+		return nil
+	end
+	local function replacement(word: string): string?
+		local entry = rewrites[string.lower(word)]
+		if type(entry) ~= "table" then
+			return nil
+		end
+		local out = entry[lang] or entry.en or entry.de
+		return if type(out) == "string" then out else nil
+	end
+	local parts: { string } = {}
+	local changed = false
+	local last = 1
+	for startPos: number, word: string, endPos: number in string.gmatch(text, WORD_PATTERN) do
+		local out = replacement(word)
+		if out then
+			table.insert(parts, string.sub(text, last, startPos - 1))
+			table.insert(parts, out)
+			last = endPos
+			changed = true
+		end
+	end
+	if not changed then
+		return nil
+	end
+	table.insert(parts, string.sub(text, last))
+	return table.concat(parts)
+end
+
+-- ---------------------------------------------------------------------
+-- 10) BELOHNUNG ALS TEXT – t = Übersetzer (Lang-Schlüssel "prog.r.*"),
+--     nameOf = Anzeigename einer Kosmetik-Id (sonst die Id selbst)
+-- ---------------------------------------------------------------------
+local REWARD_ORDER = { "Coins", "Gems", "Keys", "Shards", "PassXp", "XpBoostSeconds", "FreeWeaponPicks", "FreePick" }
+local REWARD_KEYS: { [string]: string } = {
+	Coins = "prog.r.coins",
+	Gems = "prog.r.gems",
+	Keys = "prog.r.keys",
+	Shards = "prog.r.shards",
+	PassXp = "prog.r.passXp",
+	XpBoostSeconds = "prog.r.xpBoost",
+	FreeWeaponPicks = "prog.r.pick",
+	FreePick = "prog.r.pick",
+}
+
+function ProgressMath.DescribeReward(reward: any, t: (string, ...any) -> string, nameOf: ((string) -> string)?): string
+	if type(reward) ~= "table" then
+		return ""
+	end
+	local parts: { string } = {}
+	for _, key in ipairs(REWARD_ORDER) do
+		local v = reward[key]
+		if finite(v) and v > 0 then
+			local amount = math.floor(v + 0.5)
+			if key == "XpBoostSeconds" then
+				amount = math.max(1, math.floor(v / 60 + 0.5))
+			end
+			table.insert(parts, t(REWARD_KEYS[key], amount))
+		end
+	end
+	local function addItem(id: any)
+		if type(id) == "string" and id ~= "" and #parts < 12 then
+			table.insert(parts, if nameOf then nameOf(id) else id)
+		end
+	end
+	addItem(reward.Cosmetic)
+	addItem(reward.Title)
+	addItem(reward.Wrap)
+	if type(reward.Cosmetics) == "table" then
+		for _, id in ipairs(reward.Cosmetics) do
+			addItem(id)
+		end
+	end
+	if type(reward.Weapons) == "table" then
+		for _, id in ipairs(reward.Weapons) do
+			addItem(id)
+		end
+	end
+	return table.concat(parts, " + ")
 end
 
 return ProgressMath

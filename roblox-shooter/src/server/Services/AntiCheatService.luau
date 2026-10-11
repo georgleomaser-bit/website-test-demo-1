@@ -50,7 +50,6 @@ local Services: any = nil
 local SEC: any = Config.Security
 local HARD_REASONS: { [string]: boolean } = { Honeypot = true, RateBurst = true, Teleport = true }
 local HARD_WINDOW = 600 -- ein hartes Signal zählt so lange für "Kick wegen harter Signale"
-local STALL_SECONDS = 0.6 -- Position so lange unverändert -> Sprung danach gilt als Lag, nicht als Teleport
 local DEFAULT_GRAVITY = 196.2
 local MAX_EVIDENCE_KEYS = 12
 local RECENT_MAX = 64 -- Zeitstempel pro Grund für die Minuten-Zählung
@@ -102,6 +101,8 @@ type Track = {
 	LastY: number?,
 	StillSince: number, -- seit wann sich die Position nicht mehr bewegt hat (Lag-Erkennung)
 	LastRaw: Vector3?,
+	LastSpeed: number, -- waagrechte Geschwindigkeit bei der letzten Messung (eingefroren = Lag)
+	EffSpeed: number, -- zuletzt wirksamer Tempo-Faktor (Kontext-Regeln)
 	Allowance: Allowance,
 	Probe: RaycastParams,
 }
@@ -521,10 +522,7 @@ local function snapshotOf(p: Player): { [string]: any }
 	local s = suspicionOf(p)
 	decay(s)
 	local minutes = math.max(1 / 60, (os.clock() - st.JoinedAt) / 60)
-	local rejects: { [string]: number } = {}
-	for key, count in pairs(s.Counts) do
-		rejects[key] = count
-	end
+	local rejects: { [string]: number } = table.clone(s.Counts)
 	return {
 		HeadPct = if st.Hits > 0 then round(st.Heads / st.Hits * 100) else 0,
 		Accuracy = if st.Shots > 0 then round(st.ShotsHit / st.Shots * 100) else 0,
@@ -871,16 +869,26 @@ end
 
 -- ---------------------------------------------------------------------
 -- BEWEGUNG (C12.3)
+-- Skill-Bewegung (docs/SKILL-WUENSCHE.md) ist ausdrücklich erlaubt und gibt NIE Fehlalarm:
+--   * Rutsch-Sprung-Ketten: Rutschen startet mit 32 Studs/s, Rutsch-Sprung behält 90 % (Obergrenze 30) ->
+--     immer unter dem Budget 32 × SpeedMult × 1.15 + 6 (= 42.8 Studs/s bei SpeedMult 1).
+--   * Doppelsprung + Wand-Absprung (einmal pro Sprung): zählen immer als SkillAirJumps (2) Luftsprünge.
+--   * Schwerkraft-Lift (Mondsprung-Mutator, Lobby-Schwerkraft): Höhe und Luftzeit wachsen mit.
+--   * Kontext-Regeln (Turbo, Nahkampf-Chaos, BaseSpeed) werden selbst gelesen – auch ohne SetAllowance.
 -- ---------------------------------------------------------------------
+type Effective = { SpeedMult: number, VerticalMult: number, AirJumps: number, Moon: boolean }
+
 local function capacityFor(track: Track, now: number): (number, number)
-	local rate = SEC.BaseAllowedSpeed * track.Allowance.SpeedMult * SEC.SpeedTolerance + SEC.SpeedSlack
+	local speedMult = math.max(track.Allowance.SpeedMult, track.EffSpeed)
+	local rate = SEC.BaseAllowedSpeed * speedMult * SEC.SpeedTolerance + SEC.SpeedSlack
 	if now < track.ImpulseUntil then
 		rate = math.max(rate, track.ImpulseSpeed)
 	end
 	return rate, rate * SEC.BucketSeconds
 end
 
--- Weniger Schwerkraft (workspace.Gravity oder Lobby-Schwerkraft des Admin-Panels) = höhere/längere Sprünge erlaubt
+-- Weniger Schwerkraft (workspace.Gravity oder Lobby-Schwerkraft des Admin-Panels) = höhere/längere Sprünge erlaubt.
+-- Die Lobby-Schwerkraft ist eine Server-VectorForce "CC_LobbyGravity" am HRP (vom AdminService angelegt).
 local function gravityFactor(root: BasePart): number
 	local g = workspace.Gravity
 	local effective = g
@@ -891,10 +899,9 @@ local function gravityFactor(root: BasePart): number
 	return math.max(1, DEFAULT_GRAVITY / math.max(10, effective), g / math.max(10, effective))
 end
 
--- Boxhandschuhe ausgerüstet = 1 Luftsprung (B11.4)
-local function glovesAirJumps(p: Player): number
-	local ok, c = call("CombatService", "OfPlayer", p)
-	if not ok or type(c) ~= "table" or c.Equipped ~= "Melee" or type(c.Loadout) ~= "table" then
+-- Boxhandschuhe ausgerüstet = 1 Luftsprung (B11.4) – nur nötig, wenn SkillAirJumps auf 0 gestellt wurde
+local function glovesAirJumps(c: any): number
+	if type(c) ~= "table" or c.Equipped ~= "Melee" or type(c.Loadout) ~= "table" then
 		return 0
 	end
 	local def: any = Config.Weapon(c.Loadout.Melee)
@@ -902,6 +909,49 @@ local function glovesAirJumps(p: Player): number
 		return 1
 	end
 	return 0
+end
+
+-- Erlaubnis = max(SetAllowance, Kontext-Regeln, BaseSpeed-Attribut) + Skill-Luftsprünge
+local function effectiveAllowance(p: Player, track: Track, character: Model): Effective
+	local a = track.Allowance
+	local speed, vertical = a.SpeedMult, a.VerticalMult
+	local moon = false
+	local okC, c = call("CombatService", "OfPlayer", p)
+	if not okC then
+		c = nil
+	end
+	if type(c) == "table" and type(c.Ctx) == "string" then
+		local okX, info = call("CombatService", "Context", c.Ctx)
+		local rules = if okX and type(info) == "table" then info.Rules else nil
+		if type(rules) == "table" then
+			if Util.IsFinite(rules.SpeedMult) then
+				speed = math.max(speed, rules.SpeedMult)
+			end
+			if Util.IsFinite(rules.GravityLift) and rules.GravityLift > 0 then
+				local lift = math.clamp(rules.GravityLift, 0, 0.9)
+				vertical = math.max(vertical, tonumber(SEC.MoonVerticalMult) or 2.5, 1 / (1 - lift))
+				moon = true
+			end
+		end
+	end
+	local walk = tonumber(Config.Player.Walk) or 16
+	local base = character:GetAttribute("BaseSpeed")
+	if base == nil then
+		base = p:GetAttribute("BaseSpeed")
+	end
+	if Util.IsFinite(base) and base > walk then
+		speed = math.max(speed, base / walk)
+	end
+	local airJumps = math.max(a.AirJumps, math.floor(tonumber(SEC.SkillAirJumps) or 0))
+	if airJumps < 1 then
+		airJumps = math.max(airJumps, glovesAirJumps(c))
+	end
+	return {
+		SpeedMult = math.clamp(speed, 0.5, 5),
+		VerticalMult = vertical,
+		AirJumps = airJumps,
+		Moon = moon or vertical >= 2,
+	}
 end
 
 local function inVault(p: Player): boolean
@@ -935,6 +985,8 @@ local function newTrack(): Track
 		LastY = nil,
 		StillSince = os.clock(),
 		LastRaw = nil,
+		LastSpeed = 0,
+		EffSpeed = 1,
 		Allowance = { SpeedMult = 1, VerticalMult = 1, AirJumps = 0 },
 		Probe = probe,
 	}
@@ -977,6 +1029,7 @@ local function setCharacter(track: Track, character: Model)
 	track.GroundY = nil
 	track.AirSince = nil
 	track.LastRaw = nil
+	track.LastSpeed = 0
 	track.GraceUntil = os.clock() + (SEC.TeleportGrace or 1)
 	track.Anchor = nil
 	excludesDirty = true
@@ -1001,7 +1054,7 @@ end
 
 -- Treffer, die kein Noclip sind: VIP-Tür für VIPs (lokal offen), Puppen/Bots/Combatants
 local function ignorableHit(p: Player, inst: Instance): boolean
-	if inst.Name == "VipDoor" and p:GetAttribute("Vip") == true then
+	if inst.Name == "VipDoor" and (p:GetAttribute("Vip") == true or p:GetAttribute("VIP") == true) then
 		return true
 	end
 	local model = inst:FindFirstAncestorOfClass("Model")
@@ -1009,7 +1062,7 @@ local function ignorableHit(p: Player, inst: Instance): boolean
 end
 
 -- Echtes Durchqueren: Start und Ende liegen auf GEGENÜBERLIEGENDEN Seiten des Teils und auf den anderen
--- Achsen innerhalb seiner Ausdehnung (Ecken schneiden beim Rennen zählt nicht).
+-- Achsen innerhalb seiner Ausdehnung (Ecken schneiden, Kanten hochziehen und Wand-Absprung zählen nicht).
 local function crossesThrough(part: BasePart, from: Vector3, to: Vector3): boolean
 	local a = part.CFrame:PointToObjectSpace(from)
 	local b = part.CFrame:PointToObjectSpace(to)
@@ -1082,14 +1135,15 @@ local function resetTo(p: Player, track: Track, cf: CFrame?)
 	if not character or not cf then
 		return
 	end
+	local target: CFrame = cf
 	local root = character:FindFirstChild("HumanoidRootPart")
 	pcall(function()
-		character:PivotTo(cf :: CFrame)
+		character:PivotTo(target)
 		if root and root:IsA("BasePart") then
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
 	end)
-	AntiCheatService.NoteTeleport(p, cf :: CFrame)
+	AntiCheatService.NoteTeleport(p, target)
 	track.Budget = 0
 end
 
@@ -1097,6 +1151,11 @@ local function violation(p: Player, track: Track, key: string, evidence: { [stri
 	local target = if vertical then (track.GroundCF or track.ValidCF) else track.ValidCF
 	resetTo(p, track, target)
 	addPoints(p, key, tonumber(SEC.Weights[key]) or 1, evidence)
+end
+
+local function horizontalSpeed(root: BasePart): number
+	local v = root.AssemblyLinearVelocity
+	return math.sqrt(v.X * v.X + v.Z * v.Z)
 end
 
 local function checkPlayer(p: Player, _dt: number)
@@ -1118,16 +1177,20 @@ local function checkPlayer(p: Player, _dt: number)
 	if track.Character ~= character then
 		setCharacter(track, character)
 	end
-	-- Lag-Erkennung: steht die Position still (keine Pakete), ist ein Sprung danach kein harter Teleport
+
+	-- Lag-Erkennung: Stand die gemeldete Position still, während der Spieler sich bewegte (eingefrorene
+	-- Geschwindigkeit > 2)? Dann ist der Sprung danach Nachholen von Paketen, kein harter Teleport.
+	local stalledFor = 0
 	local raw = track.LastRaw
-	if not raw or (pos - raw).Magnitude > 0.01 then
-		if raw then
-			track.StillSince = now
+	if raw == nil or (pos - raw).Magnitude > 0.01 then
+		if raw ~= nil then
+			stalledFor = now - track.StillSince
 		end
 		track.LastRaw = pos
+		track.StillSince = now
 	end
-	local stalled = raw ~= nil and (pos - raw).Magnitude > 0.01 and false
-	stalled = stalled or false
+	local stalled = stalledFor >= (tonumber(SEC.StallSeconds) or 0.6) and track.LastSpeed > 2
+	track.LastSpeed = horizontalSpeed(root)
 
 	-- Ausnahmen: tot, verankert (Prep/Einfrieren), Ausnahme-Zeit, Admin, Vault
 	if humanoid.Health <= 0 or root.Anchored or now < track.ExemptUntil or isAdmin(p) or inVault(p) then
@@ -1139,8 +1202,8 @@ local function checkPlayer(p: Player, _dt: number)
 		local anchor = track.Anchor
 		local near = true
 		if anchor then
-			local dx, dz = pos.X - anchor.X, pos.Z - anchor.Z
-			near = dx * dx + dz * dz <= (SEC.AnchorRadius or 30) ^ 2
+			local ax, az = pos.X - anchor.X, pos.Z - anchor.Z
+			near = ax * ax + az * az <= (SEC.AnchorRadius or 30) ^ 2
 		end
 		if near then
 			accept(track, root, now, true)
@@ -1155,32 +1218,33 @@ local function checkPlayer(p: Player, _dt: number)
 		return
 	end
 
-	local allowance = track.Allowance
+	local eff = effectiveAllowance(p, track, character)
+	track.EffSpeed = eff.SpeedMult
 	local impulse = now < track.ImpulseUntil
 	local rate, capacity = capacityFor(track, now)
 	local elapsed = math.clamp(now - track.Time, 0, 2)
 	local dx, dz = pos.X - last.X, pos.Z - last.Z
 	local dist = math.sqrt(dx * dx + dz * dz)
-	-- Stand die Position vor diesem Sprung lange still? (Lag-Hänger, kein harter Teleport)
-	local wasStalled = raw ~= nil and track.StillSince ~= now and false
-	wasStalled = wasStalled or (now - track.Time > STALL_SECONDS)
-	if dist > 0.01 and track.LastRaw == pos and raw and (raw - last).Magnitude <= 0.01 then
-		-- Position hat sich erst jetzt wieder bewegt: wie lange stand sie still?
-		wasStalled = wasStalled or (now - track.StillSince >= STALL_SECONDS)
-	end
 
 	-- 1) Teleport (> 40 Studs ohne Gnade) – hart, außer nach einem Lag-Hänger
-	if dist > SEC.TeleportMaxDist and not impulse then
-		local key = if wasStalled then "Speed" else "Teleport"
-		violation(p, track, key, { Dist = dist, From = last, To = pos, Stall = wasStalled }, false)
+	if dist > SEC.TeleportMaxDist and not impulse and not stalled then
+		violation(p, track, "Teleport", { Dist = dist, From = last, To = pos }, false)
 		return
 	end
-	-- 2) Weg-Budget
-	local budget = math.min(capacity, track.Budget + rate * elapsed) - dist
+	-- 2) Weg-Budget (nach einem Hänger zählt die Zeit ohne Pakete, höchstens StallCredit Sekunden)
+	local refill = rate * elapsed
+	local cap = capacity
+	if stalled then
+		local credit = rate * math.min(stalledFor, tonumber(SEC.StallCredit) or 1.5)
+		refill = math.max(refill, credit)
+		cap = math.max(cap, credit)
+	end
+	local budget = math.min(cap, track.Budget + refill) - dist
 	if budget < 0 then
-		violation(p, track, "Speed", { Dist = dist, Rate = rate, Dt = elapsed }, false)
+		violation(p, track, "Speed", { Dist = dist, Rate = rate, Dt = elapsed, Stall = stalledFor }, false)
 		return
 	end
+	budget = math.min(budget, capacity)
 	-- 3) Noclip (Strahl zwischen den Messungen gegen feste Geometrie)
 	if dist > 0.5 then
 		local through, partName = throughWall(p, root, last, pos)
@@ -1204,21 +1268,20 @@ local function checkPlayer(p: Player, _dt: number)
 		track.AirSince = nil
 	else
 		local factor = gravityFactor(root)
-		if track.AirSince == nil then
-			track.AirSince = now
-		end
-		local airJumps = math.max(allowance.AirJumps, glovesAirJumps(p))
+		local airSince: number = track.AirSince or now
+		track.AirSince = airSince
 		local jumpHeight = tonumber(Config.Player.JumpHeight) or 7.2
-		local maxHeight = jumpHeight * (airJumps + 1) * allowance.VerticalMult * factor + SEC.VerticalSlack
+		local maxHeight = jumpHeight * (eff.AirJumps + 1) * eff.VerticalMult * factor + SEC.VerticalSlack
 		local height = pos.Y - (track.GroundY or pos.Y)
 		if height > maxHeight then
 			violation(p, track, "Fly", { Height = height, Max = maxHeight }, true)
 			return
 		end
-		local airLimit = (if allowance.VerticalMult >= 2 then SEC.FlyAirSecondsMoon else SEC.FlyAirSeconds) * factor
-		local falling = track.LastY ~= nil and pos.Y < (track.LastY :: number) - 0.25
-		if now - (track.AirSince :: number) > airLimit and not falling then
-			violation(p, track, "Fly", { Air = now - (track.AirSince :: number), Limit = airLimit }, true)
+		local airLimit = (if eff.Moon then SEC.FlyAirSecondsMoon else SEC.FlyAirSeconds) * factor
+		local lastY = track.LastY
+		local falling = lastY ~= nil and pos.Y < lastY - 0.25
+		if now - airSince > airLimit and not falling then
+			violation(p, track, "Fly", { Air = now - airSince, Limit = airLimit }, true)
 			return
 		end
 	end
@@ -1568,11 +1631,11 @@ function AntiCheatService.Start()
 
 	-- Schuss-Statistik (Genauigkeit, Kopf-Quote, Mismatch-Quote) – nur Menschen, keine Admins
 	call("WeaponService", "OnShot", function(c: any, _def: any, hits: number, heads: number)
-		if type(c) ~= "table" or c.Kind ~= "Player" or typeof(c.Player) ~= "Instance" then
+		if type(c) ~= "table" or c.Kind ~= "Player" then
 			return
 		end
-		local p: Player = c.Player
-		if not p.Parent or isAdmin(p) then
+		local p = c.Player
+		if typeof(p) ~= "Instance" or not p:IsA("Player") or not p.Parent or isAdmin(p) then
 			return
 		end
 		local st = statsOf(p)
@@ -1594,9 +1657,9 @@ function AntiCheatService.Start()
 		checkStats(p, st)
 	end)
 	call("CombatService", "OnElimination", function(_victim: any, killer: any, _info: any)
-		if type(killer) == "table" and killer.Kind == "Player" and typeof(killer.Player) == "Instance" then
-			local p: Player = killer.Player
-			if p.Parent then
+		if type(killer) == "table" and killer.Kind == "Player" then
+			local p = killer.Player
+			if typeof(p) == "Instance" and p:IsA("Player") and p.Parent then
 				statsOf(p).Pops += 1
 			end
 		end

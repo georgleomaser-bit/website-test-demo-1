@@ -432,6 +432,80 @@ function Shop.SeasonIdAt(seasons: any, now: number): number
 end
 
 -- =====================================================================
+-- 7b) PREISE & RAMPENLICHT – EINE Regel für Server (ShopService) UND Anzeige (Client-Shop)
+--     cosmetics = Config.Cosmetics (wird übergeben, damit dieses Modul ohne Roblox-Typen lädt)
+-- =====================================================================
+-- Preis eines Kosmetik-Items in einer Währung; nil = so nicht kaufbar.
+--   Coins:  nur Münz-Wraps (Price = { Coins = n })
+--   Gems:   Katalog-Items, Kisten-Items (B20.1: jedes Kisten-Item auch direkt) und Pass-Items NACH ihrer Saison
+--   Shards: nur Kisten-Items (Splitter-Shop)
+--   featured = true -> Rampenlicht-Rabatt (−20 %) auf den Gem-Preis
+function Shop.PriceOf(cosmetics: any, id: string, currency: string, seasonId: number, featured: boolean?): number?
+	if type(cosmetics) ~= "table" or type(cosmetics.ById) ~= "table" or type(id) ~= "string" then
+		return nil
+	end
+	local def = cosmetics.ById[id]
+	if def == nil or def.Kind == "Title" then
+		return nil
+	end
+	local exclusive = type(cosmetics.IsExclusive) == "function" and cosmetics.IsExclusive(id, seasonId) == true
+	if exclusive then
+		return nil -- Pass-Item während seiner Saison: nur über den Pass
+	end
+	if currency == "Coins" then
+		local price = type(def.Price) == "table" and def.Price.Coins or nil
+		return if type(price) == "number" and price > 0 then price else nil
+	elseif currency == "Gems" then
+		local buyable = def.Source == "Catalog" or def.Source == "Pass" or Shop.IsCrateItem(id)
+		local price = Shop.CatalogPrices[def.Rarity]
+		if not buyable or type(price) ~= "number" then
+			return nil
+		end
+		if featured then
+			price = math.floor(price * (1 - Shop.FeaturedDiscount) + 0.5)
+		end
+		return price
+	elseif currency == "Shards" then
+		if not Shop.IsCrateItem(id) then
+			return nil
+		end
+		local price = Shop.ShardPrices[def.Rarity]
+		return if type(price) == "number" then price else nil
+	end
+	return nil
+end
+
+-- Alle Items mit Gem-Preis (Kandidaten fürs Rampenlicht), alphabetisch -> überall gleiche Reihenfolge
+function Shop.FeaturedPool(cosmetics: any, seasonId: number): { string }
+	local pool: { string } = {}
+	if type(cosmetics) ~= "table" or type(cosmetics.ById) ~= "table" then
+		return pool
+	end
+	for id in pairs(cosmetics.ById) do
+		if Shop.PriceOf(cosmetics, id, "Gems", seasonId, false) ~= nil then
+			table.insert(pool, id)
+		end
+	end
+	table.sort(pool)
+	return pool
+end
+
+-- 6 Items des UTC-Tages: deterministisch (MINSTD-Zufall mit dem Tag als Saat) -> auf allen Servern gleich
+function Shop.PickFeatured(pool: { string }, day: number, count: number?): { string }
+	local list = table.clone(pool)
+	local n = math.min(count or Shop.FeaturedSlots, #list)
+	local seed = (math.floor(math.abs(tonumber(day) or 0)) % 2147483646) + 1
+	local picked: { string } = {}
+	for i = 1, n do
+		seed = (seed * 48271) % 2147483647 -- Produkt < 2^47: exakt in Luau-Zahlen
+		local j = i + (seed % (#list - i + 1))
+		list[i], list[j] = list[j], list[i]
+		table.insert(picked, list[i])
+	end
+	return picked
+end
+
+-- =====================================================================
 -- 8) PRÜFEN (Config.Validate sammelt das; leere Liste = alles ok)
 -- =====================================================================
 -- Robux dürfen NIE diese Felder geben (Muss-Regel 4)

@@ -15,7 +15,8 @@
 --  Zusätzlich zu C15 (nur WP7 liest sie): Weights.Noclip, ImpulseMaxSpeed, ImpulseGrace, FlagsLocalMax,
 --  StoreMaxPerKey, StoreWritesPerMinute, StoreReadGap, BanLogMax, BanDisplayMax, BanPrivateMax,
 --  Powers (Grenzen der Admin-Kräfte), LobbyGravity, AutoBan.Keep, RateBurstPerMinute, LosBurstPerMinute,
---  FlagCooldown, AnchorRadius, HistoryVersions, MutatorGlobalHours.
+--  FlagCooldown, AnchorRadius, HistoryVersions, MutatorGlobalHours, SkillAirJumps, StallSeconds, StallCredit,
+--  MoonVerticalMult, StatsMaxKeys, StatsCacheSeconds.
 -- =====================================================================
 
 local Security = {
@@ -30,6 +31,12 @@ local Security = {
 	TeleportGrace = 1.0, -- Sekunden Gnade nach jedem Server-Teleport
 	TeleportMaxDist = 40, -- Sprung > 40 Studs ohne Gnade = Teleport-Verstoß (hart)
 	VerticalSlack = 3, -- Höhe über letztem Boden ≤ 7.2 × (Luftsprünge + 1) × VerticalMult + 3
+	-- Skill-Bewegung (docs/SKILL-WUENSCHE.md) darf NIE Fehlalarm geben: Doppelsprung + Wand-Absprung
+	-- zählen immer als 2 erlaubte Luftsprünge (Rutsch-Sprung-Ketten bleiben unter 32 Studs/s, Obergrenze 30).
+	SkillAirJumps = 2,
+	MoonVerticalMult = 2.5, -- Mutator mit GravityLift (Mondsprung): Vertikal-Toleranz ×2.5 (B7)
+	StallSeconds = 0.6, -- so lange keine neue Position = Lag-Hänger (Sprung danach ist kein harter Teleport)
+	StallCredit = 1.5, -- nach einem Hänger zählt höchstens so viel Zeit fürs Weg-Budget
 	FlyAirSeconds = 3, -- länger in der Luft ohne zu fallen = Fliegen
 	FlyAirSecondsMoon = 6, -- Mondsprung-Mutator
 	ImpulseMaxSpeed = 95, -- Standard-Höchsttempo während Grace("Impulse"/"Launch")
@@ -108,6 +115,8 @@ local Security = {
 	AdminAbuseMaxMinutes = 60,
 	MutatorGlobalHours = 24, -- globaler Mutator-Override gilt so lange
 	HistoryVersions = 10, -- Live-Balance: so viele Versionen im Verlauf
+	StatsMaxKeys = 64, -- Live-Statistik: höchstens so viele Schlüssel pro Art (Waffen, Maps, Modi …)
+	StatsCacheSeconds = 60, -- Admin-Statistik (Shards lesen) so lange zwischenspeichern
 	LobbyGravity = { Min = 50, Max = 196.2 },
 	Powers = {
 		Speed = { Min = 16, Max = 150 }, -- AdminSpeed
@@ -142,45 +151,51 @@ function Security.Validate(_config: any): { string }
 		end
 	end
 
-	for _, key in
-		ipairs({
-			"MoveHz",
-			"BaseAllowedSpeed",
-			"SpeedTolerance",
-			"BucketSeconds",
-			"TeleportGrace",
-			"TeleportMaxDist",
-			"FlyAirSeconds",
-			"FlyAirSecondsMoon",
-			"ImpulseMaxSpeed",
-			"ImpulseGrace",
-			"AnchorRadius",
-			"DecayEvery",
-			"Review",
-			"Kick",
-			"FlagCooldown",
-			"RateBurstPerMinute",
-			"LosBurstPerMinute",
-			"BanDisplayMax",
-			"BanPrivateMax",
-			"BanLogMax",
-			"FlagsLocalMax",
-			"StoreMaxPerKey",
-			"StoreWritesPerMinute",
-			"StoreReadGap",
-			"AnnounceMax",
-			"WarnMax",
-			"AnnounceSeconds",
-			"AnnounceQueue",
-			"AdminAbuseMaxMinutes",
-			"MutatorGlobalHours",
-			"HistoryVersions",
-		})
-	do
+	for _, key in ipairs({
+		"MoveHz",
+		"BaseAllowedSpeed",
+		"SpeedTolerance",
+		"BucketSeconds",
+		"TeleportGrace",
+		"TeleportMaxDist",
+		"FlyAirSeconds",
+		"FlyAirSecondsMoon",
+		"ImpulseMaxSpeed",
+		"ImpulseGrace",
+		"AnchorRadius",
+		"DecayEvery",
+		"Review",
+		"Kick",
+		"FlagCooldown",
+		"RateBurstPerMinute",
+		"LosBurstPerMinute",
+		"BanDisplayMax",
+		"BanPrivateMax",
+		"BanLogMax",
+		"FlagsLocalMax",
+		"StoreMaxPerKey",
+		"StoreWritesPerMinute",
+		"StoreReadGap",
+		"AnnounceMax",
+		"WarnMax",
+		"AnnounceSeconds",
+		"AnnounceQueue",
+		"AdminAbuseMaxMinutes",
+		"MutatorGlobalHours",
+		"HistoryVersions",
+		"MoonVerticalMult",
+		"StallSeconds",
+		"StallCredit",
+		"StatsMaxKeys",
+		"StatsCacheSeconds",
+	}) do
 		positive("Config.Security." .. key, (Security :: any)[key])
 	end
 	if not isNumber(Security.SpeedSlack) or Security.SpeedSlack < 0 then
 		table.insert(errors, "Config.Security.SpeedSlack: Zahl ≥ 0 erwartet")
+	end
+	if not isNumber(Security.SkillAirJumps) or Security.SkillAirJumps < 0 or Security.SkillAirJumps > 5 then
+		table.insert(errors, "Config.Security.SkillAirJumps: Zahl 0–5 erwartet")
 	end
 	if not isNumber(Security.VerticalSlack) or Security.VerticalSlack < 0 then
 		table.insert(errors, "Config.Security.VerticalSlack: Zahl ≥ 0 erwartet")

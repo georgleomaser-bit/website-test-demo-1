@@ -16,6 +16,10 @@ Klickpfade sind **fett** geschrieben. **Home → Game Settings** heißt: oben au
 
 Ein Wort verstehst du nicht? Ganz unten in **Kapitel 19** steht die **Wörterliste von A bis Z**.
 
+**Kapitel:** 1 Was ist CLUTCH CLASH · 2 Was drin ist · 3 So spielt man · 4 Datei öffnen · 5 Admin-Panel · 6 Testen ·
+7 Veröffentlichen · 8 Robux · 9 Fragebogen · 10 Spieler finden · 11 Admin-Panel-Tour · 12 Balancing · 13 Neue Saison ·
+14 Eigene Sounds · 15 Updates · 16 Fehlerhilfe · 17 Technik · 18 Dateien · 19 Wörterliste
+
 ---
 
 ## 1. 🎯 Was ist CLUTCH CLASH?
@@ -123,10 +127,9 @@ Ein Wort verstehst du nicht? Ganz unten in **Kapitel 19** steht die **Wörterlis
 | Debug-Anzeige (nur du) | **F8** (am MacBook **fn + F8**) | – | – |
 
 > 💡 **MacBook ohne Maus:** Rechtsklick = mit **zwei Fingern** aufs Trackpad klicken. Mit Maus spielt es sich viel besser.
-> In den Einstellungen kannst du **Zielen: Umschalten** wählen. Dann musst du die Taste nicht festhalten.
+> In den Einstellungen (Knopf **Einstellungen** rechts oder **M** → Einstellungen) kannst du **Zielen: Umschalten** wählen. Dann musst du die Taste nicht festhalten.
 
-**Bewegungs-Tricks:** Aus dem Sprint **rutschen** (C) und im Rutschen **springen** = schneller Rutsch-Sprung.
-Mit den **Boxhandschuhen** hast du einen **Doppelsprung**. Eine eigene **Plopp-Rakete** unter den Füßen = **Raketensprung**.
+**Bewegungs-Tricks** (Rutsch-Sprung, Doppelsprung, Raketensprung) stehen weiter unten bei **„Skill“**.
 
 ### Die Waffen
 
@@ -349,7 +352,8 @@ und die große Datei ersetzt nur noch seinen Inhalt.
 
 **Prüfen, ob es geklappt hat:** Öffne https://create.roblox.com/dashboard/creations → dein Spiel **Clutch Clash** anklicken →
 oben **View on Roblox** (Spielseite ansehen) → grüner **Play**-Knopf. Als Besitzer darfst du auch ein privates Spiel spielen.
-Die Lobby baut sich in ein paar Sekunden auf.
+(Knopf nicht gefunden? Auf roblox.com links auf dein Profil → Reiter **Creations** → dein Spiel.)
+Die Lobby baut sich in ein paar Sekunden auf. Taste **P** muss das Admin-Panel öffnen.
 
 > 💡 **„Save failed“ kommt später bei Option + P?** Dann einfach 7.2 wiederholen (**Publish to Roblox As… → dein Spiel → Place → Overwrite**).
 
@@ -492,13 +496,14 @@ Das kann niemand garantieren. Was am meisten hilft:
    dann am Mac **Cmd + Shift + 4** und einen Bereich aufziehen.
 3. **Die ersten Minuten:** Das Tutorial bringt den ersten Pop in unter 60 Sekunden und den ersten Sieg nach ca. 2 Minuten. Perfekt dafür.
 4. **Codes** für Social Media (stehen schon im Spiel):
-   - `LAUNCH` = **250 Coins** (gilt bis 31.01.2027)
+   - `LAUNCH` = **250 Coins** (läuft am 31.01.2027 ab)
    - `CLUTCH` = **1 Schlüssel**
-   Neue Codes: Claude fragen (oder selbst in `Config → Progression` bei `Codes` eintragen).
+   Neue Codes: Claude fragen. Oder selbst: im Explorer **ReplicatedStorage → Shared → Config → Progression** doppelklicken →
+   **Cmd + F** → `Codes` → eine Zeile wie `LAUNCH` kopieren und Namen und Belohnung ändern.
 5. **Updates jede Woche** und „UPDATE“ im Titel. Schreib Claude einfach, was rein soll.
 6. **Events am Wochenende:** Admin-Panel → **Events** → **Admin-Abuse** auf **allen Servern** (2x Coins, 2x XP). Vorher auf TikTok/YouTube ankündigen.
 7. **TikTok / YouTube Shorts:** „1v4 CLUTCH!“, „10er-Serie im Crown Ring“, „Raketensprung-Trick“.
-8. **Roblox-Werbung** (Ads Manager): mit kleinem Budget testen, wenn die Spielzeit pro Spieler gut ist.
+8. **Roblox-Werbung** (**ads.roblox.com**, der Roblox Ads Manager): mit kleinem Budget testen, wenn die Spielzeit pro Spieler gut ist.
 
 > ⚠️ Roblox-Regel: **Keine Belohnungen** für Likes, Favoriten oder Einladungen. Das Spiel macht das richtig. Bitte so lassen.
 
@@ -674,8 +679,9 @@ Doppelklick öffnet eine Datei. Jede Zahl ist kommentiert. Nach einer Änderung:
 
 | Datei | Was drinsteht |
 |---|---|
-| `Config` (oben) | Admin-Regeln, Spieler-Tempo und Sprunghöhe, Server-Grenzen (Arenen, Bots), Studio-Einstellungen |
+| `Config` (oben) | Admin-Regeln, Spieler-Tempo und Sprunghöhe, Server-Grenzen (Arenen, Bots), Studio-Einstellungen (`Studio`: `NoSave`, Bot-Wartezeit 2 s, Selbsttest) |
 | `Weapons` | Alle 15 Waffen mit allen Werten und Preisen |
+| `Combat` | Treffer-Prüfung (Rückspulen, Toleranzen), Raketensprung, Anti-Camp-Radar. **Nur mit Claude ändern** |
 | `Modes` | Modi: Rundenzeit, Runden zum Sieg, Verlängerung, Bot-Wartezeit, Mutatoren |
 | `Maps` | Arenen und Licht-Stimmungen |
 | `Bots` | Bot-Stufen (Reaktion, Zielfehler …), Bot-Namen |
@@ -704,8 +710,9 @@ Saison 1 „Neon-Start“ läuft vom **15.10.2026** bis **10.12.2026**. Danach b
 Keine Panik: Ist keine neue Saison eingetragen, bleibt die letzte einfach aktiv. **Das Spiel funktioniert immer.**
 
 1. Im Explorer: **ReplicatedStorage → Shared → Config → Season** doppelklicken.
-2. Den ganzen Block von Saison 1 markieren: von `{ Id = 1,` bis zur passenden schließenden Klammer `},`. **Cmd + C**.
-3. Darunter einfügen (**Cmd + V**). Im neuen Block ändern:
+2. Den ganzen Block von Saison 1 markieren: von der Zeile `{` direkt über `Id = 1,` bis zur passenden Zeile `},`
+   (solange es nur Saison 1 gibt, ist das die Zeile direkt über der letzten `}` der Datei-Liste `Season.Seasons`). **Cmd + C**.
+3. Direkt unter dem `},` der **letzten** Saison einfügen (**Cmd + V**). Im neuen Block ändern:
    - `Id = 2` (**jede Saison bekommt eine neue Zahl, nie eine alte wiederverwenden!**)
    - `Name = { de = "Saison 2: …", en = "Season 2: …" }`
    - `StartUtc = "2026-12-10T00:00:00Z"` und `EndUtc = "2027-02-04T00:00:00Z"` (8 Wochen).
@@ -799,7 +806,7 @@ den offiziellen **Roblox Studio MCP Server**. Damit kann Claude Studio direkt st
 |---|---|
 | „**Save failed**“ beim Veröffentlichen | Kapitel 7.1 + 7.2: erst eine leere **Baseplate** veröffentlichen (Name ohne Emoji, Team Create AUS), dann `ClutchClash.rbxlx` mit **Publish to Roblox As… → Overwrite** darüberspielen |
 | Nach dem Öffnen ist die Welt fast leer | Richtig so. Die Welt baut sich erst beim **Play** (und im echten Spiel beim Serverstart) |
-| Fortschritt im Studio ist nach Stop weg | Richtig so. Im Studio wird absichtlich nie gespeichert (`Config → Studio → NoSave`) |
+| Fortschritt im Studio ist nach Stop weg | Richtig so. Im Studio wird absichtlich nie gespeichert (Datei `Config`, Abschnitt `Config.Studio`, `NoSave = true`) |
 | Tutorial kommt im Studio jedes Mal | Richtig so (siehe oben). Im echten Spiel nur beim ersten Mal |
 | Meldung „Studio: Speichern ist AUS – aktiviere … Studio Access to API Services“ | Kommt nur, wenn du `NoSave` auf `false` gestellt hast. Dann **Game Settings → Security → Enable Studio Access to API Services** anschalten (Kapitel 7.3). Danach `NoSave` am besten wieder auf `true` |
 | Admin-Panel fehlt im echten Spiel | Das Spiel muss unter **deinem** Account veröffentlicht sein (Creator **RizzG315**, keine Gruppe) |
@@ -858,7 +865,8 @@ roblox-shooter/
 │   ├── DESIGN.md              ← der komplette Bauplan (für Claude)
 │   ├── ASSETS.md              ← welche eingebauten Roblox-Sounds und Bilder benutzt werden
 │   ├── REUSE.md               ← was aus Meteor Heist übernommen wurde
-│   └── ADMIN-WUENSCHE.md      ← deine Admin-Wünsche
+│   ├── ADMIN-WUENSCHE.md      ← deine Admin-Wünsche
+│   └── SKILL-WUENSCHE.md      ← deine Skill-Wünsche für den Feinschliff (Kapitel 3)
 ├── tests/                     ← automatische Tests (für Claude)
 └── src/
     ├── shared/    (ReplicatedStorage → Shared)
@@ -876,3 +884,74 @@ roblox-shooter/
     │   └── Modules/           HUD, Knöpfe, Kamera, Waffen, Bewegung, Match-Anzeigen, Shop, Locker, Admin-Panel, Fly …
     └── character/             (StarterCharacterScripts) schaltet die Standard-Heilung aus
 ```
+
+---
+
+## 19. 📖 Wörterliste A–Z
+
+Spiel-Wörter (Pad, Pop, Loadout, ADS, MMR …) stehen in **Kapitel 3**, Studio-Grundwörter (Explorer, Output, Command Bar, Place …) in **Kapitel 4**.
+Hier steht alles andere.
+
+| Wort | Was es heißt |
+|---|---|
+| **Admin / Admin-Panel** | Chef-Rechte im Spiel. Hat nur der Besitzer (du). Das Admin-Panel ist dein Chef-Fenster (Taste **P**) |
+| **Admin-Abuse** | Spaß-Event vom Admin: für ein paar Minuten 2x Coins und/oder 2x XP für alle |
+| **AFK** | „Away from keyboard“: Ein Spieler macht nichts mehr. Nach 30 Sekunden im Match muss er zurück in die Lobby |
+| **Aim-Trainer** | Ziel-Training gegen Ziele, die auftauchen oder sich bewegen |
+| **Anti-Cheat** | Schutz gegen Schummler (Cheater). Der Server prüft Schüsse und Bewegungen |
+| **API Services** | Roblox-Dienste wie Speichern und Bestenlisten. „Studio Access to API Services“ erlaubt Studio, sie beim Testen zu benutzen |
+| **Asset ID** | Die Nummer eines Bildes, Sounds, Modells oder Passes bei Roblox |
+| **Baseplate** | Die leere Start-Welt in Studio (eine graue Platte) |
+| **Beleg (Receipt)** | Roblox' Nachweis über einen Kauf. Das Spiel merkt sich jeden Beleg, damit nichts doppelt oder gar nicht gutgeschrieben wird |
+| **Beta Features** | Neue Studio-Funktionen zum Ausprobieren: **File → Beta Features** |
+| **Buff / Nerf** | Eine Waffe stärker machen / schwächer machen |
+| **Client** | Das Gerät eines Spielers mit seinem Roblox-Programm. Das Gegenstück ist der **Server** |
+| **Creator Store / Toolbox** | Roblox-Laden für Modelle, Sounds und Plugins. In Studio: **View → Toolbox** |
+| **DataStore** | Roblox-Speicher im Internet. Dort liegen die Spielstände |
+| **Debug** | Fehlersuche. Die Debug-Anzeige (**F8**) zeigt Zahlen, die beim Fehlersuchen helfen |
+| **Developer Product** | Etwas, das man im Spiel **immer wieder** mit Robux kaufen kann (z. B. Gems) |
+| **DevEx** | „Developer Exchange“: verdiente Robux in echtes Geld tauschen |
+| **Ego-Sicht / Ego-Shooter** | Du siehst durch die Augen deiner Figur (englisch „first person“). Gegenteil: Kamera hinter der Figur („3rd Person“) |
+| **Experience** | Das englische Roblox-Wort für „Spiel“ |
+| **Falloff** | Der Schaden wird auf große Entfernung kleiner |
+| **Flick** | Die Maus blitzschnell auf ein Ziel reißen und schießen |
+| **Gamepass** | Etwas, das man **einmal** mit Robux kauft und **für immer** behält (z. B. VIP) |
+| **Gerätesimulator** | Studio tut so, als würdest du am Handy, Tablet oder an der Konsole spielen (**Test → Device**) |
+| **GitHub / Repo** | GitHub ist die Webseite, auf der der Code liegt. Ein Repo ist der Projekt-Ordner dort |
+| **Hitmarker** | Das kleine X in der Bildschirm-Mitte, wenn du triffst |
+| **HUD** | Alle Anzeigen auf dem Bildschirm im Spiel: Leben, Munition, Knöpfe, Fadenkreuz |
+| **K/D** | Deine Pops geteilt durch deine eigenen Tode. Größer = besser |
+| **Killfeed** | Liste oben rechts: wer wen gepoppt hat |
+| **Latenz, Jitter, Paketverlust** | Verzögerung im Internet, Schwankung dieser Verzögerung, verlorene Daten. Der Netzwerk-Simulator stellt das zum Testen künstlich ein |
+| **Live-Balance** | Waffen-Werte im laufenden Spiel ändern, ohne neue Datei (Admin-Panel, Kapitel 12) |
+| **Lobby** | Der Treffpunkt zwischen den Matches (die „Clutch Plaza“) |
+| **Localization** | Übersetzung. Im Creator Dashboard kannst du Texte für andere Sprachen eintragen |
+| **Maturity-Fragebogen** | Roblox-Fragen zum Inhalt deines Spiels. Daraus wird die Alterseinstufung (Kapitel 9) |
+| **MCP Server** | Ein Zusatz, mit dem Claude Programme wie Roblox Studio direkt bedienen kann (nur mit Claude auf deinem Mac) |
+| **ms** | Millisekunden. 1.000 ms = 1 Sekunde |
+| **Not-Aus** | Eine Waffe sofort für alle abschalten (Admin-Panel → **Balance**) |
+| **Notch** | Die Aussparung oben am Handy-Bildschirm (für die Kamera) |
+| **Overwrite** | Überschreiben. Die Datei ersetzt den Inhalt deines Spiels bei Roblox |
+| **Paid Random Items** | Man bezahlt (mit Robux oder Gems aus Robux) und bekommt etwas Zufälliges, z. B. aus einer Kiste |
+| **Peeken** | Kurz um eine Ecke schauen oder schießen und sofort zurück in Deckung |
+| **Playability (Private / Public)** | Wer dein Spiel spielen darf: nur du (Private) oder alle (Public) |
+| **Plugin** | Ein Zusatzprogramm für Studio (z. B. Rojo) |
+| **Policy** | Roblox sagt dem Spiel, was im Land des Spielers erlaubt ist (z. B. bezahlte Kisten) |
+| **Quickscope** | Mit dem Scharfschützen-Gewehr zoomen und sofort treffen |
+| **R15** | Die heutige Roblox-Figur mit 15 Körperteilen. Die alte Klötzchen-Figur heißt R6 |
+| **Ranked** | Ein Modus mit sichtbarem Rang (z. B. Bronze bis Champion). Kommt später |
+| **Robux (R$)** | Das Geld von Roblox. Spieler bezahlen damit, du bekommst ca. 70 % |
+| **Rojo / Rokit** | Profi-Werkzeuge: Rojo schickt Code-Dateien live ins Studio, Rokit installiert Rojo (Kapitel 15, Weg C) |
+| **Rückspulen** | Der Server rechnet zurück, wo der Gegner stand, als du geschossen hast. So zählt, was du gesehen hast |
+| **Selbsttest (SelfTest)** | Automatische Prüfung beim **Play** im Studio. Ergebnis im Output: `[SelfTest] n/n PASS` |
+| **Server** | Ein Roblox-Computer, auf dem ein Durchgang deines Spiels läuft (bis 18 Spieler). Er entscheidet, was gilt |
+| **Session-Lock** | Eine Sperre: Ein Spielstand kann immer nur von einem Server gleichzeitig gespeichert werden |
+| **Spawn** | Der Punkt, an dem deine Figur erscheint |
+| **Streuung** | Die Schüsse gehen nicht genau in die Mitte, sondern etwas daneben. Kleiner = genauer |
+| **Team Create** | Studio-Funktion, um mit anderen gleichzeitig zu bauen. Für dich: **aus** |
+| **Terminal** | Mac-Programm zum Eintippen von Befehlen (**Programme → Dienstprogramme → Terminal**). Brauchst du nur für Weg C |
+| **Thumbnail / Icon** | Vorschaubilder deines Spiels: groß (Thumbnail) und klein, quadratisch (Icon) |
+| **UTC** | Die Weltzeit. Deutschland ist im Winter 1 Stunde und im Sommer 2 Stunden weiter |
+| **Verdachts-Punkte** | Punkte, die der Anti-Cheat für komisches Verhalten vergibt. Sie sinken mit der Zeit wieder |
+| **XP** | Erfahrungspunkte. Genug XP = nächstes Level |
+| **Zone** | Der leuchtende Kreis in der Verlängerung. Wer ihn 3 Sekunden allein hält, gewinnt die Runde |

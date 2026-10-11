@@ -41,6 +41,8 @@ export type Difficulty = {
 	Reposition: number, -- 0..1 Chance pro Entscheidungsfenster, eine Deckung zu wechseln
 	Wander: number, -- 0..1 Anteil zufälliger Umwege beim Patrouillieren
 	UseAds: boolean, -- zielt mit Visier (ADS) auf Distanz
+	MeleeChance: number, -- 0..1 Chance, im Nahbereich (≤ MeleeRange) zur Nahkampfwaffe zu greifen
+	Level: { number }, -- angezeigtes Level im Namensschild {min, max} (nur Optik)
 	PracticeOnly: boolean?, -- nur Practice/Crown (Insane)
 }
 
@@ -75,6 +77,8 @@ Bots.Difficulties = {
 		Reposition = 0,
 		Wander = 0.5,
 		UseAds = false,
+		MeleeChance = 0.2,
+		Level = { 1, 4 },
 	},
 	Easy = {
 		Reaction = 0.55,
@@ -99,6 +103,8 @@ Bots.Difficulties = {
 		Reposition = 0.15,
 		Wander = 0.35,
 		UseAds = true,
+		MeleeChance = 0.25,
+		Level = { 3, 12 },
 	},
 	Normal = {
 		Reaction = 0.40,
@@ -123,6 +129,8 @@ Bots.Difficulties = {
 		Reposition = 0.3,
 		Wander = 0.2,
 		UseAds = true,
+		MeleeChance = 0.3,
+		Level = { 8, 25 },
 	},
 	Hard = {
 		Reaction = 0.28,
@@ -147,6 +155,8 @@ Bots.Difficulties = {
 		Reposition = 0.5,
 		Wander = 0.1,
 		UseAds = true,
+		MeleeChance = 0.35,
+		Level = { 18, 45 },
 	},
 	Insane = {
 		Reaction = 0.19,
@@ -171,6 +181,8 @@ Bots.Difficulties = {
 		Reposition = 0.6,
 		Wander = 0.05,
 		UseAds = true,
+		MeleeChance = 0.4,
+		Level = { 40, 80 },
 		PracticeOnly = true, -- nur Practice/Crown
 	},
 } :: { [string]: Difficulty }
@@ -292,6 +304,25 @@ Bots.Range = {
 	FlickRadius = 1.1, -- Zielkugel-Radius
 	FlickTimeout = 30, -- s, danach Abbruch
 	DpsReset = 3, -- s ohne Treffer -> DPS-Anzeige beginnt neu
+	-- Aim-Trainer (SKILL-WUENSCHE): Tracking = Fadenkreuz auf einer wandernden Kugel halten,
+	-- Reaktion = schießen, sobald das Ziel erscheint. Bestwerte nur lokal (wie Flick, v1).
+	TrackSeconds = 15, -- Dauer eines Tracking-Laufs
+	TrackDistance = 24, -- Studs vor der Kamera
+	TrackRadius = 1.3, -- Zielkugel-Radius
+	TrackSpeed = { 0.6, 1.4 }, -- Winkelgeschwindigkeit der Bahn (rad/s), zufällig pro Lauf
+	TrackYaw = 30, -- Grad seitlicher Ausschlag (max)
+	TrackPitch = 10, -- Grad hoch/runter (max)
+	ReactionRounds = 5, -- so viele Runden, Ergebnis = Durchschnitt
+	ReactionDelay = { 1.2, 3.5 }, -- s Wartezeit bis das Ziel erscheint
+	ReactionDistance = 20,
+	ReactionRadius = 1.4,
+	ReactionYaw = 14, -- Grad seitlicher Versatz (max)
+	ReactionTimeout = 2.5, -- s ohne Treffer -> Runde zählt als Fehlversuch (= Timeout)
+	-- Roster-Slots im Kontext "Range": Spieler/Bots 1..32, Puppen ab DummySlotBase + 1
+	-- (Puppen schießen nie und tauchen daher nie als Quelle in FX/LookBatch auf; u8-tauglich)
+	DummySlotBase = 200,
+	-- Puppen-Farben je Entfernung (Optik)
+	DummyDistances = { 15, 30, 60, 100 },
 }
 
 -- ---------------------------------------------------------------------
@@ -329,9 +360,10 @@ local REQUIRED_NUMBERS = {
 	"Lead",
 	"Reposition",
 	"Wander",
+	"MeleeChance",
 }
 local PERCENT_FIELDS = { HeadChance = true, MoveTech = true, UtilityChance = true }
-local RANGE_PAIRS = { "Burst", "BurstPause", "ClickDelay" }
+local RANGE_PAIRS = { "Burst", "BurstPause", "ClickDelay", "Level" }
 local BOOL_FIELDS = { "Push", "QuickSwap", "PreAim", "UseAds" }
 
 local function isNum(v: any): boolean
@@ -374,7 +406,7 @@ function Bots.Validate(config: any): { string }
 		if isNum(d.SpeedMult) and (d.SpeedMult < 0.3 or d.SpeedMult > 2) then
 			add(base .. ".SpeedMult: 0.3–2 erwartet")
 		end
-		for _, field in ipairs({ "Lead", "Reposition", "Wander" }) do
+		for _, field in ipairs({ "Lead", "Reposition", "Wander", "MeleeChance" }) do
 			if isNum(d[field]) and d[field] > 1 then
 				add(("%s.%s: 0–1 erwartet"):format(base, field))
 			end

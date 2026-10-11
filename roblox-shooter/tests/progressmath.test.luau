@@ -267,6 +267,68 @@ eq("Configure XpToNext(5) = 0", ProgressMath.XpToNext(5), 0)
 ProgressMath.Configure({ Curve = { Base = 250, Step = 50, MaxLevel = 100 } })
 eq("Configure zurück", ProgressMath.TotalForLevel(100), 267300)
 
+-- 9) Match-Belohnung (WP8-Abnahme 1): 1v1-Sieg gegen Menschen ≈ 270 XP / ≈ 159 Coins
+local XP_CFG = { Played = 40, Win = 60, Round = 12, Elim = 15, Assist = 7, HeadElim = 5, MeleeElim = 10, Mvp = 20, CrownDefence = 15 }
+local COIN_CFG = { Played = 30, Round = 10, Elim = 6, Assist = 3, HeadElim = 2, Win = 50, Mvp = 15, StreakStep = 5,
+	StreakCap = 30, BotMult = 0.6, BotMin = 15, DrawBonus = 0.1 }
+local win1v1 = { Won = true, RoundsWon = 4, Elims = 5, Assists = 0, Headshots = 2, MeleeElims = 0, Mvp = true }
+local winXp = ProgressMath.MatchXp(win1v1, XP_CFG) + 5 -- + GG
+check("1v1-Sieg ≈ 270 XP", winXp >= 240 and winXp <= 300, tostring(winXp))
+local winCoins = ProgressMath.MatchCoins(win1v1, COIN_CFG, {})
+check("1v1-Sieg ≈ 159 Coins", winCoins >= 140 and winCoins <= 180, tostring(winCoins))
+local loss1v1 = { Won = false, RoundsWon = 2, Elims = 3, Assists = 1, Headshots = 1 }
+local lossXp = ProgressMath.MatchXp(loss1v1, XP_CFG)
+check("1v1-Niederlage ≈ 136 XP", lossXp >= 100 and lossXp <= 160, tostring(lossXp))
+local lossCoins = ProgressMath.MatchCoins(loss1v1, COIN_CFG, {})
+check("1v1-Niederlage ≈ 62 Coins", lossCoins >= 50 and lossCoins <= 80, tostring(lossCoins))
+eq("Practice 0 Coins", ProgressMath.MatchCoins(win1v1, COIN_CFG, { Practice = true }), 0)
+eq("Bots ×0.6", ProgressMath.MatchCoins(win1v1, COIN_CFG, { VsBots = true }), math.floor(winCoins * 0.6 + 0.5))
+eq("Bots mindestens 15", ProgressMath.MatchCoins({}, COIN_CFG, { VsBots = true }), 18)
+eq("Bots mindestens 15 (leer)", ProgressMath.MatchCoins({}, { Played = 0, BotMult = 0.6, BotMin = 15 }, { VsBots = true }), 15)
+eq("Serie 1 ohne Bonus", ProgressMath.MatchCoins({ Won = true }, COIN_CFG, { Streak = 1 }), 80)
+eq("Serie 3 +10", ProgressMath.MatchCoins({ Won = true }, COIN_CFG, { Streak = 3 }), 90)
+eq("Serie 20 gedeckelt +30", ProgressMath.MatchCoins({ Won = true }, COIN_CFG, { Streak = 20 }), 110)
+eq("Comeback +25 %", ProgressMath.MatchCoins({}, COIN_CFG, { Comeback = true, ComebackBonus = 0.25 }), 38)
+eq("Event ×2", ProgressMath.MatchCoins({}, COIN_CFG, { EventMult = 2 }), 60)
+eq("Event gedeckelt ×2", ProgressMath.MatchCoins({}, COIN_CFG, { EventMult = 99 }), 60)
+eq("Krone Mensch +40", ProgressMath.MatchCoins({ CrownDefences = 1, CrownVsHuman = 1 }, COIN_CFG, { CrownHumanCoins = 40, CrownBotCoins = 10 }), 70)
+eq("Krone Bot +10", ProgressMath.MatchCoins({ CrownDefences = 1 }, COIN_CFG, { CrownHumanCoins = 40, CrownBotCoins = 10 }), 40)
+eq("Unentschieden +10 %", ProgressMath.MatchCoins({ Draw = true }, COIN_CFG, {}), 33)
+eq("MatchXp leer = Played", ProgressMath.MatchXp({}, XP_CFG), 40)
+eq("MatchXp NaN-sicher", ProgressMath.MatchXp({ Elims = 0 / 0 }, XP_CFG), 40)
+
+-- 10) Chat-Umschreibung (WP8-Abnahme 6)
+local REWRITES = {
+	ez = { de = "gg wp", en = "gg wp" },
+	ggez = { de = "GG ❤", en = "GG ❤" },
+	noob = { de = "Freund", en = "friend" },
+	p2w = { de = "faires Loadout", en = "fair loadout" },
+	trash = { de = "gutes Spiel", en = "good game" },
+}
+eq("Chat ez", ProgressMath.RewriteChat("ez", REWRITES, "de"), "gg wp")
+eq("Chat EZ groß", ProgressMath.RewriteChat("EZ", REWRITES, "en"), "gg wp")
+eq("Chat ganze Wörter", ProgressMath.RewriteChat("so ein noob!", REWRITES, "de"), "so ein Freund!")
+eq("Chat englisch", ProgressMath.RewriteChat("NOOB", REWRITES, "en"), "friend")
+eq("Chat mehrere", ProgressMath.RewriteChat("ggez, trash p2w", REWRITES, "en"), "GG ❤, good game fair loadout")
+eq("Chat schlecht bleibt", ProgressMath.RewriteChat("mein Ping ist schlecht", REWRITES, "de"), nil)
+eq("Chat Teilwort bleibt (easy)", ProgressMath.RewriteChat("easy peasy", REWRITES, "en"), nil)
+eq("Chat Teilwort bleibt (noobs)", ProgressMath.RewriteChat("noobs", REWRITES, "en"), nil)
+eq("Chat Umlaut-Wort bleibt", ProgressMath.RewriteChat("Trashübung", REWRITES, "de"), nil)
+eq("Chat ez in Wort bleibt", ProgressMath.RewriteChat("jezt", REWRITES, "de"), nil)
+eq("Chat leer", ProgressMath.RewriteChat("", REWRITES, "de"), nil)
+eq("Chat Satzzeichen", ProgressMath.RewriteChat("...ez?!", REWRITES, "de"), "...gg wp?!")
+
+-- 11) Belohnung als Text
+local function fakeT(key: string, ...: any): string
+	return key .. "=" .. table.concat({ ... }, ",")
+end
+eq("Describe Coins+Keys", ProgressMath.DescribeReward({ Keys = 1, Coins = 150 }, fakeT), "prog.r.coins=150 + prog.r.keys=1")
+eq("Describe Boost Minuten", ProgressMath.DescribeReward({ XpBoostSeconds = 900 }, fakeT), "prog.r.xpBoost=15")
+eq("Describe Kosmetik", ProgressMath.DescribeReward({ Cosmetic = "C_Ghost" }, fakeT, function(id)
+	return "<" .. id .. ">"
+end), "<C_Ghost>")
+eq("Describe leer", ProgressMath.DescribeReward(nil, fakeT), "")
+
 print(("[progressmath.test] %d/%d PASS"):format(passed, passed + failed))
 if failed > 0 then
 	error(("%d Test(s) fehlgeschlagen"):format(failed))

@@ -32,6 +32,11 @@ Dann trägt Claude alle IDs für dich ein.
 | **Icon** | Das kleine, quadratische Bild von deinem Spiel (oder von einem Pass). |
 | **Thumbnail** | Ein großes Vorschaubild. Spieler sehen es, bevor sie dein Spiel öffnen. |
 | **Creator Dashboard** | Die Roblox-Webseite für Spiele-Macher: https://create.roblox.com/dashboard/creations |
+| **XP** | Erfahrungspunkte. Genug XP = nächstes Level. Boosts machen nur XP schneller, nie Coins. |
+| **Clutch Pass / Stufe** | Saison-Belohnungen in 30 Stufen. Gratis-Spur für alle, Premium-Spur mit dem Pass-Produkt. |
+| **Wrap, Skin, Charm, Finisher, Tracer** | Aussehen (Kosmetik): Wrap = Lackierung, Skin = andere Form, Charm = Anhänger, Finisher = Effekt beim Pop, Tracer = Farbe der Schuss-Spur. |
+| **Baseplate** | Die leere Start-Welt in Studio. Du veröffentlichst sie zuerst (`ANLEITUNG.md` Kapitel 7.1). |
+| **Localization** | Übersetzung. Dort trägst du Texte für eine zweite Sprache ein. |
 
 ---
 
@@ -121,7 +126,7 @@ Robux only buy style and XP speed. Never weapons, never coins, never damage.
 ```
 
 > 💡 Beide Texte sind kürzer als 1000 Zeichen. Mehr erlaubt Roblox nicht.
-> 💡 Der Code `LAUNCH` gilt bis **31.01.2027**. Danach diese letzte Zeile löschen oder einen neuen Code von Claude eintragen lassen.
+> 💡 Der Code `LAUNCH` läuft am **31.01.2027** ab. Danach diese letzte Zeile löschen oder einen neuen Code von Claude eintragen lassen.
 
 **Wo eintragen?**
 - Die **deutsche** Beschreibung kommt ins Feld **Description**: **Home → Game Settings → Basic Info** (dort, wo auch der Name steht).

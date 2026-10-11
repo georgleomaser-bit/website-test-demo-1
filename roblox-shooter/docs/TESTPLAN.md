@@ -12,6 +12,30 @@ Klappt etwas nicht: im **Output** den roten Text kopieren (**Cmd + C**) und mit 
 
 Dauer: Teil A ca. 45 Minuten, Teil B ca. 30 Minuten, Teil C ca. 15 Minuten.
 
+### Wörter in diesem Testplan
+
+| Wort | Was es heißt |
+|---|---|
+| **Play / Stop** | Test im Studio starten / beenden |
+| **Output** | Studio-Fenster mit Meldungen. Rot = Fehler, Orange = Warnung |
+| **Command Bar** | Eingabezeile für Befehle, unten in Studio (**View → Command Bar**) |
+| **Pad** | Leuchtende Platte in der Duell-Halle. Draufstellen = für diesen Modus anstellen |
+| **[BOT]** | Computer-Gegner |
+| **Pop / gepoppt** | Ausgeschaltet. Die Figur zerplatzt in Konfetti |
+| **HUD** | Alle Anzeigen auf dem Bildschirm: Leben, Munition, Knöpfe |
+| **Killfeed** | Liste oben rechts: wer wen gepoppt hat |
+| **K/D/A** | Pops / eigene Tode / Mithilfen (Schaden am Gegner, den dann ein anderer poppt) |
+| **AFK** | „Away from keyboard“: Der Spieler macht nichts mehr |
+| **Policy** | Roblox sagt dem Spiel, ob im Land des Spielers bezahlte Kisten erlaubt sind |
+| **Kauf simulieren** | Admin-Knopf: gibt ein Produkt genau wie ein echter Kauf, kostet aber nichts |
+| **Receipt-Replay** | Roblox meldet denselben Kauf zweimal. Er darf trotzdem nur einmal zählen |
+| **TAINTED** | Match, in dem du Admin-Kräfte benutzt hast. Es zählt für niemanden |
+| **Studs** | Längen-Einheit in Roblox (eine Figur ist ca. 5 Studs groß) |
+| **Latenz / Jitter / Paketverlust** | Verzögerung / Schwankung der Verzögerung / verlorene Daten im Internet |
+| **Notch** | Aussparung oben am Handy-Bildschirm (für die Kamera) |
+
+Mehr Wörter: **`ANLEITUNG.md`, Kapitel 19** (Wörterliste A–Z).
+
 ---
 
 ## Vorbereitung
@@ -83,7 +107,7 @@ Für jedes Pad: auf einen leuchtenden Kreis stellen → nach **2 Sekunden** komm
 - [ ] **A33 Sudden Death** (dauert lange, darum mit kurzer Rundenzeit):
   1. **Vor dem Play:** im Explorer **ReplicatedStorage → Shared → Config → Modes** öffnen. Bei `Duel1` vorübergehend `RoundTime = 10` und `Overtime = 5` eintragen.
   2. Am besten mit **2 Spielern** (Teil B): beide auf dasselbe 1v1-Pad, **niemand schießt**, niemand geht in die Zone.
-     Jede Runde endet unentschieden. Nach 9 Runden (Rundenlimit) kommt „**SUDDEN DEATH**“: alle haben 50 Leben, die Zone ist sofort offen.
+     Lauft dabei aber herum und schaut euch um, sonst greift die AFK-Regel (A46). Jede Runde endet unentschieden. Nach 9 Runden (Rundenlimit) kommt „**SUDDEN DEATH**“: alle haben 50 Leben, die Zone ist sofort offen.
   3. → Danach endet das Match sicher (Sieg oder Unentschieden).
   4. **Wichtig:** Danach `RoundTime = 60` und `Overtime = 15` zurückstellen (oder die Datei ohne Speichern schließen). **So nie veröffentlichen!**
 
@@ -104,17 +128,22 @@ Für jedes Pad: auf einen leuchtenden Kreis stellen → nach **2 Sekunden** komm
 - [ ] **A39 Puppen:** Auf Puppen in 15, 30, 60 und 100 Studs Entfernung schießen. Schadenszahlen erscheinen. Puppen haben 150 Leben und sind nach 3 s wieder voll.
 - [ ] **A40 Schiene-Puppen:** Die 2 fahrenden Puppen (Bahn 3 und 4) lassen sich treffen.
 - [ ] **A41 Waffen-Regal:** Am Regal öffnet sich das Training-Fenster. **Jede der 15 Waffen** gratis ausprobieren, auch gesperrte.
-- [ ] **A42 Warten im Training:** Über PLAY in eine Warteschlange gehen und dabei weiterschießen. Match startet trotzdem.
-- [ ] **A43 Training verlassen:** Raus aus der Zone → Waffen weg, Kamera wieder 3rd Person.
+- [ ] **A42 Flick-Test:** Im Training-Fenster (öffnet sich am Waffen-Regal) **Flick-Test** starten → 10 Ziele tauchen nacheinander auf, am Ende steht deine Zeit.
+      Nochmal spielen → die Bestzeit wird angezeigt (sie wird in v1 nicht gespeichert, nach dem Verlassen ist sie weg).
+- [ ] **A43 Bewegungs-Tricks:** Im Training: **Rutsch-Sprung** (**Shift** halten → **C** → im Rutschen **Leertaste**) ist schneller als normales Laufen.
+      Mit den **Boxhandschuhen** in der Hand (Taste **3**): in der Luft nochmal **Leertaste** = Doppelsprung. Mit der **Plopp-Rakete** (am Regal holen)
+      direkt unter die Füße schießen = Raketensprung (kann etwas Leben kosten). → Kein Kick, keine Warnung vom Anti-Cheat.
+- [ ] **A44 Warten im Training:** Über PLAY in eine Warteschlange gehen und dabei weiterschießen. Match startet trotzdem.
+- [ ] **A45 Training verlassen:** Raus aus der Zone → Waffen weg, Kamera wieder hinter der Figur (3rd Person).
 
 ### AFK und Verlassen
 
-- [ ] **A44 AFK:** In einer Live-Runde nichts drücken und nicht bewegen. Nach 20 s Warnung, nach 30 s zurück in die Lobby.
-- [ ] **A45 Match verlassen:** Im Match **M** → Match verlassen → du bist in der Lobby. Danach kannst du 60 s lang kein Pad benutzen (Pad-Sperre).
+- [ ] **A46 AFK:** In einer Live-Runde nichts drücken und nicht bewegen. Nach 20 s Warnung, nach 30 s zurück in die Lobby.
+- [ ] **A47 Match verlassen:** Im Match **M** → Match verlassen → du bist in der Lobby. Danach kannst du 60 s lang kein Pad benutzen (Pad-Sperre).
 
 ### Tod ohne Schadensquelle (Notfall-Weg)
 
-- [ ] **A46 Selbst „sterben“ im Match:** In einer Live-Runde in die **Command Bar** tippen und **Enter**:
+- [ ] **A48 Selbst „sterben“ im Match:** In einer Live-Runde in die **Command Bar** tippen und **Enter**:
 
 ```lua
 game.Players.LocalPlayer.Character.Humanoid.Health = 0
@@ -127,59 +156,59 @@ game.Players.LocalPlayer.Character.Humanoid.Health = 0
 
 ### Shop, Kiste, Käufe
 
-- [ ] **A47 Waffe kaufen:** Admin → Spieler → `me` → 5.000 Coins geben. Shop (Bude oder Knopf) → Reiter **Waffen** → **Summ-MP** (600) kaufen.
+- [ ] **A49 Waffe kaufen:** Admin → Spieler → `me` → 5.000 Coins geben. Shop (Bude oder Knopf) → Reiter **Waffen** → **Summ-MP** (600) kaufen.
       → Coins −600, Waffe gehört dir, im Locker ins Loadout setzbar. Im Kopf des Shops steht „**ALLE WAFFEN ERSPIELBAR – KEIN PAY-TO-WIN**“.
-- [ ] **A48 Gratis testen:** Bei einer gesperrten Waffe **Gratis testen** → Teleport ins Training mit dieser Waffe.
-- [ ] **A49 Kiste mit Schlüssel:** Admin → 3 Schlüssel geben → Shop → **Kisten** → mit **Schlüssel** öffnen → Rolle läuft, Item erscheint.
+- [ ] **A50 Gratis testen:** Bei einer gesperrten Waffe **Gratis testen** → Teleport ins Training mit dieser Waffe.
+- [ ] **A51 Kiste mit Schlüssel:** Admin → 3 Schlüssel geben → Shop → **Kisten** → mit **Schlüssel** öffnen → Rolle läuft, Item erscheint.
       Zähler „noch … bis zur Garantie“ sinkt. Ein doppeltes Item gibt Splitter.
-- [ ] **A50 Quoten:** Knopf **Details & Quoten** zeigt alle 24 Items mit Prozent, zusammen **100,00 %**.
-- [ ] **A51 Policy eingeschränkt:** Admin → **Debug** → **Policy simulieren: eingeschränkt** →
+- [ ] **A52 Quoten:** Knopf **Details & Quoten** zeigt alle 24 Items mit Prozent, zusammen **100,00 %**.
+- [ ] **A53 Policy eingeschränkt:** Admin → **Debug** → **Policy simulieren: eingeschränkt** →
       Gem-Öffnen der Kiste ist weg, der **Kisten-Automat** in der Lobby ist unsichtbar. Öffnen mit Schlüssel geht weiter.
-- [ ] **A52 Policy erlaubt:** **Policy simulieren: erlaubt** → Gem-Öffnen und Kisten-Automat sind wieder da.
+- [ ] **A54 Policy erlaubt:** **Policy simulieren: erlaubt** → Gem-Öffnen und Kisten-Automat sind wieder da.
       (Hinweis: Im Studio ist ohne Simulation oft „eingeschränkt“ aktiv. Das ist richtig so.)
-- [ ] **A53 Bald verfügbar:** Shop → **Gems & Pässe** → solange keine IDs eingetragen sind, steht bei jedem Produkt „**Bald verfügbar**“.
-- [ ] **A54 Kauf simulieren:** Admin → **Debug** → **Kauf simulieren** →
+- [ ] **A55 Bald verfügbar:** Shop → **Gems & Pässe** → solange keine IDs eingetragen sind, steht bei jedem Produkt „**Bald verfügbar**“.
+- [ ] **A56 Kauf simulieren:** Admin → **Debug** → **Kauf simulieren** →
   - `Gems120` → +240 Gems (erster Kauf doppelt). Nochmal → +120 Gems.
   - `StarterPack` → +250 Gems + Wrap „Neuling-Regenbogen“ + Charm + Titel „Frischling“. Nochmal → nur +120 Gems.
   - `PassPremium` → Premium-Spur im Pass-Fenster offen. Nochmal → +500 Gems.
   - `PassTier10` → 10 Pass-Stufen mehr.
   - `PartyBoost` → Ansage „… hat den Server geboostet!“, doppelte XP für alle.
-- [ ] **A55 Receipt-Replay** (gleicher Kauf zweimal gemeldet): wird automatisch im Selbsttest geprüft (A2, Wirtschafts-Tests).
+- [ ] **A57 Receipt-Replay** (gleicher Kauf zweimal gemeldet): wird automatisch im Selbsttest geprüft (A2, Wirtschafts-Tests).
       Wenn deine IDs eingetragen sind: Einen Testkauf im Studio machen (kostet im Studio keine Robux) → die Gutschrift kommt **genau einmal**.
 
 ### Fortschritt und Fenster
 
-- [ ] **A56 Quests:** Knopf/Bude **Quests** → Anfänger-Kette, 3 Tagesquests, 5 Wochenquests. **Tauschen** geht einmal gratis.
-- [ ] **A57 Täglich:** Login-Kalender (Tag 1 abholen), **Glücksrad** drehen (Quoten unter „Details“ = 100 %), Spielzeit-Geschenke.
-- [ ] **A58 Tag überspringen:** Admin → Debug → **Tag überspringen** → Kalender rückt einen Tag weiter, neue Tagesquests, neuer Glücksrad-Dreh.
-- [ ] **A59 Pass:** Fenster **Pass** zeigt Saison 1 „Neon-Start“, 30 Stufen, Gratis- und Premium-Spur. Stufen abholen geht nur einmal.
-- [ ] **A60 Locker:** Loadout ändern, Wrap/Charm an eine Waffe, Finisher und Tracer wählen. Vorschau dreht sich.
-- [ ] **A61 Code:** Code `LAUNCH` einlösen → +250 Coins. Nochmal → abgelehnt.
-- [ ] **A62 Einstellungen:** FOV, Empfindlichkeit, Fadenkreuz-Stil und -Farbe ändern → wirkt sofort.
+- [ ] **A58 Quests:** Knopf/Bude **Quests** → Anfänger-Kette, 3 Tagesquests, 5 Wochenquests. **Tauschen** geht einmal gratis.
+- [ ] **A59 Täglich:** Login-Kalender (Tag 1 abholen), **Glücksrad** drehen (Quoten unter „Details“ = 100 %), Spielzeit-Geschenke.
+- [ ] **A60 Tag überspringen:** Admin → Debug → **Tag überspringen** → Kalender rückt einen Tag weiter, neue Tagesquests, neuer Glücksrad-Dreh.
+- [ ] **A61 Pass:** Fenster **Pass** zeigt Saison 1 „Neon-Start“, 30 Stufen, Gratis- und Premium-Spur. Stufen abholen geht nur einmal.
+- [ ] **A62 Locker:** Loadout ändern, Wrap/Charm an eine Waffe, Finisher und Tracer wählen. Vorschau dreht sich.
+- [ ] **A63 Code:** Fenster **Täglich** (Bude oder Knopf) → Feld **Code** → `LAUNCH` einlösen → +250 Coins. Nochmal → abgelehnt.
+- [ ] **A64 Einstellungen:** Knopf **Einstellungen** rechts in der Knopf-Leiste (oder **M** → Einstellungen) → FOV (Blickwinkel), Empfindlichkeit, Fadenkreuz-Stil und -Farbe ändern → wirkt sofort.
 
 ### Sprache
 
-- [ ] **A63 Englisch:** Einstellungen → Sprache → **EN** → Knöpfe, Fenster und Banner sind englisch („MATCH FOUND!“).
-- [ ] **A64 Deutsch:** Sprache → **DE** (oder **Auto**) → wieder deutsch („MATCH GEFUNDEN!“).
+- [ ] **A65 Englisch:** Einstellungen → Sprache → **EN** → Knöpfe, Fenster und Banner sind englisch („MATCH FOUND!“).
+- [ ] **A66 Deutsch:** Sprache → **DE** (oder **Auto**) → wieder deutsch („MATCH GEFUNDEN!“).
 
 ### Admin-Panel allein
 
-- [ ] **A65 Kräfte:** Reiter **Kräfte** → **Fliegen** (Taste **G**), **Tempo**, **Super-Sprung**, **Noclip**, **God Mode**, **Unsichtbar** an und wieder aus.
-- [ ] **A66 Kampf-Kräfte im Training:** **Aimbot**, **ESP**, **Unendlich Munition**, **Kein Nachladen**, **Rapid Fire**, **One-Shot** im Training testen.
-- [ ] **A67 TAINTED:** Eine Kraft **im Match** benutzen → rotes Schild „**TAINTED / Admin-Show**“ in deinem HUD.
-- [ ] **A68 Admin-Waffen:** Reiter **Waffen & Items** → **Orbital-Laser**, **Raketen-Minigun**, **Schwarzes-Loch-Kanone**, **Blitz-Gewehr** im Training ausprobieren.
-- [ ] **A69 Ansage:** Reiter **Events** → Ansage „Test“ (nur dieser Server) → oben erscheint der Text mit deinem Avatar und blauem Haken, 8 Sekunden.
-- [ ] **A70 Admin-Abuse:** Reiter **Events** → Admin-Abuse 2 Minuten, 2x Coins + 2x XP → Banner mit Restzeit. Nach 2 Minuten vorbei.
-- [ ] **A71 Spaß-Events:** **Konfetti**, **Lobby-Schwerkraft** 50 (Mond), danach 196,2. **Lobby-Licht** ändern.
-- [ ] **A72 Match starten:** Reiter **Match & Server** → **Match starten** (z. B. Duel2 auf SnowFort mit 3 Bots Stufe Hard) → Match beginnt.
-- [ ] **A73 Pads füllen / Bot spawnen:** **Pads füllen** füllt wartende Pads mit Bots. **Bot spawnen** im Training stellt einen Bot neben dich.
-- [ ] **A74 Server-Info:** Spieler, Bots, Arenen, Projektile, Server-Last (ms), Speicher, Laufzeit, Version.
-- [ ] **A75 Live-Balance:** Reiter **Balance** → `PopRifle` → `Damage` = 30 → im Training macht das Pop-Gewehr 30 statt 15 pro Körpertreffer (auf die Puppen in 15 oder 30 Studs).
+- [ ] **A67 Kräfte:** Reiter **Kräfte** → **Fliegen** (Taste **G**), **Tempo**, **Super-Sprung**, **Noclip**, **God Mode**, **Unsichtbar** an und wieder aus.
+- [ ] **A68 Kampf-Kräfte im Training:** **Aimbot**, **ESP**, **Unendlich Munition**, **Kein Nachladen**, **Rapid Fire**, **One-Shot** im Training testen.
+- [ ] **A69 TAINTED:** Eine Kraft **im Match** benutzen → rotes Schild „**TAINTED / Admin-Show**“ in deinem HUD.
+- [ ] **A70 Admin-Waffen:** Reiter **Waffen & Items** → **Orbital-Laser**, **Raketen-Minigun**, **Schwarzes-Loch-Kanone**, **Blitz-Gewehr** im Training ausprobieren.
+- [ ] **A71 Ansage:** Reiter **Events** → Ansage „Test“ (nur dieser Server) → oben erscheint der Text mit deinem Avatar und blauem Haken, 8 Sekunden.
+- [ ] **A72 Admin-Abuse:** Reiter **Events** → Admin-Abuse 2 Minuten, 2x Coins + 2x XP → Banner mit Restzeit. Nach 2 Minuten vorbei.
+- [ ] **A73 Spaß-Events:** **Konfetti**, **Lobby-Schwerkraft** 50 (Mond), danach 196,2. **Lobby-Licht** ändern.
+- [ ] **A74 Match starten:** Reiter **Match & Server** → **Match starten** (z. B. Duel2 auf SnowFort mit 3 Bots Stufe Hard) → Match beginnt.
+- [ ] **A75 Pads füllen / Bot spawnen:** **Pads füllen** füllt wartende Pads mit Bots. **Bot spawnen** im Training stellt einen Bot neben dich.
+- [ ] **A76 Server-Info:** Spieler, Bots, Arenen, Projektile, Server-Last (ms), Speicher, Laufzeit, Version.
+- [ ] **A77 Live-Balance:** Reiter **Balance** → `PopRifle` → `Damage` = 30 → im Training macht das Pop-Gewehr 30 statt 15 pro Körpertreffer (auf die Puppen in 15 oder 30 Studs).
       **Waffe zurücksetzen** → wieder 15. **Not-Aus** für eine Waffe → sie ist aus dem Loadout verschwunden. Wieder anschalten.
-- [ ] **A76 Statistik:** Reiter **Statistik** öffnet ohne Fehler (im Studio sind die Zahlen oft leer).
-- [ ] **A77 F8-Anzeige:** **fn + F8** → Debug-Anzeige mit Server-Last, Zustand der 8 Arenen, Bots, letzter abgelehnter Schuss. Nochmal **fn + F8** = aus.
-- [ ] **A78 Debug-Anzeigen:** Reiter **Debug** → **Hitboxen zeigen** (Kugel am Kopf, Kasten am Körper), **Bot-Wege zeigen**.
-- [ ] **A79 Dauerbetrieb:** Das Spiel 10 Minuten laufen lassen (z. B. 4v4-Pad allein, mehrere Matches hintereinander). **Keine roten Fehler** im Output.
+- [ ] **A78 Statistik:** Reiter **Statistik** öffnet ohne Fehler (im Studio sind die Zahlen oft leer).
+- [ ] **A79 F8-Anzeige:** **fn + F8** → Debug-Anzeige mit Server-Last, Zustand der 8 Arenen, Bots, letzter abgelehnter Schuss. Nochmal **fn + F8** = aus.
+- [ ] **A80 Debug-Anzeigen:** Reiter **Debug** → **Hitboxen zeigen** (Kugel am Kopf, Kasten am Körper), **Bot-Wege zeigen**.
+- [ ] **A81 Dauerbetrieb:** Das Spiel 10 Minuten laufen lassen (z. B. 4v4-Pad allein, mehrere Matches hintereinander). **Keine roten Fehler** im Output.
 
 ---
 
@@ -246,7 +275,8 @@ Es gehen 3 Fenster auf: **Server**, **Player1** und **Player2**. Zwischen den Fe
 - [ ] **B30 Fairness:** Player1 schaltet im Match gegen Player2 den **Aimbot** an → bei Player1 steht „TAINTED“. Player2 verliert, aber im Ergebnis steht kein Nachteil (keine Niederlage in der Statistik).
 - [ ] **B31 Live-Balance für alle:** Player1 setzt `PopRifle Damage = 30` → Player1 trifft Player2 im Match mit 30 Schaden. Danach **Waffe zurücksetzen**.
 - [ ] **B32 Zuschauen:** Player1 → Ziel `Player2` → **Zuschauen** → Kamera folgt Player2. Mit **X** beenden.
-- [ ] **B33 Anti-Cheat-Falle (optional):** Im Fenster **Player2** in die Command Bar tippen:
+- [ ] **B33 Anti-Cheat-Falle (optional):** Das Spiel hat einen unsichtbaren „Gratis-Coins“-Befehl, den es selbst **nie** benutzt.
+      Nur Hacker würden ihn auslösen. So testest du die Falle: im Fenster **Player2** in die Command Bar tippen:
 
 ```lua
 game.ReplicatedStorage.Remotes.GrantCoins:FireServer()
