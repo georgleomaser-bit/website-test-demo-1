@@ -19869,7 +19869,7 @@ end
 -- Eingabefeld im Simulator-Font (sonst wie UI.TextBox)
 local function textBox(props: { [string]: any }): TextBox
 	props.Font = Enum.Font.FredokaOne
-	return textBox(props)
+	return UI.TextBox(props)
 end
 
 local function rainbowSequence(): ColorSequence
@@ -24686,9 +24686,11 @@ local function squareBar(name: string, anchor: Vector2, position: UDim2, align: 
 	})
 end
 
--- Grünes Preis-Schild oben rechts an einem Angebots-Knopf ("99 R$")
+-- Grünes Preis-Schild mittig auf der Oberkante eines Angebots-Knopfs ("99 R$"), verdeckt das Emoji nicht
 local function priceTag(button: UI.Button, id: number, infoType: Enum.InfoType)
 	local tag = UI.Badge(button, "")
+	tag.AnchorPoint = Vector2.new(0.5, 1)
+	tag.Position = UDim2.new(0.5, 0, 0, 8)
 	UI.FetchPrice(id, infoType, function(price)
 		if price then
 			UI.SetBadge(tag, price .. " R$", Theme.Green, false)
@@ -25622,6 +25624,8 @@ local function buildHud()
 	flashTween = TweenService:Create(flashFrame, FLASH_INFO, { BackgroundTransparency = 1 })
 end
 
+local RUN_TOAST_TOP = 128 -- unter der Run-Anzeige (y 54, 66 hoch)
+
 local function showHud(show: boolean)
 	if hudShown == show then
 		return
@@ -25629,6 +25633,8 @@ local function showHud(show: boolean)
 	hudShown = show
 	hudToken += 1
 	local token = hudToken
+	-- Meldungen rutschen unter die Run-Anzeige (beides ohne Kasten -> sonst Text auf Text)
+	UI.SetToastTop(if show then RUN_TOAST_TOP else nil)
 	if show then
 		hudFrame.Visible = true
 		hudScale.Scale = 0.5
@@ -31222,6 +31228,7 @@ local TOAST_PRIORITY: { [string]: number } = {
 }
 
 local toastHolder: Frame? = nil
+local TOAST_TOP = 56 -- Meldungen stehen so weit unter dem oberen Rand (unter der Banner-Leiste)
 local toastCount = 0
 local activeToasts: { ToastEntry } = {}
 local toastPool: { ToastEntry } = {}
@@ -31334,6 +31341,15 @@ local function removeToast(entry: ToastEntry)
 		end)
 		shrink:Play()
 	end)
+end
+
+-- Meldungen tiefer setzen, solange oben etwas anderes steht (z.B. die Meteor-Run-Anzeige).
+-- nil = wieder an die normale Stelle.
+function UI.SetToastTop(offset: number?)
+	local holder = toastHolder
+	if holder then
+		holder.Position = UDim2.new(0.5, 0, 0, offset or TOAST_TOP)
+	end
 end
 
 function UI.Toast(text: string, kind: string?)
@@ -31486,7 +31502,7 @@ function UI.Init(screenGui: ScreenGui)
 	toastHolder = UI.Create("Frame", {
 		Name = "Toasts",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 56),
+		Position = UDim2.new(0.5, 0, 0, TOAST_TOP),
 		Size = UDim2.fromOffset(TOAST_WIDTH, 320),
 		BackgroundTransparency = 1,
 		ZIndex = 20,

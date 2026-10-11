@@ -1002,6 +1002,7 @@ local TOAST_PRIORITY: { [string]: number } = {
 }
 
 local toastHolder: Frame? = nil
+local TOAST_TOP = 56 -- Meldungen stehen so weit unter dem oberen Rand (unter der Banner-Leiste)
 local toastCount = 0
 local activeToasts: { ToastEntry } = {}
 local toastPool: { ToastEntry } = {}
@@ -1114,6 +1115,15 @@ local function removeToast(entry: ToastEntry)
 		end)
 		shrink:Play()
 	end)
+end
+
+-- Meldungen tiefer setzen, solange oben etwas anderes steht (z.B. die Meteor-Run-Anzeige).
+-- nil = wieder an die normale Stelle.
+function UI.SetToastTop(offset: number?)
+	local holder = toastHolder
+	if holder then
+		holder.Position = UDim2.new(0.5, 0, 0, offset or TOAST_TOP)
+	end
 end
 
 function UI.Toast(text: string, kind: string?)
@@ -1266,7 +1276,7 @@ function UI.Init(screenGui: ScreenGui)
 	toastHolder = UI.Create("Frame", {
 		Name = "Toasts",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 56),
+		Position = UDim2.new(0.5, 0, 0, TOAST_TOP),
 		Size = UDim2.fromOffset(TOAST_WIDTH, 320),
 		BackgroundTransparency = 1,
 		ZIndex = 20,

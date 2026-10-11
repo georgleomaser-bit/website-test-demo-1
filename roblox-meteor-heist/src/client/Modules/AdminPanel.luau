@@ -39,7 +39,7 @@ end
 -- Eingabefeld im Simulator-Font (sonst wie UI.TextBox)
 local function textBox(props: { [string]: any }): TextBox
 	props.Font = Enum.Font.FredokaOne
-	return textBox(props)
+	return UI.TextBox(props)
 end
 
 local function rainbowSequence(): ColorSequence

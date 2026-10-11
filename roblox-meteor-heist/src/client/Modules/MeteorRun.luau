@@ -145,6 +145,8 @@ local function buildHud()
 	flashTween = TweenService:Create(flashFrame, FLASH_INFO, { BackgroundTransparency = 1 })
 end
 
+local RUN_TOAST_TOP = 128 -- unter der Run-Anzeige (y 54, 66 hoch)
+
 local function showHud(show: boolean)
 	if hudShown == show then
 		return
@@ -152,6 +154,8 @@ local function showHud(show: boolean)
 	hudShown = show
 	hudToken += 1
 	local token = hudToken
+	-- Meldungen rutschen unter die Run-Anzeige (beides ohne Kasten -> sonst Text auf Text)
+	UI.SetToastTop(if show then RUN_TOAST_TOP else nil)
 	if show then
 		hudFrame.Visible = true
 		hudScale.Scale = 0.5

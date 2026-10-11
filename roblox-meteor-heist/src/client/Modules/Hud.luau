@@ -213,9 +213,11 @@ local function squareBar(name: string, anchor: Vector2, position: UDim2, align: 
 	})
 end
 
--- Grünes Preis-Schild oben rechts an einem Angebots-Knopf ("99 R$")
+-- Grünes Preis-Schild mittig auf der Oberkante eines Angebots-Knopfs ("99 R$"), verdeckt das Emoji nicht
 local function priceTag(button: UI.Button, id: number, infoType: Enum.InfoType)
 	local tag = UI.Badge(button, "")
+	tag.AnchorPoint = Vector2.new(0.5, 1)
+	tag.Position = UDim2.new(0.5, 0, 0, 8)
 	UI.FetchPrice(id, infoType, function(price)
 		if price then
 			UI.SetBadge(tag, price .. " R$", Theme.Green, false)
