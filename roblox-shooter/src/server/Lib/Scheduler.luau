@@ -85,7 +85,11 @@ local function warnYield(job: Job)
 	local now = os.clock()
 	if now - job.LastYieldWarn >= ERROR_LOG_EVERY then
 		job.LastYieldWarn = now
-		warn(("[Scheduler] %s hat geyieldet (task.wait o. ä.) – wird bis zur Rückkehr übersprungen"):format(job.Name))
+		warn(
+			("[Scheduler] %s hat geyieldet (task.wait o. ä.) – wird bis zur Rückkehr übersprungen"):format(
+				job.Name
+			)
+		)
 	end
 end
 

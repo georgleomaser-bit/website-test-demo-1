@@ -49,11 +49,13 @@ local function make(className: string, name: string): Instance
 	if existing and existing.ClassName == className then
 		return existing
 	elseif existing then
-		warn(("[Remotes] %s hat die falsche Klasse (%s statt %s) – wird ersetzt"):format(
-			name,
-			existing.ClassName,
-			className
-		))
+		warn(
+			("[Remotes] %s hat die falsche Klasse (%s statt %s) – wird ersetzt"):format(
+				name,
+				existing.ClassName,
+				className
+			)
+		)
 		existing:Destroy()
 	end
 	local remote = Instance.new(className)

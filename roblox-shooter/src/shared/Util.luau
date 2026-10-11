@@ -133,11 +133,13 @@ end
 
 -- Liste der Schlüssel (zum sicheren Durchlaufen, während die Tabelle sich ändert)
 function Util.Snapshot<K, V>(t: { [K]: V }): { K }
-	local keys: { K } = {}
-	for k in pairs(t) do
-		table.insert(keys, k)
+	local keys: { any } = {}
+	local count = 0
+	for k in pairs(t :: any) do
+		count += 1
+		keys[count] = k
 	end
-	return keys
+	return keys :: any
 end
 
 -- ---------------------------------------------------------------------

@@ -210,9 +210,8 @@ local function sanitize(target: { [any]: any }, template: { [any]: any }, depth:
 			continue
 		end
 		local kind = type(value)
-		if kind ~= type(default) then
-			target[key] = nil
-		elseif kind == "number" and not Util.IsFinite(value) then
+		if kind ~= type(default) or (kind == "number" and not Util.IsFinite(value)) then
+			-- falscher Typ oder NaN/unendlich -> Standard (Reconcile)
 			target[key] = nil
 		elseif kind == "table" and next(default) ~= nil then
 			if isArray(default) and type(default[1]) == "table" then
@@ -279,8 +278,9 @@ local function getStore(): DataStore?
 	if ok then
 		store = result
 	else
-		storeError = tostring(result)
-		warn("[DataService] DataStore nicht verfügbar: " .. storeError)
+		local message = tostring(result)
+		storeError = message
+		warn("[DataService] DataStore nicht verfügbar: " .. message)
 	end
 	return store
 end
@@ -343,11 +343,13 @@ local function loadData(userId: number): (boolean, any)
 		if ok and not lockedByOther then
 			if tookOverFrom then
 				-- §14.3 #4: Übernahme eines (noch nicht verwaisten) Locks sichtbar machen
-				warn(("[DataService] Lock von Server %s übernommen (dieser Server %s) für UserId %d"):format(
-					tookOverFrom,
-					jobId(),
-					userId
-				))
+				warn(
+					("[DataService] Lock von Server %s übernommen (dieser Server %s) für UserId %d"):format(
+						tookOverFrom,
+						jobId(),
+						userId
+					)
+				)
 			end
 			local data = if type(result) == "table" and type(result.Data) == "table" then result.Data else freshData()
 			-- erst migrieren (Version prüfen), DANN fehlende Felder ergänzen
@@ -399,7 +401,11 @@ local function saveData(userId: number, data: PlayerData, release: boolean, prof
 		end)
 		if ok then
 			if lostLock then
-				warn(("[DataService] Speichern abgelehnt: Spielstand %d gehört jetzt einem anderen Server"):format(userId))
+				warn(
+					("[DataService] Speichern abgelehnt: Spielstand %d gehört jetzt einem anderen Server"):format(
+						userId
+					)
+				)
 			end
 			return not lostLock
 		end
@@ -549,8 +555,10 @@ local function onPlayerAdded(player: Player)
 		if ok then
 			data = result
 		elseif RunService:IsStudio() then
-			warn("[DataService] Studio: Speichern ist AUS. Aktiviere in Game Settings > Security "
-				.. "'Enable Studio Access to API Services'.")
+			warn(
+				"[DataService] Studio: Speichern ist AUS. Aktiviere in Game Settings > Security "
+					.. "'Enable Studio Access to API Services'."
+			)
 			data = freshData()
 			noSaveReason = "NoApi"
 		else

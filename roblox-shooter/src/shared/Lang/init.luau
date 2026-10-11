@@ -76,21 +76,31 @@ local function loadFile(name: string, prefixes: { string })
 		local target, sources = dict[lang], sourceOf[lang]
 		for key, text in pairs(entries) do
 			if type(key) ~= "string" or type(text) ~= "string" then
-				warn(("[Lang] Lang.%s.%s: Schlüssel und Text müssen Strings sein (%s)"):format(name, lang, tostring(key)))
+				warn(
+					("[Lang] Lang.%s.%s: Schlüssel und Text müssen Strings sein (%s)"):format(
+						name,
+						lang,
+						tostring(key)
+					)
+				)
 			elseif sources[key] ~= nil then
-				warn(("[Lang] Doppelter Schlüssel %s (%s) in Lang.%s, schon in Lang.%s"):format(
-					key,
-					lang,
-					name,
-					sources[key]
-				))
+				warn(
+					("[Lang] Doppelter Schlüssel %s (%s) in Lang.%s, schon in Lang.%s"):format(
+						key,
+						lang,
+						name,
+						sources[key]
+					)
+				)
 			else
 				if not hasPrefix(key, prefixes) then
-					warn(("[Lang] Lang.%s: Schlüssel %s hat das falsche Präfix (erwartet %s)"):format(
-						name,
-						key,
-						table.concat(prefixes, " / ")
-					))
+					warn(
+						("[Lang] Lang.%s: Schlüssel %s hat das falsche Präfix (erwartet %s)"):format(
+							name,
+							key,
+							table.concat(prefixes, " / ")
+						)
+					)
 				end
 				target[key] = text
 				sources[key] = name

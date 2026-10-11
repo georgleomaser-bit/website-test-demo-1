@@ -14,6 +14,8 @@ Alles ist für den **Mac** geschrieben.
 
 Klickpfade sind **fett** geschrieben. **Home → Game Settings** heißt: oben auf **Home** klicken, dann auf **Game Settings**.
 
+Ein Wort verstehst du nicht? Ganz unten in **Kapitel 19** steht die **Wörterliste von A bis Z**.
+
 ---
 
 ## 1. 🎯 Was ist CLUTCH CLASH?
@@ -110,11 +112,11 @@ Klickpfade sind **fett** geschrieben. **Home → Game Settings** heißt: oben au
 | Sprinten | **Shift** | linken Stick drücken (**L3**) | Stick ganz nach vorn |
 | Rutschen | **C** (oder **Ctrl**) beim Sprinten | **B** | **RUTSCHEN** |
 | Springen | **Leertaste** | **A** | Sprung-Knopf |
-| Punktetafel | **Tab** | **View** | Knopf |
+| Punktetafel | **Tab** | **View** (Knopf mit 2 Rechtecken) | Knopf |
 | Loadout ändern | **L** | Steuerkreuz runter | Knopf |
 | Waffe ansehen | **V** | Steuerkreuz hoch | Knopf |
-| Menü | **M** | **Menu** | Knopf |
-| Bereit | **Enter** | **Start** | **BEREIT** |
+| Menü | **M** | **Menu** (Knopf ≡, früher „Start“) | Knopf |
+| Bereit (vor dem Countdown) | **Enter** | derselbe Knopf **≡** | **BEREIT** |
 | Admin-Panel (nur du) | **P** | – | Admin-Knopf rechts |
 | Fliegen (nur du) | **G** | – | – |
 | Zuschauen beenden (nur du) | **X** | – | – |
@@ -156,6 +158,35 @@ Es gibt **keine Level-Sperren**. Bei Level 4, 10 und 20 darfst du dir **eine Waf
 | **Gems** | Robux-Pakete oder gratis (Level, Erfolge, Login, Glücksrad, Pass) | Kosmetik, Kisten (nur wo erlaubt) |
 | **Schlüssel** | **Nur gratis** (Level, Login, Glücksrad, Spielzeit, Wochen-Truhe, Pass) | Eine Kiste öffnen |
 | **Splitter** | Doppelte Kisten-Funde | Ein bestimmtes Kisten-Item gezielt kaufen |
+
+### Skill: leicht zu lernen, schwer zu meistern
+
+Dein Wunsch „max geil und verskillt“ (steht in `docs/SKILL-WUENSCHE.md`): Neue haben schnell Spaß, gute Spieler sind sichtbar besser.
+
+**Schon im Spiel (v1):**
+
+| Skill | So geht's |
+|---|---|
+| **Rutsch-Sprung** | Sprinten → **C** → im Rutschen **Leertaste**. Du behältst 90 % vom Tempo |
+| **Doppelsprung** | Mit den Boxhandschuhen in der Luft nochmal springen. Gut zum Ausweichen |
+| **Raketensprung** | Mit der Plopp-Rakete direkt unter deine Füße schießen. Kostet etwas Leben |
+| **Rückstoß halten** | Jeder Schuss reißt das Bild etwas nach oben. Wer die Maus leicht nach unten zieht, trifft weiter |
+| **Antippen statt Dauerfeuer** | Der erste Schuss ist genau. Beim Dauerfeuer wird die **Streuung** größer (die Schüsse gehen weiter daneben). Laufen und Springen machen sie auch größer |
+| **Kopftreffer** | 1,4- bis 2,5-mal so viel Schaden. Fernschuss in den Kopf = sofort POP |
+| **Scharfschützen-Konter** | Wer länger als 0,3 Sekunden durchs Zielfernrohr schaut, glänzt für die Gegner |
+| **Skill-Momente** | Banner **CLUTCH!** (allein gegen 2 oder mehr gewonnen), **ACE!** (alle Gegner einer Runde allein gepoppt), **FLAWLESS!** (dein Team bekam keinen Schaden), **DOUBLE! TRIPLE! QUAD!**, „HEADSHOT!“-Ding |
+| **Aus Fehlern lernen** | Der **Todes-Rückblick** zeigt jeden Treffer des Gegners: Waffe, Schaden, Kopf, Entfernung |
+| **Zielen üben** | **Flick-Test** im Training: 10 Ziele auf Zeit. Die Bestzeit merkt sich das Spiel nur, bis du gehst |
+| **Fair** | Zielhilfe gibt es **nie mit Maus**, am Handy und Controller nur sanft. Alle Hitboxen sind gleich groß |
+
+**Kommt im Feinschliff (nach dem Zusammenbau aller Teile):**
+- **Bewegung:** mehrere Rutsch-Sprünge hintereinander (mit Obergrenze), mehr Steuerung in der Luft, **Wand-Absprung**, an niedrigen Kanten **hochziehen**, schnelles **Peeken** (kurz um die Ecke schauen). Die Hitbox wird dabei nie kleiner.
+- **Schießen:** feste **Rückstoß-Muster** pro Waffe zum Lernen, **Quickscope** (Treffer kurz nach dem Zoomen) wird belohnt, kurzer **Treffer-Stopp** beim Treffen.
+- **Momente:** Mehrfach-Pops bis **ACE** mit Ansage, Sound und Konfetti. **CLUTCH!** gibt Bonus-XP.
+- **Skill sichtbar:** Statistik für jeden Spieler (Genauigkeit, Kopfschuss-Quote, K/D, Siege, beste Serie, pro Waffe), **Aim-Trainer** (Flick, Verfolgen, Reaktion) mit Bestenliste, **Ranked** mit Rängen von Bronze bis Champion (geplant für v1.1, wenn möglich früher). Der Rückblick zeigt, was der Gegner besser gemacht hat.
+- Der Anti-Cheat erlaubt diese Tricks und erwischt Cheater trotzdem.
+
+Was davon fertig ist, sagt dir Claude nach dem Feinschliff. Dann kommen dafür auch neue Punkte in `docs/TESTPLAN.md`.
 
 ### Kleine Wörterliste (Spiel)
 
@@ -285,35 +316,45 @@ So prüfst du, ob Treffer auch bei schlechtem Internet zählen.
 ## 7. 🌍 Schritt 4: Veröffentlichen
 
 Wichtig: Veröffentliche **zuerst eine leere Welt** und spiel **danach** CLUTCH CLASH darüber.
-Dieser Weg verhindert den Fehler „**Save failed**“.
+Dieser Weg verhindert den Fehler „**Save failed**“ (Speichern fehlgeschlagen).
+Warum? Eine kleine, leere Welt lädt Roblox immer problemlos hoch. Danach gibt es dein Spiel schon bei Roblox,
+und die große Datei ersetzt nur noch seinen Inhalt.
 
 ### 7.1 Leere Welt veröffentlichen
 
 1. Studio komplett schließen (**Cmd + Q**) und neu öffnen. Oben rechts muss **RizzG315** stehen.
    Kommt ein Hinweis auf ein Update: zuerst installieren.
 2. Auf der Startseite: **New** → **Baseplate** (die leere Welt mit grauer Platte).
-3. **File → Publish to Roblox** (oder **Option + P**).
+3. Oben in der Menüleiste: **File → Publish to Roblox** (oder **Option + P**).
 4. Im Fenster:
-   - **Create new experience** wählen.
-   - **Name:** `Clutch Clash` (einfach so, **ohne Emoji, ohne Klammern**).
+   - Fragt Studio, ob neu oder vorhanden: **Create new experience** wählen (heißt: neues Spiel anlegen).
+   - **Name:** `Clutch Clash` (genau so: **ohne Emoji, ohne Klammern, ohne Sonderzeichen**).
    - **Description:** leer lassen.
    - **Creator:** **RizzG315** (dein Name, **keine Gruppe**).
-   - **Team Create:** **AUS**.
-   - → **Create**.
-5. Warte, bis unten „Published“ (veröffentlicht) steht.
+   - Gibt es einen Schalter **Team Create** (oder **Collaboration**): **AUS**.
+   - → unten rechts **Create** (bei manchen Versionen **Publish**).
+5. Warte, bis unten „Published“ / „Publish completed“ steht.
+6. Kommt danach ein Fenster, ob du **Team Create** / **Collaborate** einschalten willst: **Not now** bzw. schließen.
 
 ### 7.2 CLUTCH CLASH darüber spielen (Overwrite)
 
-1. Die Baseplate schließen: **File → Close Place**. Fragt Studio nach Speichern: **Don't Save**.
-2. **File → Open from File…** (**Cmd + O**) → **Downloads** → **`ClutchClash.rbxlx`** → **Open**.
-3. **File → Publish to Roblox As…** (oder **Shift + Option + P**).
-4. Im Fenster dein Spiel **„Clutch Clash“** anklicken.
-5. Darunter den Place anklicken (er heißt auch „Clutch Clash“ oder „Start Place“).
-6. Auf **Overwrite** klicken (heißt: „überschreiben“). Bestätigen.
-7. Fertig. Ab jetzt reicht für jede Änderung: **File → Publish to Roblox** (**Option + P**).
+1. Die Baseplate schließen: **File → Close Place** (oder einfach das Fenster schließen). Fragt Studio nach Speichern: **Don't Save**.
+2. **File → Open from File…** (**Cmd + O**) → links **Downloads** → **`ClutchClash.rbxlx`** → **Open**.
+3. **File → Publish to Roblox As…** (oder **Shift + Option + P**). Achtung: das **„As…“** ist wichtig.
+4. Links bzw. oben im Fenster dein Spiel **„Clutch Clash“** anklicken (**nicht** „Create new experience“).
+5. Rechts bzw. darunter erscheint der Place. Ihn anklicken (er heißt „Clutch Clash“ oder „Start Place“).
+6. Unten auf **Overwrite** klicken (heißt: „überschreiben“). Kommt eine Frage: bestätigen.
+7. Warte, bis unten „Published“ steht. Fertig.
+8. Ab jetzt reicht für jede Änderung: **File → Publish to Roblox** (**Option + P**).
+
+**Prüfen, ob es geklappt hat:** Öffne https://create.roblox.com/dashboard/creations → dein Spiel **Clutch Clash** anklicken →
+oben **View on Roblox** (Spielseite ansehen) → grüner **Play**-Knopf. Als Besitzer darfst du auch ein privates Spiel spielen.
+Die Lobby baut sich in ein paar Sekunden auf.
+
+> 💡 **„Save failed“ kommt später bei Option + P?** Dann einfach 7.2 wiederholen (**Publish to Roblox As… → dein Spiel → Place → Overwrite**).
 
 > 💡 **Klappt nicht mal die leere Baseplate?** Dann liegt es an Roblox oder am Konto, nicht am Spiel:
-> status.roblox.com prüfen, VPN aus, in Studio ab- und wieder anmelden, E-Mail auf roblox.com bestätigen.
+> status.roblox.com prüfen, VPN aus, in Studio ab- und wieder anmelden (oben rechts dein Name → **Log Out**), E-Mail auf roblox.com bestätigen.
 > Dann **View → Output** öffnen und den roten Text an Claude schicken.
 
 > 💡 **Cmd + S** speichert nur die Datei auf deinem Mac. Ins echte Spiel kommt eine Änderung **nur mit Publish**.
@@ -373,8 +414,8 @@ Ganz unten in **`docs/KOPIERVORLAGEN.md`** gibt es den Kasten **„Schick mir da
 Hinter jedes `=` die passende ID schreiben, den Kasten in den Chat kopieren. Claude trägt alles ein und baut dir eine neue `ClutchClash.rbxlx`.
 
 **Selbst eintragen geht auch:** Im Studio links im **Explorer**: **ReplicatedStorage → Shared → Config → Shop** doppelklicken.
-Mit **Cmd + F** nach dem Key suchen (zum Beispiel `"VIP"`). Direkt dabei (in derselben Zeile oder knapp darunter) steht `Id = 0`.
-Die `0` durch deine ID ersetzen (nur die Zahl, ohne Anführungszeichen). Dann **Play** zum Testen und **Publish**.
+Mit **Cmd + F** nach dem Key suchen, zum Beispiel `Key = "VIP"`. In der Zeile direkt darunter steht `Id = 0,`.
+Die `0` durch deine ID ersetzen (nur die Zahl, ohne Anführungszeichen, das Komma bleibt). Dann **Play** zum Testen und **Publish**.
 
 ### 8.4 Die Preise
 

@@ -203,8 +203,20 @@ end
 Tests["Net.FX Rundreise"] = function()
 	local origin = Vector3.new(4000, 100, 4000)
 	local entries = {
-		{ Kind = 1, Slot = 3, Weapon = 2, O = origin + Vector3.new(1.25, 5, -3), E = origin + Vector3.new(120.04, 2, 80) },
-		{ Kind = 2, Slot = 9, Weapon = 101, O = origin + Vector3.new(-3000, 0, 0), E = origin + Vector3.new(0, -50.5, 3200) },
+		{
+			Kind = 1,
+			Slot = 3,
+			Weapon = 2,
+			O = origin + Vector3.new(1.25, 5, -3),
+			E = origin + Vector3.new(120.04, 2, 80),
+		},
+		{
+			Kind = 2,
+			Slot = 9,
+			Weapon = 101,
+			O = origin + Vector3.new(-3000, 0, 0),
+			E = origin + Vector3.new(0, -50.5, 3200),
+		},
 	}
 	local b = Net.EncodeFx(entries, origin)
 	eq(buffer.len(b), 1 + 2 * 15, "Größe")
@@ -219,7 +231,10 @@ Tests["Net.FX Rundreise"] = function()
 	nearVector(decoded[2].O, entries[2].O, 0.06, "O2")
 	nearVector(decoded[2].E, entries[2].E, 0.06, "E2")
 	-- außerhalb ±3276 Studs wird geklemmt, nie Fehler
-	local far = Net.DecodeFx(Net.EncodeFx({ { Kind = 4, Slot = 1, Weapon = 1, O = origin, E = origin + Vector3.new(9000, 0, 0) } }, origin), origin)
+	local far = Net.DecodeFx(
+		Net.EncodeFx({ { Kind = 4, Slot = 1, Weapon = 1, O = origin, E = origin + Vector3.new(9000, 0, 0) } }, origin),
+		origin
+	)
 	assert(far, "weit weg nicht dekodierbar")
 	near(far[1].E.X - origin.X, 3276.7, 0.06, "geklemmt")
 	-- mehr als 58 Einträge: die ältesten fallen raus, Paket ≤ 871 Byte
