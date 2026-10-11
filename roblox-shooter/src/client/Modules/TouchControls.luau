@@ -305,11 +305,13 @@ local function build()
 		{ "Match", "Range" }
 	)
 	bindFire(small)
-	local ads = makeButton("Ads", cfg.ButtonSize, Color3.fromRGB(60, 140, 255), "", { "Match", "Range" })
+	local ads = makeButton("Ads", cfg.ButtonSize, Color3.fromRGB(60, 140, 255), T("ui.touch.ads"), { "Match", "Range" })
+	ads.Label.Position = UDim2.fromScale(0.5, 0.72)
+	ads.Label.Size = UDim2.fromScale(0.8, 0.3)
 	UI.Create("ImageLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.55, 0.55),
+		Position = UDim2.fromScale(0.5, 0.38),
+		Size = UDim2.fromScale(0.42, 0.42),
 		BackgroundTransparency = 1,
 		Image = AIM_ICON,
 		Parent = ads.Root,
@@ -340,7 +342,7 @@ local function build()
 	-- kleine Knöpfe oben rechts
 	local smallButtons = {
 		{ "Scoreboard", "📋", { "Match" } },
-		{ "Loadout", "🎒", { "Match", "Range", "Lobby" } },
+		{ "Loadout", "🎒", { "Match", "Range" } },
 		{ "Inspect", "🔍", { "Match", "Range" } },
 		{ "Menu", "⚙️", { "Match", "Range" } },
 	}
@@ -571,6 +573,7 @@ local function relabel()
 	local map = {
 		Fire = "ui.touch.fire",
 		FireSmall = "ui.touch.fire",
+		Ads = "ui.touch.ads",
 		Reload = "ui.touch.reload",
 		Slide = "ui.touch.slide",
 		Utility = "ui.touch.utility",

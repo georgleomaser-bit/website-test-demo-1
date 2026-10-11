@@ -13,7 +13,8 @@
 --  Statistik (nicht aus Admin-Show-Matches = Tainted):
 --    * Zähler pro Waffe/Map/Modus im Speicher, Flush alle 600 s in CC_Stats_v1 "S_<yyyymmdd>_<shard>" (UpdateAsync-Merge).
 --    * Eigene Quellen: MatchService.OnMatchEnd (Pick, WinWith, Map, Mode, Matches, Bot-Anteil),
---      WeaponService.OnShot (Schüsse/Treffer/Kopftreffer), CombatService.OnElimination (Pops), Warteschlange (Wartezeit).
+--      WeaponService.OnShot (Schüsse/Treffer/Kopftreffer), CombatService.OnElimination (Pops).
+--      Wartezeit (QueueTime) und Kill/Head kommen über Stat() von QueueService/CombatService.
 --
 --  Öffentliche API (C5.7):
 --    BalanceService.Stat(kind, key, n?)      kind "Pick" | "Kill" | "Head" | "WinWith" | "Map" | "Mode" | "QueueTime"
@@ -92,7 +93,8 @@ local statsCache: { [number]: { T: number, Data: any } } = {}
 local taintCache: { [string]: { T: number, Tainted: boolean } } = {}
 local taintCacheSize = 0
 local reloadPending = false
-local queueTrack: { [Player]: { Mode: string, T0: number } } = {}
+local shotSource = false -- WeaponService.OnShot angemeldet (Schüsse/Treffer/Kopf aus eigener Quelle)
+local popSource = false -- CombatService.OnElimination angemeldet (Pops ohne Schießstand/Tainted)
 
 -- ---------------------------------------------------------------------
 -- HELFER
@@ -798,26 +800,6 @@ local function onMatchEnd(result: any)
 	end
 end
 
--- Wartezeit: wer aus der Schlange direkt in ein Match kommt, zählt (1 Hz, nur Spieler im Server)
-local function trackQueues()
-	local now = os.clock()
-	for _, p in ipairs(Players:GetPlayers()) do
-		local ok, state = call("QueueService", "StateOf", p)
-		local entry = queueTrack[p]
-		if ok and type(state) == "table" and type(state.Mode) == "string" then
-			if not entry or entry.Mode ~= state.Mode then
-				queueTrack[p] = { Mode = string.sub(state.Mode, 1, MAX_KEY_LEN), T0 = now }
-			end
-		elseif entry then
-			queueTrack[p] = nil
-			local okM, matchId = call("MatchService", "MatchOf", p)
-			if okM and matchId ~= nil then
-				BalanceService.Stat("QueueTime", entry.Mode, now - entry.T0)
-			end
-		end
-	end
-end
-
 local function mergeCounters(target: Counters, source: any)
 	if type(source) ~= "table" then
 		return
@@ -907,9 +889,12 @@ function BalanceService.GetStats(days: number): { [string]: any }
 		if type(def) == "table" and type(def.Key) == "string" and not def.AdminOnly then
 			local key = def.Key
 			local picks = get("Pick", key)
-			local pops = math.max(get("Pop", key), get("Kill", key))
+			-- eigene Quellen (nur echte, nicht getaintete Matches) vor den Stat-Aufrufen anderer Pakete
+			local pops = if popSource then get("Pop", key) else get("Kill", key)
 			local hits = get("Hit", key)
-			local headPct = if hits > 0 then pct(get("HeadHit", key), hits) else pct(get("Head", key), pops)
+			local headPct = if shotSource and hits > 0
+				then pct(get("HeadHit", key), hits)
+				else pct(if popSource then get("HeadPop", key) else get("Head", key), pops)
 			local pickPct = pct(picks, playerMatches)
 			table.insert(weapons, {
 				Key = key,
@@ -1022,16 +1007,12 @@ function BalanceService.Start()
 	-- Statistik-Flush alle 600 s
 	local flushEvery = math.max(60, tonumber(Config.Tech.StatsFlushSeconds) or 600)
 	Scheduler.Every("BalanceStatsFlush", 1 / flushEvery, flushStats)
-	Scheduler.Every("BalanceQueueTrack", 1, trackQueues)
 
 	-- Eigene Statistik-Quellen
-	call("WeaponService", "OnShot", onShot)
-	call("CombatService", "OnElimination", onElimination)
+	shotSource = call("WeaponService", "OnShot", onShot) == true
+	popSource = call("CombatService", "OnElimination", onElimination) == true
 	call("MatchService", "OnMatchEnd", onMatchEnd)
 
-	Players.PlayerRemoving:Connect(function(p)
-		queueTrack[p] = nil
-	end)
 	game:BindToClose(function()
 		if next(counters) ~= nil and not storeDisabled then
 			local batch = counters

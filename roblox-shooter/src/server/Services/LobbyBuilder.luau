@@ -137,7 +137,12 @@ local function buildGround(parent: Folder)
 	for _, path in ipairs(Layout.Paths) do
 		deco({ Name = "Path", CFrame = CFrame.new(path.Pos), Size = path.Size, Color = path.Color, Parent = ground })
 	end
-	MapKit.cyl({ Name = "PlazaDisc", Color = C("Cream"), CanCollide = false, CanQuery = false, Parent = ground }, V(0, 0.035, 0), 0.07, 44)
+	MapKit.cyl(
+		{ Name = "PlazaDisc", Color = C("Cream"), CanCollide = false, CanQuery = false, Parent = ground },
+		V(0, 0.035, 0),
+		0.07,
+		44
+	)
 	deco({
 		Name = "DuelFloor",
 		CFrame = CFrame.new(Layout.DuelFloor.Pos),
@@ -145,7 +150,13 @@ local function buildGround(parent: Folder)
 		Color = C("Navy"),
 		Parent = ground,
 	})
-	deco({ Name = "RangeFloor", CFrame = CFrame.new(-66, 0.04, 0), Size = V(8, 0.08, 112), Color = C("Navy"), Parent = ground })
+	deco({
+		Name = "RangeFloor",
+		CFrame = CFrame.new(-66, 0.04, 0),
+		Size = V(8, 0.08, 112),
+		Color = C("Navy"),
+		Parent = ground,
+	})
 end
 
 local function buildEdges(parent: Folder)
@@ -166,8 +177,20 @@ local function buildEdges(parent: Folder)
 		-- Sichtbarer Zaun nur am Hauptboden (Range-Kanten haben Wände)
 		if index <= 5 then
 			local railSize = if alongX then V(length, 0.4, 0.4) else V(0.4, 0.4, length)
-			P({ Name = "Rail", CFrame = CFrame.new(mid.X, 1.3, mid.Z), Size = railSize, Color = C("Cream"), Parent = fence })
-			P({ Name = "Rail", CFrame = CFrame.new(mid.X, 2.6, mid.Z), Size = railSize, Color = C("Cream"), Parent = fence })
+			P({
+				Name = "Rail",
+				CFrame = CFrame.new(mid.X, 1.3, mid.Z),
+				Size = railSize,
+				Color = C("Cream"),
+				Parent = fence,
+			})
+			P({
+				Name = "Rail",
+				CFrame = CFrame.new(mid.X, 2.6, mid.Z),
+				Size = railSize,
+				Color = C("Cream"),
+				Parent = fence,
+			})
 			local posts = math.max(1, math.floor(length / 10))
 			for i = 0, posts do
 				local p = a + dir * (length * i / posts)
@@ -226,7 +249,13 @@ local function buildPlaza(parent: Folder)
 		Parent = plaza,
 	}, V(f.X, 1.45, f.Z), 0.2, 7)
 	MapKit.cyl({ Name = "FountainColumn", Color = C("Water"), Parent = plaza }, V(f.X, 2, f.Z), 4, 4)
-	local top = deco({ Name = "FountainTop", CFrame = CFrame.new(f.X, 4.2, f.Z), Size = V(1, 0.4, 1), Transparency = 1, Parent = plaza })
+	local top = deco({
+		Name = "FountainTop",
+		CFrame = CFrame.new(f.X, 4.2, f.Z),
+		Size = V(1, 0.4, 1),
+		Transparency = 1,
+		Parent = plaza,
+	})
 	confettiEmitter(top, 4)
 
 	local spawnFolder = folder("Spawns", plaza)
@@ -256,7 +285,13 @@ local function buildPlaza(parent: Folder)
 		{ Pos = V(24, 0, 8), Key = "world.sign.crown", Look = V(-1, 0, 0) },
 	}
 	for _, s in ipairs(signs) do
-		P({ Name = "SignPost", CFrame = CFrame.new(s.Pos.X, 2.5, s.Pos.Z), Size = V(0.6, 5, 0.6), Color = C("Charcoal"), Parent = plaza })
+		P({
+			Name = "SignPost",
+			CFrame = CFrame.new(s.Pos.X, 2.5, s.Pos.Z),
+			Size = V(0.6, 5, 0.6),
+			Color = C("Charcoal"),
+			Parent = plaza,
+		})
 		local at = V(s.Pos.X, 5.6, s.Pos.Z)
 		local board = P({
 			Name = "SignBoard",
@@ -337,7 +372,13 @@ local function buildPad(def: any, parent: Folder): PadInfo
 		strip(padFolder, CFrame.new(c.X + 5, y, c.Z - hz), V(10, 0.05, 0.5), teamB)
 		strip(padFolder, CFrame.new(c.X + 5, y, c.Z + hz), V(10, 0.05, 0.5), teamB)
 		strip(padFolder, CFrame.new(c.X + size.X / 2 - 0.25, y, c.Z), V(0.5, 0.05, size.Z), teamB)
-		deco({ Name = "Divider", CFrame = CFrame.new(c.X, y, c.Z), Size = V(0.3, 0.05, size.Z - 1), Color = WHITE, Parent = padFolder })
+		deco({
+			Name = "Divider",
+			CFrame = CFrame.new(c.X, y, c.Z),
+			Size = V(0.3, 0.05, size.Z - 1),
+			Color = WHITE,
+			Parent = padFolder,
+		})
 		for _, dz in ipairs(Layout.SeatOffsets[def.Seats] or { 0 }) do
 			local a = V(c.X - 5, top, c.Z + dz)
 			local b = V(c.X + 5, top, c.Z + dz)
@@ -367,11 +408,42 @@ local function buildDuelHall(parent: Folder)
 	local hall = folder("DuelHall", parent)
 	-- Torbogen mit Schild „DUELLE / DUELS“
 	local s = Layout.DuelSign
-	P({ Name = "ArchPost", CFrame = CFrame.new(s.X - 21, 8.5, s.Z), Size = V(2, 17, 2), Color = C("Lilac"), Parent = hall })
-	P({ Name = "ArchPost", CFrame = CFrame.new(s.X + 21, 8.5, s.Z), Size = V(2, 17, 2), Color = C("Lilac"), Parent = hall })
-	local board = signBoard(hall, "DuelSign", CFrame.lookAt(s, s + V(0, 0, 1)), V(40, 6, 1), bi("world.sign.duels"), C("Navy"), C("Yellow"))
-	MapKit.sign(board, Enum.NormalId.Back, { { Text = bi("world.sign.duels"), Color = C("Yellow") } }, { Name = "SignBack" })
-	deco({ Name = "ArchTrim", CFrame = CFrame.new(s.X, s.Y + 3.3, s.Z), Size = V(44, 0.6, 1.4), Color = C("Pink"), Parent = hall })
+	P({
+		Name = "ArchPost",
+		CFrame = CFrame.new(s.X - 21, 8.5, s.Z),
+		Size = V(2, 17, 2),
+		Color = C("Lilac"),
+		Parent = hall,
+	})
+	P({
+		Name = "ArchPost",
+		CFrame = CFrame.new(s.X + 21, 8.5, s.Z),
+		Size = V(2, 17, 2),
+		Color = C("Lilac"),
+		Parent = hall,
+	})
+	local board = signBoard(
+		hall,
+		"DuelSign",
+		CFrame.lookAt(s, s + V(0, 0, 1)),
+		V(40, 6, 1),
+		bi("world.sign.duels"),
+		C("Navy"),
+		C("Yellow")
+	)
+	MapKit.sign(
+		board,
+		Enum.NormalId.Back,
+		{ { Text = bi("world.sign.duels"), Color = C("Yellow") } },
+		{ Name = "SignBack" }
+	)
+	deco({
+		Name = "ArchTrim",
+		CFrame = CFrame.new(s.X, s.Y + 3.3, s.Z),
+		Size = V(44, 0.6, 1.4),
+		Color = C("Pink"),
+		Parent = hall,
+	})
 
 	-- Pads
 	local padFolder = folder("Pads", hall)
@@ -382,9 +454,27 @@ local function buildDuelHall(parent: Folder)
 
 	-- Großer Block-Schriftzug „CLUTCH CLASH“ (Spielzeug-Buchstabenklötze vor einer Wand)
 	local l = Layout.Letters
-	P({ Name = "LetterWall", CFrame = CFrame.new(l.X, l.Y, -109.5), Size = V(84, 14, 1), Color = C("Navy"), Parent = hall })
-	P({ Name = "LetterLeg", CFrame = CFrame.new(l.X - 38, 4.5, -109.5), Size = V(3, 9, 1), Color = C("Charcoal"), Parent = hall })
-	P({ Name = "LetterLeg", CFrame = CFrame.new(l.X + 38, 4.5, -109.5), Size = V(3, 9, 1), Color = C("Charcoal"), Parent = hall })
+	P({
+		Name = "LetterWall",
+		CFrame = CFrame.new(l.X, l.Y, -109.5),
+		Size = V(84, 14, 1),
+		Color = C("Navy"),
+		Parent = hall,
+	})
+	P({
+		Name = "LetterLeg",
+		CFrame = CFrame.new(l.X - 38, 4.5, -109.5),
+		Size = V(3, 9, 1),
+		Color = C("Charcoal"),
+		Parent = hall,
+	})
+	P({
+		Name = "LetterLeg",
+		CFrame = CFrame.new(l.X + 38, 4.5, -109.5),
+		Size = V(3, 9, 1),
+		Color = C("Charcoal"),
+		Parent = hall,
+	})
 	local text = "CLUTCH CLASH"
 	local colors = { C("Pink"), C("Mint"), C("Lilac"), C("Sand"), C("Orange"), C("Blue") }
 	local count = #text
@@ -419,8 +509,21 @@ local function buildCrownArea(parent: Folder)
 	local signPos = V(95, 9, -35)
 	P({ Name = "SignPost", CFrame = CFrame.new(80, 6, -35.5), Size = V(1, 6, 1), Color = C("Charcoal"), Parent = area })
 	P({ Name = "SignPost", CFrame = CFrame.new(110, 6, -35.5), Size = V(1, 6, 1), Color = C("Charcoal"), Parent = area })
-	local crownSign = signBoard(area, "CrownSign", CFrame.lookAt(signPos, signPos + V(0, 0, 1)), V(32, 4, 0.6), bi("world.sign.crown"), C("Navy"), C("Gold"))
-	MapKit.sign(crownSign, Enum.NormalId.Back, { { Text = bi("world.sign.crown"), Color = C("Gold") } }, { Name = "SignBack" })
+	local crownSign = signBoard(
+		area,
+		"CrownSign",
+		CFrame.lookAt(signPos, signPos + V(0, 0, 1)),
+		V(32, 4, 0.6),
+		bi("world.sign.crown"),
+		C("Navy"),
+		C("Gold")
+	)
+	MapKit.sign(
+		crownSign,
+		Enum.NormalId.Back,
+		{ { Text = bi("world.sign.crown"), Color = C("Gold") } },
+		{ Name = "SignBack" }
+	)
 
 	-- Herausforderer-Linie: 6 Neon-Kreise r 1.6
 	for _, pos in ipairs(Layout.CrownLine) do
@@ -435,16 +538,48 @@ local function buildCrownArea(parent: Folder)
 		}, V(pos.X, 0.05, pos.Z), 0.1, Layout.SeatRadius * 2)
 	end
 	local lineSignPos = V(58, 4.5, -14)
-	P({ Name = "SignPost", CFrame = CFrame.new(58, 1.8, -14), Size = V(0.6, 3.6, 0.6), Color = C("Charcoal"), Parent = area })
-	signBoard(area, "ChallengerSign", CFrame.lookAt(lineSignPos, lineSignPos + V(-1, 0, 0)), V(9, 1.8, 0.3), bi("world.sign.challengers"), C("Navy"), C("Gold"))
+	P({
+		Name = "SignPost",
+		CFrame = CFrame.new(58, 1.8, -14),
+		Size = V(0.6, 3.6, 0.6),
+		Color = C("Charcoal"),
+		Parent = area,
+	})
+	signBoard(
+		area,
+		"ChallengerSign",
+		CFrame.lookAt(lineSignPos, lineSignPos + V(-1, 0, 0)),
+		V(9, 1.8, 0.3),
+		bi("world.sign.challengers"),
+		C("Navy"),
+		C("Gold")
+	)
 
 	-- Königs-Tafel 20×10 bei (128,10,0), Blick nach Westen
 	local def = Layout.CrownBoard
 	local cf = CFrame.lookAt(def.Pos, def.Pos + def.Look)
 	local boardPart = P({ Name = "CrownBoard", CFrame = cf, Size = def.Size, Color = C("Navy"), Parent = area })
-	P({ Name = "BoardLeg", CFrame = cf * CFrame.new(-8, -5, 0.8), Size = V(1, 10, 1), Color = C("Charcoal"), Parent = area })
-	P({ Name = "BoardLeg", CFrame = cf * CFrame.new(8, -5, 0.8), Size = V(1, 10, 1), Color = C("Charcoal"), Parent = area })
-	deco({ Name = "BoardTrim", CFrame = cf * CFrame.new(0, 5.3, 0), Size = V(21, 0.6, 1.6), Color = C("Gold"), Parent = area })
+	P({
+		Name = "BoardLeg",
+		CFrame = cf * CFrame.new(-8, -5, 0.8),
+		Size = V(1, 10, 1),
+		Color = C("Charcoal"),
+		Parent = area,
+	})
+	P({
+		Name = "BoardLeg",
+		CFrame = cf * CFrame.new(8, -5, 0.8),
+		Size = V(1, 10, 1),
+		Color = C("Charcoal"),
+		Parent = area,
+	})
+	deco({
+		Name = "BoardTrim",
+		CFrame = cf * CFrame.new(0, 5.3, 0),
+		Size = V(21, 0.6, 1.6),
+		Color = C("Gold"),
+		Parent = area,
+	})
 
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = "KingBoard"
@@ -509,12 +644,29 @@ local function buildCrownArea(parent: Folder)
 
 	-- Krone über der Tafel (Spielzeug-Krone aus Teilen)
 	local crownCf = cf * CFrame.new(0, 8, 0)
-	MapKit.cyl({ Name = "CrownBase", Color = C("Gold"), Material = Enum.Material.Foil, CastShadow = false, Parent = area }, crownCf.Position, 1.6, 6)
+	MapKit.cyl(
+		{ Name = "CrownBase", Color = C("Gold"), Material = Enum.Material.Foil, CastShadow = false, Parent = area },
+		crownCf.Position,
+		1.6,
+		6
+	)
 	for i = 0, 4 do
 		local angle = math.rad(i * 72)
 		local pos = crownCf.Position + V(math.cos(angle) * 2.4, 1.6, math.sin(angle) * 2.4)
 		deco({ Name = "CrownSpike", CFrame = CFrame.new(pos), Size = V(1, 1.8, 1), Color = C("Gold"), Parent = area })
-		MapKit.ball({ Name = "CrownGem", Color = RAINBOW[(i % #RAINBOW) + 1], Material = NEON, CanCollide = false, CanQuery = false, CastShadow = false, Parent = area }, pos + V(0, 1.2, 0), 0.8)
+		MapKit.ball(
+			{
+				Name = "CrownGem",
+				Color = RAINBOW[(i % #RAINBOW) + 1],
+				Material = NEON,
+				CanCollide = false,
+				CanQuery = false,
+				CastShadow = false,
+				Parent = area,
+			},
+			pos + V(0, 1.2, 0),
+			0.8
+		)
 	end
 end
 
@@ -537,7 +689,13 @@ local function buildRange(parent: Folder): Model
 			Color = if i % 2 == 0 then C("Sand") else C("Cream"),
 			Parent = model,
 		})
-		local label = deco({ Name = "LaneNumber", CFrame = CFrame.new(-68.5, 0.07, z), Size = V(3, 0.05, 3), Color = C("Navy"), Parent = model })
+		local label = deco({
+			Name = "LaneNumber",
+			CFrame = CFrame.new(-68.5, 0.07, z),
+			Size = V(3, 0.05, 3),
+			Color = C("Navy"),
+			Parent = model,
+		})
 		MapKit.sign(label, Enum.NormalId.Top, { { Text = tostring(i), Color = C("Yellow") } }, { Name = "LaneSign" })
 		-- Bullseye an der Rückwand
 		local tx = r.BackX + 1.2
@@ -553,13 +711,25 @@ local function buildRange(parent: Folder): Model
 		end
 	end
 	for _, z in ipairs(r.Dividers) do
-		P({ Name = "Divider", CFrame = CFrame.new(laneMidX, 0.5, z), Size = V(laneLength, 1, 0.6), Color = C("Charcoal"), Parent = model })
+		P({
+			Name = "Divider",
+			CFrame = CFrame.new(laneMidX, 0.5, z),
+			Size = V(laneLength, 1, 0.6),
+			Color = C("Charcoal"),
+			Parent = model,
+		})
 	end
 	-- Schusslinie (Blick nach −X)
 	strip(model, CFrame.new(r.ShootX, 0.09, 0), V(0.6, 0.05, 112), C("Yellow"))
 	-- Entfernungs-Pfosten am Nord-Rand
 	for i, x in ipairs(r.DummyX) do
-		local post = P({ Name = "DistancePost", CFrame = CFrame.new(x, 2, -45), Size = V(1, 4, 1), Color = C("Charcoal"), Parent = model })
+		local post = P({
+			Name = "DistancePost",
+			CFrame = CFrame.new(x, 2, -45),
+			Size = V(1, 4, 1),
+			Color = C("Charcoal"),
+			Parent = model,
+		})
 		local board = P({
 			Name = "DistanceSign",
 			CFrame = CFrame.lookAt(V(x, 4.8, -45), V(x + 1, 4.8, -45)),
@@ -567,9 +737,19 @@ local function buildRange(parent: Folder): Model
 			Color = C("Navy"),
 			Parent = model,
 		})
-		MapKit.sign(board, Enum.NormalId.Front, { { Text = bi("world.sign.distance", r.DummyDistances[i]), Color = WHITE } })
+		MapKit.sign(
+			board,
+			Enum.NormalId.Front,
+			{ { Text = bi("world.sign.distance", r.DummyDistances[i]), Color = WHITE } }
+		)
 		post:SetAttribute("Distance", r.DummyDistances[i])
-		deco({ Name = "DistanceLine", CFrame = CFrame.new(x, 0.08, 0), Size = V(0.4, 0.05, 84), Color = C("PureWhite"), Parent = model })
+		deco({
+			Name = "DistanceLine",
+			CFrame = CFrame.new(x, 0.08, 0),
+			Size = V(0.4, 0.05, 84),
+			Color = C("PureWhite"),
+			Parent = model,
+		})
 	end
 	-- Schienen der zwei beweglichen Puppen
 	for _, lane in ipairs(r.RailLanes) do
@@ -584,16 +764,59 @@ local function buildRange(parent: Folder): Model
 		})
 	end
 	-- Rückwand + Seitenwände
-	P({ Name = "BackWall", CFrame = CFrame.new(r.BackX, 10, 0), Size = V(2, 20, 112), Color = C("Mint"), Parent = model })
-	P({ Name = "SideWall", CFrame = CFrame.new(-165, 5, -56.5), Size = V(70, 10, 1), Color = C("Lilac"), Parent = model })
+	P({
+		Name = "BackWall",
+		CFrame = CFrame.new(r.BackX, 10, 0),
+		Size = V(2, 20, 112),
+		Color = C("Mint"),
+		Parent = model,
+	})
+	P({
+		Name = "SideWall",
+		CFrame = CFrame.new(-165, 5, -56.5),
+		Size = V(70, 10, 1),
+		Color = C("Lilac"),
+		Parent = model,
+	})
 	P({ Name = "SideWall", CFrame = CFrame.new(-165, 5, 56.5), Size = V(70, 10, 1), Color = C("Lilac"), Parent = model })
-	deco({ Name = "WallCap", CFrame = CFrame.new(r.BackX, 20.3, 0), Size = V(2.4, 0.6, 112.4), Color = C("Charcoal"), Parent = model })
+	deco({
+		Name = "WallCap",
+		CFrame = CFrame.new(r.BackX, 20.3, 0),
+		Size = V(2.4, 0.6, 112.4),
+		Color = C("Charcoal"),
+		Parent = model,
+	})
 	-- Torbogen „TRAINING“ über der Schusslinie (Schild nach Osten)
-	P({ Name = "GantryPost", CFrame = CFrame.new(-62, 6, -20), Size = V(1.5, 12, 1.5), Color = C("Charcoal"), Parent = model })
-	P({ Name = "GantryPost", CFrame = CFrame.new(-62, 6, 20), Size = V(1.5, 12, 1.5), Color = C("Charcoal"), Parent = model })
+	P({
+		Name = "GantryPost",
+		CFrame = CFrame.new(-62, 6, -20),
+		Size = V(1.5, 12, 1.5),
+		Color = C("Charcoal"),
+		Parent = model,
+	})
+	P({
+		Name = "GantryPost",
+		CFrame = CFrame.new(-62, 6, 20),
+		Size = V(1.5, 12, 1.5),
+		Color = C("Charcoal"),
+		Parent = model,
+	})
 	local beamPos = V(-62, 13.5, 0)
-	local beam = signBoard(model, "TrainingSign", CFrame.lookAt(beamPos, beamPos + V(1, 0, 0)), V(42, 3, 1.5), bi("world.sign.training"), C("Navy"), C("Yellow"))
-	MapKit.sign(beam, Enum.NormalId.Back, { { Text = bi("world.sign.training"), Color = C("Yellow") } }, { Name = "SignBack" })
+	local beam = signBoard(
+		model,
+		"TrainingSign",
+		CFrame.lookAt(beamPos, beamPos + V(1, 0, 0)),
+		V(42, 3, 1.5),
+		bi("world.sign.training"),
+		C("Navy"),
+		C("Yellow")
+	)
+	MapKit.sign(
+		beam,
+		Enum.NormalId.Back,
+		{ { Text = bi("world.sign.training"), Color = C("Yellow") } },
+		{ Name = "SignBack" }
+	)
 
 	-- Bot-Duell-Kabine: 4 Pads mit Prompt-Attribut Practice = "<Stufe>"
 	table.clear(booth)
@@ -612,8 +835,22 @@ local function buildRange(parent: Folder): Model
 		prompt(pad, { Practice = difficulty }, bi("world.prompt.practice"), bi("world.diff." .. difficulty))
 		strip(boothFolder, CFrame.new(x, r.BoothPadSize.Y + 0.03, r.BoothZ), V(3.2, 0.05, 3.2), color:Lerp(WHITE, 0.3))
 		local signPos = V(x, 3.2, r.BoothZ + 3.5)
-		P({ Name = "BoothPost", CFrame = CFrame.new(x, 1.3, r.BoothZ + 3.5), Size = V(0.5, 2.6, 0.5), Color = C("Charcoal"), Parent = boothFolder })
-		signBoard(boothFolder, "BoothSign", CFrame.lookAt(signPos, signPos + V(0, 0, -1)), V(6, 1.4, 0.3), bi("world.diff." .. difficulty), color, WHITE)
+		P({
+			Name = "BoothPost",
+			CFrame = CFrame.new(x, 1.3, r.BoothZ + 3.5),
+			Size = V(0.5, 2.6, 0.5),
+			Color = C("Charcoal"),
+			Parent = boothFolder,
+		})
+		signBoard(
+			boothFolder,
+			"BoothSign",
+			CFrame.lookAt(signPos, signPos + V(0, 0, -1)),
+			V(6, 1.4, 0.3),
+			bi("world.diff." .. difficulty),
+			color,
+			WHITE
+		)
 		table.insert(booth, { Pos = V(x, r.BoothPadSize.Y, r.BoothZ), Difficulty = difficulty })
 	end
 	local boothMidX = (r.BoothX[1] + r.BoothX[#r.BoothX]) / 2
@@ -626,25 +863,72 @@ local function buildRange(parent: Folder): Model
 			Parent = boothFolder,
 		})
 	end
-	P({ Name = "CanopyRoof", CFrame = CFrame.new(boothMidX, 10.3, r.BoothZ + 0.5), Size = V(38, 0.6, 12.5), Color = C("Pink"), Parent = boothFolder })
+	P({
+		Name = "CanopyRoof",
+		CFrame = CFrame.new(boothMidX, 10.3, r.BoothZ + 0.5),
+		Size = V(38, 0.6, 12.5),
+		Color = C("Pink"),
+		Parent = boothFolder,
+	})
 	local canopySign = V(boothMidX, 9, r.BoothZ - 5.4)
-	signBoard(boothFolder, "BoothTitle", CFrame.lookAt(canopySign, canopySign + V(0, 0, -1)), V(30, 2, 0.4), bi("world.sign.botBooth"), C("Navy"), C("Yellow"))
+	signBoard(
+		boothFolder,
+		"BoothTitle",
+		CFrame.lookAt(canopySign, canopySign + V(0, 0, -1)),
+		V(30, 2, 0.4),
+		bi("world.sign.botBooth"),
+		C("Navy"),
+		C("Yellow")
+	)
 
 	-- Waffen-Regal (öffnet das Training-Fenster)
 	local rackDef = r.Rack
-	local rack = P({ Name = "WeaponRack", CFrame = CFrame.new(rackDef.Pos), Size = rackDef.Size, Color = C("Wood"), Material = Enum.Material.WoodPlanks, Parent = model })
+	local rack = P({
+		Name = "WeaponRack",
+		CFrame = CFrame.new(rackDef.Pos),
+		Size = rackDef.Size,
+		Color = C("Wood"),
+		Material = Enum.Material.WoodPlanks,
+		Parent = model,
+	})
 	prompt(rack, { Window = "Training" }, bi("world.prompt.open"), bi("world.sign.rack"))
 	local rackTop = rackDef.Pos + V(0, rackDef.Size.Y / 2 + 1.2, 0)
-	signBoard(model, "RackSign", CFrame.lookAt(rackTop, rackTop + V(0, 0, 1)), V(14, 2, 0.4), bi("world.sign.rack"), C("Navy"), C("Yellow"))
+	signBoard(
+		model,
+		"RackSign",
+		CFrame.lookAt(rackTop, rackTop + V(0, 0, 1)),
+		V(14, 2, 0.4),
+		bi("world.sign.rack"),
+		C("Navy"),
+		C("Yellow")
+	)
 	-- Spielzeug-Blaster an der Wand (orange Spitze, Muss-Regel 12)
 	local blasterColors = { C("Pink"), C("Mint"), C("Lilac"), C("Blue") }
 	for i = 1, 4 do
 		local x = rackDef.Pos.X - 10.5 + (i - 1) * 7
 		local y = rackDef.Pos.Y + (if i % 2 == 0 then 1 else -1)
 		local z = rackDef.Pos.Z + rackDef.Size.Z / 2 + 0.5
-		deco({ Name = "ToyBlaster", CFrame = CFrame.new(x, y, z), Size = V(4, 1, 0.8), Color = blasterColors[i], Parent = model })
-		deco({ Name = "ToyBlasterTip", CFrame = CFrame.new(x - 2.3, y, z), Size = V(0.6, 0.8, 0.7), Color = C("Tip"), Parent = model })
-		deco({ Name = "ToyBlasterGrip", CFrame = CFrame.new(x + 0.8, y - 0.9, z), Size = V(0.7, 1.2, 0.6), Color = C("Charcoal"), Parent = model })
+		deco({
+			Name = "ToyBlaster",
+			CFrame = CFrame.new(x, y, z),
+			Size = V(4, 1, 0.8),
+			Color = blasterColors[i],
+			Parent = model,
+		})
+		deco({
+			Name = "ToyBlasterTip",
+			CFrame = CFrame.new(x - 2.3, y, z),
+			Size = V(0.6, 0.8, 0.7),
+			Color = C("Tip"),
+			Parent = model,
+		})
+		deco({
+			Name = "ToyBlasterGrip",
+			CFrame = CFrame.new(x + 0.8, y - 0.9, z),
+			Size = V(0.7, 1.2, 0.6),
+			Color = C("Charcoal"),
+			Parent = model,
+		})
 	end
 
 	-- Puppen-Plätze (Boden-Punkte) für WP6 RangeService
@@ -682,9 +966,17 @@ local function buildKiosk(def: any, parent: Folder)
 	P({ Name = "Post", CFrame = at(3.6, 4.1, -2.6), Size = V(0.8, 7.4, 0.8), Color = WHITE, Parent = model })
 	P({ Name = "Side", CFrame = at(-3.6, 1.9, 0.4), Size = V(0.8, 3, 4.2), Color = color, Parent = model })
 	P({ Name = "Side", CFrame = at(3.6, 1.9, 0.4), Size = V(0.8, 3, 4.2), Color = color, Parent = model })
-	local counter = P({ Name = "Counter", CFrame = at(0, 1.9, -2.3), Size = V(6.4, 3, 1.2), Color = color, Parent = model })
+	local counter =
+		P({ Name = "Counter", CFrame = at(0, 1.9, -2.3), Size = V(6.4, 3, 1.2), Color = color, Parent = model })
 	P({ Name = "Roof", CFrame = at(0, 8.1, 0), Size = V(9, 0.6, 7), Color = roof, Parent = model })
-	MapKit.wedge({ Name = "Awning", CFrame = at(0, 7.2, -4.3), Size = V(9, 1.2, 2), Color = color, CastShadow = false, Parent = model })
+	MapKit.wedge({
+		Name = "Awning",
+		CFrame = at(0, 7.2, -4.3),
+		Size = V(9, 1.2, 2),
+		Color = color,
+		CastShadow = false,
+		Parent = model,
+	})
 	local signCf = at(0, 9.3, -2.9)
 	local sign = P({ Name = "KioskSign", CFrame = signCf, Size = V(7.5, 1.8, 0.3), Color = C("Navy"), Parent = model })
 	MapKit.sign(sign, Enum.NormalId.Front, { { Text = bi(def.Label), Color = C("Yellow") } })
@@ -714,11 +1006,29 @@ local function buildCrateMachine(parent: Folder): Model
 		Transparency = 0.5,
 		Parent = model,
 	})
-	deco({ Name = "Crate", CFrame = at(0, 5.5, 0) * CFrame.Angles(0, math.rad(20), 0), Size = V(4, 4, 4), Color = C("Sand"), Parent = model })
-	deco({ Name = "CrateBand", CFrame = at(0, 5.5, 0) * CFrame.Angles(0, math.rad(20), 0), Size = V(4.2, 0.6, 4.2), Color = C("NeonPink"), Material = NEON, Parent = model })
+	deco({
+		Name = "Crate",
+		CFrame = at(0, 5.5, 0) * CFrame.Angles(0, math.rad(20), 0),
+		Size = V(4, 4, 4),
+		Color = C("Sand"),
+		Parent = model,
+	})
+	deco({
+		Name = "CrateBand",
+		CFrame = at(0, 5.5, 0) * CFrame.Angles(0, math.rad(20), 0),
+		Size = V(4.2, 0.6, 4.2),
+		Color = C("NeonPink"),
+		Material = NEON,
+		Parent = model,
+	})
 	P({ Name = "Cap", CFrame = at(0, 13, 0), Size = V(12, 2, 12), Color = C("Pink"), Parent = model })
-	MapKit.ball({ Name = "Topper", Color = C("Yellow"), CastShadow = false, Parent = model }, at(0, 15.2, 0).Position, 2.6)
-	local sign = P({ Name = "CrateSign", CFrame = at(0, 13, -6.2), Size = V(10, 1.6, 0.3), Color = C("Navy"), Parent = model })
+	MapKit.ball(
+		{ Name = "Topper", Color = C("Yellow"), CastShadow = false, Parent = model },
+		at(0, 15.2, 0).Position,
+		2.6
+	)
+	local sign =
+		P({ Name = "CrateSign", CFrame = at(0, 13, -6.2), Size = V(10, 1.6, 0.3), Color = C("Navy"), Parent = model })
 	MapKit.sign(sign, Enum.NormalId.Front, { { Text = bi("world.sign.crates"), Color = C("Yellow") } })
 	local pp = prompt(foot, { Window = "Shop", Tab = "Crates" }, bi("world.prompt.open"), bi("world.sign.crates"))
 	pp.UIOffset = Vector2.new(0, 40)
@@ -784,11 +1094,30 @@ local function buildBoards(parent: Folder)
 		local x = Layout.BoardX[i]
 		local pos = V(x, Layout.BoardY, Layout.BoardZ)
 		local cf = CFrame.lookAt(pos, pos + V(0, 0, -1)) -- Blick nach Norden
-		local part = P({ Name = "Board_" .. key, CFrame = cf, Size = Layout.BoardSize, Color = C("Navy"), Parent = boardFolder })
+		local part =
+			P({ Name = "Board_" .. key, CFrame = cf, Size = Layout.BoardSize, Color = C("Navy"), Parent = boardFolder })
 		part:SetAttribute("Board", key)
-		P({ Name = "BoardPost", CFrame = cf * CFrame.new(-9, -1, 0.9), Size = V(1, 14, 1), Color = C("Charcoal"), Parent = boardFolder })
-		P({ Name = "BoardPost", CFrame = cf * CFrame.new(9, -1, 0.9), Size = V(1, 14, 1), Color = C("Charcoal"), Parent = boardFolder })
-		deco({ Name = "BoardCap", CFrame = cf * CFrame.new(0, 6.4, 0), Size = V(21, 0.8, 1.6), Color = C("Pink"), Parent = boardFolder })
+		P({
+			Name = "BoardPost",
+			CFrame = cf * CFrame.new(-9, -1, 0.9),
+			Size = V(1, 14, 1),
+			Color = C("Charcoal"),
+			Parent = boardFolder,
+		})
+		P({
+			Name = "BoardPost",
+			CFrame = cf * CFrame.new(9, -1, 0.9),
+			Size = V(1, 14, 1),
+			Color = C("Charcoal"),
+			Parent = boardFolder,
+		})
+		deco({
+			Name = "BoardCap",
+			CFrame = cf * CFrame.new(0, 6.4, 0),
+			Size = V(21, 0.8, 1.6),
+			Color = C("Pink"),
+			Parent = boardFolder,
+		})
 		boardGui(part, bi("world.board." .. key))
 		boards[key] = part
 	end
@@ -808,12 +1137,26 @@ local function buildVip(parent: Folder)
 	local cx, cz = plat.Pos.X, plat.Pos.Z
 	-- Stützen: östliche Reihe bei x −60, damit Pad P5 (x −58..−38) frei bleibt
 	for _, c in ipairs({ { -hx + 2, -hz + 2 }, { 10, -hz + 2 }, { -hx + 2, hz - 2 }, { 10, hz - 2 } }) do
-		P({ Name = "VipPillar", CFrame = CFrame.new(cx + c[1], bottom / 2, cz + c[2]), Size = V(1.5, bottom, 1.5), Color = WHITE, Parent = vip })
+		P({
+			Name = "VipPillar",
+			CFrame = CFrame.new(cx + c[1], bottom / 2, cz + c[2]),
+			Size = V(1.5, bottom, 1.5),
+			Color = WHITE,
+			Parent = vip,
+		})
 	end
 	-- Glas-Geländer (Süd-Seite mit Lücke für die Treppe)
 	local glass = { Material = Enum.Material.Glass, Transparency = 0.45, Color = WHITE }
 	local function rail(cf: CFrame, size: Vector3)
-		P({ Name = "VipRail", CFrame = cf, Size = size, Color = glass.Color, Material = glass.Material, Transparency = glass.Transparency, Parent = vip })
+		P({
+			Name = "VipRail",
+			CFrame = cf,
+			Size = size,
+			Color = glass.Color,
+			Material = glass.Material,
+			Transparency = glass.Transparency,
+			Parent = vip,
+		})
 	end
 	local t = def.Tower
 	rail(CFrame.new(cx, top + 1.5, cz - hz + 0.25), V(plat.Size.X, 3, 0.5))
@@ -824,34 +1167,98 @@ local function buildVip(parent: Folder)
 	local rightLen = (cx + hx) - t.MaxX
 	rail(CFrame.new(cx - hx + leftLen / 2, top + 1.5, southZ), V(leftLen, 3, 0.5))
 	rail(CFrame.new(cx + hx - rightLen / 2, top + 1.5, southZ), V(rightLen, 3, 0.5))
-	deco({ Name = "VipTrim", CFrame = CFrame.new(cx, top - 0.3, cz + hz + 0.1), Size = V(plat.Size.X + 0.4, 0.6, 0.4), Color = C("Gold"), Material = Enum.Material.Foil, Parent = vip })
-	deco({ Name = "VipTrim", CFrame = CFrame.new(cx, top - 0.3, cz - hz - 0.1), Size = V(plat.Size.X + 0.4, 0.6, 0.4), Color = C("Gold"), Material = Enum.Material.Foil, Parent = vip })
+	deco({
+		Name = "VipTrim",
+		CFrame = CFrame.new(cx, top - 0.3, cz + hz + 0.1),
+		Size = V(plat.Size.X + 0.4, 0.6, 0.4),
+		Color = C("Gold"),
+		Material = Enum.Material.Foil,
+		Parent = vip,
+	})
+	deco({
+		Name = "VipTrim",
+		CFrame = CFrame.new(cx, top - 0.3, cz - hz - 0.1),
+		Size = V(plat.Size.X + 0.4, 0.6, 0.4),
+		Color = C("Gold"),
+		Material = Enum.Material.Foil,
+		Parent = vip,
+	})
 	local vipSign = V(cx - 12, bottom - 1.4, cz + hz + 0.3)
-	signBoard(vip, "VipSign", CFrame.lookAt(vipSign, vipSign + V(0, 0, 1)), V(10, 2.4, 0.3), bi("world.sign.vip"), C("Navy"), C("Gold"))
+	signBoard(
+		vip,
+		"VipSign",
+		CFrame.lookAt(vipSign, vipSign + V(0, 0, 1)),
+		V(10, 2.4, 0.3),
+		bi("world.sign.vip"),
+		C("Navy"),
+		C("Gold")
+	)
 	-- Sofas
 	for _, x in ipairs({ cx - 8, cx + 8 }) do
-		P({ Name = "SofaSeat", CFrame = CFrame.new(x, top + 0.6, cz - 6), Size = V(8, 1.2, 3), Color = C("Pink"), Parent = vip })
-		P({ Name = "SofaBack", CFrame = CFrame.new(x, top + 1.8, cz - 7.7), Size = V(8, 2.4, 0.6), Color = C("Pink"), Parent = vip })
+		P({
+			Name = "SofaSeat",
+			CFrame = CFrame.new(x, top + 0.6, cz - 6),
+			Size = V(8, 1.2, 3),
+			Color = C("Pink"),
+			Parent = vip,
+		})
+		P({
+			Name = "SofaBack",
+			CFrame = CFrame.new(x, top + 1.8, cz - 7.7),
+			Size = V(8, 2.4, 0.6),
+			Color = C("Pink"),
+			Parent = vip,
+		})
 	end
 
 	-- Treppenturm: Wände bis Y 15 (Rückwand nur bis unter den Balkon), Tür vorne
 	local tower = folder("VipTower", vip)
 	local midZ = (t.MinZ + t.MaxZ) / 2
 	local depth = t.MaxZ - t.MinZ
-	P({ Name = "TowerWall", CFrame = CFrame.new(t.MinX + 0.5, t.Top / 2, midZ), Size = V(1, t.Top, depth), Color = C("Lilac"), Parent = tower })
-	P({ Name = "TowerWall", CFrame = CFrame.new(t.MaxX - 0.5, t.Top / 2, midZ), Size = V(1, t.Top, depth), Color = C("Lilac"), Parent = tower })
+	P({
+		Name = "TowerWall",
+		CFrame = CFrame.new(t.MinX + 0.5, t.Top / 2, midZ),
+		Size = V(1, t.Top, depth),
+		Color = C("Lilac"),
+		Parent = tower,
+	})
+	P({
+		Name = "TowerWall",
+		CFrame = CFrame.new(t.MaxX - 0.5, t.Top / 2, midZ),
+		Size = V(1, t.Top, depth),
+		Color = C("Lilac"),
+		Parent = tower,
+	})
 	local innerW = (t.MaxX - t.MinX) - 2
-	P({ Name = "TowerBack", CFrame = CFrame.new((t.MinX + t.MaxX) / 2, bottom / 2, t.MinZ + 0.5), Size = V(innerW, bottom, 1), Color = C("Lilac"), Parent = tower })
+	P({
+		Name = "TowerBack",
+		CFrame = CFrame.new((t.MinX + t.MaxX) / 2, bottom / 2, t.MinZ + 0.5),
+		Size = V(innerW, bottom, 1),
+		Color = C("Lilac"),
+		Parent = tower,
+	})
 	local door = def.Door
 	local doorHalf = door.Size.X / 2
 	local frontZ = door.Pos.Z
 	local leftW = (door.Pos.X - doorHalf) - (t.MinX + 1)
 	local rightW = (t.MaxX - 1) - (door.Pos.X + doorHalf)
 	if leftW > 0.05 then
-		P({ Name = "TowerFront", CFrame = CFrame.new(t.MinX + 1 + leftW / 2, t.Top / 2, frontZ), Size = V(leftW, t.Top, 1), Color = C("Lilac"), Parent = tower })
+		P({
+			Name = "TowerFront",
+			CFrame = CFrame.new(t.MinX + 1 + leftW / 2, t.Top / 2, frontZ),
+			Size = V(leftW, t.Top, 1),
+			Color = C("Lilac"),
+			Parent = tower,
+		})
 	end
 	if rightW > 0.05 then
-		P({ Name = "TowerFront", CFrame = CFrame.new(t.MaxX - 1 - rightW / 2, t.Top / 2, frontZ), Size = V(rightW, t.Top, 1), Color = C("Lilac"), Parent = tower })
+		P({
+			Name = "TowerFront",
+			CFrame = CFrame.new(t.MaxX - 1 - rightW / 2, t.Top / 2, frontZ),
+			Size = V(rightW, t.Top, 1),
+			Color = C("Lilac"),
+			Parent = tower,
+		})
 	end
 	local lintelH = t.Top - door.Size.Y
 	P({
@@ -861,12 +1268,24 @@ local function buildVip(parent: Folder)
 		Color = C("Lilac"),
 		Parent = tower,
 	})
-	local vipDoor = P({ Name = "VipDoor", CFrame = CFrame.new(door.Pos), Size = door.Size, Color = C("Gold"), Material = Enum.Material.Foil, Parent = vip })
+	local vipDoor = P({
+		Name = "VipDoor",
+		CFrame = CFrame.new(door.Pos),
+		Size = door.Size,
+		Color = C("Gold"),
+		Material = Enum.Material.Foil,
+		Parent = vip,
+	})
 	vipDoor.CanCollide = true -- Server: zu. VIP-Clients schalten lokal CanCollide aus (WP9).
 	MapKit.sign(vipDoor, Enum.NormalId.Back, { { Text = bi("world.sign.vipOnly"), Color = C("Navy") } })
 	-- Wendeltreppe: 14 Stufen à 1 Stud, 30° pro Stufe, letzte Stufe zeigt nach −Z auf den Balkon
 	local center = def.StairCenter
-	MapKit.cyl({ Name = "StairColumn", Color = WHITE, Parent = tower }, V(center.X, t.Top / 2, center.Z), t.Top, def.StairInner * 2)
+	MapKit.cyl(
+		{ Name = "StairColumn", Color = WHITE, Parent = tower },
+		V(center.X, t.Top / 2, center.Z),
+		t.Top,
+		def.StairInner * 2
+	)
 	for i = 0, def.StairSteps - 1 do
 		local theta = math.rad(240 + 30 * i)
 		local last = i == def.StairSteps - 1
@@ -874,7 +1293,13 @@ local function buildVip(parent: Folder)
 		local radial = outer - def.StairInner
 		local mid = def.StairInner + radial / 2
 		local cf = CFrame.new(center.X, i + 0.5, center.Z) * CFrame.Angles(0, -theta, 0) * CFrame.new(mid, 0, 0)
-		P({ Name = "Step", CFrame = cf, Size = V(radial, 1, 2.1), Color = if i % 2 == 0 then C("Pink") else C("Mint"), Parent = tower })
+		P({
+			Name = "Step",
+			CFrame = cf,
+			Size = V(radial, 1, 2.1),
+			Color = if i % 2 == 0 then C("Pink") else C("Mint"),
+			Parent = tower,
+		})
 	end
 end
 
@@ -882,9 +1307,27 @@ end
 -- 9) Deko: Bäume, Laternen, Bänke, Ballons, Blumenbeete
 -- ---------------------------------------------------------------------
 local function tree(parent: Instance, x: number, z: number, scale: number, leaf: Color3)
-	P({ Name = "TreeTrunk", CFrame = CFrame.new(x, 2.5 * scale, z), Size = V(1.2, 5, 1.2) * scale, Color = C("Bark"), Parent = parent })
-	P({ Name = "TreeLeaves", CFrame = CFrame.new(x, 6.5 * scale, z), Size = V(5, 4, 5) * scale, Color = leaf, Parent = parent })
-	P({ Name = "TreeLeaves", CFrame = CFrame.new(x, 9.3 * scale, z), Size = V(3.4, 2.6, 3.4) * scale, Color = leaf:Lerp(WHITE, 0.15), Parent = parent })
+	P({
+		Name = "TreeTrunk",
+		CFrame = CFrame.new(x, 2.5 * scale, z),
+		Size = V(1.2, 5, 1.2) * scale,
+		Color = C("Bark"),
+		Parent = parent,
+	})
+	P({
+		Name = "TreeLeaves",
+		CFrame = CFrame.new(x, 6.5 * scale, z),
+		Size = V(5, 4, 5) * scale,
+		Color = leaf,
+		Parent = parent,
+	})
+	P({
+		Name = "TreeLeaves",
+		CFrame = CFrame.new(x, 9.3 * scale, z),
+		Size = V(3.4, 2.6, 3.4) * scale,
+		Color = leaf:Lerp(WHITE, 0.15),
+		Parent = parent,
+	})
 end
 
 local function buildDeco(parent: Folder)
@@ -913,27 +1356,82 @@ local function buildDeco(parent: Folder)
 	-- Laternen entlang der Wege
 	local lamps = { { 7, -36 }, { -7, -36 }, { 7, 30 }, { -7, 30 }, { -36, 7 }, { -36, -7 }, { 36, 7 }, { 36, -7 } }
 	for _, l in ipairs(lamps) do
-		P({ Name = "LampPost", CFrame = CFrame.new(l[1], 3.5, l[2]), Size = V(0.5, 7, 0.5), Color = C("Charcoal"), Parent = decoFolder })
-		MapKit.ball({ Name = "LampGlow", Color = C("Cream"), Material = NEON, CanCollide = false, CanQuery = false, CastShadow = false, Parent = decoFolder }, V(l[1], 7.5, l[2]), 1.4)
+		P({
+			Name = "LampPost",
+			CFrame = CFrame.new(l[1], 3.5, l[2]),
+			Size = V(0.5, 7, 0.5),
+			Color = C("Charcoal"),
+			Parent = decoFolder,
+		})
+		MapKit.ball(
+			{
+				Name = "LampGlow",
+				Color = C("Cream"),
+				Material = NEON,
+				CanCollide = false,
+				CanQuery = false,
+				CastShadow = false,
+				Parent = decoFolder,
+			},
+			V(l[1], 7.5, l[2]),
+			1.4
+		)
 	end
 	-- Bänke um den Platz
 	for i = 0, 3 do
 		local angle = math.rad(45 + i * 90)
 		local pos = V(math.cos(angle) * 24, 0, math.sin(angle) * 24)
 		local cf = CFrame.lookAt(pos, V(0, 0, 0))
-		P({ Name = "BenchSeat", CFrame = cf * CFrame.new(0, 1, 0), Size = V(5, 0.4, 1.6), Color = C("Wood"), Material = Enum.Material.WoodPlanks, Parent = decoFolder })
-		P({ Name = "BenchBack", CFrame = cf * CFrame.new(0, 1.9, 0.7), Size = V(5, 1.4, 0.3), Color = C("Wood"), Material = Enum.Material.WoodPlanks, Parent = decoFolder })
-		P({ Name = "BenchFoot", CFrame = cf * CFrame.new(0, 0.4, 0), Size = V(4, 0.8, 1), Color = C("Charcoal"), Parent = decoFolder })
+		P({
+			Name = "BenchSeat",
+			CFrame = cf * CFrame.new(0, 1, 0),
+			Size = V(5, 0.4, 1.6),
+			Color = C("Wood"),
+			Material = Enum.Material.WoodPlanks,
+			Parent = decoFolder,
+		})
+		P({
+			Name = "BenchBack",
+			CFrame = cf * CFrame.new(0, 1.9, 0.7),
+			Size = V(5, 1.4, 0.3),
+			Color = C("Wood"),
+			Material = Enum.Material.WoodPlanks,
+			Parent = decoFolder,
+		})
+		P({
+			Name = "BenchFoot",
+			CFrame = cf * CFrame.new(0, 0.4, 0),
+			Size = V(4, 0.8, 1),
+			Color = C("Charcoal"),
+			Parent = decoFolder,
+		})
 	end
 	-- Blumenbeete am Brunnen
 	local flowerColors = { C("Pink"), C("Yellow"), C("Lilac"), C("Red") }
 	for i = 0, 5 do
 		local angle = math.rad(30 + i * 60)
 		local pos = V(math.cos(angle) * 9, 0, math.sin(angle) * 9)
-		P({ Name = "Planter", CFrame = CFrame.lookAt(pos + V(0, 0.5, 0), V(0, 0.5, 0)), Size = V(3, 1, 1.6), Color = C("Terracotta"), Parent = decoFolder })
+		P({
+			Name = "Planter",
+			CFrame = CFrame.lookAt(pos + V(0, 0.5, 0), V(0, 0.5, 0)),
+			Size = V(3, 1, 1.6),
+			Color = C("Terracotta"),
+			Parent = decoFolder,
+		})
 		for k = -1, 1 do
 			local flowerPos = CFrame.lookAt(pos, V(0, 0, 0)) * CFrame.new(k, 1.4, 0)
-			MapKit.ball({ Name = "Flower", Color = flowerColors[((i + k) % #flowerColors) + 1], CanCollide = false, CanQuery = false, CastShadow = false, Parent = decoFolder }, flowerPos.Position, 0.8)
+			MapKit.ball(
+				{
+					Name = "Flower",
+					Color = flowerColors[((i + k) % #flowerColors) + 1],
+					CanCollide = false,
+					CanQuery = false,
+					CastShadow = false,
+					Parent = decoFolder,
+				},
+				flowerPos.Position,
+				0.8
+			)
 		end
 	end
 	-- Ballons über dem Platz (schweben, nur Optik)
@@ -941,8 +1439,25 @@ local function buildDeco(parent: Folder)
 	for i = 0, 5 do
 		local angle = math.rad(i * 60 + 15)
 		local pos = V(math.cos(angle) * 12, 22 + (i % 3) * 2.5, math.sin(angle) * 12)
-		MapKit.ball({ Name = "Balloon", Color = balloonColors[i + 1], CanCollide = false, CanQuery = false, CastShadow = false, Parent = decoFolder }, pos, 3)
-		deco({ Name = "BalloonString", CFrame = CFrame.new(pos - V(0, 3.5, 0)), Size = V(0.1, 4, 0.1), Color = WHITE, Parent = decoFolder })
+		MapKit.ball(
+			{
+				Name = "Balloon",
+				Color = balloonColors[i + 1],
+				CanCollide = false,
+				CanQuery = false,
+				CastShadow = false,
+				Parent = decoFolder,
+			},
+			pos,
+			3
+		)
+		deco({
+			Name = "BalloonString",
+			CFrame = CFrame.new(pos - V(0, 3.5, 0)),
+			Size = V(0.1, 4, 0.1),
+			Color = WHITE,
+			Parent = decoFolder,
+		})
 	end
 end
 

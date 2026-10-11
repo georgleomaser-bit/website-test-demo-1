@@ -295,7 +295,7 @@ local function validateMap(errors: { string }, key: string, map: any, knownModes
 		table.insert(errors, path .. ".Name: { de, en } erwartet")
 	end
 	if not CLASSES[map.Class] then
-		table.insert(errors, path .. ".Class: \"S\", \"M\" oder \"L\" erwartet")
+		table.insert(errors, path .. '.Class: "S", "M" oder "L" erwartet')
 	end
 	if type(map.TeamSizes) ~= "table" or #map.TeamSizes == 0 then
 		table.insert(errors, path .. ".TeamSizes: Liste erwartet")

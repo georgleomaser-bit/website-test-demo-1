@@ -18,7 +18,14 @@ local RED = Color3.fromRGB(235, 60, 70)
 
 local parts: { Types.MapPart } = {
 	-- B8.3.4 Tabelle
-	{ Shape = "Block", Tag = "Dock", Pos = V(0, -0.5, -41.5), Size = V(64, 1, 67), Color = "Wood", Material = "WoodPlanks" },
+	{
+		Shape = "Block",
+		Tag = "Dock",
+		Pos = V(0, -0.5, -41.5),
+		Size = V(64, 1, 67),
+		Color = "Wood",
+		Material = "WoodPlanks",
+	},
 	{ Shape = "Block", Tag = "Canal", Pos = V(0, -2.5, 0), Size = V(64, 1, 16), Color = "Water", Center = true },
 	{ Shape = "Block", Tag = "CanalEdge", Pos = V(0, -1, -8.5), Size = V(64, 2, 1), Color = "Charcoal" },
 	{

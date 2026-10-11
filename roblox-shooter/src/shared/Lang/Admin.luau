@@ -4,7 +4,7 @@
 --  Platzhalter wie string.format: %s = Text, %d = ganze Zahl, %.2f = Kommazahl, %% = Prozentzeichen.
 --  Pflicht-Schlüssel (C16): admin.denied, admin.tainted.
 --  Benutzt von: AdminService, AntiCheatService, BalanceService (Server) und AdminPanel, AdminTools, Fly,
---  PhotoMode, DebugOverlay (Client, nur Besitzer). Spieler sehen: acKick, acBanReason, report*, abuseStart,
+--  PhotoMode, DebugOverlay (Client, nur Besitzer). Spieler sehen: acKick, acBanReason, report*,
 --  abuseEnd, kickDefault, kickAllDefault, lockedKick.
 -- =====================================================================
 
@@ -222,7 +222,6 @@ return {
 		["admin.abuseNeedBoost"] = "Wähle 2x Coins und/oder 2x XP",
 		["admin.abuseGlobal"] = "Admin-Abuse auf ALLEN Servern: %d Minuten",
 		["admin.abuseSet"] = "Admin-Abuse läuft: %d Minuten",
-		["admin.abuseStart"] = "🎉 ADMIN-ABUSE! %s für %d Minuten!",
 		["admin.abuseEnd"] = "Admin-Abuse ist vorbei – danke fürs Spielen!",
 		["admin.badMutator"] = "Unbekannter Mutator",
 		["admin.mutatorSet"] = "Mutator: %s",
@@ -538,7 +537,6 @@ return {
 		["admin.abuseNeedBoost"] = "Pick 2x Coins and/or 2x XP",
 		["admin.abuseGlobal"] = "Admin abuse on ALL servers: %d minutes",
 		["admin.abuseSet"] = "Admin abuse running: %d minutes",
-		["admin.abuseStart"] = "🎉 ADMIN ABUSE! %s for %d minutes!",
 		["admin.abuseEnd"] = "Admin abuse is over – thanks for playing!",
 		["admin.badMutator"] = "Unknown mutator",
 		["admin.mutatorSet"] = "Mutator: %s",

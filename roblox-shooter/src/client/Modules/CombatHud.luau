@@ -534,12 +534,22 @@ local function countKill(): number
 	return #kept
 end
 
+local lastBannerName = ""
+local lastBannerAt = -math.huge
+
 function CombatHud.KillBanner(name: string)
 	local label = bannerLabel
 	if not label then
 		return
 	end
-	local text = TOr("combat.popped", "ui.popped", string.sub(tostring(name or "?"), 1, 32))
+	local shortName = string.sub(tostring(name or "?"), 1, 32)
+	-- derselbe Pop von zwei Stellen gemeldet (Combat-Hit + Match-Elim): nur einmal zählen
+	local now = os.clock()
+	if shortName == lastBannerName and now - lastBannerAt < 0.3 then
+		return
+	end
+	lastBannerName, lastBannerAt = shortName, now
+	local text = TOr("combat.popped", "ui.popped", shortName)
 	label.Text = text
 	label.TextColor3 = WHITE
 	label.Visible = true
@@ -579,10 +589,20 @@ end
 -- ---------------------------------------------------------------------
 -- HITMARKER (öffentlich)
 -- ---------------------------------------------------------------------
+local lastMarkerKey = ""
+local lastMarkerAt = -math.huge
+
 function CombatHud.Hitmarker(region: string, killed: boolean, provisional: boolean?)
 	if not shown then
 		return
 	end
+	-- dieselbe Bestätigung im selben Moment doppelt (zwei Module hören auf Combat:Hit): einmal reicht
+	local markerKey = tostring(region) .. tostring(killed) .. tostring(provisional)
+	local now = os.clock()
+	if markerKey == lastMarkerKey and now - lastMarkerAt < 0.03 then
+		return
+	end
+	lastMarkerKey, lastMarkerAt = markerKey, now
 	if provisional then
 		-- vorläufig (sofort beim Schuss): klein, halbdurchsichtig, nie als Kill
 		showMarker(WHITE, 9, 2, 0.1, 0, 0.45)
@@ -1671,6 +1691,7 @@ function CombatHud.Init(context: any)
 	hooks.On("Disarmed", function()
 		myCtx = nil
 		armedMap = nil
+		table.clear(modelCache)
 		popped = false
 		releaseEnemies()
 		CombatHud.Show(false)
@@ -1734,6 +1755,16 @@ function CombatHud.Init(context: any)
 		end
 	end)
 	hooks.On("Input", layoutPanels)
+	-- Spieler weg: keine Verweise auf alte Characters behalten
+	Players.PlayerRemoving:Connect(function(leaving: Player)
+		modelCache[leaving.UserId] = nil
+		local handle = enemyHandles[leaving.UserId]
+		local highlights = module("Highlights")
+		if handle and highlights then
+			pcall(highlights.Release, handle)
+		end
+		enemyHandles[leaving.UserId] = nil
+	end)
 	hooks.On("PhotoMode", function(on)
 		photoHidden = on == true
 		if photoHidden then

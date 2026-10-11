@@ -19,7 +19,7 @@ return {
 		["ui.playSub"] = "DUELLE · FFA · TRAINING",
 		["ui.levelShort"] = "LV %d",
 		["ui.netStats"] = "%d FPS · %d ms · %d MB",
-		["ui.btn.settings"] = "Optionen",
+		["ui.btn.settings"] = "Einstellungen",
 		-- Kampf-HUD
 		["ui.headshot"] = "HEADSHOT!",
 		["ui.popped"] = "%s GEPOPPT",
@@ -30,6 +30,7 @@ return {
 		["ui.reloadHint"] = "[%s] NACHLADEN",
 		-- Touch-Knöpfe
 		["ui.touch.fire"] = "FEUER",
+		["ui.touch.ads"] = "ADS",
 		["ui.touch.reload"] = "NACHLADEN",
 		["ui.touch.slide"] = "RUTSCHEN",
 		["ui.touch.utility"] = "UTILITY",
@@ -45,7 +46,7 @@ return {
 		["ui.event.xp"] = "2× XP",
 		["ui.friendJoined"] = "👋 Dein Freund %s ist da!",
 		["ui.mutatorToday"] = "🌀 Mutator des Tages: %s",
-		["ui.autoReduced"] = "⚙️ Dein Gerät ruckelt – Reduzierte Effekte wurden eingeschaltet (änderbar in den Optionen).",
+		["ui.autoReduced"] = "⚙️ Dein Gerät ruckelt – Reduzierte Effekte wurden eingeschaltet (änderbar in den Einstellungen).",
 		["ui.rarity.Common"] = "Gewöhnlich",
 		["ui.rarity.Rare"] = "Selten",
 		["ui.rarity.Epic"] = "Episch",
@@ -144,6 +145,7 @@ return {
 		["ui.reloadHint"] = "[%s] RELOAD",
 		-- Touch buttons
 		["ui.touch.fire"] = "FIRE",
+		["ui.touch.ads"] = "ADS",
 		["ui.touch.reload"] = "RELOAD",
 		["ui.touch.slide"] = "SLIDE",
 		["ui.touch.utility"] = "UTILITY",

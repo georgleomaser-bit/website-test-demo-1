@@ -179,8 +179,10 @@ end
 -- ---------------------------------------------------------------------
 local function settings(): (number, number, number, number)
 	local nav = Config.Maps.Nav or {}
-	return tonumber(nav.Grid) or 6, tonumber(nav.Headroom) or 5.5, tonumber(nav.StepMax) or 4.5, tonumber(nav.MaxNodes)
-		or 300
+	return tonumber(nav.Grid) or 6,
+		tonumber(nav.Headroom) or 5.5,
+		tonumber(nav.StepMax) or 4.5,
+		tonumber(nav.MaxNodes) or 300
 end
 
 -- Oberkante aller abfragbaren Teile (lokal) – Startpunkt der Strahlen
@@ -375,7 +377,13 @@ local function components(adj: { { number } }): ({ number }, { number })
 	return comp, sizes
 end
 
-local function nearestIn(nodes: { Node }, keep: { [number]: boolean }?, p: Vector3, maxHoriz: number, maxDy: number): number?
+local function nearestIn(
+	nodes: { Node },
+	keep: { [number]: boolean }?,
+	p: Vector3,
+	maxHoriz: number,
+	maxDy: number
+): number?
 	local best: number? = nil
 	local bestD = math.huge
 	for i, node in ipairs(nodes) do

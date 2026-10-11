@@ -634,9 +634,10 @@ end
 
 local function startEvent(untilT: number, coins2: boolean, xp2: boolean)
 	event = { Until = untilT, Coins2 = coins2, Xp2 = xp2 }
-	local minutes = math.max(1, math.floor((untilT - workspace:GetServerTimeNow()) / 60 + 0.5))
+	-- Clients zeigen Banner/Toast mit Restzeit selbst (Effects "Event"); das Ende kennen sie über Until
 	effectAll("Event", 1, { Kind = "AdminAbuse", Until = untilT, Coins2 = coins2, Xp2 = xp2 })
-	notifyAll("admin.abuseStart", { boostText(coins2, xp2), minutes }, "Event")
+	local minutes = math.max(1, math.floor((untilT - workspace:GetServerTimeNow()) / 60 + 0.5))
+	print(("[Admin] Admin-Abuse: %s für %d Minuten"):format(boostText(coins2, xp2), minutes))
 end
 
 local function mutatorValid(key: any): boolean
@@ -2079,7 +2080,6 @@ local function tick()
 	local e = event
 	if e and workspace:GetServerTimeNow() >= e.Until then
 		event = nil
-		effectAll("Event", 1, { Kind = "AdminAbuse", Until = 0, Coins2 = false, Xp2 = false })
 		notifyAll("admin.abuseEnd", nil, "Event")
 	end
 	-- globaler Mutator abgelaufen?

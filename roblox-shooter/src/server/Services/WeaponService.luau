@@ -48,6 +48,7 @@ type AmmoState = Types.AmmoState
 type HealState = { TickAt: number, Left: number, Per: number, Step: number }
 type WState = {
 	RecvLast: number, -- os.clock() des letzten angenommenen Schusses (Empfangsabstand)
+	RecvPrev: number, -- … und des vorletzten (zwei gebündelte Pakete durch Jitter sind erlaubt)
 	SwingId: number,
 	SwingT: number,
 	ThrowId: number,
@@ -152,7 +153,7 @@ end
 local function stateOf(c: Combatant): WState
 	local s = wstates[c]
 	if not s then
-		s = { RecvLast = 0, SwingId = 0, SwingT = 0, ThrowId = 0, Heal = nil, AmmoFixAt = 0 }
+		s = { RecvLast = 0, RecvPrev = 0, SwingId = 0, SwingT = 0, ThrowId = 0, Heal = nil, AmmoFixAt = 0 }
 		wstates[c] = s
 	end
 	return s
@@ -663,8 +664,12 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 	local tolerance = num(COMBAT.IntervalTolerance, 0.75)
 	local okInterval, gapBase = intervalCheck(c, d, tShot, tolerance, f)
 	local s = stateOf(c)
-	if okInterval and s.RecvLast > 0 and opts.Recv - s.RecvLast < gapBase * num(COMBAT.RecvTolerance, 0.5) then
-		okInterval = false
+	local recvMin = gapBase * num(COMBAT.RecvTolerance, 0.5)
+	if okInterval and s.RecvLast > 0 and opts.Recv - s.RecvLast < recvMin then
+		-- Jitter bündelt manchmal zwei Pakete in einem Frame: erst ab dem dritten zu dichten Paket verwerfen
+		if s.RecvPrev > 0 and opts.Recv - s.RecvPrev < recvMin * 2 then
+			okInterval = false
+		end
 	end
 	if okInterval and not perSecondOk(c, d, tShot, f) then
 		okInterval = false
@@ -679,6 +684,7 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 	local minScale = minScaleFor(c, d, tShot, speedT, air)
 	c.LastShotT = tShot
 	pushShotTime(c, tShot)
+	s.RecvPrev = s.RecvLast
 	s.RecvLast = opts.Recv
 	if c.ShieldUntil > opts.Now and not opts.DryRun then
 		cs.SetShield(c, 0) -- Spawn-Schutz endet beim ersten Schuss
