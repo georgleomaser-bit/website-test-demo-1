@@ -15,7 +15,8 @@
 --       Knoten, Boden unter der Mitte (keine Kante über Löcher/Leere).
 --    4) Hauptkomponente = die mit dem Zonen-Knoten. Alles andere wird entfernt; Inseln mit
 --       ≥ 3 Knoten oder mit Deckungs-Knoten -> warn (Dächer/Kistendeckel einzeln sind normal).
---    5) Mehr als MaxNodes (300) -> Raster um 1 Stud gröber, höchstens 4 Versuche.
+--    5) Mehr als Config.Maps.Nav.MaxNodes -> Raster um 1 Stud gröber, höchstens 4 Versuche; zwei bis drei
+--       Raster-Versätze, der beste Graph (Zone + alle Spawns erreichbar) gewinnt.
 --
 --  Öffentliche API (WP2-intern + WorldTests):
 --    NavBuilder.Build(model, layout, origin): (Types.NavGraph, Report)
@@ -204,7 +205,7 @@ local function settings(): (number, number, number, number)
 	return tonumber(nav.Grid) or 6,
 		tonumber(nav.Headroom) or 5.5,
 		tonumber(nav.StepMax) or 4.5,
-		tonumber(nav.MaxNodes) or 300
+		tonumber(nav.MaxNodes) or 400
 end
 
 -- Oberkante aller abfragbaren Teile (lokal) – Startpunkt der Strahlen

@@ -675,7 +675,7 @@ local function spawnEntry(m: any, e: Entry): boolean
 		m.ById[c.Id] = e
 		call("CharacterService", "Teleport", c, lifted(spawnCf))
 		call("CharacterService", "Freeze", c, true)
-		call("CharacterService", "SetBaseSpeed", c, (Config.Player.Walk or 16) * (m.Rules.SpeedMult or 1))
+		-- Tempo (Stufe × Mutator) setzt BotService.Spawn selbst
 		call("BotService", "SetGoal", c, { Kind = "Idle" })
 		return true
 	end
@@ -707,8 +707,7 @@ local function spawnEntry(m: any, e: Entry): boolean
 	call("CombatService", "Register", c)
 	call("CharacterService", "Teleport", c, lifted(spawnCf))
 	call("CharacterService", "Freeze", c, true)
-	call("CharacterService", "SetBaseSpeed", c, (Config.Player.Walk or 16) * (m.Rules.SpeedMult or 1))
-	call("CharacterService", "BuildGunVisuals", c)
+	-- BaseSpeed (Walk × SpeedMult) und 3rd-Person-Waffen setzt CombatService.Register (B14.8)
 	setAllowance(p, m.Rules)
 	return true
 end
@@ -861,8 +860,7 @@ local function makeApi(m: any): any
 				call("WeaponService", "SetLoadout", c, table.clone(m.RoundLoadout))
 			end
 			call("CombatService", "Revive", c, cf)
-			call("CharacterService", "Freeze", c, true)
-			call("WeaponService", "ResetForRound", c)
+			call("CharacterService", "Freeze", c, true) -- Revive setzt auch Munition zurück
 			if suddenDeath then
 				-- Sudden Death: alle starten mit 50 HP (Server-Wert + Attribut für die Anzeige)
 				local hp = math.min(c.MaxHp, MCFG.SuddenDeathHp or 50)
@@ -1287,6 +1285,20 @@ local function snapshot(p: Player, weaponKey: string?): any
 	}
 end
 
+-- Werte aus der Fortschritts-Auswertung (WP8) bevorzugen, sonst Vorher/Nachher-Vergleich der Daten
+local SUMMARY_KEYS = {
+	"XpGain",
+	"Level",
+	"XpInLevel",
+	"XpNext",
+	"Coins",
+	"MasteryWeapon",
+	"MasteryBefore",
+	"MasteryAfter",
+	"PassXpBefore",
+	"PassXpAfter",
+}
+
 local function buildMe(m: any, e: Entry, before: any, after: any, r: Types.PlayerResult, weaponKey: string?): any
 	local s = e.Stats
 	local stats = {
@@ -1299,52 +1311,65 @@ local function buildMe(m: any, e: Entry, before: any, after: any, r: Types.Playe
 		Shots = s.ShotsFired,
 		Score = if m.Ffa and m.Scores then (m.Scores[e.Id] or 0) else nil,
 	}
-	if not before or not after then
-		return {
-			XpGain = 0,
-			Level = 1,
-			XpInLevel = 0,
-			XpNext = 0,
-			Coins = 0,
-			Mvp = r.Mvp,
-			Stats = stats,
-			QuestTicks = {},
-		}
-	end
-	local level, inLevel = after.Level, after.XP
-	if ProgressMath and type(ProgressMath.LevelFromTotal) == "function" then
-		local ok, l, x = pcall(ProgressMath.LevelFromTotal, after.TotalXP)
-		if ok and type(l) == "number" and type(x) == "number" then
-			level, inLevel = l, x
-		end
-	end
-	local xpNext = 0
-	if ProgressMath and type(ProgressMath.XpToNext) == "function" then
-		local ok, n = pcall(ProgressMath.XpToNext, level)
-		xpNext = if ok and type(n) == "number" then n else 0
-	end
-	local ticks = {}
-	for id, q in pairs(after.Quests) do
-		local old = before.Quests[id]
-		if old == nil or q.P > old.P then
-			table.insert(ticks, { Id = id, P = q.P, Goal = q.Goal })
-		end
-	end
-	return {
-		XpGain = math.max(0, after.TotalXP - before.TotalXP),
-		Level = level,
-		XpInLevel = inLevel,
-		XpNext = xpNext,
-		Coins = math.max(0, after.Coins - before.Coins),
+	local me: { [string]: any } = {
+		XpGain = 0,
+		Level = 1,
+		XpInLevel = 0,
+		XpNext = 0,
+		Coins = 0,
 		MasteryWeapon = weaponKey,
-		MasteryBefore = before.Mastery,
-		MasteryAfter = after.Mastery,
-		PassXpBefore = before.PassXp,
-		PassXpAfter = after.PassXp,
-		QuestTicks = ticks,
+		MasteryBefore = 0,
+		MasteryAfter = 0,
+		PassXpBefore = 0,
+		PassXpAfter = 0,
+		QuestTicks = {},
 		Mvp = r.Mvp,
 		Stats = stats,
 	}
+	if before and after then
+		local level, inLevel = after.Level, after.XP
+		if ProgressMath and type(ProgressMath.LevelFromTotal) == "function" then
+			local ok, l, x = pcall(ProgressMath.LevelFromTotal, after.TotalXP)
+			if ok and type(l) == "number" and type(x) == "number" then
+				level, inLevel = l, x
+			end
+		end
+		local xpNext = 0
+		if ProgressMath and type(ProgressMath.XpToNext) == "function" then
+			local ok, n = pcall(ProgressMath.XpToNext, level)
+			xpNext = if ok and type(n) == "number" then n else 0
+		end
+		local ticks = {}
+		for id, q in pairs(after.Quests) do
+			local old = before.Quests[id]
+			if old == nil or q.P > old.P then
+				table.insert(ticks, { Id = id, P = q.P, Goal = q.Goal })
+			end
+		end
+		me.XpGain = math.max(0, after.TotalXP - before.TotalXP)
+		me.Level = level
+		me.XpInLevel = inLevel
+		me.XpNext = xpNext
+		me.Coins = math.max(0, after.Coins - before.Coins)
+		me.MasteryBefore = before.Mastery
+		me.MasteryAfter = after.Mastery
+		me.PassXpBefore = before.PassXp
+		me.PassXpAfter = after.PassXp
+		me.QuestTicks = ticks
+	end
+	local p = e.Player
+	if p then
+		local ok, summary = call("ProgressionService", "MatchSummary", p, m.Id)
+		if ok and type(summary) == "table" then
+			for _, key in ipairs(SUMMARY_KEYS) do
+				local value = summary[key]
+				if value ~= nil and value ~= "" then
+					me[key] = value
+				end
+			end
+		end
+	end
+	return me
 end
 
 -- Ergebnis für einen einzelnen Leaver/AFK sofort melden (Verlierer-Wertung, B5)
@@ -2081,7 +2106,9 @@ function MatchService.Create(spec: Types.MatchSpec): number?
 		m.Mood = (Config.Maps and Config.Maps.LobbyMood) or "Day"
 	elseif type(spec.Map) == "string" and mapCfg(spec.Map) and not mapCfg(spec.Map).Fixed then
 		m.Map = spec.Map
-		m.Mood = if type(spec.Mood) == "string" then spec.Mood else pickMood(spec.Map)
+		local moods = Config.Maps and Config.Maps.Moods
+		local moodOk = type(spec.Mood) == "string" and type(moods) == "table" and moods[spec.Mood] ~= nil
+		m.Mood = if moodOk then spec.Mood else pickMood(spec.Map)
 	elseif tutorial then
 		m.Map = (MODES.Tutorial and MODES.Tutorial.Map) or "PillarBox"
 		m.Mood = (MODES.Tutorial and MODES.Tutorial.Mood) or pickMood(m.Map)
@@ -2371,8 +2398,13 @@ function MatchService.Route(p: Player, _char: Model): (string, CFrame?)
 	if phase == "Vote" or phase == "Init" then
 		return "Lobby", nil
 	end
+	-- CharacterService.Unpop setzt selbst +3 Y auf den Spawn
 	if phase == "Load" or phase == "Intro" or phase == "Prep" then
-		return "Spawn", lifted(spawnFor(m, e))
+		return "Spawn", spawnFor(m, e)
+	end
+	local c = e.Combatant :: Combatant
+	if (phase == "RoundEnd" or phase == "MatchEnd") and c.Alive then
+		return "Spawn", spawnFor(m, e) -- kein Fallback-Pop zwischen den Runden
 	end
 	return "Vault", nil
 end
@@ -2702,6 +2734,11 @@ local function tickMatch(m: any, dt: number)
 				end
 			end
 			if m.Phase == "Load" then
+				-- ein Team ohne Mitglieder (z. B. Bot-Budget beim Laden erschöpft) -> abbrechen statt Freilos
+				if not m.Ffa and (teamHumans(m, 1) == 0 or teamHumans(m, 2) == 0) then
+					cancelMatch(m, "match.botsBusy")
+					return
+				end
 				beginIntro(m)
 			end
 		end
