@@ -15,6 +15,8 @@
 --   • Speed-Pads: Pfeile laufen über das Pad, Pad pulsiert. Mit Boost: Leuchtspur am Spieler (bei allen),
 --     beim eigenen Boost Sichtfeld-Puls + Leucht-Rand am Bildschirm.
 --   • Gold-Ei-Rennen: Fanfare (Banner + Konfetti) beim Start, Leuchtpfeil + Bodenring über dem Gold-Ei.
+--  Look wie bei Steal a Brainrot: Schriften ohne Kasten (FredokaOne + dicke schwarze Kontur), knallige
+--  SmoothPlastic-Farben, Neon nur für Highlights (rote Augen, Ring am Gold-Ei), Cartoon-Funken statt Staubwolken.
 --  Leistung: alles dt-basiert, Teile mit EINEM workspace:BulkMoveTo pro Frame, weit weg seltener bzw.
 --  gar nicht, feste Vorräte (Kugeln, Emitter) statt neuer Teile, keine neuen Tabellen pro Frame.
 -- =====================================================================
@@ -235,16 +237,20 @@ end
 local function makeDust(parent: BasePart): ParticleEmitter
 	local emitter = Instance.new("ParticleEmitter")
 	emitter.Name = "Dust"
-	emitter.Color = ColorSequence.new(Color3.fromRGB(205, 190, 150), Color3.fromRGB(160, 150, 130))
-	emitter.LightInfluence = 0.8
+	-- helle Cartoon-Funken an den Füßen (statt grauer Staubwolke)
+	emitter.Color = ColorSequence.new(Color3.fromRGB(255, 248, 225), Color3.fromRGB(240, 215, 160))
+	emitter.LightEmission = 0.1
+	emitter.LightInfluence = 0.4
 	emitter.Size = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.5),
-		NumberSequenceKeypoint.new(1, 1.6),
+		NumberSequenceKeypoint.new(0, 0.4),
+		NumberSequenceKeypoint.new(0.4, 0.9),
+		NumberSequenceKeypoint.new(1, 0),
 	})
 	emitter.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.45),
+		NumberSequenceKeypoint.new(0, 0.1),
 		NumberSequenceKeypoint.new(1, 1),
 	})
+	emitter.RotSpeed = NumberRange.new(-150, 150)
 	emitter.Lifetime = NumberRange.new(0.35, 0.6)
 	emitter.Speed = NumberRange.new(2, 5)
 	emitter.SpreadAngle = Vector2.new(60, 60)
@@ -307,8 +313,10 @@ local function buildMonster(source: Instance)
 	label.TextScaled = true
 	label.Text = "!"
 	label.TextColor3 = EYE_RED
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 3
+	local stroke = Instance.new("UIStroke") -- dicke schwarze Kontur, kein Kasten
+	stroke.Thickness = 4
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = label
 	label.Parent = alert
 	local foot = parts[#parts - 1]
@@ -1075,7 +1083,8 @@ local function buildRace()
 	label.TextColor3 = GOLD
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = 4
-	stroke.Color = Color3.fromRGB(120, 60, 0)
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
 	stroke.Parent = label
 	label.Parent = gui
 	local ringPart = Instance.new("Part")
@@ -1094,7 +1103,8 @@ local function buildRace()
 	ringPart.Parent = folder
 	raceAnchor, raceArrow, raceArrowLabel, raceRing = anchor, gui, label, ringPart
 
-	-- Fanfare-Banner (einmal gebaut, wiederverwendet)
+	-- Fanfare-Schriftzug wie bei Steal a Brainrot: ohne Kasten, großer goldener Text mit dicker schwarzer
+	-- Kontur und Glanz-Streifen (einmal gebaut, wiederverwendet)
 	local banner = Instance.new("Frame")
 	banner.Name = "RaceFanfare"
 	banner.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1116,7 +1126,8 @@ local function buildRace()
 	title.ZIndex = 31
 	local titleStroke = Instance.new("UIStroke")
 	titleStroke.Thickness = 5
-	titleStroke.Color = Color3.fromRGB(110, 55, 0)
+	titleStroke.Color = Color3.new(0, 0, 0)
+	titleStroke.LineJoinMode = Enum.LineJoinMode.Round
 	titleStroke.Parent = title
 	local gradient = Instance.new("UIGradient")
 	gradient.Color = ColorSequence.new({
@@ -1140,6 +1151,8 @@ local function buildRace()
 	sub.ZIndex = 31
 	local subStroke = Instance.new("UIStroke")
 	subStroke.Thickness = 3
+	subStroke.Color = Color3.new(0, 0, 0)
+	subStroke.LineJoinMode = Enum.LineJoinMode.Round
 	subStroke.Parent = sub
 	sub.Parent = banner
 	banner.Parent = ctx.Gui

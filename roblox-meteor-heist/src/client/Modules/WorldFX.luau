@@ -14,6 +14,10 @@
 --   • Meteore in der Base zeigen "🐣 Schlüpft in m:ss"
 --   • Krasse Eier (Attribut "RareFX", ab Legendary; 4 = Infinity, Ring doppelt so schnell): Ring dreht sich, Licht pulsiert, Partikel nur
 --     in Kameranähe, ab Mythic Blitze (nur die nächsten MAX_RINGS)
+--   • Regenbogen-Schilder: hat eine Zeile eines Schilds "Info" (ab Mythic) einen UIGradient, dreht er sich –
+--     EINE gemeinsame, gedrosselte Schleife, nur Schilder in Kameranähe
+--  Look wie bei Steal a Brainrot: knallige SmoothPlastic-Farben, Neon nur für echte Highlights
+--  (Risse im schlüpfenden Ei, Ring + Blitze krasser Eier), Partikel als bunte Cartoon-Funken statt Staubwolken.
 --  Arbeit pro Frame ist begrenzt: höchstens MAX_ANIM Aliens in ANIM_RANGE Studs werden animiert
 --  (jedes ca. 30x pro Sekunde), weit entfernte Dinge werden seltener oder gar nicht bewegt.
 -- =====================================================================
@@ -155,7 +159,7 @@ local function makeStripeSet(
 			CanTouch = false,
 			CastShadow = false,
 			Size = Vector3.new(math.max(0.4, width - 0.8), 0.06, if accent then 0.5 else 0.7),
-			Material = if accent then Enum.Material.Neon else Enum.Material.SmoothPlastic,
+			Material = Enum.Material.SmoothPlastic, -- knallige Farbe statt Neon (Neon nur für echte Highlights)
 			Color = if accent then colors.accent else colors.normal,
 			CFrame = surfaceCFrame.Rotation + startPos,
 			Parent = folder,
@@ -298,15 +302,18 @@ local function makeDust(character: Model, root: BasePart): ParticleEmitter
 	attachment.Name = "TreadDust"
 	attachment.Position = Vector3.new(0, -2.8, 0.6)
 	attachment.Parent = root
+	-- helle Cartoon-Funken in Bandfarbe (statt grauer Staubwolke)
 	local emitter: ParticleEmitter = UI.Create("ParticleEmitter", {
 		Name = "TreadDust",
-		LightInfluence = 0.6,
+		LightEmission = 0.2,
+		LightInfluence = 0.3,
 		Size = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.35),
-			NumberSequenceKeypoint.new(1, 1.2),
+			NumberSequenceKeypoint.new(0, 0.3),
+			NumberSequenceKeypoint.new(0.4, 0.7),
+			NumberSequenceKeypoint.new(1, 0),
 		}),
 		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.4),
+			NumberSequenceKeypoint.new(0, 0.1),
 			NumberSequenceKeypoint.new(1, 1),
 		}),
 		Lifetime = NumberRange.new(0.3, 0.55),
@@ -315,6 +322,7 @@ local function makeDust(character: Model, root: BasePart): ParticleEmitter
 		EmissionDirection = Enum.NormalId.Back,
 		Acceleration = Vector3.new(0, 3, 0),
 		Drag = 4,
+		RotSpeed = NumberRange.new(-150, 150),
 		Rate = 0,
 		Parent = attachment,
 	})
@@ -370,7 +378,7 @@ local function stepTreadmills(camPos: Vector3)
 					emitter.Rate = rate
 				end
 				if found and running then
-					local color = found.Color:Lerp(Color3.fromRGB(220, 215, 205), 0.5)
+					local color = found.Color:Lerp(Color3.new(1, 1, 1), 0.35)
 					emitter.Color = ColorSequence.new(color)
 				end
 			end
@@ -1022,6 +1030,88 @@ local function stepRainbow(now: number, camPos: Vector3)
 					highlight.OutlineColor = color
 				end
 			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- REGENBOGEN-SCHILDER: Hat eine Zeile eines Schilds (BillboardGui "Info" über Aliens/Eiern, ab Mythic
+-- vom Server, z.B. RarityLabel) einen UIGradient, dreht er sich hier wie bei Steal a Brainrot.
+-- EINE gemeinsame Schleife für alle: alle SCAN_INTERVAL s werden die Schilder in SIGN_RANGE gewählt,
+-- nur die drehen sich (höchstens alle SIGN_INTERVAL s). Keine eigene Schleife/Tween pro Schild.
+-- ---------------------------------------------------------------------
+type SignRecord = { Gradient: UIGradient, Gui: BillboardGui, Offset: number }
+
+local SIGN_INTERVAL = 1 / 25 -- höchstens 25x pro Sekunde drehen
+local SIGN_RANGE = 120 -- nur Schilder so nah an der Kamera
+local SIGN_SPEED = 140 -- Grad pro Sekunde
+local SIGN_DEPTH = 4 -- so viele Ebenen über dem Verlauf wird das Schild "Info" gesucht
+
+local signRecords: { SignRecord } = {}
+local signSeen: { [Instance]: boolean } = {}
+local activeSigns: { SignRecord } = {}
+
+-- Das Schild "Info", in dem dieser Verlauf steckt (oder nil)
+local function signGui(inst: Instance): BillboardGui?
+	local node = inst.Parent
+	for _ = 1, SIGN_DEPTH do
+		if node == nil then
+			return nil
+		elseif node:IsA("BillboardGui") then
+			return if node.Name == "Info" then node else nil
+		end
+		node = node.Parent
+	end
+	return nil
+end
+
+local function addSignGradient(inst: Instance)
+	if not inst:IsA("UIGradient") or signSeen[inst] then
+		return
+	end
+	local gui = signGui(inst)
+	if gui then
+		signSeen[inst] = true
+		table.insert(signRecords, { Gradient = inst, Gui = gui, Offset = math.random() * 360 })
+	end
+end
+
+local function signPosition(gui: BillboardGui): Vector3?
+	local target = gui.Adornee or gui.Parent
+	if target and target:IsA("BasePart") then
+		return target.Position
+	elseif target and target:IsA("Attachment") then
+		return target.WorldPosition
+	elseif target and target:IsA("Model") then
+		return target:GetPivot().Position
+	end
+	return nil
+end
+
+-- Alle SCAN_INTERVAL s: Zerstörtes raus, Schilder in der Nähe (mit eingeschaltetem Verlauf) merken
+local function scanSigns(camPos: Vector3)
+	table.clear(activeSigns)
+	for i = #signRecords, 1, -1 do
+		local record = signRecords[i]
+		local gradient = record.Gradient
+		if gradient.Parent == nil or not gradient:IsDescendantOf(workspace) then
+			signSeen[gradient] = nil
+			signRecords[i] = signRecords[#signRecords]
+			signRecords[#signRecords] = nil
+		elseif gradient.Enabled and record.Gui.Enabled then
+			local pos = signPosition(record.Gui)
+			if pos and (pos - camPos).Magnitude < SIGN_RANGE then
+				table.insert(activeSigns, record)
+			end
+		end
+	end
+end
+
+local function stepSigns(now: number)
+	for _, record in ipairs(activeSigns) do
+		local gradient = record.Gradient
+		if gradient.Parent ~= nil then
+			gradient.Rotation = (now * SIGN_SPEED + record.Offset) % 360
 		end
 	end
 end
@@ -1866,6 +1956,7 @@ function WorldFX.Init(context: any, map: Instance)
 	local function onWorldDescendant(inst: Instance)
 		considerRainbow(inst)
 		addHighlight(inst)
+		addSignGradient(inst)
 	end
 	for _, inst in ipairs(workspace:GetDescendants()) do
 		onWorldDescendant(inst)
@@ -1873,6 +1964,7 @@ function WorldFX.Init(context: any, map: Instance)
 	workspace.DescendantAdded:Connect(onWorldDescendant)
 
 	local slowClock = 0
+	local signClock = 0
 	local hatchClock = HATCH_INTERVAL
 	local scanClock = SCAN_INTERVAL -- gleich im ersten Frame auswählen
 	local cleanupClock = 0
@@ -1922,6 +2014,7 @@ function WorldFX.Init(context: any, map: Instance)
 			scanAnim(camPos)
 			scanHighlights(camPos)
 			scanRare(camPos)
+			scanSigns(camPos)
 		end
 		dustClock += dt
 		if dustClock >= DUST_INTERVAL then
@@ -1956,6 +2049,14 @@ function WorldFX.Init(context: any, map: Instance)
 			-- abziehen statt auf 0 setzen -> gleichmäßiger Takt (nach Rucklern nicht nachholen)
 			slowClock = math.min(slowClock - SLOW_INTERVAL, SLOW_INTERVAL)
 			stepRainbow(animClock, camPos)
+		end
+		-- Regenbogen-Schilder in der Nähe drehen (gedrosselt, eine Schleife für alle)
+		signClock += dt
+		if signClock >= SIGN_INTERVAL then
+			signClock = math.min(signClock - SIGN_INTERVAL, SIGN_INTERVAL)
+			if #activeSigns > 0 then
+				stepSigns(animClock)
+			end
 		end
 	end)
 end

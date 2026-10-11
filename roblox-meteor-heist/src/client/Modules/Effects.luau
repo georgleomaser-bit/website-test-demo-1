@@ -4,21 +4,22 @@
 --   "Collect"  -> großes "+$X" in der Bildschirmmitte + Münzen fliegen von dir zum Geld-Zähler
 --   "Deliver"  -> Geister-Meteor fliegt im Bogen vom Nest in die Base, mit Funkenschweif
 --                 (kommt er fast senkrecht von oben, z.B. Egg Rush: fällt er beschleunigt herunter),
---                 beim Aufprall: Staub-Puff + Druckwelle
---   "Hatch"    -> Funken-Explosion + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
+--                 beim Aufprall: heller Cartoon-Puff + Druckwelle
+--   "Hatch"    -> bunte Cartoon-Funken + Lichtblitz + Schalen-Splitter + Druckwelle, wenn ein Alien schlüpft
 --                 (ab Legendary größer: Lichtsäule + zweite Druckwelle, Mythic+ Funkenwelle,
 --                  Secret/Admin Regenbogen-Explosion)
 --                 (das Alien selbst ploppt in WorldFX mit Overshoot herein)
---   "HatchReveal" -> große Karte in der Bildschirmmitte (Ultra / ab Epic) mit Strahlenkranz + Konfetti,
---                    sonst bzw. beim Tragen kleine Karte oben rechts
+--   "HatchReveal" -> wie bei Steal a Brainrot OHNE Kasten: großer Schriftzug in der Mitte (Ultra / ab Epic),
+--                    Seltenheit groß in Seltenheitsfarbe (ab Mythic drehender Regenbogen), Strahlenkranz,
+--                    etwas Konfetti; sonst bzw. beim Tragen klein oben rechts
 --   "Shake" (weich und dezent), "Confetti" (fliegt aus zwei Kanonen hoch, fällt mit Schwerkraft,
 --   dreht und flattert), "Alarm" wie bisher
 --   "BigNest"  -> Legendary+ im großen Nest: bunte Konfetti-Bursts + Druckwelle am Nest
 --   "RaceStart" -> Ei-Rennen startet: Konfetti am Renn-Nest + drei Trommelschläge
 --   "NestPop"  -> (lokal vom Modul NestField) neues Ei im Nest: kleines Aufleuchten
 --   "Announce" -> große Admin-Ansage oben in der Mitte: Kopfbild, Name in Blau + Haken, Text in Weiß
---                 (ohne Box, federt rein, ~8 s, blendet aus; mehrere nacheinander)
---   "Warn"     -> großer roter Hinweis vom Admin in der Bildschirmmitte
+--                 (OHNE Box, ploppt auf, ~8 s, blendet aus; mehrere nacheinander)
+--   "Warn"     -> großer roter Hinweis vom Admin in der Bildschirmmitte (ohne Kasten, dicke Kontur)
 --   "Bonked"   -> vom Schläger getroffen: kurz taumeln (macht das Modul Bat)
 --  Dazu: Rebirth-Bildschirmblitz (Effects.RebirthFlash, vom HUD aufgerufen).
 --  Bausteine für andere Module: Effects.Burst / Ring / Puff / Shake / IsHidden (Base, NestField, Trade).
@@ -203,12 +204,15 @@ local function cashPopup(amount: number)
 		return
 	end
 	popupCount += 1
+	-- wie bei Steal a Brainrot: kein Kasten, großer grüner Text, dicke schwarze Kontur, leicht schräg
 	local scale: UIScale = UI.Create("UIScale", { Scale = 0.4 })
-	local stroke: UIStroke = UI.Create("UIStroke", { Thickness = 4, Color = BLACK })
+	local stroke: UIStroke =
+		UI.Create("UIStroke", { Thickness = 4, Color = BLACK, LineJoinMode = Enum.LineJoinMode.Round })
 	local popup: TextLabel = UI.Create("TextLabel", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, (math.random() - 0.5) * 120, 0.44, 0),
-		Size = UDim2.fromOffset(460, 70),
+		Size = UDim2.fromOffset(460, 76),
+		Rotation = (math.random() - 0.5) * 10,
 		BackgroundTransparency = 1,
 		Font = Enum.Font.FredokaOne,
 		TextScaled = true,
@@ -334,7 +338,8 @@ local function flyCoins(amount: number)
 end
 
 -- ---------------------------------------------------------------------
--- FUNKEN-EXPLOSION (Schlüpfen, Landung eines Lieferflugs)
+-- FUNKEN-EXPLOSION (Schlüpfen, Landung eines Lieferflugs): knallige Cartoon-Funken (Sternchen-Textur),
+-- wenig Leuchten (sonst wirken sie am hellen Tag blass/weiß), kein Nebel
 -- ---------------------------------------------------------------------
 local BURST_RANGE = 450 -- weiter weg sieht man es eh nicht -> nichts tun
 local FLASH_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -364,8 +369,8 @@ end
 
 local function makeEmitter(color: Color3, parent: Instance, big: boolean): ParticleEmitter
 	return UI.Create("ParticleEmitter", {
-		Color = ColorSequence.new(color, WHITE),
-		LightEmission = 1,
+		Color = ColorSequence.new(color:Lerp(WHITE, 0.45), color),
+		LightEmission = 0.4,
 		LightInfluence = 0,
 		Size = NumberSequence.new({
 			NumberSequenceKeypoint.new(0, big and 1.4 or 0.8),
@@ -463,7 +468,7 @@ local function ring(position: Vector3, color: Color3, size: number, time: number
 	Debris:AddItem(wave, time + 0.05)
 end
 
--- Staub-Puff (weiche graue Wolke) beim Aufprall
+-- Aufprall-Puff: helle Cartoon-Sternchen (weiß -> Farbe) spritzen flach zur Seite – keine graue Staubwolke
 local function puff(position: Vector3, color: Color3, amount: number)
 	local folder = fxFolder
 	local camera = workspace.CurrentCamera
@@ -477,32 +482,33 @@ local function puff(position: Vector3, color: Color3, amount: number)
 		CFrame = CFrame.new(position),
 		Parent = folder,
 	})
-	local smoke: ParticleEmitter = UI.Create("ParticleEmitter", {
-		Color = ColorSequence.new(color:Lerp(WHITE, 0.6), Color3.fromRGB(150, 145, 140)),
-		LightEmission = 0.2,
-		LightInfluence = 0.6,
+	local poof: ParticleEmitter = UI.Create("ParticleEmitter", {
+		Color = ColorSequence.new(WHITE, color:Lerp(WHITE, 0.3)),
+		LightEmission = 0.3,
+		LightInfluence = 0,
 		Size = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.8),
-			NumberSequenceKeypoint.new(0.4, 2.2),
-			NumberSequenceKeypoint.new(1, 3),
+			NumberSequenceKeypoint.new(0, 0.6),
+			NumberSequenceKeypoint.new(0.35, 1.5),
+			NumberSequenceKeypoint.new(1, 0),
 		}),
 		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 0.35),
+			NumberSequenceKeypoint.new(0, 0.05),
+			NumberSequenceKeypoint.new(0.7, 0.25),
 			NumberSequenceKeypoint.new(1, 1),
 		}),
-		Lifetime = NumberRange.new(0.5, 0.9),
-		Speed = NumberRange.new(6, 12),
+		Lifetime = NumberRange.new(0.4, 0.7),
+		Speed = NumberRange.new(7, 13),
 		SpreadAngle = Vector2.new(80, 10),
 		EmissionDirection = Enum.NormalId.Top,
-		Acceleration = Vector3.new(0, 3, 0),
+		Acceleration = Vector3.new(0, -8, 0),
 		Drag = 5,
-		RotSpeed = NumberRange.new(-60, 60),
+		RotSpeed = NumberRange.new(-120, 120),
 		Rotation = NumberRange.new(0, 360),
 		Rate = 0,
 		Parent = holder,
 	})
-	smoke:Emit(math.clamp(math.floor(amount), 1, 30))
-	Debris:AddItem(holder, 1.2)
+	poof:Emit(math.clamp(math.floor(amount * 0.7), 1, 20))
+	Debris:AddItem(holder, 1)
 end
 
 -- Schalen-Splitter: kleine Stücke fliegen mit Schwerkraft und Drehung weg (fester Vorrat,
@@ -535,7 +541,7 @@ local function buildShards()
 		local part: BasePart = localPart({
 			Name = "Shard",
 			Size = Vector3.new(0.5, 0.15, 0.4),
-			Material = Enum.Material.Slate,
+			Material = Enum.Material.SmoothPlastic,
 			CFrame = HIDDEN_CF,
 			Parent = folder,
 		})
@@ -576,7 +582,7 @@ local function spawnShards(position: Vector3, color: Color3, amount: number, sca
 		local part = shard.Part
 		local size = (0.3 + math.random() * 0.4) * scale
 		part.Size = Vector3.new(size, size * 0.3, size * 0.8)
-		part.Color = color:Lerp(Color3.fromRGB(120, 110, 100), math.random() * 0.5)
+		part.Color = color:Lerp(WHITE, math.random() * 0.5) -- helle, knallige Schalen-Stücke
 		part.Transparency = 0
 	end
 end
@@ -854,11 +860,11 @@ local function hatch(data: any)
 		hatchPillar(data.Position, color, index)
 		ring(data.Position - Vector3.new(0, 0.6, 0), WHITE, 20 + big * 6, 0.8)
 		if index >= HATCH_RAINBOW_FROM then
-			-- Regenbogen: Funken in mehreren Farben + bunte Druckwellen
-			for i = 0, 4 do
-				local hue = Color3.fromHSV(i / 5, 0.85, 1)
-				burst(data.Position + Vector3.new(0, 1 + i * 0.6, 0), hue, 20, false)
-				ring(data.Position - Vector3.new(0, 0.8 - i * 0.1, 0), hue, 16 + i * 6, 0.6 + i * 0.12)
+			-- Regenbogen: Funken in drei knalligen Farben + bunte Druckwellen (sparsam, aber bunt)
+			for i = 0, 2 do
+				local hue = Color3.fromHSV(i / 3, 0.85, 1)
+				burst(data.Position + Vector3.new(0, 1 + i * 0.9, 0), hue, 22, false)
+				ring(data.Position - Vector3.new(0, 0.8 - i * 0.15, 0), hue, 16 + i * 9, 0.6 + i * 0.18)
 			end
 		elseif index >= HATCH_HUGE_FROM then
 			task.delay(0.15, function()
@@ -868,12 +874,12 @@ local function hatch(data: any)
 	end
 	-- Alien ploppt in WorldFX mit Overshoot herein
 	WorldFX.NoteHatch(data.Position)
-	-- Ganz nah dran? Kurz wackeln (seltene stärker und weiter)
+	-- Ganz nah dran? Kurz und leicht wackeln (seltene etwas stärker und weiter)
 	local character = player.Character
 	local rootPart = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
 	local shakeRange = if index >= HATCH_BIG_FROM then 70 else 40
 	if rootPart and (rootPart.Position - data.Position).Magnitude < shakeRange then
-		shake(0.25 + index * 0.04 + (if index >= HATCH_BIG_FROM then 0.3 else 0))
+		shake(0.2 + index * 0.03 + (if index >= HATCH_BIG_FROM then 0.2 else 0))
 	end
 end
 
@@ -997,18 +1003,20 @@ local function alarm()
 end
 
 -- ---------------------------------------------------------------------
--- HATCH REVEAL: große Karte in der Mitte (Name in Seltenheits-Farbe, Stufe, Mutation)
--- Eine Karte wird einmal gebaut und wiederverwendet; mehrere hintereinander warten kurz.
--- Groß + Konfetti nur für Besonderes (Ultra oder ab Epic). "Selten"-Aliens aus kleinen Eiern und
--- alles, während du Beute trägst, kommt als kleine Karte oben rechts (verdeckt nicht die Mitte).
+-- HATCH REVEAL wie bei Steal a Brainrot: KEIN Kasten, sondern ein großer Schriftzug in der Mitte –
+-- Seltenheit riesig in Seltenheitsfarbe (ab Mythic Regenbogen-Verlauf, der sich dreht), Name in Weiß,
+-- Mutation + Einkommen, alles mit dicker schwarzer Kontur; dahinter ein heller Strahlenkranz.
+-- Wird einmal gebaut und wiederverwendet; mehrere hintereinander warten kurz.
+-- Groß + etwas Konfetti nur für Besonderes (Ultra oder ab Epic). "Selten"-Aliens aus kleinen Eiern und
+-- alles, während du Beute trägst, kommt klein oben rechts (verdeckt nicht die Mitte).
 -- ---------------------------------------------------------------------
-local REVEAL_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local REVEAL_POP_INFO = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local REVEAL_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.In)
 local REVEAL_SPIN_INFO = TweenInfo.new(6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
-local REVEAL_SPIN2_INFO = TweenInfo.new(9, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
+local REVEAL_RAINBOW_INFO = TweenInfo.new(1.6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1)
 local REVEAL_PULSE_INFO = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 local REVEAL_TILT_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
-local RAY_COUNT = 12 -- Strahlen im äußeren Kranz (der innere hat halb so viele, dreht andersrum)
+local RAY_COUNT = 12 -- Strahlen im Kranz
 local REVEAL_TIME = 3.2
 local MINI_REVEAL_TIME = 1.8
 local MINI_REVEAL_SCALE = 0.45
@@ -1027,21 +1035,20 @@ type RevealUI = {
 	Holder: Frame,
 	Scale: UIScale,
 	Rays: Frame,
-	Rays2: Frame,
 	RayScale: UIScale,
 	Glow: Frame,
-	RayTweens: { Tween },
-	Card: Frame,
-	CardGradient: UIGradient,
+	Tweens: { Tween }, -- laufende Endlos-Tweens (Strahlen, Regenbogen), werden beim Ausblenden gestoppt
 	Title: TextLabel,
 	Face: Frame,
 	FaceStroke: UIStroke,
 	Eyes: { Frame },
+	Rarity: TextLabel,
+	RarityGradient: UIGradient,
 	Name: TextLabel,
-	Info: TextLabel,
 	Mutation: TextLabel,
 	MutationGradient: UIGradient,
 	Income: TextLabel,
+	Hint: TextLabel,
 }
 
 local reveal: RevealUI? = nil
@@ -1066,15 +1073,15 @@ local function buildReveal(): RevealUI?
 		Name = "HatchReveal",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.45),
-		Size = UDim2.fromOffset(440, 290),
+		Size = UDim2.fromOffset(460, 290),
 		BackgroundTransparency = 1,
 		Visible = false,
 		ZIndex = 30,
 		Parent = gui,
 	})
 	local scale: UIScale = UI.Create("UIScale", { Scale = 0, Parent = holder })
-	-- Strahlenkranz hinter der Karte: zwei Kränze drehen gegeneinander und pulsieren,
-	-- jeder Strahl läuft zu den Spitzen hin weich aus (Verlauf), dazu ein weicher Schein in der Mitte
+	-- Strahlenkranz hinter dem Schriftzug: dreht sich und pulsiert, jeder Strahl läuft zu den Spitzen
+	-- hin weich aus (Verlauf), dazu ein heller Schein in der Mitte (hell, nie dunkel)
 	local rayScale: UIScale = UI.Create("UIScale", { Scale = 1 })
 	local glow: Frame = UI.Create("Frame", {
 		Name = "Glow",
@@ -1105,15 +1112,6 @@ local function buildReveal(): RevealUI?
 		ZIndex = 30,
 		Parent = holder,
 	}, { rayScale })
-	local rays2: Frame = UI.Create("Frame", {
-		Name = "Rays2",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(500, 500),
-		BackgroundTransparency = 1,
-		ZIndex = 30,
-		Parent = holder,
-	})
 	local rayFade = NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1),
 		NumberSequenceKeypoint.new(0.3, 0.55),
@@ -1121,34 +1119,28 @@ local function buildReveal(): RevealUI?
 		NumberSequenceKeypoint.new(0.7, 0.55),
 		NumberSequenceKeypoint.new(1, 1),
 	})
-	local function addRay(parent: Frame, rotation: number, width: number, transparency: number)
+	-- Ein Strahl geht durch die Mitte (= 2 Strahlen) -> RAY_COUNT / 2 Frames, abwechselnd breit/schmal
+	for i = 0, RAY_COUNT / 2 - 1 do
 		UI.Create("Frame", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.new(0, width, 1, 0),
-			Rotation = rotation,
+			Size = UDim2.new(0, if i % 2 == 0 then 58 else 32, 1, 0),
+			Rotation = i * (360 / RAY_COUNT),
 			BackgroundColor3 = WHITE,
-			BackgroundTransparency = transparency,
+			BackgroundTransparency = 0.4,
 			BorderSizePixel = 0,
 			ZIndex = 30,
-			Parent = parent,
+			Parent = rays,
 		}, { UI.Create("UIGradient", { Rotation = 90, Transparency = rayFade }) })
 	end
-	-- Ein Strahl geht durch die Mitte (= 2 Strahlen) -> RAY_COUNT / 2 Frames je Kranz
-	for i = 0, RAY_COUNT / 2 - 1 do
-		addRay(rays, i * (360 / RAY_COUNT), if i % 2 == 0 then 54 else 30, 0.45)
-	end
-	for i = 0, RAY_COUNT / 4 - 1 do
-		addRay(rays2, i * (720 / RAY_COUNT) + 15, 22, 0.55)
-	end
-	local cardGradient: UIGradient = UI.Create("UIGradient", { Rotation = 90 })
+	-- Kein Kasten: unsichtbarer Halter für Schriftzug + Gesicht (ein Klick darauf schließt)
 	local card: Frame = UI.Create("Frame", {
 		Name = "Card",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 1,
 		ZIndex = 31,
 		Parent = holder,
-	}, { UI.Corner(22), UI.Stroke(BLACK, 4), cardGradient })
+	})
 	local closeButton: TextButton = UI.Create("TextButton", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
@@ -1160,12 +1152,12 @@ local function buildReveal(): RevealUI?
 		revealSkip = true
 	end)
 	local title = UI.Label({
-		Position = UDim2.fromOffset(14, 10),
-		Size = UDim2.new(1, -28, 0, 40),
+		Position = UDim2.fromOffset(10, 0),
+		Size = UDim2.new(1, -20, 0, 46),
 		Text = "🐣 GESCHLÜPFT!",
 		TextColor3 = UI.Theme.Yellow,
-		MaxText = 34,
-		Outline = 3,
+		MaxText = 40,
+		Outline = 4,
 		ZIndex = 32,
 		Parent = card,
 	})
@@ -1173,8 +1165,8 @@ local function buildReveal(): RevealUI?
 	local faceStroke = UI.Stroke(BLACK, 4)
 	local face: Frame = UI.Create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 56),
-		Size = UDim2.fromOffset(92, 92),
+		Position = UDim2.new(0.5, 0, 0, 50),
+		Size = UDim2.fromOffset(88, 88),
 		BackgroundColor3 = WHITE,
 		ZIndex = 32,
 		Parent = card,
@@ -1199,54 +1191,56 @@ local function buildReveal(): RevealUI?
 		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		table.insert(eyes, eye)
 	end
-	local nameLabel = UI.Label({
-		Position = UDim2.fromOffset(14, 152),
-		Size = UDim2.new(1, -28, 0, 44),
+	-- Seltenheit RIESIG in Seltenheitsfarbe (ab Mythic: Regenbogen-Verlauf, dreht sich beim Zeigen)
+	local rarityGradient: UIGradient = UI.Create("UIGradient", { Color = rainbowSequence(), Enabled = false })
+	local rarityLabel = UI.Label({
+		Position = UDim2.fromOffset(10, 140),
+		Size = UDim2.new(1, -20, 0, 58),
 		Text = "",
-		MaxText = 38,
-		Outline = 3,
+		MaxText = 56,
+		Outline = 4,
 		ZIndex = 32,
 		Parent = card,
 	})
-	local info = UI.Label({
-		Position = UDim2.fromOffset(14, 196),
-		Size = UDim2.new(1, -28, 0, 26),
+	rarityGradient.Parent = rarityLabel
+	local nameLabel = UI.Label({
+		Position = UDim2.fromOffset(10, 198),
+		Size = UDim2.new(1, -20, 0, 40),
 		Text = "",
-		MaxText = 22,
-		Outline = 2,
+		MaxText = 36,
+		Outline = 3,
 		ZIndex = 32,
 		Parent = card,
 	})
 	local mutationGradient: UIGradient = UI.Create("UIGradient", { Color = rainbowSequence(), Enabled = false })
 	local mutation = UI.Label({
-		Position = UDim2.fromOffset(14, 222),
-		Size = UDim2.new(0.5, -18, 0, 26),
+		Position = UDim2.fromOffset(10, 240),
+		Size = UDim2.new(0.5, -16, 0, 28),
 		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Right,
-		MaxText = 20,
-		Outline = 2,
+		MaxText = 26,
+		Outline = 3,
 		ZIndex = 32,
 		Parent = card,
 	})
 	mutationGradient.Parent = mutation
 	local income = UI.Label({
-		Position = UDim2.new(0.5, 4, 0, 222),
-		Size = UDim2.new(0.5, -18, 0, 26),
+		Position = UDim2.new(0.5, 6, 0, 240),
+		Size = UDim2.new(0.5, -16, 0, 28),
 		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = UI.Theme.Cash,
-		MaxText = 20,
-		Outline = 2,
+		MaxText = 26,
+		Outline = 3,
 		ZIndex = 32,
 		Parent = card,
 	})
-	UI.Label({
-		Position = UDim2.new(0, 14, 1, -30),
-		Size = UDim2.new(1, -28, 0, 20),
+	local hint = UI.Label({
+		Position = UDim2.new(0, 10, 1, -18),
+		Size = UDim2.new(1, -20, 0, 18),
 		Text = "Klick zum Schließen",
-		Font = Enum.Font.GothamBold,
-		TextColor3 = UI.Theme.SubText,
-		MaxText = 13,
+		MaxText = 15,
+		Outline = 2,
 		ZIndex = 32,
 		Parent = card,
 	})
@@ -1254,21 +1248,20 @@ local function buildReveal(): RevealUI?
 		Holder = holder,
 		Scale = scale,
 		Rays = rays,
-		Rays2 = rays2,
 		RayScale = rayScale,
 		Glow = glow,
-		RayTweens = {},
-		Card = card,
-		CardGradient = cardGradient,
+		Tweens = {},
 		Title = title,
 		Face = face,
 		FaceStroke = faceStroke,
 		Eyes = eyes,
+		Rarity = rarityLabel,
+		RarityGradient = rarityGradient,
 		Name = nameLabel,
-		Info = info,
 		Mutation = mutation,
 		MutationGradient = mutationGradient,
 		Income = income,
+		Hint = hint,
 	}
 end
 
@@ -1303,24 +1296,34 @@ local function fillReveal(ui: RevealUI, data: any): boolean
 		then "🌟 ULTRA GESCHLÜPFT! 🌟"
 		elseif def.Tier == "Selten" then "✨ SELTEN GESCHLÜPFT!"
 		else "🐣 GESCHLÜPFT!"
-	ui.CardGradient.Color = ColorSequence.new(rarityColor:Lerp(BLACK, 0.35), UI.Theme.PanelDark)
+	ui.Title.TextColor3 = if def.Tier == "Selten" or ultra then tierColor else UI.Theme.Yellow
 	ui.Face.BackgroundColor3 = if typeof(look.Color) == "Color3" then look.Color else rarityColor
 	ui.FaceStroke.Color = if typeof(look.Accent) == "Color3" then look.Accent else BLACK
 	placeEyes(ui, tonumber(look.Eyes) or 2)
+	-- Seltenheit groß in ihrer Farbe; ab Mythic weiß + Regenbogen-Verlauf (dreht sich, siehe showNextReveal)
+	local rainbow = (Config.RarityIndex[def.Rarity] or 0) >= (Config.RarityIndex.Mythic or 6)
+	ui.Rarity.Text = string.upper(tostring(def.Rarity)) .. "!"
+	ui.Rarity.TextColor3 = if rainbow then WHITE else rarityColor
+	ui.RarityGradient.Enabled = rainbow
+	ui.RarityGradient.Rotation = 0
 	ui.Name.Text = tostring(def.Name)
-	ui.Name.TextColor3 = rarityColor
-	ui.Info.Text = tostring(def.Tier) .. "  •  " .. tostring(def.Rarity)
-	ui.Info.TextColor3 = tierColor
 	local mutName = if mut and mut.Name ~= "Normal" then mut.Name else nil
 	if mutName and mut then
 		local icon = if type(mut.Icon) == "string" and mut.Icon ~= "" then mut.Icon else MUTATION_ICONS[mutName]
 		ui.Mutation.Text = (icon or "✨") .. " " .. mutName .. " x" .. UI.FormatMult(mut.Mult)
 		ui.Mutation.TextColor3 = if mut.Rainbow == true then WHITE else (mut.Color or WHITE)
 		ui.MutationGradient.Enabled = mut.Rainbow == true
+		ui.Mutation.Visible = true
+		ui.Income.Position = UDim2.new(0.5, 6, 0, 240)
+		ui.Income.Size = UDim2.new(0.5, -16, 0, 28)
+		ui.Income.TextXAlignment = Enum.TextXAlignment.Left
 	else
-		ui.Mutation.Text = "Normal"
-		ui.Mutation.TextColor3 = UI.Theme.SubText
+		-- ohne Mutation: nur das Einkommen, mittig
+		ui.Mutation.Visible = false
 		ui.MutationGradient.Enabled = false
+		ui.Income.Position = UDim2.fromOffset(10, 240)
+		ui.Income.Size = UDim2.new(1, -20, 0, 28)
+		ui.Income.TextXAlignment = Enum.TextXAlignment.Center
 	end
 	-- Einkommen auf Level 1 (gleiche Rechnung wie Config.MeteorIncome)
 	local meteor = Config.MeteorsById[def.Meteor]
@@ -1329,18 +1332,16 @@ local function fillReveal(ui: RevealUI, data: any): boolean
 		* (if mut then tonumber(mut.Mult) or 1 else 1)
 	ui.Income.Text = "💵 +" .. ctx.Util.FormatCash(perSecond) .. "/s"
 	local rayColor = if ultra then UI.Theme.Yellow else rarityColor:Lerp(WHITE, 0.4)
-	for _, layer in ipairs({ ui.Rays, ui.Rays2 }) do
-		for _, ray in ipairs(layer:GetChildren()) do
-			if ray:IsA("Frame") then
-				ray.BackgroundColor3 = rayColor
-			end
+	for _, ray in ipairs(ui.Rays:GetChildren()) do
+		if ray:IsA("Frame") then
+			ray.BackgroundColor3 = rayColor
 		end
 	end
 	ui.Glow.BackgroundColor3 = rayColor
 	return true
 end
 
--- Große Karte (Mitte, Konfetti) oder kleine (oben rechts)?
+-- Groß (Mitte, Konfetti) oder klein (oben rechts)?
 local function revealIsBig(data: any): boolean
 	local state = ctx.State
 	if state and state.Carrying == true then
@@ -1372,31 +1373,32 @@ local function showNextReveal()
 			ui.Holder.AnchorPoint = if big then Vector2.new(0.5, 0.5) else Vector2.new(1, 0)
 			ui.Holder.Position = if big then UDim2.fromScale(0.5, 0.45) else UDim2.new(1, -14, 0, 56)
 			ui.Rays.Visible = big
-			ui.Rays2.Visible = big
 			ui.Glow.Visible = big
+			ui.Hint.Visible = big
 			ui.Holder.Visible = true
 			ui.Scale.Scale = 0.2
 			ui.Rays.Rotation = 0
-			ui.Rays2.Rotation = 0
 			ui.RayScale.Scale = 1
 			ui.Holder.Rotation = if big then -8 else 0
+			local tweens: { Tween } = {}
 			if big then
-				-- Strahlen nur bei der großen Karte (die kleine oben rechts bleibt ruhig)
-				local tweens = {
-					TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 }),
-					TweenService:Create(ui.Rays2, REVEAL_SPIN2_INFO, { Rotation = -360 }),
-					TweenService:Create(ui.RayScale, REVEAL_PULSE_INFO, { Scale = 1.12 }),
-				}
-				for _, tween in ipairs(tweens) do
-					tween:Play()
-				end
-				ui.RayTweens = tweens
+				-- Strahlen nur beim großen Schriftzug (der kleine oben rechts bleibt ruhig)
+				table.insert(tweens, TweenService:Create(ui.Rays, REVEAL_SPIN_INFO, { Rotation = 360 }))
+				table.insert(tweens, TweenService:Create(ui.RayScale, REVEAL_PULSE_INFO, { Scale = 1.12 }))
 				TweenService:Create(ui.Holder, REVEAL_TILT_INFO, { Rotation = 0 }):Play()
 			end
+			-- ab Mythic: Regenbogen-Verlauf der Seltenheit dreht sich (groß und klein)
+			if ui.RarityGradient.Enabled then
+				table.insert(tweens, TweenService:Create(ui.RarityGradient, REVEAL_RAINBOW_INFO, { Rotation = 360 }))
+			end
+			for _, tween in ipairs(tweens) do
+				tween:Play()
+			end
+			ui.Tweens = tweens
 			TweenService:Create(ui.Scale, REVEAL_POP_INFO, { Scale = if big then 1 else MINI_REVEAL_SCALE }):Play()
 			if big then
-				confetti(1.6)
-				shake(0.35)
+				confetti(1) -- sparsam: ein kleiner Schwall
+				shake(0.25)
 			end
 			local showTime = if big then REVEAL_TIME else MINI_REVEAL_TIME
 			local shown = 0
@@ -1406,10 +1408,10 @@ local function showNextReveal()
 			local out = TweenService:Create(ui.Scale, REVEAL_OUT_INFO, { Scale = 0 })
 			out:Play()
 			out.Completed:Wait()
-			for _, tween in ipairs(ui.RayTweens) do
+			for _, tween in ipairs(ui.Tweens) do
 				tween:Cancel()
 			end
-			ui.RayTweens = {}
+			ui.Tweens = {}
 			ui.Holder.Visible = false
 		end
 	end
@@ -1575,8 +1577,8 @@ function Effects.RebirthFlash()
 		rebirthBusy = false
 	end)
 	out:Play()
-	confetti(2.5)
-	shake(0.6)
+	confetti(2)
+	shake(0.5)
 end
 
 -- ---------------------------------------------------------------------
@@ -1636,8 +1638,9 @@ local function nestPop(data: any)
 end
 
 -- ---------------------------------------------------------------------
--- ADMIN-ANSAGE (oben in der Mitte, ohne Box): Kopfbild, Name + blauer Haken, ":" und Text
--- Eine Anzeige wird einmal gebaut und wiederverwendet, mehrere Ansagen warten in einer Schlange.
+-- ADMIN-ANSAGE (oben in der Mitte, bewusst OHNE Box – wie bei Steal a Brainrot): Kopfbild, Name + blauer
+-- Haken, ":" und Text, alles große FredokaOne-Schrift mit dicker schwarzer Kontur. Ploppt federnd auf
+-- und verblasst. Eine Anzeige wird einmal gebaut und wiederverwendet, mehrere Ansagen warten in einer Schlange.
 -- ---------------------------------------------------------------------
 local ANNOUNCE_BLUE = Color3.fromRGB(40, 140, 255)
 local ANNOUNCE_TIME = 8
@@ -1645,7 +1648,9 @@ local ANNOUNCE_MAX_QUEUE = 5
 local ANNOUNCE_AVATAR = 64
 local ANNOUNCE_NAME_SIZE = 34
 local ANNOUNCE_BADGE = 30
-local ANNOUNCE_IN = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local ANNOUNCE_Y = 14 -- Abstand vom oberen Rand
+local ANNOUNCE_IN = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local ANNOUNCE_FADE_IN = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local ANNOUNCE_OUT = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 type AnnounceUI = {
@@ -1679,7 +1684,7 @@ local function buildAnnounce(): AnnounceUI?
 	local group: CanvasGroup = UI.Create("CanvasGroup", {
 		Name = "AdminAnnounce",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, -140),
+		Position = UDim2.new(0.5, 0, 0, ANNOUNCE_Y),
 		Size = UDim2.new(0.86, 0, 0, 96),
 		BackgroundTransparency = 1,
 		GroupTransparency = 1,
@@ -1698,7 +1703,7 @@ local function buildAnnounce(): AnnounceUI?
 		ZIndex = 31,
 		Parent = group,
 	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-	UI.Create("UIStroke", { Thickness = 2, Color = WHITE, Parent = avatar })
+	UI.Create("UIStroke", { Thickness = 3, Color = BLACK, Parent = avatar })
 	local nameLabel: TextLabel = UI.Create("TextLabel", {
 		Name = "Name",
 		AnchorPoint = Vector2.new(0, 0.5),
@@ -1737,7 +1742,7 @@ local function buildAnnounce(): AnnounceUI?
 	UI.Create("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBlack,
+		Font = Enum.Font.FredokaOne,
 		Text = "✓",
 		TextScaled = true,
 		TextColor3 = WHITE,
@@ -1828,12 +1833,12 @@ local function showNextAnnounce()
 		ui.Text.Text = tostring(data.Text)
 		ui.Avatar.Image = headshot(tonumber(data.UserId) or 0)
 		layoutAnnounce(ui, name)
+		-- kurz aufploppen (klein -> federnd groß), dabei schnell einblenden
 		ui.Group.Visible = true
 		ui.Group.GroupTransparency = 1
-		ui.Group.Position = UDim2.new(0.5, 0, 0, -140)
-		ui.Scale.Scale = 0.85
-		TweenService:Create(ui.Group, ANNOUNCE_IN, { Position = UDim2.new(0.5, 0, 0, 14), GroupTransparency = 0 })
-			:Play()
+		ui.Group.Position = UDim2.new(0.5, 0, 0, ANNOUNCE_Y)
+		ui.Scale.Scale = 0.6
+		TweenService:Create(ui.Group, ANNOUNCE_FADE_IN, { GroupTransparency = 0 }):Play()
 		TweenService:Create(ui.Scale, ANNOUNCE_IN, { Scale = 1 }):Play()
 		task.wait(ANNOUNCE_TIME)
 		local out = TweenService:Create(ui.Group, ANNOUNCE_OUT, { GroupTransparency = 1 })
@@ -1862,9 +1867,11 @@ local function announce(data: any)
 end
 
 -- ---------------------------------------------------------------------
--- ADMIN-WARNUNG: großer roter Hinweis in der Bildschirmmitte (ca. 7 s)
+-- ADMIN-WARNUNG: großer roter Hinweis in der Bildschirmmitte (ca. 7 s) – ohne Kasten, wie bei
+-- Steal a Brainrot: riesige rote Überschrift + weißer Text, beides mit dicker schwarzer Kontur
 -- ---------------------------------------------------------------------
 local WARN_TIME = 7
+local WARN_RED = Color3.fromRGB(255, 55, 55)
 local WARN_IN = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local WARN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 local warnToken = 0
@@ -1877,37 +1884,36 @@ local function buildWarn()
 	if not gui or warnFrame then
 		return
 	end
+	-- unsichtbarer Halter (kein Hintergrund, kein Rand)
 	local frame: Frame = UI.Create("Frame", {
 		Name = "AdminWarn",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.42),
-		Size = UDim2.new(0.6, 0, 0, 170),
-		BackgroundColor3 = Color3.fromRGB(200, 30, 40),
+		Size = UDim2.new(0.7, 0, 0, 170),
+		BackgroundTransparency = 1,
 		Visible = false,
 		ZIndex = 40,
 		Parent = gui,
 	}, {
-		UI.Create("UICorner", { CornerRadius = UDim.new(0, 14) }),
-		UI.Create("UIStroke", { Thickness = 4, Color = BLACK }),
-		UI.Create("UISizeConstraint", { MinSize = Vector2.new(300, 0), MaxSize = Vector2.new(760, 400) }),
+		UI.Create("UISizeConstraint", { MinSize = Vector2.new(300, 0), MaxSize = Vector2.new(820, 400) }),
 	})
 	local scale: UIScale = UI.Create("UIScale", { Scale = 1, Parent = frame })
 	UI.Label({
-		Position = UDim2.fromOffset(16, 10),
-		Size = UDim2.new(1, -32, 0, 46),
-		Text = "WARNUNG VOM ADMIN",
-		MaxText = 40,
-		Outline = 3,
+		Size = UDim2.new(1, 0, 0, 58),
+		Text = "⚠️ WARNUNG VOM ADMIN ⚠️",
+		TextColor3 = WARN_RED,
+		MaxText = 52,
+		Outline = 4,
 		ZIndex = 41,
 		Parent = frame,
 	})
 	local text = UI.Label({
-		Position = UDim2.fromOffset(16, 62),
-		Size = UDim2.new(1, -32, 1, -74),
+		Position = UDim2.fromOffset(0, 62),
+		Size = UDim2.new(1, 0, 1, -62),
 		Text = "",
 		TextWrapped = true,
-		MaxText = 30,
-		Outline = 2,
+		MaxText = 36,
+		Outline = 3,
 		ZIndex = 41,
 		Parent = frame,
 	})

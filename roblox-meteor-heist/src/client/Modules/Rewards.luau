@@ -26,6 +26,12 @@ local GRAY = Theme.Gray
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 
+-- Knallige Kartenfarben (Simulator-Look) + dicke schwarze Kontur, golden = abholbereit
+local GIFT_CARD = Color3.fromRGB(160, 80, 245)
+local QUEST_CARD = Color3.fromRGB(255, 140, 35) -- warm: hebt sich vom hellblauen Fenster ab
+local CARD_STROKE = 3
+local HIGHLIGHT_STROKE = 4
+
 local giftWin: UI.Window
 local wheelWin: UI.Window
 local questWin: UI.Window
@@ -154,47 +160,53 @@ local function buildGifts()
 		gifts = {}
 	end
 	for i, gift in ipairs(gifts) do
-		local card = UI.Card({ Size = UDim2.new(1, 0, 0, 66), LayoutOrder = 10 + i, Parent = content })
+		local card = UI.Card({
+			Size = UDim2.new(1, 0, 0, 66),
+			LayoutOrder = 10 + i,
+			BackgroundColor3 = GIFT_CARD,
+			Parent = content,
+		})
 		local stroke = card:FindFirstChildOfClass("UIStroke") :: UIStroke
+		stroke.Thickness = CARD_STROKE
+		-- goldenes Kästchen: großes Geschenk-Emoji + Minuten
 		local minutesBox = UI.Create("Frame", {
-			Position = UDim2.fromOffset(8, 8),
-			Size = UDim2.fromOffset(50, 50),
-			BackgroundColor3 = Theme.PanelDark,
+			Position = UDim2.fromOffset(8, 7),
+			Size = UDim2.fromOffset(52, 52),
+			BackgroundColor3 = Theme.Gold,
 			Parent = card,
-		}, { UI.Corner(10), UI.Stroke(BLACK, 2) })
+		}, { UI.Corner(10), UI.Stroke(BLACK, 3) })
 		UI.Label({
-			Position = UDim2.fromOffset(2, 4),
-			Size = UDim2.new(1, -4, 0, 26),
+			Position = UDim2.fromOffset(2, 2),
+			Size = UDim2.new(1, -4, 0, 30),
 			Text = tostring(gift.Icon or "🎁"),
-			MaxText = 24,
+			MaxText = 28,
 			Parent = minutesBox,
 		})
 		UI.Label({
 			Position = UDim2.new(0, 2, 1, -20),
-			Size = UDim2.new(1, -4, 0, 16),
-			Text = tostring(gift.Minutes or "?") .. " Min",
-			TextColor3 = Theme.Yellow,
-			MaxText = 13,
-			Outline = 1,
+			Size = UDim2.new(1, -4, 0, 17),
+			Text = tostring(gift.Minutes or "?") .. " MIN",
+			MaxText = 14,
+			Outline = 2,
 			Parent = minutesBox,
 		})
 		local title = UI.Label({
-			Position = UDim2.fromOffset(68, 7),
-			Size = UDim2.new(1, -228, 0, 30),
+			Position = UDim2.fromOffset(70, 6),
+			Size = UDim2.new(1, -230, 0, 30),
 			Text = displayName(gift),
 			TextXAlignment = Enum.TextXAlignment.Left,
 			MaxText = 22,
-			Outline = 2,
+			Outline = 3,
 			Parent = card,
 		})
 		local sub = UI.Label({
-			Position = UDim2.fromOffset(68, 38),
-			Size = UDim2.new(1, -228, 0, 20),
+			Position = UDim2.fromOffset(70, 37),
+			Size = UDim2.new(1, -230, 0, 21),
 			Text = "",
-			Font = Enum.Font.GothamBold,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextColor3 = Theme.SubText,
-			MaxText = 14,
+			MaxText = 15,
+			Outline = 2,
 			Parent = card,
 		})
 		local button = UI.Button({
@@ -236,7 +248,7 @@ function Rewards.RefreshGifts(state: any)
 			if gift.Claimed == true then
 				subText, buttonText, color, gold = "✅ Abgeholt", "✅", GRAY, false
 			elseif left <= 0 then
-				subText, buttonText, color, gold = "🎁 Bereit – hol es dir!", "🎁 Abholen", Theme.Green, true
+				subText, buttonText, color, gold = "🎁 Bereit – hol es dir!", "🎁 ABHOLEN", Theme.Green, true
 			else
 				subText = "nach " .. minutes .. " Min. Spielzeit heute"
 				buttonText, color, gold = "⏳ " .. ctx.Util.FormatTime(math.ceil(left)), GRAY, false
@@ -249,7 +261,7 @@ function Rewards.RefreshGifts(state: any)
 			local strokeColor = if gold then Theme.Gold else BLACK
 			if card.Stroke.Color ~= strokeColor then
 				card.Stroke.Color = strokeColor
-				card.Stroke.Thickness = if gold then 4 else 2
+				card.Stroke.Thickness = if gold then HIGHLIGHT_STROKE else CARD_STROKE
 			end
 			card.Card.BackgroundTransparency = if gift.Claimed == true then 0.4 else 0
 		end
@@ -604,11 +616,11 @@ local function buildWheel()
 	UI.Label({
 		Size = UDim2.new(1, 0, 0, 58),
 		Text = buildOddsText(),
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		TextWrapped = true,
 		LayoutOrder = 5,
-		MaxText = 13,
+		MaxText = 14,
+		Outline = 2,
 		Parent = content,
 	})
 end
@@ -639,7 +651,7 @@ function Rewards.RefreshWheel(state: any)
 		spinInfo.Text = info
 	end
 	if spinning then
-		spinButton.SetText("🎡 Dreht...")
+		spinButton.SetText("🎡 DREHT...")
 		spinButton.SetColor(GRAY)
 	elseif summary.FreeReady then
 		spinButton.SetText("🆓 GRATIS DREHEN!")
@@ -648,7 +660,7 @@ function Rewards.RefreshWheel(state: any)
 		spinButton.SetText("🎡 DREHEN!  (" .. summary.Spins .. ")")
 		spinButton.SetColor(Theme.Orange)
 	else
-		spinButton.SetText("⏳ Keine Drehs")
+		spinButton.SetText("⏳ KEINE DREHS")
 		spinButton.SetColor(GRAY)
 	end
 end
@@ -785,15 +797,21 @@ local function ensureQuestCard(i: number): QuestCard
 	if existing then
 		return existing
 	end
-	local card = UI.Card({ Size = UDim2.new(1, 0, 0, 128), LayoutOrder = 10 + i, Parent = questWin.Content })
+	local card = UI.Card({
+		Size = UDim2.new(1, 0, 0, 128),
+		LayoutOrder = 10 + i,
+		BackgroundColor3 = QUEST_CARD,
+		Parent = questWin.Content,
+	})
 	local stroke = card:FindFirstChildOfClass("UIStroke") :: UIStroke
+	stroke.Thickness = CARD_STROKE
 	local title = UI.Label({
 		Position = UDim2.fromOffset(12, 8),
 		Size = UDim2.new(1, -24, 0, 30),
 		Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		MaxText = 22,
-		Outline = 2,
+		Outline = 3,
 		Parent = card,
 	})
 	local bar = UI.Bar({
@@ -807,11 +825,11 @@ local function ensureQuestCard(i: number): QuestCard
 		Position = UDim2.new(0, 12, 1, -46),
 		Size = UDim2.new(1, -246, 0, 36),
 		Text = "",
-		Font = Enum.Font.GothamBold,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.Cash,
 		TextWrapped = true,
-		MaxText = 15,
+		MaxText = 17,
+		Outline = 2,
 		Parent = card,
 	})
 	local button = UI.Button({
@@ -852,7 +870,7 @@ local function ensureQuestCard(i: number): QuestCard
 end
 
 local function buildQuests()
-	questWin = UI.Window("📜 TAGESAUFGABEN", 540, 540, Theme.Cyan)
+	questWin = UI.Window("📜 AUFGABEN", 540, 540, Theme.Cyan)
 	local content = questWin.Content
 	questHeader = UI.Label({
 		Size = UDim2.new(1, 0, 0, 30),
@@ -866,10 +884,10 @@ local function buildQuests()
 	questEmpty = UI.Label({
 		Size = UDim2.new(1, 0, 0, 40),
 		Text = "📜 Aufgaben werden geladen...",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 2,
-		MaxText = 16,
+		MaxText = 18,
+		Outline = 2,
 		Parent = content,
 	})
 	for i = 1, 3 do
@@ -917,10 +935,10 @@ function Rewards.RefreshQuests(state: any)
 				card.Reward.Text = reward
 			end
 			if claimed then
-				card.Button.SetText("✅ Abgeholt")
+				card.Button.SetText("✅ ABGEHOLT")
 				card.Button.SetColor(GRAY)
 			elseif done then
-				card.Button.SetText("🎁 Abholen!")
+				card.Button.SetText("🎁 ABHOLEN!")
 				card.Button.SetColor(Theme.Green)
 			else
 				card.Button.SetText("⏳ " .. math.floor(progress / goal * 100) .. "%")
@@ -934,7 +952,7 @@ function Rewards.RefreshQuests(state: any)
 			local strokeColor = if gold then Theme.Gold else BLACK
 			if card.Stroke.Color ~= strokeColor then
 				card.Stroke.Color = strokeColor
-				card.Stroke.Thickness = if gold then 4 else 2
+				card.Stroke.Thickness = if gold then HIGHLIGHT_STROKE else CARD_STROKE
 			end
 			card.Card.BackgroundTransparency = if claimed then 0.4 else 0
 		end

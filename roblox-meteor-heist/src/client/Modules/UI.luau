@@ -1,9 +1,12 @@
 -- =====================================================================
---  UI-BAUKASTEN im knalligen Simulator-Stil
---  Knöpfe mit Farbverlauf, dicker schwarzer Kontur und Feder-Effekt (Hover-Glühen,
---  Stauchen beim Drücken, Klick-Welle), Fenster, die federnd aufgehen und die Welt dahinter
---  weichzeichnen (BlurEffect, beim Schließen wieder weg), Toasts, die mit Feder hereingleiten,
---  flüssig hochzählende Zahlen (kurzes Aufploppen + Farbblitz bei Zuwachs) und getweente Balken.
+--  UI-BAUKASTEN im knalligen Roblox-Simulator-Stil (Steal a Brainrot / Pet Simulator)
+--  Schrift überall FredokaOne mit schwarzer Kontur. Knöpfe: Volltonfarbe mit Verlauf, dicke
+--  schwarze Kontur, dunklere 3D-Kante unten ("Lippe"), Glanz-Streifen und Feder-Effekt
+--  (größer beim Drüberfahren, Stauchen + Einsinken beim Drücken). Fenster: helle blaue Fläche,
+--  dicke Kontur, Titel in GROSSBUCHSTABEN, rotes X; gehen federnd auf und zeichnen die Welt
+--  dahinter leicht weich. Meldungen (Toasts) ohne Kasten: großer farbiger Text mit dicker Kontur,
+--  ploppt oben in der Mitte auf und verblasst. Dazu flüssig hochzählende Zahlen (kurzes Aufploppen
+--  + Farbblitz bei Zuwachs) und getweente Balken.
 --  Alle anderen Client-Module bauen ihre Oberfläche hiermit.
 -- =====================================================================
 
@@ -12,6 +15,7 @@ local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local PolicyService = game:GetService("PolicyService")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 local TweenService = game:GetService("TweenService")
 
 local UI = {}
@@ -19,17 +23,22 @@ local UI = {}
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 
+-- Die Simulator-Schrift (rund, dick, gut lesbar) – für ALLE Texte
+UI.Font = Enum.Font.FredokaOne
+
+-- Helle, kräftige Farben. Fensterflächen sind hellblau: weißer Text braucht darauf immer
+-- eine schwarze Kontur (UI.TextStroke bzw. Outline = 2 in UI.Label).
 UI.Theme = {
-	Panel = Color3.fromRGB(34, 38, 70),
-	PanelDark = Color3.fromRGB(20, 22, 44),
-	PanelLight = Color3.fromRGB(52, 58, 100),
+	Panel = Color3.fromRGB(70, 170, 255),
+	PanelDark = Color3.fromRGB(35, 115, 230),
+	PanelLight = Color3.fromRGB(120, 205, 255),
 	Text = WHITE,
-	SubText = Color3.fromRGB(205, 210, 235),
+	SubText = Color3.fromRGB(235, 245, 255),
 	Black = BLACK,
 	Yellow = Color3.fromRGB(255, 220, 50),
 	Cash = Color3.fromRGB(110, 255, 100),
 	Red = Color3.fromRGB(255, 65, 75),
-	Blue = Color3.fromRGB(50, 150, 255),
+	Blue = Color3.fromRGB(40, 100, 245), -- kräftiges Königsblau: hebt sich vom hellblauen Fenster ab
 	Green = Color3.fromRGB(70, 210, 80),
 	Orange = Color3.fromRGB(255, 145, 35),
 	Purple = Color3.fromRGB(175, 85, 255),
@@ -45,7 +54,6 @@ local PRESS_INFO = TweenInfo.new(0.07, Enum.EasingStyle.Quad, Enum.EasingDirecti
 local RELEASE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local SQUASH_RELEASE_INFO = TweenInfo.new(0.45, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
 local GLOW_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local RIPPLE_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local OPEN_FADE_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local OPEN_POP_INFO = TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local CLOSE_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -55,20 +63,41 @@ local COUNTER_FLASH_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.Easin
 local BAR_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local PULSE_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local TOAST_GROW_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local TOAST_SLIDE_INFO = TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local TOAST_POP_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
-local TOAST_FADE_INFO = TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local TOAST_OUT_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local TOAST_RISE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_POP_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TOAST_FADE_INFO = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TOAST_OUT_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 local COUNTER_INTERVAL = 1 / 30 -- Zahlen höchstens 30x pro Sekunde neu schreiben
 local COUNTER_POP_GAP = 0.15 -- so oft höchstens ein Aufploppen pro Zähler
-local BUTTON_SQUASH = UDim2.fromScale(1.07, 0.86) -- gedrückter Knopf: breiter + flacher
-local BUTTON_NORMAL = UDim2.fromScale(1, 1)
-local BLUR_SIZE = 14 -- Weichzeichner hinter offenen Fenstern
+local BUTTON_LIP = 4 -- so viele Pixel dunklere 3D-Kante ("Lippe") unter jedem Knopf
+local LIP_DARKEN = 0.45 -- Lippe = Knopffarbe, so viel Richtung Schwarz
+local BUTTON_NORMAL = UDim2.new(1, 0, 1, -BUTTON_LIP) -- Knopf-Fläche (darunter schaut die Lippe raus)
+local BUTTON_SQUASH = UDim2.new(1.07, 0, 0.86, -BUTTON_LIP) -- gedrückter Knopf: breiter + flacher
+local BUTTON_UP = UDim2.new(0.5, 0, 0.5, -BUTTON_LIP / 2)
+local BUTTON_DOWN = UDim2.new(0.5, 0, 0.5, BUTTON_LIP / 2) -- gedrückt: sinkt auf die Lippe
+local BUTTON_PRESSED_TINT = Color3.fromRGB(215, 215, 215) -- gedrückt: Knopf etwas dunkler
+local SHINE_NORMAL = 0.8 -- Glanz-Streifen (Durchsichtigkeit)
+local SHINE_HOVER = 0.55 -- Maus drüber: Glanz heller
+local BLUR_SIZE = 6 -- dezenter Weichzeichner hinter offenen Fenstern
 local WINDOW_SLIDE = 36 -- Fenster gleiten aus so vielen Pixeln von unten herein
-local TOAST_HEIGHT = 40
+local WINDOW_STROKE = 5 -- dicke schwarze Fenster-Kontur (passt genau in den Rand der Animations-Fläche)
+local TOAST_WIDTH = 680
+local TOAST_TEXT_WIDTH = TOAST_WIDTH - 24
+local TOAST_MIN_HEIGHT = 34
+local TOAST_GAP = 2
+local TOAST_RISE = 10 -- Toasts ploppen aus so vielen Pixeln weiter unten auf (und steigen beim Gehen hoch)
 local MAX_TOASTS = 5
 local MAX_TOAST_POOL = 8 -- so viele fertige Toasts werden zum Wiederverwenden aufgehoben
+
+-- Gotham-Schriften (alter Look) werden automatisch durch FredokaOne ersetzt
+local GOTHAM_FONTS: { [Enum.Font]: boolean } = {
+	[Enum.Font.Gotham] = true,
+	[Enum.Font.GothamMedium] = true,
+	[Enum.Font.GothamBold] = true,
+	[Enum.Font.GothamBlack] = true,
+	[Enum.Font.GothamSemibold] = true,
+}
 
 local root: ScreenGui? = nil
 UI.Root = nil :: ScreenGui? -- die ScreenGui der Oberfläche (nach UI.Init gesetzt)
@@ -152,10 +181,17 @@ function UI.FormatSteps(value: number, formatNumber: (number) -> string): string
 	return formatNumber(n)
 end
 
+-- Text in GROSSBUCHSTABEN (Titel, Knopf-Wörter). Auch ä/ö/ü -> Ä/Ö/Ü; Emojis bleiben, wie sie sind.
+local UMLAUT_UPPER: { [string]: string } = { ["ä"] = "Ä", ["ö"] = "Ö", ["ü"] = "Ü" }
+function UI.Upper(text: string): string
+	local upper = string.gsub(string.upper(text), "\195[\164\182\188]", UMLAUT_UPPER)
+	return upper
+end
+
 function UI.Label(props: { [string]: any }): TextLabel
 	local base: { [string]: any } = {
 		BackgroundTransparency = 1,
-		Font = Enum.Font.FredokaOne,
+		Font = UI.Font,
 		TextColor3 = WHITE,
 		TextScaled = true,
 		Text = "",
@@ -164,6 +200,9 @@ function UI.Label(props: { [string]: any }): TextLabel
 		if key ~= "MaxText" and key ~= "Outline" then
 			base[key] = value
 		end
+	end
+	if GOTHAM_FONTS[base.Font] then
+		base.Font = UI.Font
 	end
 	local children: { Instance } = { UI.Create("UITextSizeConstraint", { MaxTextSize = props.MaxText or 28 }) }
 	if props.Outline then
@@ -175,15 +214,18 @@ end
 function UI.TextBox(props: { [string]: any }): TextBox
 	local base: { [string]: any } = {
 		BackgroundColor3 = UI.Theme.PanelDark,
-		Font = Enum.Font.GothamBold,
+		Font = UI.Font,
 		TextColor3 = WHITE,
-		PlaceholderColor3 = UI.Theme.SubText,
+		PlaceholderColor3 = Color3.fromRGB(165, 205, 255), -- blasser als echter Text
 		TextScaled = true,
 		ClearTextOnFocus = false,
 		Text = "",
 	}
 	for key, value in pairs(props) do
 		base[key] = value
+	end
+	if GOTHAM_FONTS[base.Font] then
+		base.Font = UI.Font
 	end
 	return UI.Create("TextBox", base, {
 		UI.Corner(8),
@@ -195,6 +237,8 @@ end
 
 -- ---------------------------------------------------------------------
 -- KNÖPFE (Halter-Rahmen für das Layout + federnder Knopf in der Mitte)
+-- Aufbau: Halter (unsichtbar) -> "Lip" (dunklere 3D-Kante, schaut unten ein paar Pixel raus)
+--         + "Button" (die Knopf-Fläche mit Verlauf, Kontur, Glanz und Text)
 -- props: Size, Position, AnchorPoint, LayoutOrder, Parent, Visible, ZIndex,
 --        Text, Sub (kleine zweite Zeile), Color, MaxText, SubMax, Corner, StrokeSize, Wrap
 -- ---------------------------------------------------------------------
@@ -211,6 +255,7 @@ export type Button = {
 
 function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 	local cornerRadius: number = props.Corner or 12
+	local strokeSize: number = props.StrokeSize or 3
 	local z: number = props.ZIndex or 1
 	local holder: Frame = UI.Create("Frame", {
 		Name = props.Name or "Button",
@@ -224,17 +269,30 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 		Parent = props.Parent,
 	})
 	local currentColor: Color3 = props.Color or UI.Theme.Orange
+
+	-- 3D-Kante: dunklere Kopie der unteren Knopfhälfte, liegt hinter der Fläche und schaut unten raus
+	-- (nur die untere Hälfte, damit sie beim Stauchen oben nicht hervorblitzt)
+	local lip: Frame = UI.Create("Frame", {
+		Name = "Lip",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.fromScale(0.5, 1),
+		Size = UDim2.fromScale(1, 0.62),
+		BackgroundColor3 = currentColor:Lerp(BLACK, LIP_DARKEN),
+		ZIndex = z - 1,
+		Parent = holder,
+	}, { UI.Corner(cornerRadius), UI.Stroke(BLACK, strokeSize) })
+
 	local gradient: UIGradient = UI.Create("UIGradient", {
 		Rotation = 90,
 		Color = UI.ButtonSequence(currentColor),
 	})
 	local scale: UIScale = UI.Create("UIScale")
-	local outline = UI.Stroke(BLACK, props.StrokeSize or 3)
+	local outline = UI.Stroke(BLACK, strokeSize)
 	local btn: TextButton = UI.Create("TextButton", {
 		Name = "Button",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(1, 1),
+		Position = BUTTON_UP,
+		Size = BUTTON_NORMAL,
 		BackgroundColor3 = WHITE,
 		AutoButtonColor = false,
 		Text = "",
@@ -242,36 +300,17 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 		Parent = holder,
 	}, { UI.Corner(cornerRadius), gradient, outline, scale })
 
-	-- Glanz-Streifen oben (macht den "Bonbon"-Look der Simulator-Knöpfe)
-	UI.Create("Frame", {
+	-- Glanz-Streifen oben (macht den "Bonbon"-Look der Simulator-Knöpfe; wird beim Drüberfahren heller)
+	local shine: Frame = UI.Create("Frame", {
 		Name = "Shine",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 3),
 		Size = UDim2.new(1, -8, 0.4, -2),
 		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.8,
+		BackgroundTransparency = SHINE_NORMAL,
 		ZIndex = z,
 		Parent = btn,
 	}, { UI.Corner(math.max(2, cornerRadius - 3)) })
-
-	-- Hover-Glühen: weiße Fläche über dem Knopf, beim Drüberfahren leicht sichtbar
-	local glow: Frame = UI.Create("Frame", {
-		Name = "Glow",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 1,
-		ZIndex = z,
-		Parent = btn,
-	}, { UI.Corner(cornerRadius) })
-	-- Klick-Wellen (abgeschnitten auf die Knopffläche)
-	local rippleBox: Frame = UI.Create("Frame", {
-		Name = "Ripples",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		ClipsDescendants = true,
-		ZIndex = z,
-		Parent = btn,
-	})
 
 	local hasSub = props.Sub ~= nil
 	local main = UI.Label({
@@ -301,66 +340,52 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 		})
 	end
 
-	-- Feder-Effekt: Maus drüber = etwas größer + Glühen, drücken = kleiner + gestaucht (breit/flach)
-	-- + Welle ab dem Klickpunkt, loslassen = federt elastisch zurück
+	-- Feder-Effekt: Maus drüber = etwas größer + hellerer Glanz, drücken = kleiner + gestaucht
+	-- (breit/flach), sinkt auf die Lippe und wird etwas dunkler, loslassen = federt elastisch zurück
 	local hovering = false
+	local pressed = false
+	local shineTarget = SHINE_NORMAL
 	local function spring(target: number, info: TweenInfo)
 		TweenService:Create(scale, info, { Scale = target }):Play()
 	end
-	local function setGlow(transparency: number)
-		TweenService:Create(glow, GLOW_INFO, { BackgroundTransparency = transparency }):Play()
-	end
-	local function ripple(position: Vector3)
-		local absPos, absSize = btn.AbsolutePosition, btn.AbsoluteSize
-		if absSize.X < 1 or absSize.Y < 1 then
-			return
+	local function setShine(transparency: number)
+		if shineTarget ~= transparency then
+			shineTarget = transparency
+			TweenService:Create(shine, GLOW_INFO, { BackgroundTransparency = transparency }):Play()
 		end
-		local x = math.clamp((position.X - absPos.X) / absSize.X, 0, 1)
-		local y = math.clamp((position.Y - absPos.Y) / absSize.Y, 0, 1)
-		local wave: Frame = UI.Create("Frame", {
-			Name = "Ripple",
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(x, y),
-			Size = UDim2.fromScale(0, 0),
-			SizeConstraint = Enum.SizeConstraint.RelativeXX, -- rund bleiben (Höhe = Breite)
-			BackgroundColor3 = WHITE,
-			BackgroundTransparency = 0.55,
-			ZIndex = z,
-			Parent = rippleBox,
-		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-		local grow =
-			TweenService:Create(wave, RIPPLE_INFO, { Size = UDim2.fromScale(2.4, 2.4), BackgroundTransparency = 1 })
-		grow.Completed:Once(function()
-			wave:Destroy()
-		end)
-		grow:Play()
+	end
+	local function setPressed(on: boolean)
+		if pressed ~= on then
+			pressed = on
+			TweenService:Create(btn, GLOW_INFO, { BackgroundColor3 = if on then BUTTON_PRESSED_TINT else WHITE }):Play()
+		end
 	end
 	btn.InputBegan:Connect(function(input)
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.MouseMovement then
 			hovering = true
 			spring(1.06, HOVER_INFO)
-			setGlow(0.82)
+			setShine(SHINE_HOVER)
 		elseif kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
 			spring(0.93, PRESS_INFO)
-			TweenService:Create(btn, PRESS_INFO, { Size = BUTTON_SQUASH }):Play()
-			setGlow(0.7)
-			ripple(input.Position)
+			TweenService:Create(btn, PRESS_INFO, { Size = BUTTON_SQUASH, Position = BUTTON_DOWN }):Play()
+			setPressed(true)
 		end
 	end)
 	btn.InputEnded:Connect(function(input)
 		local kind = input.UserInputType
 		if kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch then
-			TweenService:Create(btn, SQUASH_RELEASE_INFO, { Size = BUTTON_NORMAL }):Play()
+			TweenService:Create(btn, SQUASH_RELEASE_INFO, { Size = BUTTON_NORMAL, Position = BUTTON_UP }):Play()
+			setPressed(false)
 		end
 		if kind == Enum.UserInputType.MouseButton1 then
 			spring(if hovering then 1.06 else 1, RELEASE_INFO)
-			setGlow(if hovering then 0.82 else 1)
 		elseif kind == Enum.UserInputType.MouseMovement or kind == Enum.UserInputType.Touch then
 			-- Maus raus bzw. Finger weg: zurück auf normale Größe
 			hovering = false
 			spring(1, RELEASE_INFO)
-			setGlow(1)
+			setShine(SHINE_NORMAL)
+			setPressed(false)
 		end
 	end)
 
@@ -401,6 +426,7 @@ function UI.Button(props: { [string]: any }, onClick: (() -> ())?): Button
 			if color ~= currentColor then
 				currentColor = color
 				gradient.Color = UI.ButtonSequence(color)
+				lip.BackgroundColor3 = color:Lerp(BLACK, LIP_DARKEN)
 			end
 		end,
 	}
@@ -484,7 +510,7 @@ function UI.Section(parent: Instance, text: string, order: number, color: Color3
 		TextColor3 = color or UI.Theme.Yellow,
 		LayoutOrder = order,
 		MaxText = 24,
-		Outline = 2,
+		Outline = 2.5,
 		Parent = parent,
 	})
 end
@@ -545,7 +571,7 @@ function UI.Bar(props: { [string]: any }): Bar
 	local back: Frame = UI.Create("Frame", {
 		Size = props.Size or UDim2.new(1, 0, 0, 30),
 		Position = props.Position or UDim2.new(),
-		BackgroundColor3 = UI.Theme.PanelDark,
+		BackgroundColor3 = UI.Theme.PanelDark:Lerp(BLACK, 0.4), -- dunkle Rinne: die bunte Füllung leuchtet darauf
 		LayoutOrder = props.LayoutOrder or 0,
 		Parent = props.Parent,
 	}, { UI.Corner(10), UI.Stroke(BLACK, 3) })
@@ -847,16 +873,18 @@ function UI.Window(title: string, width: number, height: number, color: Color3?)
 		Visible = false,
 		Parent = group,
 	})
+	-- helle, kräftig blaue Fläche mit dicker schwarzer Kontur (Rand = Konturdicke, damit die
+	-- Kontur beim Ein-/Ausblenden in der CanvasGroup nicht abgeschnitten wird)
 	local panel = UI.Create("Frame", {
 		Name = "Panel",
-		Position = UDim2.fromOffset(4, 4),
-		Size = UDim2.new(1, -8, 1, -8),
+		Position = UDim2.fromOffset(WINDOW_STROKE, WINDOW_STROKE),
+		Size = UDim2.new(1, -WINDOW_STROKE * 2, 1, -WINDOW_STROKE * 2),
 		BackgroundColor3 = WHITE,
 		Parent = group,
 	}, {
 		UI.Corner(20),
-		UI.Stroke(BLACK, 4),
-		UI.Gradient(UI.Theme.Panel:Lerp(WHITE, 0.06), UI.Theme.PanelDark),
+		UI.Stroke(BLACK, WINDOW_STROKE),
+		UI.Gradient(UI.Theme.Panel:Lerp(WHITE, 0.12), UI.Theme.PanelDark),
 	})
 	local header = UI.Create("Frame", {
 		Name = "Header",
@@ -869,13 +897,14 @@ function UI.Window(title: string, width: number, height: number, color: Color3?)
 		UI.Stroke(BLACK, 3),
 		UI.Create("UIGradient", { Rotation = 90, Color = UI.ButtonSequence(accent) }),
 	})
+	-- Titel in GROSSBUCHSTABEN mit dicker Kontur
 	UI.Label({
-		Position = UDim2.fromOffset(14, 5),
-		Size = UDim2.new(1, -76, 1, -10),
-		Text = title,
+		Position = UDim2.fromOffset(14, 4),
+		Size = UDim2.new(1, -78, 1, -8),
+		Text = UI.Upper(title),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 32,
-		Outline = 3,
+		MaxText = 34,
+		Outline = 4,
 		Parent = header,
 	})
 	local content: ScrollingFrame = UI.Create("ScrollingFrame", {
@@ -908,14 +937,15 @@ function UI.Window(title: string, width: number, height: number, color: Color3?)
 		Token = 0,
 		OnOpen = nil,
 	}
+	-- Schließen: rotes Quadrat mit weißem X
 	UI.Button({
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -6, 0.5, 0),
-		Size = UDim2.fromOffset(40, 40),
-		Text = "✖",
+		Position = UDim2.new(1, -5, 0.5, 0),
+		Size = UDim2.fromOffset(42, 42),
+		Text = "X",
 		Color = UI.Theme.Red,
-		MaxText = 22,
-		Corner = 10,
+		MaxText = 28,
+		Corner = 8,
 		Parent = header,
 	}, function()
 		UI.CloseWindow(win)

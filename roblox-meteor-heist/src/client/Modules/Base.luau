@@ -22,6 +22,8 @@ local Base = {}
 local ctx: any = nil
 local Theme = UI.Theme
 local GRAY = Theme.Gray
+local CARD_STROKE = 3 -- dicke schwarze Kontur um jede Karte
+local HIGHLIGHT_STROKE = 4 -- goldene Kontur (gebaut / aktiv)
 
 type Row = { Index: number, Button: UI.Button, Card: Frame, Stroke: UIStroke }
 
@@ -36,23 +38,27 @@ local badge: Frame? = nil
 -- ---------------------------------------------------------------------
 local function row(parent: Instance, order: number, title: string, info: string, onBuy: () -> ()): (Frame, UI.Button)
 	local card = UI.Card({ Size = UDim2.new(1, 0, 0, 62), LayoutOrder = order, Parent = parent })
+	local stroke = card:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Thickness = CARD_STROKE
+	end
 	UI.Label({
 		Position = UDim2.fromOffset(12, 5),
 		Size = UDim2.new(1, -190, 0, 30),
 		Text = title,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		MaxText = 22,
-		Outline = 2,
+		Outline = 3,
 		Parent = card,
 	})
 	UI.Label({
 		Position = UDim2.fromOffset(12, 35),
-		Size = UDim2.new(1, -190, 0, 20),
+		Size = UDim2.new(1, -190, 0, 21),
 		Text = info,
-		Font = Enum.Font.GothamBold,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.SubText,
-		MaxText = 14,
+		MaxText = 15,
+		Outline = 2,
 		Parent = card,
 	})
 	local button = UI.Button({
@@ -74,12 +80,12 @@ local function build()
 
 	UI.Section(content, "🏢 Stockwerke", 1)
 	slotLabel = UI.Label({
-		Size = UDim2.new(1, 0, 0, 22),
+		Size = UDim2.new(1, 0, 0, 24),
 		Text = "",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 2,
-		MaxText = 16,
+		MaxText = 18,
+		Outline = 2,
 		Parent = content,
 	})
 	local floors = if type(Config.BaseFloors) == "table" then Config.BaseFloors else {}
@@ -117,14 +123,14 @@ local function build()
 	UI.Label({
 		Size = UDim2.new(1, 0, 0, 22),
 		Text = "Bleibt auch nach Rebirth!",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 99,
-		MaxText = 14,
+		MaxText = 16,
+		Outline = 2,
 		Parent = content,
 	})
 	ctx.Windows.Register("Base", win, Base.Refresh)
-	local button = ctx.Hud.AddRightButton("🏗️", "Base", Theme.Gold, 8, function()
+	local button = ctx.Hud.AddRightButton("🏗️", "BASE", Theme.Gold, 8, function()
 		ctx.Windows.Toggle("Base")
 	end)
 	badge = UI.Badge(button, "!")
@@ -136,7 +142,7 @@ local function setRow(r: Row, text: string, color: Color3, highlight: boolean)
 	local strokeColor = if highlight then Theme.Gold else Color3.new(0, 0, 0)
 	if r.Stroke and r.Stroke.Color ~= strokeColor then
 		r.Stroke.Color = strokeColor
-		r.Stroke.Thickness = if highlight then 4 else 2
+		r.Stroke.Thickness = if highlight then HIGHLIGHT_STROKE else CARD_STROKE
 	end
 end
 
@@ -168,10 +174,10 @@ function Base.Refresh(state: any)
 		local price = tonumber(def.Price) or 0
 		local need = math.floor(tonumber(def.RequiredRebirths) or 0)
 		if r.Index + 1 <= floors then
-			setRow(r, "✅ Gebaut", GRAY, true)
+			setRow(r, "✅ GEBAUT", GRAY, true)
 		elseif r.Index == floors then
 			if rebirths < need then
-				setRow(r, "🔥 Rebirth " .. need, GRAY, false)
+				setRow(r, "🔥 REBIRTH " .. need, GRAY, false)
 			else
 				setRow(r, "💵 " .. Util.FormatCash(price), if cash >= price then Theme.Green else GRAY, false)
 			end
@@ -183,9 +189,9 @@ function Base.Refresh(state: any)
 		local def = ctx.Config.BaseLooks[r.Index]
 		local price = tonumber(def.Price) or 0
 		if r.Index == look then
-			setRow(r, "✅ Aktiv", Theme.Gold, true)
+			setRow(r, "✅ AKTIV", Theme.Gold, true)
 		elseif r.Index < look then
-			setRow(r, "✅ Gekauft", GRAY, false)
+			setRow(r, "✅ GEKAUFT", GRAY, false)
 		elseif r.Index == look + 1 then
 			setRow(r, "💵 " .. Util.FormatCash(price), if cash >= price then Theme.Green else GRAY, false)
 		else

@@ -22,8 +22,8 @@ local Night = {}
 local ctx: any = nil
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
-local NIGHT_COLOR = Color3.fromRGB(70, 80, 200)
-local BLOOD_COLOR = Color3.fromRGB(210, 30, 40)
+local NIGHT_COLOR = Color3.fromRGB(90, 95, 240)
+local BLOOD_COLOR = Color3.fromRGB(230, 35, 45)
 local STAR_COLOR = Color3.fromRGB(255, 240, 170)
 local CRATE_GLOW = Color3.fromRGB(255, 215, 90)
 
@@ -68,8 +68,8 @@ local function makePill(parent: Instance, name: string, width: number, height: n
 	local label = UI.Label({
 		Position = UDim2.fromOffset(10, 4),
 		Size = UDim2.new(1, -20, 1, -8),
-		MaxText = 22,
-		Outline = 2,
+		MaxText = 24,
+		Outline = 3,
 		ZIndex = 6,
 		Parent = frame,
 	})

@@ -21,7 +21,6 @@ local MeteorRun = {}
 local player = Players.LocalPlayer
 local ctx: any = nil
 local Theme = UI.Theme
-local BLACK = Color3.new(0, 0, 0)
 
 local TAU = 2 * math.pi
 local ANIM_RANGE = 420 -- weiter weg dreht sich nichts (spart Rechenzeit)
@@ -80,64 +79,55 @@ local finishedText: string? = nil
 local finishedUntil = 0
 
 local function buildHud()
+	-- Steal-a-Brainrot-Stil: kein Kasten, nur große Zahlen/Texte mit dicker schwarzer Kontur
 	hudFrame = UI.Create("Frame", {
 		Name = "MeteorRunHud",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 54), -- unter den Bannern (Schauer, Egg Rush)
 		Size = UDim2.fromOffset(420, 66),
-		BackgroundColor3 = Theme.PanelDark,
-		BackgroundTransparency = 0.1,
+		BackgroundTransparency = 1,
 		Visible = false,
 		ZIndex = 6,
 		Parent = ctx.Gui,
-	}, {
-		UI.Corner(16),
-		UI.Stroke(BLACK, 3),
-		UI.Create("UIGradient", {
-			Rotation = 90,
-			Color = ColorSequence.new(Color3.fromRGB(255, 170, 120), Color3.fromRGB(150, 110, 255)),
-			Transparency = NumberSequence.new(0.55),
-		}),
 	})
 	hudScale = UI.Create("UIScale", { Scale = 0, Parent = hudFrame })
 	timerLabel = UI.Label({
-		Position = UDim2.fromOffset(12, 4),
-		Size = UDim2.new(0.44, -12, 0, 38),
+		Position = UDim2.fromOffset(6, 0),
+		Size = UDim2.new(0.44, -6, 0, 42),
 		Text = "⏱️ 0:00.0",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.Yellow,
-		MaxText = 32,
-		Outline = 3,
+		MaxText = 36,
+		Outline = 4,
 		ZIndex = 7,
 		Parent = hudFrame,
 	})
 	cpLabel = UI.Label({
-		Position = UDim2.new(0.44, 0, 0, 8),
-		Size = UDim2.new(0.24, 0, 0, 30),
+		Position = UDim2.new(0.44, 0, 0, 5),
+		Size = UDim2.new(0.24, 0, 0, 34),
 		Text = "🚩 0/4",
 		TextColor3 = Color3.fromRGB(140, 230, 255),
-		MaxText = 24,
-		Outline = 2,
+		MaxText = 28,
+		Outline = 3,
 		ZIndex = 7,
 		Parent = hudFrame,
 	})
 	bestLabel = UI.Label({
-		Position = UDim2.new(0.68, 0, 0, 8),
-		Size = UDim2.new(0.32, -12, 0, 30),
+		Position = UDim2.new(0.68, 0, 0, 5),
+		Size = UDim2.new(0.32, -6, 0, 34),
 		Text = "🏆 –",
 		TextXAlignment = Enum.TextXAlignment.Right,
 		TextColor3 = Color3.fromRGB(255, 230, 120),
-		MaxText = 24,
-		Outline = 2,
+		MaxText = 28,
+		Outline = 3,
 		ZIndex = 7,
 		Parent = hudFrame,
 	})
 	subLabel = UI.Label({
-		Position = UDim2.fromOffset(12, 42),
-		Size = UDim2.new(1, -24, 0, 20),
+		Position = UDim2.fromOffset(6, 43),
+		Size = UDim2.new(1, -12, 0, 22),
 		Text = "",
-		TextColor3 = Theme.SubText,
-		MaxText = 16,
+		MaxText = 18,
 		Outline = 2,
 		ZIndex = 7,
 		Parent = hudFrame,
@@ -592,7 +582,7 @@ function MeteorRun.Start(context: any)
 	buildEffects()
 
 	-- Knopf rechts (gleicher Stil wie die anderen): zum Start-Tor
-	ctx.Hud.AddRightButton("☄️", "Run", Theme.Orange, 7, function()
+	ctx.Hud.AddRightButton("☄️", "RUN", Theme.Orange, 7, function()
 		ctx.Request("GoRun")
 	end)
 

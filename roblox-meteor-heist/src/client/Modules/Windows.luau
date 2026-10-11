@@ -22,11 +22,20 @@ local list: { [string]: UI.Window } = {}
 local refreshers: { [string]: (state: any) -> () } = {}
 
 local GRAY = Theme.Gray
+local BLACK = Color3.new(0, 0, 0)
 local TIER_COLORS: { [string]: Color3 } = {
 	Normal = Color3.fromRGB(235, 235, 235),
 	Selten = Color3.fromRGB(80, 200, 255),
 	Ultra = Color3.fromRGB(255, 80, 230),
 }
+
+-- Knallige Kartenfarben (Simulator-Look): weißer Text mit schwarzer Kontur ist darauf gut lesbar
+local PASS_CARD = Color3.fromRGB(255, 185, 30)
+local BOOST_CARD = Color3.fromRGB(160, 80, 245)
+local STARTER_CARD = Color3.fromRGB(240, 60, 70)
+local GADGET_CARD = Color3.fromRGB(255, 130, 35)
+local CARD_STROKE = 3 -- dicke schwarze Kontur um jede Karte
+local HIGHLIGHT_STROKE = 4 -- goldene Kontur (besessen / dein bestes)
 
 -- "👟 2x Schritte" + Icon "👟" -> nicht doppelt anzeigen
 local function displayName(item: any): string
@@ -36,6 +45,49 @@ local function displayName(item: any): string
 		return icon .. " " .. name
 	end
 	return name
+end
+
+-- Für die Karten: großes Emoji und Name getrennt ("👟 2x Schritte" -> "👟", "2x Schritte")
+local function iconAndName(item: any): (string, string)
+	local name = tostring(item.Name or item.Key or "?")
+	local icon = if type(item.Icon) == "string" then item.Icon else ""
+	local first, last = name:find(icon, 1, true)
+	if icon ~= "" and first and last then
+		local rest = (name:sub(1, first - 1) .. name:sub(last + 1)):match("^%s*(.-)%s*$")
+		if rest and rest ~= "" then
+			name = rest
+		end
+	end
+	return icon, name
+end
+
+-- Karte: Vollton-Farbe + dicke schwarze Kontur, großes Emoji links oben, Name daneben.
+-- Gibt die Kontur zurück (wird bei "besessen" golden).
+local function shopCardHead(card: Frame, item: any, nameHeight: number, nameMax: number): UIStroke
+	local stroke = card:FindFirstChildOfClass("UIStroke") :: UIStroke
+	stroke.Thickness = CARD_STROKE
+	local icon, name = iconAndName(item)
+	if icon ~= "" then
+		UI.Label({
+			Position = UDim2.fromOffset(6, 4),
+			Size = UDim2.fromOffset(44, 44),
+			Text = icon,
+			MaxText = 40,
+			Parent = card,
+		})
+	end
+	local nameX = if icon ~= "" then 54 else 10
+	UI.Label({
+		Position = UDim2.fromOffset(nameX, 6),
+		Size = UDim2.new(1, -nameX - 8, 0, nameHeight),
+		Text = name,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = true,
+		MaxText = nameMax,
+		Outline = 3,
+		Parent = card,
+	})
+	return stroke
 end
 
 local function percentText(value: number): string
@@ -90,9 +142,9 @@ local shopTabButtons: { [string]: UI.Button } = {}
 local shopTab = "Passes"
 
 local SHOP_TABS = {
-	{ Id = "Passes", Text = "⭐ Gamepässe", Color = Theme.Gold },
-	{ Id = "Boosts", Text = "💎 Boosts", Color = Theme.Blue },
-	{ Id = "Gadgets", Text = "🛠️ Gadgets", Color = Theme.Orange },
+	{ Id = "Passes", Text = "⭐ PÄSSE", Color = Theme.Gold },
+	{ Id = "Boosts", Text = "💎 BOOSTS", Color = Theme.Purple },
+	{ Id = "Gadgets", Text = "🛠️ GADGETS", Color = Theme.Orange },
 }
 
 -- Starter-Paket: Werte aus Config.StarterPack (der MonetizationService liest dieselben).
@@ -268,13 +320,13 @@ function Windows.RefreshShop(state: any)
 		local pass = entry.Pass
 		local owned = state and state.Passes and state.Passes[pass.Key] == true
 		if owned then
-			entry.Button.SetText("✅ Besitzt du")
+			entry.Button.SetText("✅ GEKAUFT")
 			entry.Button.SetColor(GRAY)
 		elseif pass.Id == 0 then
-			entry.Button.SetText("Bald verfügbar")
+			entry.Button.SetText("BALD")
 			entry.Button.SetColor(GRAY)
 		else
-			entry.Button.SetText(if entry.Price then ("R$ " .. entry.Price) else "Kaufen")
+			entry.Button.SetText(if entry.Price then ("R$ " .. entry.Price) else "KAUFEN")
 			entry.Button.SetColor(Theme.Green)
 		end
 	end
@@ -287,17 +339,17 @@ function Windows.RefreshShop(state: any)
 			end
 		end
 		if product.Id == 0 then
-			entry.Button.SetText("Bald verfügbar")
+			entry.Button.SetText("BALD")
 			entry.Button.SetColor(GRAY)
 		elseif product.Type == "StarterPack" and state and state.StarterBought == true then
-			entry.Button.SetText("✅ Gekauft")
+			entry.Button.SetText("✅ GEKAUFT")
 			entry.Button.SetColor(GRAY)
 		elseif product.Type == "StarterPack" and Windows.StarterPending() then
-			entry.Button.SetText("⏳ Kauf läuft...")
+			entry.Button.SetText("⏳ LÄUFT...")
 			entry.Button.SetColor(GRAY)
 		else
-			entry.Button.SetText(if entry.Price then ("R$ " .. entry.Price) else "Kaufen")
-			entry.Button.SetColor(if product.Type == "StarterPack" then Theme.Gold else Theme.Blue)
+			entry.Button.SetText(if entry.Price then ("R$ " .. entry.Price) else "KAUFEN")
+			entry.Button.SetColor(if product.Type == "StarterPack" then Theme.Gold else Theme.Green)
 		end
 	end
 	local cash = state and tonumber(state.Cash) or 0
@@ -306,16 +358,16 @@ function Windows.RefreshShop(state: any)
 		local price = tonumber(gadget.Price) or 0
 		local owned = ownsGadget(state, gadget.Id)
 		if owned then
-			entry.Button.SetText("✅ Besitzt du")
+			entry.Button.SetText("✅ GEKAUFT")
 			entry.Button.SetColor(GRAY)
 		else
 			entry.Button.SetText("💵 " .. ctx.Util.FormatCash(price))
 			entry.Button.SetColor(if cash >= price then Theme.Green else GRAY)
 		end
-		local strokeColor = if owned then Theme.Gold else Color3.new(0, 0, 0)
+		local strokeColor = if owned then Theme.Gold else BLACK
 		if entry.Stroke.Color ~= strokeColor then
 			entry.Stroke.Color = strokeColor
-			entry.Stroke.Thickness = if owned then 4 else 2
+			entry.Stroke.Thickness = if owned then HIGHLIGHT_STROKE else CARD_STROKE
 		end
 	end
 end
@@ -368,31 +420,23 @@ local function buildPassPage(page: Frame)
 	UI.Section(page, "⭐ Gamepässe (gehören dir für immer)", 1)
 	local passGrid = UI.Grid(page, 2, 280, 136)
 	for i, pass in ipairs(ctx.Config.GamePasses) do
-		local card = UI.Card({ LayoutOrder = i, Parent = passGrid })
+		local card = UI.Card({ LayoutOrder = i, BackgroundColor3 = PASS_CARD, Parent = passGrid })
+		shopCardHead(card, pass, 38, 22)
 		UI.Label({
-			Position = UDim2.fromOffset(10, 6),
-			Size = UDim2.new(1, -20, 0, 30),
-			Text = displayName(pass),
-			MaxText = 22,
+			Position = UDim2.fromOffset(10, 50),
+			Size = UDim2.new(1, -20, 0, 34),
+			Text = tostring(pass.Description or ""),
+			TextWrapped = true,
+			MaxText = 15,
 			Outline = 2,
 			Parent = card,
 		})
-		UI.Label({
-			Position = UDim2.fromOffset(10, 38),
-			Size = UDim2.new(1, -20, 0, 40),
-			Text = tostring(pass.Description or ""),
-			Font = Enum.Font.GothamBold,
-			TextColor3 = Theme.SubText,
-			TextWrapped = true,
-			MaxText = 14,
-			Parent = card,
-		})
 		local buy = UI.Button({
-			Position = UDim2.new(0, 10, 1, -48),
+			Position = UDim2.new(0, 10, 1, -46),
 			Size = UDim2.new(1, -20, 0, 38),
 			Text = "...",
 			Color = Theme.Green,
-			MaxText = 20,
+			MaxText = 22,
 			Parent = card,
 		}, function()
 			local state = ctx.State
@@ -420,43 +464,32 @@ local function buildBoostPage(page: Frame)
 			-- Starter-Paket ganz vorne
 			LayoutOrder = if starter then 0 else i,
 			Visible = not isRandom, -- erst zeigen, wenn die Länder-Regel geprüft ist
+			BackgroundColor3 = if starter then STARTER_CARD else BOOST_CARD,
 			Parent = productGrid,
 		})
+		local stroke = shopCardHead(card, product, 38, 19)
 		if starter then
-			local stroke = card:FindFirstChildOfClass("UIStroke")
-			if stroke then
-				stroke.Color = Theme.Gold
-				stroke.Thickness = 4
-			end
+			stroke.Color = Theme.Gold
+			stroke.Thickness = HIGHLIGHT_STROKE
 		end
-		UI.Label({
-			Position = UDim2.fromOffset(10, 6),
-			Size = UDim2.new(1, -20, 0, 30),
-			Text = displayName(product),
-			TextWrapped = true,
-			MaxText = 19,
-			Outline = 2,
-			Parent = card,
-		})
 		local info = UI.Label({
-			Position = UDim2.fromOffset(10, 38),
+			Position = UDim2.fromOffset(10, 46),
 			Size = UDim2.new(1, -20, 0, 62),
 			Text = productInfoText(product, nil),
-			Font = Enum.Font.GothamBold,
-			TextColor3 = Theme.SubText,
 			TextWrapped = true,
-			MaxText = if isRandom or starter then 12 else 14,
+			MaxText = if isRandom or starter then 13 else 15,
+			Outline = 2,
 			Parent = card,
 		})
 		if isRandom then
 			table.insert(randomCards, card)
 		end
 		local buy = UI.Button({
-			Position = UDim2.new(0, 10, 1, -46),
+			Position = UDim2.new(0, 10, 1, -44),
 			Size = UDim2.new(1, -20, 0, 36),
 			Text = "...",
-			Color = if starter then Theme.Gold else Theme.Blue,
-			MaxText = 20,
+			Color = if starter then Theme.Gold else Theme.Green,
+			MaxText = 22,
 			Parent = card,
 		}, function()
 			if starter then
@@ -488,11 +521,11 @@ local function buildGadgetPage(page: Frame)
 	UI.Label({
 		Size = UDim2.new(1, 0, 0, 36),
 		Text = "Liegen nach jedem Spawn in deinem Rucksack – auch nach Rebirth. Super-Schlag macht deinen Schläger stärker.",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		TextWrapped = true,
 		LayoutOrder = 2,
-		MaxText = 14,
+		MaxText = 15,
+		Outline = 2,
 		Parent = page,
 	})
 	local grid = UI.Grid(page, 3, 280, 176)
@@ -501,33 +534,24 @@ local function buildGadgetPage(page: Frame)
 		gadgets = {}
 	end
 	for i, gadget in ipairs(gadgets) do
-		local card = UI.Card({ LayoutOrder = i, Parent = grid })
-		local stroke = card:FindFirstChildOfClass("UIStroke") :: UIStroke
+		local card = UI.Card({ LayoutOrder = i, BackgroundColor3 = GADGET_CARD, Parent = grid })
+		local stroke = shopCardHead(card, gadget, 38, 22)
 		UI.Label({
-			Position = UDim2.fromOffset(10, 6),
-			Size = UDim2.new(1, -20, 0, 32),
-			Text = displayName(gadget),
-			MaxText = 22,
+			Position = UDim2.fromOffset(10, 48),
+			Size = UDim2.new(1, -20, 0, 74),
+			Text = tostring(gadget.Description or ""),
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			MaxText = 15,
 			Outline = 2,
 			Parent = card,
 		})
-		UI.Label({
-			Position = UDim2.fromOffset(10, 40),
-			Size = UDim2.new(1, -20, 0, 76),
-			Text = tostring(gadget.Description or ""),
-			Font = Enum.Font.GothamBold,
-			TextColor3 = Theme.SubText,
-			TextWrapped = true,
-			TextYAlignment = Enum.TextYAlignment.Top,
-			MaxText = 14,
-			Parent = card,
-		})
 		local button = UI.Button({
-			Position = UDim2.new(0, 10, 1, -48),
+			Position = UDim2.new(0, 10, 1, -46),
 			Size = UDim2.new(1, -20, 0, 38),
 			Text = "...",
 			Color = Theme.Green,
-			MaxText = 20,
+			MaxText = 22,
 			Parent = card,
 		}, function()
 			if ownsGadget(ctx.State, gadget.Id) then
@@ -618,16 +642,16 @@ local function buildTreadmills()
 	treadmillSpeed = UI.Label({
 		Size = UDim2.new(1, 0, 0, 22),
 		Text = "",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 2,
-		MaxText = 16,
+		MaxText = 17,
+		Outline = 2,
 		Parent = content,
 	})
 	treadmillBar = UI.Bar({ LayoutOrder = 3, Color = Theme.Cyan, MaxText = 16, Parent = content })
 	UI.Button({
 		Size = UDim2.new(1, 0, 0, 54),
-		Text = "🏃 Zu den Laufbändern!",
+		Text = "🏃 ZU DEN LAUFBÄNDERN!",
 		Color = Theme.Green,
 		LayoutOrder = 4,
 		MaxText = 26,
@@ -640,11 +664,11 @@ local function buildTreadmills()
 	UI.Label({
 		Size = UDim2.new(1, 0, 0, 36),
 		Text = "Laufband kaufen, drauf laufen = Schritte sammeln = schneller rennen! Bessere Laufbänder geben viel mehr Schritte.",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		TextWrapped = true,
 		LayoutOrder = 5,
-		MaxText = 14,
+		MaxText = 15,
+		Outline = 2,
 		Parent = content,
 	})
 
@@ -656,12 +680,13 @@ local function buildTreadmills()
 		local color: Color3 = if typeof(def.Color) == "Color3" then def.Color else Theme.Gray
 		local card = UI.Card({ Size = UDim2.new(1, 0, 0, 66), LayoutOrder = 10 + i, Parent = content })
 		local stroke = card:FindFirstChildOfClass("UIStroke") :: UIStroke
+		stroke.Thickness = CARD_STROKE
 		local swatch = UI.Create("Frame", {
 			Position = UDim2.fromOffset(10, 9),
 			Size = UDim2.fromOffset(48, 48),
 			BackgroundColor3 = if def.Id == "Regenbogen" then Color3.new(1, 1, 1) else color,
 			Parent = card,
-		}, { UI.Corner(10), UI.Stroke(Color3.new(0, 0, 0), 3) })
+		}, { UI.Corner(10), UI.Stroke(BLACK, 3) })
 		if def.Id == "Regenbogen" or def.Rainbow == true then
 			rainbowGradient().Parent = swatch
 		end
@@ -672,17 +697,17 @@ local function buildTreadmills()
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.45),
 			MaxText = 22,
-			Outline = 2,
+			Outline = 3,
 			Parent = card,
 		})
 		local rate = UI.Label({
 			Position = UDim2.fromOffset(70, 36),
 			Size = UDim2.new(1, -230, 0, 22),
 			Text = "",
-			Font = Enum.Font.GothamBold,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextColor3 = Theme.Yellow,
-			MaxText = 15,
+			MaxText = 16,
+			Outline = 2,
 			Parent = card,
 		})
 		local buy = UI.Button({
@@ -839,13 +864,13 @@ function Windows.RefreshTreadmills(state: any)
 		if row.Rate.Text ~= rateText then
 			row.Rate.Text = rateText
 		end
-		local strokeColor = Color3.new(0, 0, 0)
+		local strokeColor = BLACK
 		if state.BestTreadmill == def.Id then
-			row.Buy.SetText("Dein bestes")
+			row.Buy.SetText("⭐ BESTES")
 			row.Buy.SetColor(Theme.Gold)
 			strokeColor = Theme.Gold
 		elseif owned then
-			row.Buy.SetText("Gekauft")
+			row.Buy.SetText("✅ GEKAUFT")
 			row.Buy.SetColor(GRAY)
 		elseif def == nextDef then
 			row.Buy.SetText(Util.FormatCash(price))
@@ -856,7 +881,7 @@ function Windows.RefreshTreadmills(state: any)
 		end
 		if row.Stroke.Color ~= strokeColor then
 			row.Stroke.Color = strokeColor
-			row.Stroke.Thickness = if strokeColor == Theme.Gold then 4 else 2
+			row.Stroke.Thickness = if strokeColor == Theme.Gold then HIGHLIGHT_STROKE else CARD_STROKE
 		end
 		local transparency = if owned then 0 else 0.3
 		if row.Card.BackgroundTransparency ~= transparency then
@@ -882,22 +907,22 @@ local function buildRebirth()
 	list.Rebirth = win
 	local content = win.Content
 	rebirthInfo = UI.Label({
-		Size = UDim2.new(1, 0, 0, 32),
+		Size = UDim2.new(1, 0, 0, 34),
 		Text = "",
 		LayoutOrder = 1,
-		MaxText = 24,
-		Outline = 2,
+		MaxText = 28,
+		Outline = 3,
 		Parent = content,
 	})
 	rebirthBar = UI.Bar({ Size = UDim2.new(1, 0, 0, 34), LayoutOrder = 2, Color = Theme.Orange, Parent = content })
 	rebirthDetail = UI.Label({
 		Size = UDim2.new(1, 0, 0, 150),
 		Text = "",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		TextWrapped = true,
 		LayoutOrder = 3,
-		MaxText = 16,
+		MaxText = 17,
+		Outline = 2,
 		Parent = content,
 	})
 	UI.Button({
@@ -1026,15 +1051,15 @@ local function isSpecialAlien(def: any): boolean
 end
 
 local function buildIndex()
-	local win = UI.Window("👽 ALIEN-INDEX", 680, 560, Theme.Green)
+	local win = UI.Window("👽 INDEX", 680, 560, Theme.Green)
 	list.Index = win
 	local content = win.Content
 	indexHeader = UI.Label({
 		Size = UDim2.new(1, 0, 0, 32),
 		Text = "",
 		LayoutOrder = 1,
-		MaxText = 22,
-		Outline = 2,
+		MaxText = 24,
+		Outline = 3,
 		Parent = content,
 	})
 	indexBar = UI.Bar({ LayoutOrder = 2, Color = Theme.Green, MaxText = 16, Parent = content })
@@ -1042,10 +1067,10 @@ local function buildIndex()
 	batLabel = UI.Label({
 		Size = UDim2.new(1, 0, 0, 24),
 		Text = "",
-		Font = Enum.Font.GothamBold,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 3,
-		MaxText = 16,
+		MaxText = 17,
+		Outline = 2,
 		Parent = content,
 	})
 
@@ -1087,7 +1112,12 @@ local function buildIndex()
 		local group: IndexGroup = { Title = section.Title, Header = header, Cards = {}, Color = section.Color }
 		for i, def in ipairs(defs) do
 			local look = def.Look or {}
-			local card = UI.Card({ LayoutOrder = i, Parent = gridFrame })
+			-- Karte in der Seltenheitsfarbe (noch nicht entdeckt = grau, siehe RefreshIndex)
+			local card = UI.Card({ LayoutOrder = i, BackgroundColor3 = GRAY, Parent = gridFrame })
+			local cardStroke = card:FindFirstChildOfClass("UIStroke")
+			if cardStroke then
+				cardStroke.Thickness = CARD_STROKE
+			end
 			local dotStroke = UI.Stroke(look.Accent or Color3.new(1, 1, 1), 3)
 			local dot = UI.Create("Frame", {
 				AnchorPoint = Vector2.new(0, 0.5),
@@ -1099,8 +1129,8 @@ local function buildIndex()
 			local question = UI.Label({
 				Size = UDim2.fromScale(1, 1),
 				Text = "?",
-				MaxText = 24,
-				Outline = 2,
+				MaxText = 28,
+				Outline = 3,
 				Visible = false,
 				Parent = dot,
 			})
@@ -1109,7 +1139,7 @@ local function buildIndex()
 				Size = UDim2.new(1, -58, 0, 40),
 				Text = "???",
 				TextWrapped = true,
-				MaxText = 15,
+				MaxText = 16,
 				Outline = 2,
 				Parent = card,
 			})
@@ -1118,8 +1148,8 @@ local function buildIndex()
 				Size = UDim2.new(1, -58, 0, 18),
 				Text = tostring(def.Tier),
 				TextColor3 = TIER_COLORS[def.Tier] or Theme.SubText,
-				MaxText = 13,
-				Outline = 1,
+				MaxText = 14,
+				Outline = 2,
 				Parent = card,
 			})
 			table.insert(group.Cards, {
@@ -1203,13 +1233,15 @@ function Windows.RefreshIndex(state: any)
 				card.Dot.BackgroundColor3 = look.Color or group.Color
 				card.DotStroke.Color = look.Accent or Color3.new(1, 1, 1)
 				card.Question.Visible = false
+				card.Card.BackgroundColor3 = group.Color:Lerp(BLACK, 0.12)
 				card.Card.BackgroundTransparency = 0
 			else
 				card.Name.Text = "???"
-				card.Dot.BackgroundColor3 = Color3.new(0, 0, 0)
+				card.Dot.BackgroundColor3 = BLACK
 				card.DotStroke.Color = Color3.fromRGB(70, 70, 80)
 				card.Question.Visible = true
-				card.Card.BackgroundTransparency = 0.45
+				card.Card.BackgroundColor3 = GRAY
+				card.Card.BackgroundTransparency = 0.25
 			end
 		end
 		group.Header.Text = ("%s  (%d/%d)"):format(group.Title, groupFound, #group.Cards)

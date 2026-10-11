@@ -2,7 +2,8 @@
 --   • knallgrüner Roblox-Noppenboden mit Block-Bäumen, Büschen, Zaun und unsichtbaren Randwänden
 --   • EI-RENNEN: großes Nester-Feld in der Map-Mitte (kleine + große Nester, Speed-Pads, Renn-Nest)
 --   • 8 OFFENE Basen (je 4 pro Seite, Eingang zum Nester-Feld) -> gebaut von BaseBuilder.luau
---  Stil: schlicht, bunt, blockig (Plastic + Noppen), wenig Neon, wenige Teile.
+--  Stil: Roblox-Simulator – hell, knallig, blockig (Plastic/SmoothPlastic + Noppen), kaum Neon, wenige Teile.
+--  Schilder: KEIN Kasten, FredokaOne + dicke schwarze Kontur, kurze Wörter in GROSSBUCHSTABEN.
 --   • großer Spawn-Platz mit SpawnLocation, Gratis-Zone, Bestenliste und der LAUFBAND-ZONE (Treadmills)
 -- Rückgabe von MapBuilder.Build(): siehe Typ "MapResult" unten.
 
@@ -133,15 +134,14 @@ local TREADMILL_DECK_MAX_Z = -342
 -- so schnell schiebt das Band den Spieler zurück (Config.TreadmillPush; muss deutlich unter Tempo 8 liegen)
 local TREADMILL_PUSH = math.clamp(tonumber((Config :: any).TreadmillPush) or 6, 0, 7)
 local TREADMILL_RAMP = 4 -- Rampe am Einstieg (hinten): vom Deck sanft hoch auf die Lauffläche
+-- Material je Stufe: Holz/Stein behalten ihre Struktur, alles andere ist knalliges SmoothPlastic (Roblox-Look)
 local TREADMILL_MATERIALS: { [string]: Enum.Material } = {
 	Holz = Enum.Material.Wood,
 	Stein = Enum.Material.Slate,
-	Eisen = Enum.Material.DiamondPlate,
-	Gold = Enum.Material.Foil,
-	Diamant = Enum.Material.Glass,
-	Galaxie = Enum.Material.Glass,
-	Regenbogen = Enum.Material.SmoothPlastic,
 }
+local TREADMILL_BELT_COLOR = Color3.fromRGB(32, 32, 38) -- dunkles Band (Streifen malt der Client)
+local TREADMILL_SCREEN_COLOR = Color3.fromRGB(25, 25, 32) -- dunkles Display: weiße Schrift gut lesbar
+local TREADMILL_ARROWS = string.rep("►    ", 13) .. "►" -- Pfeile auf den Seitenrahmen (Laufrichtung)
 
 local TREE_COLORS = {
 	Color3.fromRGB(60, 170, 60),
@@ -152,6 +152,7 @@ local TREE_COLORS = {
 local BUSH_COLOR = Color3.fromRGB(55, 160, 60)
 
 local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
 
 -- -------------------------------------------------------------------
 -- BAU-HELFER
@@ -220,8 +221,15 @@ local function addLight(parent: Instance, color: Color3, range: number, brightne
 	light.Parent = parent
 end
 
+-- Großbuchstaben für Schilder (string.upper kennt nur A-Z -> Umlaute von Hand)
+local function upper(text: string): string
+	return (string.upper(text):gsub("ä", "Ä"):gsub("ö", "Ö"):gsub("ü", "Ü"))
+end
+
 -- Mehrzeiliges Schild in Studs-Größe (wirkt wie ein echtes Schild in der Welt).
--- Aufbau wie bei MeteorFactory: BillboardGui > Frame "Frame" > TextLabels (UIListLayout)
+-- Aufbau wie bei MeteorFactory: BillboardGui > Frame "Frame" (unsichtbar) > TextLabels.
+-- Roblox-Style: KEIN Kasten, nur dicke Schrift mit schwarzer Kontur. Zeilen stehen fest untereinander
+-- (mittig, kein UIListLayout -> ein Objekt weniger pro Schild).
 local function worldSign(
 	parent: Instance,
 	guiName: string,
@@ -244,16 +252,17 @@ local function worldSign(
 	frame.BackgroundTransparency = 1
 	frame.Size = UDim2.fromScale(1, 1)
 	frame.Parent = gui
-	local layout = Instance.new("UIListLayout")
-	layout.SortOrder = Enum.SortOrder.LayoutOrder
-	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	layout.VerticalAlignment = Enum.VerticalAlignment.Center
-	layout.Parent = frame
 
+	local total = 0
+	for _, line in ipairs(lines) do
+		total += line.Height
+	end
+	local y = math.max(0, (1 - total) / 2)
 	for order, line in ipairs(lines) do
 		local label = Instance.new("TextLabel")
 		label.Name = line.Name
 		label.BackgroundTransparency = 1
+		label.Position = UDim2.fromScale(0, y)
 		label.Size = UDim2.fromScale(1, line.Height)
 		label.LayoutOrder = order
 		label.Font = Enum.Font.FredokaOne
@@ -261,11 +270,12 @@ local function worldSign(
 		label.TextColor3 = line.Color
 		label.Text = line.Text
 		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = 3
-		stroke.Color = Color3.new(0, 0, 0)
+		stroke.Thickness = if order == 1 then 4 else 3 -- Titelzeile mit dickerer Kontur
+		stroke.Color = BLACK
 		stroke.LineJoinMode = Enum.LineJoinMode.Round
 		stroke.Parent = label
 		label.Parent = frame
+		y += line.Height
 	end
 	return gui
 end

@@ -25,15 +25,21 @@ local CONFIRM_TIME = 5 -- Sekunden: so lange gilt der erste Klick einer gefährl
 local SPECTATE_KEY = Enum.KeyCode.X
 
 local TABS = {
-	{ Id = "Spawn", Text = "Spawnen", Color = Theme.Orange },
-	{ Id = "Events", Text = "Events", Color = Theme.Purple },
-	{ Id = "Players", Text = "Spieler", Color = Theme.Blue },
-	{ Id = "Powers", Text = "Kräfte", Color = Theme.Green },
-	{ Id = "Server", Text = "Server", Color = Theme.Red },
+	{ Id = "Spawn", Text = "🥚 SPAWN", Color = Theme.Orange },
+	{ Id = "Events", Text = "🎉 EVENTS", Color = Theme.Purple },
+	{ Id = "Players", Text = "👥 SPIELER", Color = Theme.Blue },
+	{ Id = "Powers", Text = "⚡ KRÄFTE", Color = Theme.Green },
+	{ Id = "Server", Text = "🖥️ SERVER", Color = Theme.Red },
 }
 
 local function darker(color: Color3, amount: number): Color3
 	return color:Lerp(Color3.new(0, 0, 0), amount)
+end
+
+-- Eingabefeld im Simulator-Font (sonst wie UI.TextBox)
+local function textBox(props: { [string]: any }): TextBox
+	props.Font = Enum.Font.FredokaOne
+	return textBox(props)
 end
 
 local function rainbowSequence(): ColorSequence
@@ -99,7 +105,7 @@ local function slider(
 		AutoButtonColor = false,
 		Text = "",
 		Parent = row,
-	}, { UI.Corner(9), UI.Stroke(Color3.new(0, 0, 0), 2) })
+	}, { UI.Corner(9), UI.Stroke(Color3.new(0, 0, 0), 3) })
 	local fill: Frame = UI.Create("Frame", {
 		Size = UDim2.fromScale(0, 1),
 		BackgroundColor3 = Theme.Green,
@@ -179,7 +185,7 @@ function AdminPanel.Build(ctx: any)
 	local Remotes = ctx.Remotes
 	local powers = Config.AdminPowers or {}
 
-	local win = UI.Window("ADMIN-PANEL", 720, 600, Theme.Red)
+	local win = UI.Window("🛠️ ADMIN", 720, 600, Theme.Red)
 
 	-- -----------------------------------------------------------------
 	-- Kopfzeile: Reiter + Ziel-Feld + Statuszeile (scrollen nicht mit)
@@ -204,7 +210,7 @@ function AdminPanel.Build(ctx: any)
 		BackgroundTransparency = 1,
 		Parent = win.Panel,
 	})
-	local targetBox = UI.TextBox({
+	local targetBox = textBox({
 		Size = UDim2.new(0.3, 0, 1, 0),
 		Text = "me",
 		PlaceholderText = "Ziel: me / all / Name",
@@ -216,8 +222,8 @@ function AdminPanel.Build(ctx: any)
 		Text = "Bereit. Ziel links: me / all / others / Name / UserId",
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.SubText,
-		Font = Enum.Font.GothamBold,
-		MaxText = 16,
+		MaxText = 17,
+		Outline = 2,
 		Parent = topRow,
 	})
 	win.Content.Position = UDim2.fromOffset(12, 158)
@@ -411,7 +417,7 @@ function AdminPanel.Build(ctx: any)
 					Color = if def.Tier == "Ultra"
 						then Theme.Pink
 						elseif def.Tier == "Selten" then Theme.Blue
-						else Theme.PanelLight,
+						else Theme.Cyan,
 					LayoutOrder = i,
 					MaxText = 13,
 					Wrap = true,
@@ -431,7 +437,7 @@ function AdminPanel.Build(ctx: any)
 		local rarityColor: Color3 = if rarity then rarity.Color else Theme.Gray
 		UI.Button({
 			Text = def.Name,
-			Color = darker(rarityColor, 0.35),
+			Color = darker(rarityColor, 0.12),
 			LayoutOrder = i,
 			MaxText = 13,
 			Wrap = true,
@@ -448,7 +454,8 @@ function AdminPanel.Build(ctx: any)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 13,
-		MaxText = 16,
+		MaxText = 17,
+		Outline = 2,
 		Parent = spawnPage,
 	})
 	alienGrid = UI.Grid(spawnPage, 14, 200, 40)
@@ -456,7 +463,7 @@ function AdminPanel.Build(ctx: any)
 	for i, mut in ipairs(Config.Mutations) do
 		local mutButton = UI.Button({
 			Text = mut.Name .. " x" .. mut.Mult,
-			Color = darker(mut.Color or Theme.Gray, 0.25),
+			Color = darker(mut.Color or Theme.Gray, 0.1),
 			LayoutOrder = i,
 			MaxText = 15,
 			Parent = mutGrid,
@@ -471,14 +478,14 @@ function AdminPanel.Build(ctx: any)
 	end
 	rebuildAliens()
 	local countRow = UI.Row(spawnPage, 16, 38)
-	local countBox = UI.TextBox({
+	local countBox = textBox({
 		Size = UDim2.new(0.5, -3, 1, 0),
 		PlaceholderText = "Anzahl Eier (1-25)",
 		Text = "1",
 		LayoutOrder = 1,
 		Parent = countRow,
 	})
-	local levelBox = UI.TextBox({
+	local levelBox = textBox({
 		Size = UDim2.new(0.5, -3, 1, 0),
 		PlaceholderText = "Level (1-" .. tostring(Config.MaxLevel) .. ")",
 		Text = "1",
@@ -609,7 +616,7 @@ function AdminPanel.Build(ctx: any)
 		end)
 	end
 	local adminRainRow = UI.Row(spawnPage, 50, 44)
-	local adminRainBox = UI.TextBox({
+	local adminRainBox = textBox({
 		Size = UDim2.new(0.3, -3, 1, 0),
 		PlaceholderText = "Anzahl (1-8)",
 		Text = "4",
@@ -639,7 +646,7 @@ function AdminPanel.Build(ctx: any)
 		if not rarity.AdminOnly then
 			UI.Button({
 				Text = rarity.Name,
-				Color = darker(rarity.Color, 0.3),
+				Color = darker(rarity.Color, 0.12),
 				LayoutOrder = i,
 				MaxText = 14,
 				Parent = rainGrid,
@@ -673,14 +680,14 @@ function AdminPanel.Build(ctx: any)
 	gridButtons(eventPage, 11, 214, {
 		{
 			"Nacht starten",
-			Color3.fromRGB(60, 70, 160),
+			Color3.fromRGB(90, 100, 235),
 			function()
 				admin("Night", { Mode = "Night", Global = globalToggle })
 			end,
 		},
 		{
 			"Blutmond starten",
-			Color3.fromRGB(190, 30, 40),
+			Color3.fromRGB(225, 40, 50),
 			function()
 				admin("Night", { Mode = "BloodMoon", Global = globalToggle })
 			end,
@@ -695,21 +702,21 @@ function AdminPanel.Build(ctx: any)
 	})
 	UI.Section(eventPage, "Nester & Eier", 20)
 	local eventRow = UI.Row(eventPage, 21, 38)
-	local multBox = UI.TextBox({
+	local multBox = textBox({
 		Size = UDim2.new(0.33, -4, 1, 0),
 		PlaceholderText = "Glück x",
 		Text = "2",
 		LayoutOrder = 1,
 		Parent = eventRow,
 	})
-	local minutesBox = UI.TextBox({
+	local minutesBox = textBox({
 		Size = UDim2.new(0.33, -4, 1, 0),
 		PlaceholderText = "Minuten",
 		Text = "10",
 		LayoutOrder = 2,
 		Parent = eventRow,
 	})
-	local rareBox = UI.TextBox({
+	local rareBox = textBox({
 		Size = UDim2.new(0.33, -4, 1, 0),
 		PlaceholderText = "Seltene Eier (1-10)",
 		Text = tostring(powers.RareNestCount or 4),
@@ -755,7 +762,7 @@ function AdminPanel.Build(ctx: any)
 	})
 	UI.Section(eventPage, "Ansage", 30)
 	local announceRow = UI.Row(eventPage, 31, 42)
-	local announceBox = UI.TextBox({
+	local announceBox = textBox({
 		Size = UDim2.new(0.7, -3, 1, 0),
 		PlaceholderText = "Nachricht an alle...",
 		LayoutOrder = 1,
@@ -850,8 +857,8 @@ function AdminPanel.Build(ctx: any)
 				Text = "@" .. tostring(info.Name) .. "  " .. tostring(info.UserId),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextColor3 = Theme.SubText,
-				Font = Enum.Font.GothamBold,
-				MaxText = 13,
+				MaxText = 14,
+				Outline = 2,
 				Parent = card,
 			})
 			UI.Label({
@@ -866,9 +873,9 @@ function AdminPanel.Build(ctx: any)
 				),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextColor3 = Theme.SubText,
-				Font = Enum.Font.GothamBold,
 				TextWrapped = true,
-				MaxText = 14,
+				MaxText = 15,
+				Outline = 2,
 				Parent = card,
 			})
 			UI.Button({
@@ -907,7 +914,7 @@ function AdminPanel.Build(ctx: any)
 	onTabOpen.Players = refreshPlayers
 
 	UI.Section(playerPage, "Geld & Werte (Ziel)", 20)
-	local amountBox = UI.TextBox({
+	local amountBox = textBox({
 		Size = UDim2.new(1, 0, 0, 38),
 		PlaceholderText = "Betrag (z.B. 1000000)",
 		LayoutOrder = 21,
@@ -963,7 +970,7 @@ function AdminPanel.Build(ctx: any)
 		return if giftAll then "all" else target()
 	end
 	local giftCountRow = UI.Row(playerPage, 32, 40)
-	local spinBox = UI.TextBox({
+	local spinBox = textBox({
 		Size = UDim2.new(0.3, -3, 1, 0),
 		PlaceholderText = "Drehs (1-1000)",
 		Text = "5",
@@ -998,14 +1005,15 @@ function AdminPanel.Build(ctx: any)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 33,
-		MaxText = 15,
+		MaxText = 16,
+		Outline = 2,
 		Parent = playerPage,
 	})
 	local eggGrid = UI.Grid(playerPage, 34, 100, 36)
 	for i, rarity in ipairs(Config.Rarities) do
 		UI.Button({
 			Text = rarity.Name,
-			Color = darker(rarity.Color, 0.3),
+			Color = darker(rarity.Color, 0.12),
 			LayoutOrder = i,
 			MaxText = 14,
 			StrokeSize = 2,
@@ -1020,7 +1028,8 @@ function AdminPanel.Build(ctx: any)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 35,
-		MaxText = 15,
+		MaxText = 16,
+		Outline = 2,
 		Parent = playerPage,
 	})
 	local giftGrid = UI.Grid(playerPage, 36, 160, 40)
@@ -1043,7 +1052,7 @@ function AdminPanel.Build(ctx: any)
 		order += 1
 		UI.Button({
 			Text = tostring(pass.Name),
-			Color = Theme.PanelLight,
+			Color = Theme.Gold,
 			LayoutOrder = order,
 			MaxText = 13,
 			Wrap = true,
@@ -1057,13 +1066,13 @@ function AdminPanel.Build(ctx: any)
 	-- Moderation
 	UI.Section(playerPage, "Moderation (Ziel)", 40)
 	local modRow = UI.Row(playerPage, 41, 38)
-	local reasonBox = UI.TextBox({
+	local reasonBox = textBox({
 		Size = UDim2.new(0.7, -3, 1, 0),
 		PlaceholderText = "Grund / Warnungstext",
 		LayoutOrder = 1,
 		Parent = modRow,
 	})
-	local daysBox = UI.TextBox({
+	local daysBox = textBox({
 		Size = UDim2.new(0.3, -3, 1, 0),
 		PlaceholderText = "Tage (0=immer)",
 		LayoutOrder = 2,
@@ -1139,7 +1148,7 @@ function AdminPanel.Build(ctx: any)
 		},
 		{
 			"Unsichtbar",
-			Color3.fromRGB(110, 110, 140),
+			Color3.fromRGB(140, 140, 200),
 			function()
 				admin("Invisible", { Target = target(), Enabled = true })
 			end,
@@ -1202,10 +1211,10 @@ function AdminPanel.Build(ctx: any)
 		Size = UDim2.new(1, 0, 0, 36),
 		Text = "Gott-Modus: dich kann niemand schlagen, aus deiner Base kann niemand klauen, Fallen wirken nicht.",
 		TextColor3 = Theme.SubText,
-		Font = Enum.Font.GothamBold,
 		TextWrapped = true,
 		LayoutOrder = 12,
-		MaxText = 14,
+		MaxText = 15,
+		Outline = 2,
 		Parent = powerPage,
 	})
 	local speedSlider = slider(powerPage, 20, "Tempo", powers.MinSpeed or 8, powers.MaxSpeed or 250, 16, function(value)
@@ -1247,25 +1256,24 @@ function AdminPanel.Build(ctx: any)
 		Size = UDim2.new(1, 0, 0, 22),
 		Text = 'Im Reiter Spieler auf "Zusehen" klicken. Taste X beendet.',
 		TextColor3 = Theme.SubText,
-		Font = Enum.Font.GothamBold,
 		LayoutOrder = 31,
-		MaxText = 14,
+		MaxText = 15,
+		Outline = 2,
 		Parent = powerPage,
 	})
+	-- Hinweis beim Zuschauen: ohne Kasten, nur Text mit dicker Kontur
 	local spectateHint = UI.Label({
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -110),
 		Size = UDim2.fromOffset(460, 40),
-		BackgroundTransparency = 0.25,
-		BackgroundColor3 = Theme.PanelDark,
 		Text = "",
+		TextColor3 = Theme.Yellow,
 		Visible = false,
-		MaxText = 20,
-		Outline = 2,
+		MaxText = 26,
+		Outline = 3,
 		ZIndex = 15,
 		Parent = ctx.Gui,
 	})
-	UI.Corner(10).Parent = spectateHint
 	local spectating: Player? = nil
 	local spectateConns: { RBXScriptConnection } = {}
 	local function stopSpectate()
@@ -1373,8 +1381,8 @@ function AdminPanel.Build(ctx: any)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextYAlignment = Enum.TextYAlignment.Top,
 		TextWrapped = true,
-		Font = Enum.Font.GothamBold,
-		MaxText = 17,
+		MaxText = 18,
+		Outline = 2,
 		Parent = infoCard,
 	})
 	local showLocked: (boolean) -> ()
@@ -1468,8 +1476,8 @@ function AdminPanel.Build(ctx: any)
 				),
 				TextXAlignment = Enum.TextXAlignment.Left,
 				TextWrapped = true,
-				Font = Enum.Font.GothamBold,
-				MaxText = 14,
+				MaxText = 15,
+				Outline = 2,
 				Parent = card,
 			})
 			if info.Active then
@@ -1551,7 +1559,7 @@ function AdminPanel.Build(ctx: any)
 	updateNoclip()
 
 	-- Öffnen: Knopf rechts + Taste P, Zuschauen beenden: Taste X
-	ctx.Hud.AddRightButton("🛠️", "Admin", Theme.Red, 99, function()
+	ctx.Hud.AddRightButton("🛠️", "ADMIN", Theme.Red, 99, function()
 		UI.ToggleWindow(win)
 	end)
 	UserInputService.InputBegan:Connect(function(input, processed)

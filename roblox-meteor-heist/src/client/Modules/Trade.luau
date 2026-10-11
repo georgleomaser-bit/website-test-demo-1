@@ -135,24 +135,23 @@ local function pulse(gui: GuiObject)
 	end
 end
 
+-- Karte in der Seltenheitsfarbe mit dicker schwarzer Kontur (schon im Angebot = grau)
 local function makeCard(parent: Instance, info: any, order: number, onClick: (() -> ())?): Frame
 	local card = UI.Card({
 		Name = "Item",
 		LayoutOrder = order,
-		BackgroundColor3 = if info.Offered then Theme.PanelDark else Theme.PanelLight,
+		BackgroundColor3 = if info.Offered then Theme.Gray else rarityColor(info.Rarity):Lerp(BLACK, 0.12),
 		Parent = parent,
 	})
 	local stroke = card:FindFirstChildOfClass("UIStroke")
 	if stroke then
-		stroke.Color = rarityColor(info.Rarity)
 		stroke.Thickness = 3
 	end
 	UI.Label({
 		Position = UDim2.fromScale(0.05, 0.04),
 		Size = UDim2.fromScale(0.9, 0.36),
 		Text = info.Name,
-		TextColor3 = rarityColor(info.Rarity),
-		MaxText = 16,
+		MaxText = 17,
 		Outline = 2,
 		Parent = card,
 	})
@@ -161,15 +160,17 @@ local function makeCard(parent: Instance, info: any, order: number, onClick: (()
 		Size = UDim2.fromScale(0.9, 0.28),
 		Text = detailText(info),
 		TextColor3 = Theme.SubText,
-		MaxText = 13,
+		MaxText = 14,
+		Outline = 2,
 		Parent = card,
 	})
 	UI.Label({
 		Position = UDim2.fromScale(0.05, 0.68),
 		Size = UDim2.fromScale(0.9, 0.28),
-		Text = if info.Offered then "✔ im Angebot" else ctx.Util.FormatCash(info.Income) .. "/s",
+		Text = if info.Offered then "✔ IM ANGEBOT" else ctx.Util.FormatCash(info.Income) .. "/s",
 		TextColor3 = if info.Offered then Theme.Yellow else Theme.Cash,
-		MaxText = 13,
+		MaxText = 14,
+		Outline = 2,
 		Parent = card,
 	})
 	if onClick then
@@ -214,7 +215,7 @@ local function fillSide(grid: Frame, offer: any, mine: boolean)
 end
 
 local function readyText(label: TextLabel, ready: boolean, side: string)
-	label.Text = if ready then "✅ BEREIT" else "⏳ wartet"
+	label.Text = if ready then "✅ BEREIT" else "⏳ WARTET"
 	label.TextColor3 = if ready then Theme.Green else Theme.SubText
 	if ready and not lastReady[side] then
 		pulse(label)
@@ -256,14 +257,14 @@ local function render()
 	end
 	local util = ctx.Util
 	titleLabel.Text = "🤝 Handel mit " .. view.Other.Name
-	theirTitle.Text = view.Other.Name .. " gibt"
+	theirTitle.Text = view.Other.Name .. " GIBT"
 	fillSide(yourItems, view.You, true)
 	fillSide(theirItems, view.Them, false)
 	yourCash.Text = "💵 " .. util.FormatCash(view.You.Cash or 0)
 	theirCash.Text = "💵 " .. util.FormatCash(view.Them.Cash or 0)
 	readyText(yourReady, view.You.Ready == true, "You")
 	readyText(theirReady, view.Them.Ready == true, "Them")
-	readyButton.SetText(if view.You.Ready then "↩️ Nicht bereit" else "✅ Bereit")
+	readyButton.SetText(if view.You.Ready then "↩️ NICHT BEREIT" else "✅ BEREIT")
 	readyButton.SetColor(if view.You.Ready then Theme.Gray else Theme.Green)
 	local inventory = view.Inventory or {}
 	inventoryTitle.Text = ("Deine Base (%d) – klick zum Anbieten"):format(#inventory)
@@ -299,29 +300,34 @@ local function refreshPlayers()
 			Size = UDim2.new(1, 0, 0, 36),
 			Text = "Keine anderen Spieler hier.",
 			TextColor3 = Theme.SubText,
-			MaxText = 18,
+			MaxText = 20,
+			Outline = 2,
 			Parent = playerList,
 		})
 	end
 	for i, other in ipairs(others) do
-		local row = UI.Card({ Size = UDim2.new(1, 0, 0, 48), LayoutOrder = i, Parent = playerList })
+		local row = UI.Card({ Size = UDim2.new(1, 0, 0, 52), LayoutOrder = i, Parent = playerList })
+		local rowStroke = row:FindFirstChildOfClass("UIStroke")
+		if rowStroke then
+			rowStroke.Thickness = 3
+		end
 		UI.Label({
 			Position = UDim2.fromOffset(12, 6),
-			Size = UDim2.new(1, -150, 1, -12),
+			Size = UDim2.new(1, -156, 1, -12),
 			Text = other.DisplayName,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			MaxText = 20,
-			Outline = 2,
+			MaxText = 22,
+			Outline = 3,
 			Parent = row,
 		})
 		local userId = other.UserId
 		UI.Button({
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -6, 0.5, 0),
-			Size = UDim2.fromOffset(130, 38),
-			Text = "🤝 Handeln",
-			Color = Theme.Cyan,
-			MaxText = 18,
+			Size = UDim2.fromOffset(136, 42),
+			Text = "🤝 HANDELN",
+			Color = Theme.Green,
+			MaxText = 19,
 			Parent = row,
 		}, function()
 			sendRequest(userId)
@@ -330,7 +336,7 @@ local function refreshPlayers()
 	local left = math.ceil(waitUntil - os.clock())
 	waitLabel.Visible = left > 0
 	waitLabel.Text = "⏳ Handeln geht in " .. ctx.Util.FormatTime(math.max(0, left))
-	blockButton.SetText(if blockedRequests then "🚫 Anfragen: AUS" else "✅ Anfragen: AN")
+	blockButton.SetText(if blockedRequests then "🚫 ANFRAGEN: AUS" else "✅ ANFRAGEN: AN")
 	blockButton.SetColor(if blockedRequests then Theme.Red else Theme.Green)
 end
 
@@ -344,6 +350,10 @@ local function sideCard(parent: Instance, x: number, title: string): (Frame, Tex
 		BackgroundColor3 = Theme.PanelDark,
 		Parent = parent,
 	})
+	local cardStroke = card:FindFirstChildOfClass("UIStroke")
+	if cardStroke then
+		cardStroke.Thickness = 3
+	end
 	local titleText = UI.Label({
 		Position = UDim2.fromOffset(10, 4),
 		Size = UDim2.new(0.6, -10, 0, 26),
@@ -351,7 +361,7 @@ local function sideCard(parent: Instance, x: number, title: string): (Frame, Tex
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextColor3 = Theme.Yellow,
 		MaxText = 20,
-		Outline = 2,
+		Outline = 3,
 		Parent = card,
 	})
 	local ready = UI.Label({
@@ -407,7 +417,8 @@ local function buildListPage(content: Instance)
 		Text = "",
 		TextColor3 = Theme.Orange,
 		LayoutOrder = 2,
-		MaxText = 18,
+		MaxText = 20,
+		Outline = 2,
 		Visible = false,
 		Parent = listPage,
 	})
@@ -423,7 +434,7 @@ local function buildListPage(content: Instance)
 	UI.Section(listPage, "Einstellungen", 4)
 	local row = UI.Row(listPage, 5, 44)
 	blockButton = UI.Button(
-		{ Size = UDim2.fromOffset(220, 40), Text = "", Color = Theme.Green, MaxText = 18, Parent = row },
+		{ Size = UDim2.fromOffset(220, 44), Text = "", Color = Theme.Green, MaxText = 19, Parent = row },
 		function()
 			local ok, result = call("Block", not blockedRequests)
 			if ok and result then
@@ -436,7 +447,8 @@ local function buildListPage(content: Instance)
 		Size = UDim2.new(1, -230, 1, 0),
 		Text = "Tipp: [T] bei einem Spieler",
 		TextColor3 = Theme.SubText,
-		MaxText = 16,
+		MaxText = 17,
+		Outline = 2,
 		Parent = row,
 	})
 end
@@ -455,11 +467,12 @@ local function buildTradePage(content: Instance)
 	})
 	titleLabel = UI.Section(tradePage, "🤝 Handel", 1)
 	statusLabel = UI.Label({
-		Size = UDim2.new(1, 0, 0, 24),
+		Size = UDim2.new(1, 0, 0, 26),
 		Text = "",
 		TextColor3 = Theme.SubText,
 		LayoutOrder = 2,
-		MaxText = 18,
+		MaxText = 20,
+		Outline = 2,
 		Parent = tradePage,
 	})
 	local sides: Frame = UI.Create("Frame", {
@@ -468,25 +481,26 @@ local function buildTradePage(content: Instance)
 		LayoutOrder = 3,
 		Parent = tradePage,
 	})
-	yourItems, yourCash, yourReady = sideCard(sides, 0, "Du gibst")
-	theirItems, theirCash, theirReady, theirTitle = sideCard(sides, 0.5, "Er/Sie gibt")
+	yourItems, yourCash, yourReady = sideCard(sides, 0, "DU GIBST")
+	theirItems, theirCash, theirReady, theirTitle = sideCard(sides, 0.5, "ER/SIE GIBT")
 
-	local row = UI.Row(tradePage, 4, 44)
+	local row = UI.Row(tradePage, 4, 46)
 	cashBox = UI.TextBox({
-		Size = UDim2.fromOffset(140, 40),
+		Size = UDim2.fromOffset(140, 44),
 		PlaceholderText = "Cash z.B. 5000",
+		Font = Enum.Font.FredokaOne,
 		Parent = row,
 	})
 	UI.Button(
-		{ Size = UDim2.fromOffset(100, 40), Text = "💵 Setzen", Color = Theme.Cash, MaxText = 17, Parent = row },
+		{ Size = UDim2.fromOffset(100, 44), Text = "💵 SETZEN", Color = Theme.Cash, MaxText = 17, Parent = row },
 		function()
 			local amount = tonumber((cashBox.Text:gsub("[^%d]", "")))
 			call("Cash", amount or 0)
 		end
 	)
 	readyButton = UI.Button({
-		Size = UDim2.fromOffset(150, 40),
-		Text = "✅ Bereit",
+		Size = UDim2.fromOffset(150, 44),
+		Text = "✅ BEREIT",
 		Color = Theme.Green,
 		MaxText = 18,
 		Parent = row,
@@ -496,7 +510,7 @@ local function buildTradePage(content: Instance)
 		end
 	end)
 	UI.Button(
-		{ Size = UDim2.fromOffset(110, 40), Text = "❌ Abbruch", Color = Theme.Red, MaxText = 17, Parent = row },
+		{ Size = UDim2.fromOffset(110, 44), Text = "❌ ABBRUCH", Color = Theme.Red, MaxText = 17, Parent = row },
 		function()
 			call("Cancel", nil, true)
 		end
@@ -516,13 +530,13 @@ local function buildPopup()
 		Visible = false,
 		ZIndex = 20,
 		Parent = ctx.Gui,
-	}, { UI.Corner(16), UI.Stroke(BLACK, 3) })
+	}, { UI.Corner(16), UI.Stroke(BLACK, 4) })
 	popupLabel = UI.Label({
 		Position = UDim2.fromOffset(12, 8),
 		Size = UDim2.new(1, -24, 0, 30),
 		Text = "",
-		MaxText = 22,
-		Outline = 2,
+		MaxText = 24,
+		Outline = 3,
 		ZIndex = 21,
 		Parent = popup,
 	})
@@ -542,8 +556,8 @@ local function buildPopup()
 	end
 	UI.Button({
 		Position = UDim2.new(0, 12, 1, -50),
-		Size = UDim2.new(0.5, -18, 0, 40),
-		Text = "✔ Ja",
+		Size = UDim2.new(0.5, -18, 0, 44),
+		Text = "✔ JA",
 		Color = Theme.Green,
 		MaxText = 20,
 		ZIndex = 21,
@@ -553,8 +567,8 @@ local function buildPopup()
 	end)
 	UI.Button({
 		Position = UDim2.new(0.5, 6, 1, -50),
-		Size = UDim2.new(0.5, -18, 0, 40),
-		Text = "✖ Nein",
+		Size = UDim2.new(0.5, -18, 0, 44),
+		Text = "✖ NEIN",
 		Color = Theme.Red,
 		MaxText = 20,
 		ZIndex = 21,
@@ -679,7 +693,7 @@ local function stamp()
 	label.Rotation = -12
 	local stroke = Instance.new("UIStroke")
 	stroke.Thickness = 5
-	stroke.Color = Color3.fromRGB(20, 60, 20)
+	stroke.Color = BLACK
 	stroke.Parent = label
 	local scale = Instance.new("UIScale")
 	scale.Scale = 2.4
@@ -816,7 +830,7 @@ function Trade.Init(context: any)
 			call("Cancel", nil, true)
 		end
 	end)
-	ctx.Hud.AddRightButton("🤝", "Handel", Theme.Cyan, 9, function()
+	ctx.Hud.AddRightButton("🤝", "HANDEL", Theme.Cyan, 9, function()
 		ctx.Windows.Toggle("Trade")
 	end)
 

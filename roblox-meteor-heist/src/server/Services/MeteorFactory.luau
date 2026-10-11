@@ -1,6 +1,8 @@
--- Baut das Aussehen eines Meteors: Größe nach Seltenheit, Licht/Feuer/Funken für seltene,
--- Material/Farbe nach Mutation, Spezial-Effekte der Admin-Meteore, Namensschild darüber.
--- Lichter und Feuer gibt es bewusst sparsam (viele Meteore gleichzeitig = sonst Lag).
+-- Baut das Aussehen eines Meteor-Eis (Roblox-Look wie Steal an Egg / Pet Simulator): klare Ei-Form
+-- (Kugel + SpecialMesh "EggShape", Größe/Hitbox bleibt die Kugel), kräftige SmoothPlastic-Farben,
+-- Größe nach Seltenheit, seltene Eier glänzen (Reflectance + Licht), Material/Farbe nach Mutation,
+-- Spezial-Effekte der Admin-Meteore, Namensschild darüber (ohne Kasten, siehe SCHILD-STIL).
+-- Lichter und Partikel gibt es bewusst sparsam (viele Eier gleichzeitig = sonst Lag).
 -- Dazu: Prompts anlegen (AddPrompt) und serverseitig prüfen, ob lange genug gehalten wurde (OnHeldTrigger).
 --
 -- KRASSE EIER (ab Legendary, im Nest / am Boden / in der Base – nicht beim Tragen):
@@ -20,13 +22,18 @@ local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util
 
 local MeteorFactory = {}
 
--- Ab welcher Seltenheit (Index in Config.Rarities) gibt es welchen Effekt?
--- Nest: es liegen sehr viele Eier gleichzeitig im Feld -> noch sparsamer.
+-- Ab welcher Seltenheit (Index in Config.Rarities) gibt es ein Licht?
+-- (Glitzern macht ab Legendary "RareSparkle" – nur in Kameranähe an, siehe unten)
 local LIGHT_FROM = { Base = 5, Ground = 5, Nest = 5, Carry = 7 }
-local FIRE_FROM = { Base = 7, Ground = 7, Nest = 99, Carry = 99 }
-local SPARKLES_FROM = { Base = 6, Ground = 6, Nest = 7, Carry = 99 }
 local SHADOW_MIN_SIZE = 3.5 -- nur große Meteore werfen Schatten
 local FROST_WHITEN = 0.4 -- Frost-Meteore etwas weißer als die Mutationsfarbe (sonst fast wie Diamond)
+
+-- Ei-Look
+local EGG_WIDTH = 0.86 -- sichtbar schmaler als hoch = Ei (nur der Mesh, Part.Size bleibt die Kugel)
+local RARE_SHINE = 0.15 -- ab Legendary glänzen die Eier (Reflectance)
+local GOLD_SHINE = 0.3 -- Gold-Mutation: glänzendes Gold statt Folie
+local VIVID_SAT = 0.3 -- Ei-Farben satter: Sättigung + so viel vom Rest
+local VIVID_VAL = 0.15 -- ... und etwas heller
 
 -- Krasse Eier (siehe oben)
 local RARE_FROM = Config.RarityIndex.Legendary or 5
