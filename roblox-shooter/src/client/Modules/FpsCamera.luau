@@ -15,7 +15,7 @@
 --    FpsCamera.Kick(pitchDeg, yawDeg, recover?)   Rückstoß: 85 % erholen sich über recover s, 15 % bleiben
 --    FpsCamera.SetAds(alpha, zoom)        ADS-Anteil 0..1 + Zoom (FOV = Einstellung / Zoom)
 --    FpsCamera.AddLookDelta(dxRad, dyRad) Touch-Feuerknopf-Ziehen; Maus-Konvention (+dx rechts, +dy runter),
---                                         roh – Empfindlichkeit (SensTouch, ADS) wendet FpsCamera an
+--                                         SensTouch wendet der Aufrufer an, FpsCamera nur den ADS-/Fernrohr-Faktor
 --    FpsCamera.Shake(intensity, duration) absolutes Wackeln (Einstellung "Kamerawackeln" skaliert)
 --    FpsCamera.SetScope(on)               Zielfernrohr-Overlay, Viewmodel aus
 --  Zusätzlich (WP4-intern, nil-sicher nutzbar):
@@ -500,7 +500,7 @@ local function onCamera(dt: number)
 		look *= (numberSetting("SensTouch", 0.6, 0.05, 2) / 0.6) * factor
 	end
 	if pendingLook ~= Vector2.zero then
-		look += pendingLook * (numberSetting("SensTouch", 0.6, 0.05, 2) / 0.6) * factor
+		look += pendingLook * factor -- SensTouch hat der Aufrufer (TouchControls) schon angewendet
 		pendingLook = Vector2.zero
 		if kind == "KBM" then
 			kind = "Touch" -- Feuerknopf-Ziehen ist immer Touch
