@@ -46,7 +46,7 @@ Dein eigenes Roblox-Spiel mit der Grundbasis von „Steal an Egg“, aber mit ei
 | **😴 Offline** | Du bekommst 25 % Geld für bis zu 3 Stunden. Meteore schlüpfen auch, wenn du weg bist |
 | **💎 Robux** | 8 Gamepasses, 14 Developer Products (mit **⭐ Starter-Paket**) und Premium-Bonus |
 | **🛠️ Admin-Panel** | Nur für dich. 5 Reiter: Spawnen (auch fertige Aliens), Events (Nacht, Blutmond, Egg Rush, Große Nester, Ei-Rennen …), Spieler (Liste, Geschenke, Moderation), Kräfte (Gott-Modus, Noclip, Tempo, Sprung, Zuschauen), Server (Info, sperren, Banns). Siehe unten |
-| **✨ Grafik** | Helles Sonnenlicht („Future“-Licht), Atmosphäre, Wolken, leichtes Leuchten, weicher Tag-Nacht-Wechsel. Knallgrüner Roblox-Rasterboden wie in Simulator-Spielen |
+| **✨ Grafik** | Helles, klares Simulator-Licht (ShadowMap, läuft gut auf Handys), blauer Himmel, weiße Wolken, kaum Dunst, weicher Tag-Nacht-Wechsel. Knallgrüner Roblox-Rasterboden wie in Simulator-Spielen |
 | **🧈 Flüssig** | Die Eier in den Nestern liegen still. Die Monster rechnet der Server nur 5x pro Sekunde, gezeichnet und animiert (Laufen, Sprinten, Jubeln, Kopfschütteln) werden sie auf deinem Gerät. Deshalb ruckelt nichts. Fenster, Knöpfe, Zahlen, Glücksrad, Stockwerk-Bau, Handel und Laufbänder (Fußstaub, „+X 👟“ an der Konsole) sind animiert |
 | **🔒 Technik** | Sicheres Speichern (keine Duplikate, kein Datenverlust). Käufe doppelt abgesichert. Der Server prüft alles (auch, ob du E wirklich lange genug gehalten hast), Schummeln geht nicht. Globale Top-10-Bestenliste |
 
