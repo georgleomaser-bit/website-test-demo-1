@@ -401,7 +401,7 @@ local function buildCrown()
 		crownArena = emptyArena(0, "CrownRing", origin, vault)
 		return
 	end
-	local ok, model = pcall(MapKit.Build, layout)
+	local ok, model, crownInfo = pcall(MapKit.Build, layout)
 	if not ok then
 		warn("[ArenaService] Crown Ring konnte nicht gebaut werden: " .. tostring(model))
 		crownArena = emptyArena(0, "CrownRing", origin, vault)
@@ -411,12 +411,14 @@ local function buildCrown()
 	model:SetAttribute("BuildId", 0)
 	model.Parent = crownFolder -- EINMAL parenten
 	local nav: Types.NavGraph = { Nodes = {}, Edges = {} }
-	local okNav, navResult = pcall(NavBuilder.Build, model, layout, origin)
+	local okNav, navResult, navReport = pcall(NavBuilder.Build, model, layout, origin)
 	if okNav then
 		nav = navResult
+		model:SetAttribute("NavNodes", navReport.Nodes)
 	else
 		warn("[ArenaService] Nav-Graph CrownRing fehlgeschlagen: " .. tostring(navResult))
 	end
+	model:SetAttribute("PartCount", crownInfo.Parts)
 	local blocked = NavBuilder.SpawnBlockers(model, layout, origin, SPAWN_BOX)
 	if #blocked > 0 then
 		warn("[ArenaService] CrownRing: Spawns blockiert: " .. table.concat(blocked, ", "))
