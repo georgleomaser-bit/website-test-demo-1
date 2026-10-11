@@ -1713,7 +1713,7 @@ local function beginLoad(m: any)
 			m.Arena = arena
 		end
 	elseif not m.Arena then
-		local ok, arena = call("ArenaService", "Acquire", m.Map)
+		local ok, arena = call("ArenaService", "Acquire", m.Map, m.Mood)
 		if ok and type(arena) == "table" then
 			m.Arena = arena
 		end
@@ -1775,7 +1775,8 @@ end
 -- ---------------------------------------------------------------------
 -- 8) ENTFERNEN (Verlassen, AFK, Pad verlassen)
 -- ---------------------------------------------------------------------
-local function teamHumans(m: any, team: number): number
+-- Mitglieder (Menschen + Bots) eines Teams, die noch im Match sind
+local function teamMembers(m: any, team: number): number
 	local n = 0
 	for _, e in ipairs(m.Entries) do
 		if e.Team == team and not e.Removed then
@@ -1856,7 +1857,7 @@ local function removeEntry(m: any, e: Entry, reason: string)
 	end
 	if m.TeamSize <= 1 then
 		-- 1v1: Gegner gewinnt voll (Aufgabe)
-		if teamHumans(m, e.Team) == 0 then
+		if teamMembers(m, e.Team) == 0 then
 			local winner = otherTeam(e.Team)
 			for _, other in ipairs(humanEntries(m)) do
 				if other.Team == winner then
@@ -1943,6 +1944,14 @@ function MatchService.Create(spec: Types.MatchSpec): number?
 	end
 	local ffa = def.Ruleset == "Respawn"
 	local tutorial = spec.Tutorial == true
+	if spec.Mode == "Crown" then
+		-- der Crown Ring ist EINE feste Arena: nie zwei Kronen-Duelle gleichzeitig
+		for _, other in pairs(matches) do
+			if other.Mode == "Crown" then
+				return nil
+			end
+		end
+	end
 	-- Teams normalisieren und Menschen prüfen
 	local humans: { Player } = {}
 	local seen: { [Player]: boolean } = {}
@@ -2167,6 +2176,12 @@ function MatchService.Create(spec: Types.MatchSpec): number?
 		m.Mood = spec.Mood
 		setPhase(m, "Load", 0)
 		setupArena(m)
+		if not m.Ffa and (teamMembers(m, 1) == 0 or teamMembers(m, 2) == 0) then
+			local specAny: any = spec
+			specAny._Cancelled = true
+			cancelMatch(m, "match.botsBusy") -- schickt alle in die Lobby und gibt die Arena frei
+			return nil
+		end
 		startRuleset(m)
 	elseif not voting then
 		beginLoad(m)
@@ -2211,7 +2226,7 @@ local function startRematch(m: any)
 		_Arena = arena,
 	}
 	local newId = MatchService.Create(spec)
-	if not newId then
+	if not newId and not spec._Cancelled then
 		-- Rematch ging nicht (z. B. Bot-Budget): normal schließen
 		for _, e in ipairs(m.Entries) do
 			local p = e.Player
@@ -2618,9 +2633,12 @@ local function tickAfk(m: any, dt: number)
 	end
 	local warnAt, kickAt = MCFG.AfkWarn or 20, MCFG.AfkKick or 30
 	for _, e in ipairs(humanEntries(m)) do
+		if m.Phase == "Closed" then
+			return -- letzter Mensch entfernt -> Match zu
+		end
 		local c = e.Combatant
 		local p = e.Player :: Player
-		if c and c.Alive and c.Root then
+		if c and c.Alive and c.Root and not e.Removed then
 			local okInput, lastInput = call("ReplicationService", "LastInput", p)
 			local input = if okInput and type(lastInput) == "number" then lastInput else 0
 			local pos = c.Root.Position
@@ -2682,6 +2700,45 @@ local function tickFfaFill(m: any)
 	end
 end
 
+-- Laden fertig? Alle Menschen haben "ArenaReady" gesendet (oder Zeit um) -> Intro
+local function checkLoadDone(m: any, timeout: boolean)
+	if m.Phase ~= "Load" or not m.Arena then
+		return
+	end
+	-- noch nicht gespawnte Menschen (Figur fehlte) erneut versuchen
+	local allReady = true
+	for _, e in ipairs(humanEntries(m)) do
+		if not e.Combatant then
+			if spawnEntry(m, e) then
+				e.PendingSpawn = false
+				sendStart(m)
+			end
+		end
+		if not e.LoadReady or not e.Combatant then
+			allReady = false
+		end
+	end
+	if not allReady and not timeout then
+		return
+	end
+	for _, e in ipairs(humanEntries(m)) do
+		if not e.Combatant then
+			removeEntry(m, e, "NoSpawn")
+			if m.Phase == "Closed" then
+				return
+			end
+		end
+	end
+	if m.Phase == "Load" then
+		-- ein Team ohne Mitglieder (z. B. Bot-Budget beim Laden erschöpft) -> abbrechen statt Freilos
+		if not m.Ffa and (teamMembers(m, 1) == 0 or teamMembers(m, 2) == 0) then
+			cancelMatch(m, "match.botsBusy")
+			return
+		end
+		beginIntro(m)
+	end
+end
+
 local function tickMatch(m: any, dt: number)
 	local t = now()
 	local phase = m.Phase
@@ -2701,7 +2758,7 @@ local function tickMatch(m: any, dt: number)
 		end
 	elseif phase == "Load" then
 		if not m.Arena then
-			local ok, arena = call("ArenaService", "Acquire", m.Map)
+			local ok, arena = call("ArenaService", "Acquire", m.Map, m.Mood)
 			if ok and type(arena) == "table" then
 				m.Arena = arena
 				m.PhaseEnds = t + (MCFG.LoadTimeout or 4)
@@ -2711,37 +2768,7 @@ local function tickMatch(m: any, dt: number)
 			end
 			return
 		end
-		-- noch nicht gespawnte Menschen (Figur fehlte) erneut versuchen
-		local allReady = true
-		for _, e in ipairs(humanEntries(m)) do
-			if not e.Combatant then
-				if spawnEntry(m, e) then
-					e.PendingSpawn = false
-					sendStart(m)
-				end
-			end
-			if not e.LoadReady or not e.Combatant then
-				allReady = false
-			end
-		end
-		if allReady or t >= m.PhaseEnds then
-			for _, e in ipairs(humanEntries(m)) do
-				if not e.Combatant then
-					removeEntry(m, e, "NoSpawn")
-					if m.Phase == "Closed" then
-						return
-					end
-				end
-			end
-			if m.Phase == "Load" then
-				-- ein Team ohne Mitglieder (z. B. Bot-Budget beim Laden erschöpft) -> abbrechen statt Freilos
-				if not m.Ffa and (teamHumans(m, 1) == 0 or teamHumans(m, 2) == 0) then
-					cancelMatch(m, "match.botsBusy")
-					return
-				end
-				beginIntro(m)
-			end
-		end
+		checkLoadDone(m, t >= m.PhaseEnds)
 	elseif phase == "Intro" then
 		if t >= m.PhaseEnds then
 			startRuleset(m)
@@ -2819,6 +2846,11 @@ local function handleArenaReady(p: Player, arg: any): Reply
 	end
 	if m.Arena and (m.Arena.BuildId == nil or math.floor(arg) == m.Arena.BuildId) then
 		e.LoadReady = true
+		-- letzter Bereiter startet das Intro sofort (spart bis zu einen Takt, "erster Schuss ≤ 15 s")
+		local ok, err = pcall(checkLoadDone, m, false)
+		if not ok then
+			logError("ArenaReady", err)
+		end
 		return reply(p, true)
 	end
 	return reply(p, false)

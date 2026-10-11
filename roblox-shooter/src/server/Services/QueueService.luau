@@ -399,96 +399,74 @@ local function removeFromLine(p: Player): boolean
 	return false
 end
 
+-- Königs-Tafel: LobbyBuilder baut die SurfaceGui "KingBoard" (Avatar, Name, Streak); fehlt sie, bauen wir eine eigene
+local boardEmptyText: string? = nil
+
+local function buildOwnBoard(board: BasePart): SurfaceGui
+	local surface = Instance.new("SurfaceGui")
+	surface.Name = "KingBoard"
+	surface.Face = Enum.NormalId.Front
+	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	surface.PixelsPerStud = 30
+	surface.LightInfluence = 0
+	local function boardLabel(name: string, y: number, h: number, font: Enum.Font, color: Color3): TextLabel
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.BackgroundTransparency = 1
+		label.Position = UDim2.fromScale(if name == "Title" then 0.05 else 0.39, y)
+		label.Size = UDim2.fromScale(if name == "Title" then 0.9 else 0.58, h)
+		label.Font = font
+		label.TextScaled = true
+		label.TextColor3 = color
+		label.Text = ""
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 4
+		stroke.Parent = label
+		label.Parent = surface
+		return label
+	end
+	boardLabel("Title", 0.04, 0.22, Enum.Font.LuckiestGuy, Config.Colors.Rarity.Legendary).Text = "👑 KÖNIG · KING"
+	boardLabel("Name", 0.32, 0.3, Enum.Font.FredokaOne, Color3.new(1, 1, 1))
+	boardLabel("Streak", 0.64, 0.26, Enum.Font.FredokaOne, Config.Colors.Enemy.Yellow)
+	local avatar = Instance.new("ImageLabel")
+	avatar.Name = "Avatar"
+	avatar.BackgroundColor3 = Config.Colors.Palette.Navy
+	avatar.Position = UDim2.fromScale(0.05, 0.3)
+	avatar.Size = UDim2.fromScale(0.3, 0.62)
+	avatar.ScaleType = Enum.ScaleType.Fit
+	avatar.Parent = surface
+	surface.Parent = board
+	return surface
+end
+
 local function updateCrownBoard()
 	local ok, board = call("LobbyBuilder", "CrownBoard")
 	if not ok or typeof(board) ~= "Instance" or not board:IsA("BasePart") then
 		return
 	end
-	local gui = crownBoardGui
-	if not gui or gui.Parent ~= board then
-		local surface = Instance.new("SurfaceGui")
-		surface.Name = "CrownBoardGui"
-		surface.Face = Enum.NormalId.Front
-		surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-		surface.PixelsPerStud = 40
-		surface.LightInfluence = 0
-		surface.AlwaysOnTop = false
-		local bg = Instance.new("Frame")
-		bg.Name = "Back"
-		bg.Size = UDim2.fromScale(1, 1)
-		bg.BackgroundColor3 = Config.Colors.Palette.Navy
-		bg.Parent = surface
-		local title = Instance.new("TextLabel")
-		title.Name = "Title"
-		title.BackgroundTransparency = 1
-		title.Position = UDim2.fromScale(0.05, 0.03)
-		title.Size = UDim2.fromScale(0.9, 0.18)
-		title.Font = Enum.Font.LuckiestGuy
-		title.TextScaled = true
-		title.TextColor3 = Config.Colors.Rarity.Legendary
-		title.Text = "👑 KÖNIG · KING"
-		title.Parent = bg
-		local avatar = Instance.new("ImageLabel")
-		avatar.Name = "Avatar"
-		avatar.BackgroundColor3 = Config.Colors.Palette.Cream
-		avatar.Position = UDim2.fromScale(0.05, 0.27)
-		avatar.Size = UDim2.fromScale(0.3, 0.6)
-		avatar.ScaleType = Enum.ScaleType.Fit
-		avatar.Parent = bg
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0.5, 0)
-		corner.Parent = avatar
-		local name = Instance.new("TextLabel")
-		name.Name = "KingName"
-		name.BackgroundTransparency = 1
-		name.Position = UDim2.fromScale(0.4, 0.3)
-		name.Size = UDim2.fromScale(0.56, 0.28)
-		name.Font = Enum.Font.FredokaOne
-		name.TextScaled = true
-		name.TextColor3 = Color3.new(1, 1, 1)
-		name.TextXAlignment = Enum.TextXAlignment.Left
-		name.Parent = bg
-		local streak = Instance.new("TextLabel")
-		streak.Name = "Streak"
-		streak.BackgroundTransparency = 1
-		streak.Position = UDim2.fromScale(0.4, 0.6)
-		streak.Size = UDim2.fromScale(0.56, 0.22)
-		streak.Font = Enum.Font.FredokaOne
-		streak.TextScaled = true
-		streak.TextColor3 = Config.Colors.Rarity.Legendary
-		streak.TextXAlignment = Enum.TextXAlignment.Left
-		streak.Parent = bg
-		for _, label in ipairs({ title, name, streak }) do
-			local stroke = Instance.new("UIStroke")
-			stroke.Thickness = 3
-			stroke.Parent = label
-		end
-		surface.Parent = board
-		gui = surface
-		crownBoardGui = surface
+	local gui = board:FindFirstChild("KingBoard")
+	if not gui or not gui:IsA("SurfaceGui") then
+		gui = crownBoardGui or buildOwnBoard(board)
+		crownBoardGui = gui :: SurfaceGui
 	end
-	local back = (gui :: SurfaceGui):FindFirstChild("Back")
-	if not back then
-		return
+	local avatar = gui:FindFirstChild("Avatar")
+	local name = gui:FindFirstChild("Name")
+	local streak = gui:FindFirstChild("Streak")
+	if name and name:IsA("TextLabel") and boardEmptyText == nil then
+		boardEmptyText = if name.Text ~= "" then name.Text else "—"
 	end
-	local avatar = back:FindFirstChild("Avatar") :: ImageLabel?
-	local name = back:FindFirstChild("KingName") :: TextLabel?
-	local streak = back:FindFirstChild("Streak") :: TextLabel?
 	local king = crownKing
-	if king and king.UserId > 0 then
-		if avatar then
-			avatar.Image = ("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150"):format(king.UserId)
-		end
-	elseif avatar then
-		avatar.Image = "rbxasset://textures/face.png"
+	if avatar and avatar:IsA("ImageLabel") then
+		avatar.Image = if king and king.UserId > 0
+			then ("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150"):format(king.UserId)
+			elseif king then "rbxasset://textures/face.png"
+			else ""
 	end
-	if name then
-		name.Text = if king then king.DisplayName else "—"
+	if name and name:IsA("TextLabel") then
+		name.Text = if king then king.DisplayName else (boardEmptyText or "—")
 	end
-	if streak then
-		streak.Text = if king
-			then ("SERIE · STREAK: %d"):format(crownStreak)
-			else "FORDERE DIE KRONE! · CLAIM THE CROWN!"
+	if streak and streak:IsA("TextLabel") then
+		streak.Text = if king then ("SERIE · STREAK: %d"):format(crownStreak) else ""
 	end
 end
 
@@ -1507,6 +1485,29 @@ local function padScan(_dt: number)
 					if not okJoin and reason then
 						notifyThrottled(p, "match.padNope", { reason }, "Error")
 					end
+				end
+			end
+		end
+	end
+
+	-- Volles Pad -> sofort matchen (nicht erst im nächsten Matcher-Takt; "erster Schuss ≤ 15 s")
+	for _, pad in ipairs(pads) do
+		local def = modeDef(pad.Mode)
+		local a = padEntries[padKey(pad.Id, "A")]
+		if def and a then
+			local b = padEntries[padKey(pad.Id, "B")]
+			local full = #a.Players >= capacityOf(pad.Mode, "A")
+				and (capacityOf(pad.Mode, "B") == 0 or (b ~= nil and #b.Players >= capacityOf(pad.Mode, "B")))
+			if full then
+				local ok, err = pcall(function()
+					if def.Ruleset == "Respawn" then
+						matchFfa(pad.Mode, def, t)
+					else
+						matchDuel(pad.Mode, def, t)
+					end
+				end)
+				if not ok then
+					logError("Pad-Match", err)
 				end
 			end
 		end
