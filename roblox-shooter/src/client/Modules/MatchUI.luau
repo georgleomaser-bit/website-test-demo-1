@@ -60,6 +60,7 @@ local reportedKiller = false
 local autoRequeue = false
 local resultsUntil = 0
 local lastCountdown = 0
+local autoTouched = false -- Spieler hat den Auto-Requeue-Haken selbst umgeschaltet
 local unbinds: { () -> () } = {}
 
 -- UI-Teile
@@ -413,7 +414,7 @@ local function buildBanners(parent: Frame)
 	noticeLabel = label({
 		Name = "Notice",
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0, 0, 0, 112),
+		Position = UDim2.new(0.5, 0, 0, 112),
 		Size = UDim2.fromOffset(420, 30),
 		Text = "",
 		MaxText = 22,
@@ -423,7 +424,6 @@ local function buildBanners(parent: Frame)
 		ZIndex = 25,
 		Parent = parent,
 	})
-	noticeLabel.Position = UDim2.new(0.5, 0, 0, 112)
 	loadingLabel = label({
 		Name = "Loading",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -718,7 +718,9 @@ local function refreshTopBar()
 		if rightName then
 			rightName.TextColor3 = WHITE
 		end
-		local goal = (ctx.Config.Modes and ctx.Config.Modes.Modes.FFA.ScoreToWin) or 25
+		local modes = ctx.Config.Modes
+		local ffaDef = modes and modes.Modes and modes.Modes.FFA
+		local goal = (ffaDef and ffaDef.ScoreToWin) or 25
 		rebuildPips(leftPips, 0, 0, WHITE)
 		rebuildPips(rightPips, 0, 0, WHITE)
 		setText(roundLabel, T("match.ffa.goal", goal))
@@ -1215,9 +1217,7 @@ local function onOvertime(data: any)
 	if not match then
 		return
 	end
-	if match.Phase ~= "Live" or not match.SdZone then
-		match.EndsAt = tonumber(data.EndsAt) or match.EndsAt
-	end
+	match.EndsAt = tonumber(data.EndsAt) or match.EndsAt
 	match.Phase = "Overtime"
 	if zoneBar then
 		zoneBar.Frame.Visible = true
@@ -2000,7 +2000,7 @@ local function onEnd(data: any)
 	end)
 	-- Auto-Requeue-Haken
 	local settings = ctx.State and ctx.State.Settings
-	if type(settings) == "table" and type(settings.AutoRequeue) == "boolean" and not MatchUI._AutoTouched then
+	if type(settings) == "table" and type(settings.AutoRequeue) == "boolean" and not autoTouched then
 		autoRequeue = settings.AutoRequeue
 	end
 	local autoButton: any = nil
@@ -2019,7 +2019,7 @@ local function onEnd(data: any)
 			Parent = frame,
 		}, function()
 			autoRequeue = not autoRequeue
-			MatchUI._AutoTouched = true
+			autoTouched = true
 			autoButton.SetText(autoText())
 			autoButton.SetColor(if autoRequeue then UI.Theme.Green else UI.Theme.Gray)
 			request("AutoRequeue", autoRequeue)
@@ -2168,8 +2168,6 @@ end
 function MatchUI.InMatch(): boolean
 	return match ~= nil
 end
-
-MatchUI._AutoTouched = false
 
 function MatchUI.Init(context: any)
 	ctx = context
