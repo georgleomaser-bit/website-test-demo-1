@@ -38,19 +38,35 @@ local MAX_VALUE = 9e15
 local FIRST_READ_DELAY = 8
 local LOG_GAP = 30
 
+-- Titel in Michroma (breit, technisch) – ohne Emojis, kurz und GROSS (STYLE-AKYTEX)
 local BOARD_TITLES: { [string]: string } = {
-	Wins = "🏆 SIEGE · WINS",
-	Elims = "💥 POPS · ELIMS",
-	BestStreak = "🔥 BESTE SERIE · BEST STREAK",
-	TotalXP = "⭐ GESAMT-XP · TOTAL XP",
-	WeeklyWins = "📅 SIEGE DIESE WOCHE · WEEKLY WINS",
-	CrownBest = "👑 KRONEN-SERIE · CROWN STREAK",
+	Wins = "SIEGE · WINS",
+	Elims = "POPS · ELIMS",
+	BestStreak = "BESTE SERIE · BEST STREAK",
+	TotalXP = "GESAMT-XP · TOTAL XP",
+	WeeklyWins = "SIEGE DIESE WOCHE · WEEKLY WINS",
+	CrownBest = "KRONEN-SERIE · CROWN STREAK",
 }
-local EMPTY_TEXT = "NOCH KEINE EINTRÄGE – SEI DER ERSTE!\nNO ENTRIES YET – BE THE FIRST!"
+local EMPTY_TEXT = "Noch keine Einträge – sei der Erste!\nNo entries yet – be the first!"
+
+-- AKYTEX-Farben (Server hat kein UI.Theme -> dieselben Hex-Werte als Konstanten, docs/STYLE-AKYTEX.md)
+local AKY_BG = Color3.fromRGB(11, 15, 23) -- AKYTEX-Farbe Bg #0b0f17
+local AKY_SURFACE2 = Color3.fromRGB(26, 33, 48) -- AKYTEX-Farbe Surface2 #1a2130
+local AKY_BORDER = Color3.fromRGB(31, 41, 55) -- AKYTEX-Farbe Border #1f2937
+local AKY_TEXT = Color3.fromRGB(230, 236, 245) -- AKYTEX-Farbe Text #e6ecf5
+local AKY_TEXT2 = Color3.fromRGB(170, 180, 195) -- AKYTEX-Farbe Text2 #aab4c3
+local AKY_MUTED = Color3.fromRGB(125, 136, 154) -- AKYTEX-Farbe Muted #7d889a
+local AKY_ACCENT = Color3.fromRGB(79, 140, 255) -- AKYTEX-Farbe Accent #4f8cff
+local AKY_UP = Color3.fromRGB(34, 197, 94) -- AKYTEX-Farbe Up #22c55e
+local AKY_WARN = Color3.fromRGB(234, 179, 8) -- AKYTEX-Farbe Warn #eab308 (Gold/Platz 1)
+local FONT_TITLE = Enum.Font.Michroma
+local FONT_TEXT = Enum.Font.BuilderSansBold
+local FONT_NUMBER = Enum.Font.TitilliumWeb
+-- Platz 1–3: Gold (Warn), Silber (Text2), Bronze – nur als Akzent (Rang-Zahl + Streifen)
 local RANK_COLORS = {
-	Color3.fromRGB(255, 200, 40),
-	Color3.fromRGB(210, 220, 235),
-	Color3.fromRGB(225, 140, 70),
+	AKY_WARN,
+	AKY_TEXT2,
+	Color3.fromRGB(205, 127, 50),
 }
 
 type Row = { UserId: number, Value: number }
@@ -259,7 +275,8 @@ local function onReleasing(p: Player, data: Types.PlayerData)
 end
 
 -- ---------------------------------------------------------------------
--- 2) TAFELN BAUEN (SurfaceGui, MH-Stil: FredokaOne, Gold/Silber/Bronze)
+-- 2) TAFELN BAUEN (SurfaceGui im AKYTEX-Look: dunkle Glas-Tafel, 1-px-Rahmen, Titel Michroma,
+--    Zeilen Surface2/Bg im Wechsel, Werte grün, Platz 1–3 mit Gold/Silber/Bronze-Akzent)
 -- ---------------------------------------------------------------------
 local function make(className: string, props: { [string]: any }, parent: Instance?): any
 	local inst = Instance.new(className)
@@ -272,8 +289,14 @@ local function make(className: string, props: { [string]: any }, parent: Instanc
 	return inst
 end
 
-local function stroke(parent: Instance, thickness: number)
-	make("UIStroke", { Thickness = thickness, Color = Color3.new(0, 0, 0) }, parent)
+-- 1-px-Rahmen (AKYTEX: UIStroke Thickness 1, ApplyStrokeMode Border)
+local function border(parent: Instance, color: Color3, transparency: number?)
+	make("UIStroke", {
+		Thickness = 1.5,
+		Color = color,
+		Transparency = transparency or 0,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	}, parent)
 end
 
 local function buildBoard(board: string, part: BasePart)
@@ -295,98 +318,127 @@ local function buildBoard(board: string, part: BasePart)
 		Name = "CC_Board",
 		Face = face,
 		SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud,
-		PixelsPerStud = 25,
+		PixelsPerStud = 30,
 		LightInfluence = 0,
+		MaxDistance = 300,
 		ResetOnSpawn = false,
 		Adornee = part,
 	})
+	-- Glas-Tafel: Bg, leicht durchsichtig, Ecke 16, feiner Rahmen
 	local root: Frame = make("Frame", {
+		Name = "Panel",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(28, 32, 64),
+		BackgroundColor3 = AKY_BG,
+		BackgroundTransparency = 0.12,
 		BorderSizePixel = 0,
 	}, gui)
+	make("UICorner", { CornerRadius = UDim.new(0, 16) }, root)
+	border(root, AKY_BORDER)
 	make("UIPadding", {
-		PaddingLeft = UDim.new(0.03, 0),
-		PaddingRight = UDim.new(0.03, 0),
+		PaddingLeft = UDim.new(0.04, 0),
+		PaddingRight = UDim.new(0.04, 0),
 		PaddingTop = UDim.new(0.03, 0),
 		PaddingBottom = UDim.new(0.03, 0),
 	}, root)
-	local title: TextLabel = make("TextLabel", {
-		Size = UDim2.fromScale(1, 0.13),
+	make("TextLabel", {
+		Name = "Title",
+		Size = UDim2.fromScale(1, 0.11),
 		BackgroundTransparency = 1,
-		Font = Enum.Font.FredokaOne,
+		Font = FONT_TITLE,
 		Text = BOARD_TITLES[board] or string.upper(board),
-		TextColor3 = Color3.fromRGB(255, 220, 50),
+		TextColor3 = AKY_TEXT,
 		TextScaled = true,
 	}, root)
-	stroke(title, 3)
+	-- Akzent-Unterstrich unter dem Titel
+	local underline: Frame = make("Frame", {
+		Name = "TitleLine",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0.125),
+		Size = UDim2.fromScale(0.22, 0.008),
+		BackgroundColor3 = AKY_ACCENT,
+		BorderSizePixel = 0,
+	}, root)
+	make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, underline)
 	local list: Frame = make("Frame", {
-		Position = UDim2.fromScale(0, 0.15),
-		Size = UDim2.fromScale(1, 0.85),
+		Position = UDim2.fromScale(0, 0.16),
+		Size = UDim2.fromScale(1, 0.84),
 		BackgroundTransparency = 1,
 	}, root)
-	make("UIListLayout", { Padding = UDim.new(0.01, 0), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+	make("UIListLayout", { Padding = UDim.new(0.008, 0), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 	local rows = {}
 	for i = 1, ROWS do
+		local accent = RANK_COLORS[i]
 		local frame: Frame = make("Frame", {
 			Name = "Row" .. i,
 			LayoutOrder = i,
-			Size = UDim2.fromScale(1, 1 / ROWS - 0.01),
-			BackgroundColor3 = if i % 2 == 0 then Color3.fromRGB(45, 52, 96) else Color3.fromRGB(38, 44, 84),
+			Size = UDim2.fromScale(1, 1 / ROWS - 0.009),
+			BackgroundColor3 = if i % 2 == 0 then AKY_BG else AKY_SURFACE2,
+			BackgroundTransparency = 0.1,
 			BorderSizePixel = 0,
 			Visible = false,
 		}, list)
-		make("UICorner", { CornerRadius = UDim.new(0.2, 0) }, frame)
+		make("UICorner", { CornerRadius = UDim.new(0, 10) }, frame)
+		if accent then
+			-- Platz 1–3: schmaler Rang-Streifen links + feiner Rahmen in der Rang-Farbe
+			local stripe: Frame = make("Frame", {
+				Name = "Stripe",
+				Position = UDim2.new(0, 0, 0.18, 0),
+				Size = UDim2.new(0, 4, 0.64, 0),
+				BackgroundColor3 = accent,
+				BorderSizePixel = 0,
+			}, frame)
+			make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, stripe)
+			border(frame, accent, 0.55)
+		end
 		local rank: TextLabel = make("TextLabel", {
-			Size = UDim2.fromScale(0.1, 1),
+			Position = UDim2.fromScale(0.02, 0.1),
+			Size = UDim2.fromScale(0.09, 0.8),
 			BackgroundTransparency = 1,
-			Font = Enum.Font.FredokaOne,
+			Font = FONT_NUMBER,
 			Text = "#" .. i,
 			TextScaled = true,
-			TextColor3 = RANK_COLORS[i] or Color3.new(1, 1, 1),
+			TextColor3 = accent or AKY_MUTED,
 		}, frame)
-		stroke(rank, 2)
 		local avatar: ImageLabel = make("ImageLabel", {
-			Position = UDim2.fromScale(0.11, 0.05),
-			Size = UDim2.fromScale(0.09, 0.9),
-			BackgroundTransparency = 1,
+			Position = UDim2.fromScale(0.12, 0.1),
+			Size = UDim2.fromScale(0.08, 0.8),
+			BackgroundColor3 = AKY_SURFACE2,
+			BackgroundTransparency = 0,
 			ScaleType = Enum.ScaleType.Fit,
 			Image = "",
 		}, frame)
+		make("UICorner", { CornerRadius = UDim.new(0.5, 0) }, avatar)
 		local name: TextLabel = make("TextLabel", {
-			Position = UDim2.fromScale(0.22, 0),
-			Size = UDim2.fromScale(0.5, 1),
+			Position = UDim2.fromScale(0.22, 0.12),
+			Size = UDim2.fromScale(0.5, 0.76),
 			BackgroundTransparency = 1,
-			Font = Enum.Font.FredokaOne,
+			Font = FONT_TEXT,
 			Text = "",
 			TextScaled = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = Color3.new(1, 1, 1),
+			TextColor3 = AKY_TEXT,
 		}, frame)
-		stroke(name, 2)
 		local value: TextLabel = make("TextLabel", {
-			Position = UDim2.fromScale(0.73, 0),
-			Size = UDim2.fromScale(0.26, 1),
+			Position = UDim2.fromScale(0.73, 0.1),
+			Size = UDim2.fromScale(0.25, 0.8),
 			BackgroundTransparency = 1,
-			Font = Enum.Font.FredokaOne,
+			Font = FONT_NUMBER,
 			Text = "",
 			TextScaled = true,
 			TextXAlignment = Enum.TextXAlignment.Right,
-			TextColor3 = Color3.fromRGB(110, 255, 100),
+			TextColor3 = AKY_UP,
 		}, frame)
-		stroke(value, 2)
 		rows[i] = { Frame = frame, Rank = rank, Avatar = avatar, Name = name, Value = value }
 	end
 	local empty: TextLabel = make("TextLabel", {
-		Position = UDim2.fromScale(0, 0.4),
-		Size = UDim2.fromScale(1, 0.25),
+		Position = UDim2.fromScale(0.05, 0.42),
+		Size = UDim2.fromScale(0.9, 0.18),
 		BackgroundTransparency = 1,
-		Font = Enum.Font.FredokaOne,
+		Font = FONT_TEXT,
 		Text = EMPTY_TEXT,
 		TextScaled = true,
-		TextColor3 = Color3.new(1, 1, 1),
+		TextColor3 = AKY_TEXT2,
 	}, root)
-	stroke(empty, 2)
 	gui.Parent = part
 	boardUis[board] = { Gui = gui, Rows = rows, Empty = empty }
 end

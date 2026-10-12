@@ -251,6 +251,8 @@ export type MatchResult = {
 	Tutorial: boolean,
 	Duration: number,
 	PerPlayer: { [Player]: PlayerResult },
+	-- nur im Einzelbericht (Leaver/AFK): Durchschnitts-MMR je Team als Bezug, da die Gegner in PerPlayer fehlen
+	TeamMmr: { [number]: number }?,
 }
 export type MapPart = {
 	Shape: "Block" | "Wedge" | "Cylinder" | "Ball" | "CornerWedge",

@@ -402,6 +402,13 @@ end
 -- Königs-Tafel: LobbyBuilder baut die SurfaceGui "KingBoard" (Avatar, Name, Streak); fehlt sie, bauen wir eine eigene
 local boardEmptyText: string? = nil
 
+-- AKYTEX-Farben (docs/STYLE-AKYTEX.md) – der Server hat kein UI.Theme, daher dieselben Hex-Werte lokal
+local AKY_BG = Color3.fromRGB(11, 15, 23) -- AKYTEX-Farbe Bg #0b0f17
+local AKY_SURFACE2 = Color3.fromRGB(26, 33, 48) -- AKYTEX-Farbe Surface2 #1a2130
+local AKY_TEXT = Color3.fromRGB(230, 236, 245) -- AKYTEX-Farbe Text #e6ecf5
+local AKY_TEXT2 = Color3.fromRGB(170, 180, 195) -- AKYTEX-Farbe Text2 #aab4c3
+local AKY_WARN = Color3.fromRGB(234, 179, 8) -- AKYTEX-Farbe Warn #eab308 (Gold/Krone)
+
 local function buildOwnBoard(board: BasePart): SurfaceGui
 	local surface = Instance.new("SurfaceGui")
 	surface.Name = "KingBoard"
@@ -409,31 +416,57 @@ local function buildOwnBoard(board: BasePart): SurfaceGui
 	surface.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 	surface.PixelsPerStud = 30
 	surface.LightInfluence = 0
+	-- dunkle Glas-Tafel mit 1-px-Warn-Rahmen (Krone = Gold-Akzent)
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.fromScale(1, 1)
+	panel.BackgroundColor3 = AKY_BG
+	panel.BackgroundTransparency = 0.12
+	panel.BorderSizePixel = 0
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 16)
+	corner.Parent = panel
+	local frameStroke = Instance.new("UIStroke")
+	frameStroke.Color = AKY_WARN
+	frameStroke.Thickness = 1
+	frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	frameStroke.Parent = panel
+	panel.Parent = surface
 	local function boardLabel(name: string, y: number, h: number, font: Enum.Font, color: Color3): TextLabel
 		local label = Instance.new("TextLabel")
 		label.Name = name
 		label.BackgroundTransparency = 1
 		label.Position = UDim2.fromScale(if name == "Title" then 0.05 else 0.39, y)
-		label.Size = UDim2.fromScale(if name == "Title" then 0.9 else 0.58, h)
+		label.Size = UDim2.fromScale(if name == "Title" then 0.9 else 0.56, h)
 		label.Font = font
 		label.TextScaled = true
 		label.TextColor3 = color
+		label.TextXAlignment = if name == "Title" then Enum.TextXAlignment.Center else Enum.TextXAlignment.Left
 		label.Text = ""
-		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = 4
-		stroke.Parent = label
+		label.ZIndex = 2
 		label.Parent = surface
 		return label
 	end
-	boardLabel("Title", 0.04, 0.22, Enum.Font.LuckiestGuy, Config.Colors.Rarity.Legendary).Text = "👑 KÖNIG · KING"
-	boardLabel("Name", 0.32, 0.3, Enum.Font.FredokaOne, Color3.new(1, 1, 1))
-	boardLabel("Streak", 0.64, 0.26, Enum.Font.FredokaOne, Config.Colors.Enemy.Yellow)
+	-- Titel Michroma, Name BuilderSansBold, Serie in Warn (AKYTEX: keine dicke Kontur)
+	boardLabel("Title", 0.06, 0.18, Enum.Font.Michroma, AKY_TEXT).Text = "👑 KÖNIG · KING"
+	boardLabel("Name", 0.34, 0.26, Enum.Font.BuilderSansBold, AKY_TEXT)
+	boardLabel("Streak", 0.64, 0.2, Enum.Font.BuilderSansBold, AKY_WARN)
 	local avatar = Instance.new("ImageLabel")
 	avatar.Name = "Avatar"
-	avatar.BackgroundColor3 = Config.Colors.Palette.Navy
+	avatar.BackgroundColor3 = AKY_SURFACE2
 	avatar.Position = UDim2.fromScale(0.05, 0.3)
 	avatar.Size = UDim2.fromScale(0.3, 0.62)
 	avatar.ScaleType = Enum.ScaleType.Fit
+	avatar.ZIndex = 2
+	local avatarCorner = Instance.new("UICorner")
+	avatarCorner.CornerRadius = UDim.new(0, 12)
+	avatarCorner.Parent = avatar
+	local avatarStroke = Instance.new("UIStroke")
+	avatarStroke.Color = AKY_TEXT2
+	avatarStroke.Transparency = 0.6
+	avatarStroke.Thickness = 1
+	avatarStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	avatarStroke.Parent = avatar
 	avatar.Parent = surface
 	surface.Parent = board
 	return surface

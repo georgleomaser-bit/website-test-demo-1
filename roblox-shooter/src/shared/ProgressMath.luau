@@ -30,6 +30,8 @@
 --    ProgressMath.MatchCoins(r, coinsCfg, opts): number   Coins eines Matches (B18.2, ohne Tageslimit)
 --    ProgressMath.RewriteChat(text, rewrites, lang): string?  Chat-Umschreibung (B24), nil = unverändert
 --    ProgressMath.DescribeReward(reward, t, nameOf?): string  Belohnung als Text ("150 Coins + 1 Schlüssel")
+--    ProgressMath.SkillRank(mmr, ranks): (index, progress)   sichtbarer Skill-Rang aus dem MMR (nur Anzeige)
+--    ProgressMath.TrainerBest(mode, score, best, cfg): (ok, best, improved)   Aim-Trainer-Bestwert prüfen
 -- =====================================================================
 
 local ProgressMath = {}
@@ -330,6 +332,68 @@ function ProgressMath.Bounty(streak: number, cfg: any): number
 	local step = if finite(c.Step) then c.Step else bountyCfg.Step
 	local cap = if finite(c.Cap) then c.Cap else bountyCfg.Cap
 	return math.min(cap, base + step * (s - minStreak))
+end
+
+-- Sichtbarer Skill-Rang (nur Anzeige, SKILL-WUENSCHE): ranks = { { Min = number, … } } aufsteigend.
+-- Gibt (Index 1..#ranks, Fortschritt 0..1 bis zum nächsten Rang; 1 = höchster Rang) zurück.
+function ProgressMath.SkillRank(mmr: number, ranks: { any }): (number, number)
+	if type(ranks) ~= "table" or #ranks == 0 then
+		return 1, 0
+	end
+	local value = if finite(mmr) then mmr else 0
+	local index = 1
+	for i, rank in ipairs(ranks) do
+		local min = if type(rank) == "table" and finite(rank.Min) then rank.Min else math.huge
+		if value >= min then
+			index = i
+		end
+	end
+	local nextRank = ranks[index + 1]
+	if type(nextRank) ~= "table" or not finite(nextRank.Min) then
+		return index, 1
+	end
+	local low = if finite(ranks[index].Min) then ranks[index].Min else 0
+	local span = math.max(1, nextRank.Min - low)
+	return index, math.clamp((value - low) / span, 0, 1)
+end
+
+-- Aim-Trainer-Bestwert (Request "TrainerScore"): prüft/klemmt ein Ergebnis und vergleicht mit dem Rekord.
+-- mode "Flick" | "Track" (größer besser) | "Reaction" (ms, kleiner besser); best 0/nil = noch keiner.
+-- cfg = Config.Progression.Trainer. Gibt (gültig, neuer Bestwert, verbessert) zurück.
+function ProgressMath.TrainerBest(mode: string, score: number, best: number?, cfg: any): (boolean, number, boolean)
+	local c: any = if type(cfg) == "table" then cfg else {}
+	local old = if finite(best) and (best :: number) > 0 then best :: number else 0
+	if not finite(score) then
+		return false, old, false
+	end
+	local value = math.floor(score + 0.5)
+	if mode == "Reaction" then
+		local minMs = if finite(c.ReactionMinMs) then c.ReactionMinMs else 100
+		local maxMs = if finite(c.ReactionMaxMs) then c.ReactionMaxMs else 2500
+		if value < minMs then
+			return false, old, false -- schneller als menschlich möglich
+		end
+		value = math.min(value, maxMs)
+		if old == 0 or value < old then
+			return true, value, true
+		end
+		return true, old, false
+	elseif mode == "Flick" or mode == "Track" then
+		local maxValue = if mode == "Flick"
+			then (if finite(c.FlickMax) then c.FlickMax else 5000)
+			else (if finite(c.TrackMax) then c.TrackMax else 100)
+		if value <= 0 then
+			return true, old, false
+		end
+		if value > maxValue then
+			return false, old, false
+		end
+		if value > old then
+			return true, value, true
+		end
+		return true, old, false
+	end
+	return false, old, false
 end
 
 -- 1 + Summe der Boni, gedeckelt (B16.1: additiv, Deckel ×3.0)

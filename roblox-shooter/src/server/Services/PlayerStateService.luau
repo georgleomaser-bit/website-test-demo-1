@@ -564,6 +564,9 @@ end
 
 -- Reihenfolge (Muss-Regel 8 / C9): Rate-Limit -> typeof -> Aktion -> Aktions-Limit -> Ready -> pcall -> Tabelle
 local function dispatch(p: Player, action: any, arg: any): Reply
+	if p.Parent ~= Players then
+		return { Ok = false } -- schon gegangen: keine Limiter-Einträge mehr anlegen (PlayerRemoving hat aufgeräumt)
+	end
 	if not requestLimiter.Check(p) then
 		return fail(p, "core.tooFast")
 	end

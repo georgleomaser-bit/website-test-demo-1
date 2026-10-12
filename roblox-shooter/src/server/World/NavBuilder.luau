@@ -430,7 +430,9 @@ end
 function NavBuilder.Build(model: Model, layout: Types.MapLayout, origin: CFrame): (Types.NavGraph, Report)
 	local grid, headroom, stepMax, maxNodes = settings()
 	local params = RaycastParams.new()
-	params.IncludeInstances = { model }
+	-- nur die Map (klassische Form: FilterType + FilterDescendantsInstances, nicht mit Include/ExcludeInstances mischen)
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { model }
 	params.RespectCanCollide = true
 	params.IgnoreWater = true
 	local ctx: Ctx = {
@@ -616,7 +618,8 @@ end
 -- ---------------------------------------------------------------------
 function NavBuilder.SpawnBlockers(model: Model, layout: Types.MapLayout, origin: CFrame, box: Vector3): { string }
 	local params = OverlapParams.new()
-	params.IncludeInstances = { model }
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { model }
 	params.RespectCanCollide = true
 	params.MaxParts = 4
 	local bad: { string } = {}

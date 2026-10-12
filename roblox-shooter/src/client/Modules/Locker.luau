@@ -5,6 +5,8 @@
 --  wählen, Umbenennen + "Zufall aus Favoriten" (Loadout+). Tab "Kosmetik": Waffe wählen, Drehteller-
 --  Vorschau (ViewportFrame), Skin/Wrap/Charm pro Waffe, dazu Finisher (mit Vorschau), Tracer, Titel.
 --  Der Server prüft alles noch einmal (Besitz, Meisterschafts-Stufe, Slot) – das UI zeigt nur an.
+--  Look: docs/STYLE-AKYTEX.md – Auswahl = Accent, Rest Sekundär (Surface2 + 1-px-Rahmen), Seltenheit nur
+--  als Rahmen-Akzent, gesperrt = Muted, Abschnitts-Titel mit Akzent-Streifen, Vorschau auf Bg2.
 --
 --  Öffentliche API (C7.4):
 --    Locker.Open()
@@ -73,7 +75,7 @@ end
 
 local function rarityColor(rarity: any): Color3
 	local colors = Config.Colors and Config.Colors.Rarity
-	return colors and colors[rarity] or Color3.new(1, 1, 1)
+	return colors and colors[rarity] or UI.Theme.Border
 end
 
 local function hasPass(key: string): boolean
@@ -187,12 +189,12 @@ end
 
 local function label(parent: Instance, textValue: string, order: number, color: Color3?)
 	return UI.Label({
-		Size = UDim2.new(1, 0, 0, 26),
+		Size = UDim2.new(1, 0, 0, 24),
 		Text = textValue,
-		TextColor3 = color or Color3.new(1, 1, 1),
+		Font = UI.Fonts.Body,
+		TextColor3 = color or UI.Theme.Text2,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 18,
-		Outline = 2,
+		MaxText = 16,
 		LayoutOrder = order,
 		Parent = parent,
 	})
@@ -202,22 +204,30 @@ local function optionGrid(parent: Instance, order: number): Frame
 	return UI.Grid(parent, order, 150, 46)
 end
 
+-- Auswahl-Knopf: gewählt = Accent (Primär), sonst Sekundär bzw. Muted (gesperrt).
+-- accent = Seltenheit nur als feiner Rahmen (AKYTEX: Farbe nie als Vollfläche)
 local function option(
 	parent: Instance,
 	order: number,
 	textValue: string,
-	color: Color3,
+	variant: string,
 	selected: boolean,
-	onClick: () -> ()
+	onClick: () -> (),
+	accent: Color3?
 )
-	UI.Button({
+	local button = UI.Button({
 		Size = UDim2.fromOffset(150, 46),
-		Text = (if selected then "✔ " else "") .. textValue,
-		Color = if selected then UI.Theme.Green else color,
+		Text = (if selected then "✓ " else "") .. textValue,
+		Variant = if selected then "Primary" else variant,
 		MaxText = 15,
+		Corner = 10,
 		LayoutOrder = order,
 		Parent = parent,
 	}, onClick)
+	if accent and not selected and variant == "Secondary" then
+		button.Stroke.Color = accent
+		button.Stroke.Transparency = 0.35
+	end
 end
 
 -- =====================================================================
@@ -267,8 +277,9 @@ local function buildLoadouts(root: Frame)
 		UI.Button({
 			Size = UDim2.fromOffset(if max > 5 then 84 else 130, 44),
 			Text = name,
-			Color = if i == active then UI.Theme.Green else UI.Theme.Blue,
+			Variant = if i == active then "Primary" else "Secondary",
 			MaxText = 14,
+			Corner = 10,
 			LayoutOrder = i,
 			Parent = row,
 		}, function()
@@ -282,8 +293,9 @@ local function buildLoadouts(root: Frame)
 		UI.Button({
 			Size = UDim2.fromOffset(170, 44),
 			Text = t("shop.presetBuy", Util.FormatNumber(tonumber(lo.SlotCoins) or 5000)),
-			Color = UI.Theme.Orange,
+			Variant = "Success", -- Kaufen = Up
 			MaxText = 14,
+			Corner = 10,
 			LayoutOrder = 20,
 			Parent = row,
 		}, function()
@@ -303,7 +315,8 @@ local function buildLoadouts(root: Frame)
 		UI.Button({
 			Size = UDim2.fromOffset(150, 42),
 			Text = t("shop.rename"),
-			Color = UI.Theme.Purple,
+			Variant = "Secondary",
+			Corner = 10,
 			LayoutOrder = 2,
 			Parent = plusRow,
 		}, function()
@@ -312,14 +325,15 @@ local function buildLoadouts(root: Frame)
 		UI.Button({
 			Size = UDim2.fromOffset(170, 42),
 			Text = t("shop.randomPreset"),
-			Color = UI.Theme.Cyan,
+			Variant = "Secondary",
+			Corner = 10,
 			LayoutOrder = 3,
 			Parent = plusRow,
 		}, function()
 			request("RandomLoadout", nil)
 		end)
 	else
-		label(plusRow, t("shop.plusHint"), 1, UI.Theme.SubText)
+		label(plusRow, t("shop.plusHint"), 1, UI.Theme.Muted)
 	end
 	local current = presetLoadout(presets[active])
 	local weapons = weaponList()
@@ -329,7 +343,7 @@ local function buildLoadouts(root: Frame)
 	end
 	local order = 3
 	for _, slot in ipairs(SLOTS) do
-		label(root, t("shop.slot." .. slot), order, UI.Theme.Yellow)
+		UI.Section(root, t("shop.slot." .. slot), order)
 		order += 1
 		local g = optionGrid(root, order)
 		order += 1
@@ -341,7 +355,7 @@ local function buildLoadouts(root: Frame)
 				local selected = current[slot] == def.Key
 				local caption = pick(def.Name)
 					.. (if owned then "" else (" 🔒" .. Util.FormatNumber(tonumber(def.Price) or 0)))
-				option(g, index, caption, if owned then UI.Theme.Blue else UI.Theme.Gray, selected, function()
+				option(g, index, caption, if owned then "Secondary" else "Muted", selected, function()
 					if not owned then
 						local shop = ctx.Modules and ctx.Modules.Shop
 						if shop and type(shop.Open) == "function" then
@@ -562,14 +576,14 @@ local function cosmeticSection(
 	weaponKey: string?,
 	allowNone: boolean
 ): number
-	label(root, t("item.kinds." .. kind), order, UI.Theme.Yellow)
+	UI.Section(root, t("item.kinds." .. kind), order)
 	order += 1
 	local g = optionGrid(root, order)
 	order += 1
 	local index = 0
 	if allowNone then
 		index += 1
-		option(g, index, t("shop.none"), UI.Theme.Gray, current == "", function()
+		option(g, index, t("shop.none"), "Secondary", current == "", function()
 			if current ~= "" then
 				equip(kind, "", weaponKey)
 			end
@@ -580,25 +594,18 @@ local function cosmeticSection(
 		local def = COSMETICS.ById[id]
 		local usable, lockText = canUse(id, weaponKey)
 		local caption = pick(def.Name) .. (if usable then "" else " 🔒")
-		option(
-			g,
-			index,
-			caption,
-			if usable then rarityColor(def.Rarity):Lerp(Color3.new(0, 0, 0), 0.25) else UI.Theme.Gray,
-			current == id,
-			function()
-				if not usable then
-					ctx.Toast(lockText or t("shop.notOwnedHint"), "Info")
-					return
-				end
-				if current ~= id then
-					equip(kind, id, weaponKey)
-				end
+		option(g, index, caption, if usable then "Secondary" else "Muted", current == id, function()
+			if not usable then
+				ctx.Toast(lockText or t("shop.notOwnedHint"), "Info")
+				return
 			end
-		)
+			if current ~= id then
+				equip(kind, id, weaponKey)
+			end
+		end, if def.Rarity then rarityColor(def.Rarity) else nil)
 		if kind == "Finisher" then
 			index += 1
-			option(g, index, "▶ " .. t("shop.preview"), UI.Theme.Cyan, false, function()
+			option(g, index, "▶ " .. t("shop.preview"), "Ghost", false, function()
 				local finishers = ctx.Modules and ctx.Modules.Finishers
 				if finishers and type(finishers.Preview) == "function" then
 					finishers.Preview(id)
@@ -607,7 +614,7 @@ local function cosmeticSection(
 		end
 	end
 	if index == 0 then
-		label(root, t("shop.nothingOwned"), order, UI.Theme.SubText)
+		label(root, t("shop.nothingOwned"), order, UI.Theme.Muted)
 		order += 1
 	end
 	return order
@@ -632,15 +639,16 @@ local function buildCosmetics(root: Frame)
 	if not table.find(keys, selectedWeapon) then
 		selectedWeapon = keys[1] or "PopRifle"
 	end
-	label(root, t("shop.pickWeapon"), 1, UI.Theme.Yellow)
+	UI.Section(root, t("shop.pickWeapon"), 1)
 	local g = UI.Grid(root, 2, 120, 40)
 	for i, key in ipairs(keys) do
 		local def = Config.Weapon(key)
 		UI.Button({
 			Size = UDim2.fromOffset(120, 40),
 			Text = if def then pick(def.Name) else key,
-			Color = if key == selectedWeapon then UI.Theme.Green else UI.Theme.Blue,
+			Variant = if key == selectedWeapon then "Primary" else "Secondary",
 			MaxText = 14,
+			Corner = 10,
 			LayoutOrder = i,
 			Parent = g,
 		}, function()
@@ -657,7 +665,9 @@ local function buildCosmetics(root: Frame)
 		Wrap = if type(per) == "table" and type(per.Wrap) == "string" then per.Wrap else "",
 		Charm = if type(per) == "table" and type(per.Charm) == "string" then per.Charm else "",
 	}
-	local previewHolder = UI.Card({ Size = UDim2.new(1, 0, 0, 220), LayoutOrder = 3, Parent = root })
+	-- Drehteller-Vorschau: Karte auf Bg2 (dunkle Bühne, die bunte Waffe bleibt bunt)
+	local previewHolder =
+		UI.Card({ Size = UDim2.new(1, 0, 0, 220), BackgroundColor3 = UI.Theme.Bg2, LayoutOrder = 3, Parent = root })
 	viewport = UI.Create("ViewportFrame", {
 		Size = UDim2.new(1, -12, 1, -12),
 		Position = UDim2.fromOffset(6, 6),
@@ -698,7 +708,7 @@ local function render()
 	viewport = nil
 	clear(root)
 	for name, button in pairs(tabButtons) do
-		button.SetColor(if name == currentTab then UI.Theme.Orange else UI.Theme.Blue)
+		button.SetVariant(if name == currentTab then "Primary" else "Secondary")
 	end
 	local ok, err = pcall(if currentTab == "Loadouts" then buildLoadouts else buildCosmetics, root)
 	if not ok then
@@ -716,14 +726,15 @@ local function ensureWindow()
 	if win then
 		return
 	end
-	win = UI.Window(t("shop.locker.title"), 800, 560, UI.Theme.Purple)
+	win = UI.Window(t("shop.locker.title"), 800, 560, UI.Theme.Accent)
 	local tabRow = UI.Row(win.Content, 1, 46)
 	for i, name in ipairs(TABS) do
 		tabButtons[name] = UI.Button({
 			Size = UDim2.fromOffset(180, 42),
 			Text = t("shop.locker.tab." .. name),
-			Color = UI.Theme.Blue,
+			Variant = "Secondary",
 			MaxText = 16,
+			Corner = 10,
 			LayoutOrder = i,
 			Parent = tabRow,
 		}, function()
@@ -792,7 +803,7 @@ function Locker.Start()
 	local modules = ctx.Modules or {}
 	local hud = modules.Hud
 	if hud and type(hud.AddRightButton) == "function" then
-		pcall(hud.AddRightButton, "🎒", "shop.hud.locker", UI.Theme.Purple, 21, function()
+		pcall(hud.AddRightButton, "🎒", "shop.hud.locker", UI.Theme.Accent, 21, function()
 			ctx.Windows.Open("Locker")
 		end)
 	end

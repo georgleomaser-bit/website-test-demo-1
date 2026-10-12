@@ -1329,7 +1329,8 @@ local function setArena(origin: any, map: any)
 	end
 	if typeof(map) == "Instance" then
 		arenaMap = map
-		rayParams.FilterType = Enum.RaycastFilterType.Include
+		-- nur IncludeInstances (DESIGN Muss-Regel 10, wie WeaponClient/AimAssist): FilterType "Include" gilt für
+		-- die leere FilterDescendantsInstances-Liste und würde sonst jeden Abpraller/Einschlag herausfiltern
 		rayParams.IncludeInstances = { map }
 	end
 end

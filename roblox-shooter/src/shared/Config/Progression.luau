@@ -356,6 +356,32 @@ Progression.Honor = { CommendDailyCap = 3, Badges = { 10, 50, 200 } }
 Progression.GG = { Xp = 5, Coins = 5 }
 Progression.RookieMatches = 3 -- IsRookie: Stats.Matches < 3
 
+-- Sichtbarer SKILL-RANG im Statistik-Fenster (SKILL-WUENSCHE) – NUR ANZEIGE aus dem verdeckten MMR (B16.6).
+-- Ranked-Warteschlange/RP bleiben v1.1 (B17). Min = MMR ab dem der Rang gilt (aufsteigend, Start 1000 = Silber).
+-- Placement: so viele gewertete PvP-Matches (Data.MmrGames), bevor ein Rang angezeigt wird.
+-- Farbe = Rang-Akzent (nur Rahmen/Streifen, AKYTEX).
+Progression.SkillRanks = {
+	Placement = 5,
+	List = {
+		{ Key = "Bronze", Min = 0, Color = Color3.fromRGB(205, 127, 50) },
+		{ Key = "Silver", Min = 950, Color = Color3.fromRGB(170, 180, 195) },
+		{ Key = "Gold", Min = 1100, Color = Color3.fromRGB(234, 179, 8) },
+		{ Key = "Platinum", Min = 1250, Color = Color3.fromRGB(34, 211, 238) },
+		{ Key = "Diamond", Min = 1400, Color = Color3.fromRGB(79, 140, 255) },
+		{ Key = "Champion", Min = 1550, Color = Color3.fromRGB(236, 72, 153) },
+	},
+}
+
+-- Aim-Trainer-Bestwerte (Request "TrainerScore", Schießstand): erlaubte Bereiche je Modus (Server klemmt/prüft).
+-- Flick = Punkte (größer besser, höchstens 100 × Zielanzahl), Track = % Zeit auf dem Ziel (größer besser),
+-- Reaction = Durchschnitt in ms (kleiner besser; unter MinMs ist menschlich nicht möglich -> abgelehnt).
+Progression.Trainer = {
+	FlickMax = 5000,
+	TrackMax = 100,
+	ReactionMinMs = 100,
+	ReactionMaxMs = 2500,
+}
+
 -- ---------------------------------------------------------------------
 -- 10) CODES (statisch; Großbuchstaben, ≤ 20 Zeichen). Expires = UTC (optional).
 --     Neue Codes einfach hier eintragen. Jeder Spieler kann jeden Code einmal einlösen.
@@ -382,9 +408,10 @@ Progression.Chat = {
 		p2w = { de = "faires Loadout", en = "fair loadout" },
 		trash = { de = "gutes Spiel", en = "good game" },
 	},
-	OwnerColor = "#FFC828",
-	VipColor = "#FFD700",
-	TitleColor = "#B9A7F2",
+	-- AKYTEX-Farben (Chat-Präfixe): Besitzer/VIP = Warn-Gold, Titel = Text2
+	OwnerColor = "#EAB308",
+	VipColor = "#EAB308",
+	TitleColor = "#AAB4C3",
 }
 
 -- =====================================================================
@@ -648,6 +675,28 @@ function Progression.Validate(Config: any): { string }
 	num("Crown.DefenceCoinsBot", Progression.Crown.DefenceCoinsBot, 0)
 	num("Honor.CommendDailyCap", Progression.Honor.CommendDailyCap, 0, true)
 	numbers("GG", Progression.GG, 0)
+	num("SkillRanks.Placement", Progression.SkillRanks.Placement, 0, true)
+	local lastMin = -math.huge
+	for i, rank in ipairs(Progression.SkillRanks.List) do
+		local p = "SkillRanks.List[" .. i .. "]"
+		if type(rank.Key) ~= "string" then
+			err(p .. ".Key", "Text erwartet")
+		end
+		num(p .. ".Min", rank.Min, 0)
+		if isNumber(rank.Min) then
+			if rank.Min <= lastMin then
+				err(p .. ".Min", "Ränge aufsteigend sortieren")
+			end
+			lastMin = rank.Min
+		end
+		if typeof(rank.Color) ~= "Color3" then
+			err(p .. ".Color", "Color3 erwartet")
+		end
+	end
+	if #Progression.SkillRanks.List ~= 6 then
+		err("SkillRanks.List", "6 Ränge erwartet (Bronze bis Champion)")
+	end
+	numbers("Trainer", Progression.Trainer, 0)
 
 	for code, def in pairs(Progression.Codes) do
 		local p = "Codes." .. tostring(code)

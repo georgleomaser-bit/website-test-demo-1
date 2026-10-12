@@ -7,6 +7,8 @@
 --  Angezeigte Preise/Quoten kommen aus derselben Config wie der Server (Shop.PriceOf, Shared/Odds).
 --  Außerdem: Kisten-Automat in der Lobby lokal verstecken, solange Zufallsitems nicht erlaubt sind;
 --  VIP-Tür lokal öffnen (Player-Attribut "Vip").
+--  Look: docs/STYLE-AKYTEX.md – Karten Surface2 mit 1-px-Rahmen, Seltenheit nur als Akzent (Rahmen + Streifen),
+--  aktive Reiter Accent, Kaufen = Up (grün), Robux/Premium = Warn-Verlauf, Werte grün/rot.
 --
 --  Öffentliche API (C7.4):
 --    Shop.Open(tab?)                        "Weapons" | "Featured" | "Catalog" | "Crates" | "Shards" | "Robux"
@@ -56,6 +58,7 @@ local dialog: Frame? = nil
 local dialogList: ScrollingFrame? = nil
 local dialogButtons: Frame? = nil
 local dialogTitle: TextLabel? = nil
+local dialogAccent: Frame? = nil
 local tabButtons: { [string]: any } = {}
 local currencyLabels: { [string]: TextLabel } = {}
 local currentTab = "Weapons"
@@ -185,10 +188,63 @@ local function modules(): { [string]: any }
 	return if ctx and type(ctx.Modules) == "table" then ctx.Modules else {}
 end
 
+-- Karte (Surface2, Ecke 12, 1-px-Rahmen); accent = Seltenheit/Premium nur als Rahmen + Streifen oben
+local function accentCard(props: { [string]: any }, accent: Color3?): Frame
+	local frame = UI.Card(props)
+	if accent then
+		local stroke = frame:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = accent
+			stroke.Transparency = 0.45
+		end
+		UI.Create("Frame", {
+			Name = "Stripe",
+			Position = UDim2.fromOffset(14, 0),
+			Size = UDim2.new(1, -28, 0, 3),
+			BackgroundColor3 = accent,
+			BorderSizePixel = 0,
+			Parent = frame,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	end
+	return frame
+end
+
+-- Schlanke Pill (Chip): Surface2 + Rahmen, kleiner Punkt in der Akzentfarbe
+local function pill(parent: Instance, textValue: string, order: number, width: number, dot: Color3?): TextLabel
+	local frame = UI.Create("Frame", {
+		Size = UDim2.fromOffset(width, 30),
+		BackgroundColor3 = UI.Theme.Surface2,
+		BorderSizePixel = 0,
+		LayoutOrder = order,
+		Parent = parent,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), UI.Stroke(nil, 1) })
+	if dot then
+		UI.Create("Frame", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 12, 0.5, 0),
+			Size = UDim2.fromOffset(8, 8),
+			BackgroundColor3 = dot,
+			BorderSizePixel = 0,
+			Parent = frame,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	end
+	return UI.Label({
+		Position = UDim2.fromOffset(if dot then 26 else 12, 4),
+		Size = UDim2.new(1, if dot then -36 else -24, 1, -8),
+		Text = textValue,
+		Font = UI.Fonts.Main,
+		TextColor3 = UI.Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		MaxText = 16,
+		Parent = frame,
+	})
+end
+
 -- =====================================================================
 -- 2) "DETAILS & QUOTEN" – Dialog vor jedem Kauf
 -- =====================================================================
-type DialogButton = { Text: string, Color: Color3?, OnClick: (() -> ())?, Enabled: boolean? }
+-- Variant: "Success" (Kaufen, Standard) | "Primary" | "Premium" (Robux) | "Secondary"
+type DialogButton = { Text: string, Variant: string?, OnClick: (() -> ())?, Enabled: boolean? }
 type DialogSpec = { Title: string, Color: Color3?, Lines: { string }, Crate: any?, Buttons: { DialogButton } }
 
 local function hideDialog()
@@ -201,11 +257,11 @@ local function addLine(parent: Instance, textValue: string, order: number, color
 	UI.Label({
 		Size = UDim2.new(1, -8, 0, height or 26),
 		Text = textValue,
-		TextColor3 = color or Color3.new(1, 1, 1),
+		Font = UI.Fonts.Body,
+		TextColor3 = color or UI.Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
-		MaxText = 18,
-		Outline = 2,
+		MaxText = 17,
 		LayoutOrder = order,
 		Parent = parent,
 	})
@@ -213,7 +269,7 @@ end
 
 local function addOdds(parent: Instance, crateDef: any, startOrder: number): number
 	local order = startOrder
-	addLine(parent, t("shop.odds.byRarity"), order, UI.Theme.Yellow)
+	addLine(parent, t("shop.odds.byRarity"), order, UI.Theme.Text2)
 	order += 1
 	for _, row in ipairs(Odds.RarityTable(crateDef, false)) do
 		addLine(
@@ -224,7 +280,7 @@ local function addOdds(parent: Instance, crateDef: any, startOrder: number): num
 		)
 		order += 1
 	end
-	addLine(parent, t("shop.odds.items"), order, UI.Theme.Yellow)
+	addLine(parent, t("shop.odds.items"), order, UI.Theme.Text2)
 	order += 1
 	local total = 0
 	for _, row in ipairs(Odds.Table(crateDef)) do
@@ -235,10 +291,10 @@ local function addOdds(parent: Instance, crateDef: any, startOrder: number): num
 		total += row.Hundredths
 		order += 1
 	end
-	addLine(parent, t("shop.odds.sum", percent(total)), order, UI.Theme.Cash)
+	addLine(parent, t("shop.odds.sum", percent(total)), order, UI.Theme.Up)
 	order += 1
 	local pityAfter = tonumber(crateDef.PityAfter) or 29
-	addLine(parent, t("shop.odds.pityRule", pityAfter, pityAfter + 1), order, UI.Theme.Yellow, 46)
+	addLine(parent, t("shop.odds.pityRule", pityAfter, pityAfter + 1), order, UI.Theme.Warn, 46)
 	order += 1
 	for _, row in ipairs(Odds.PityTable(crateDef)) do
 		local def = COSMETICS.ById[row.Id]
@@ -261,7 +317,7 @@ local function addOdds(parent: Instance, crateDef: any, startOrder: number): num
 			SHOP.DupeShards.Mythic
 		),
 		order,
-		nil,
+		UI.Theme.Text2,
 		46
 	)
 	return order + 1
@@ -273,12 +329,15 @@ local function showDialog(spec: DialogSpec)
 		return
 	end
 	title.Text = UI.Upper(t("shop.oddsTitle") .. " · " .. spec.Title)
-	title.TextColor3 = spec.Color or Color3.new(1, 1, 1)
+	local accent = dialogAccent
+	if accent then
+		accent.BackgroundColor3 = spec.Color or UI.Theme.Accent
+	end
 	clear(list)
 	clear(buttons)
 	local order = 1
 	for _, line in ipairs(spec.Lines) do
-		addLine(list, line, order, nil, 30)
+		addLine(list, line, order, UI.Theme.Text2, 28)
 		order += 1
 	end
 	if spec.Crate then
@@ -288,10 +347,10 @@ local function showDialog(spec: DialogSpec)
 	for i, button in ipairs(spec.Buttons) do
 		local enabled = button.Enabled ~= false
 		UI.Button({
-			Size = UDim2.fromOffset(190, 48),
+			Size = UDim2.fromOffset(200, 46),
 			Text = button.Text,
-			Color = if enabled then (button.Color or UI.Theme.Green) else UI.Theme.Gray,
-			MaxText = 18,
+			Variant = if enabled then (button.Variant or "Success") else "Muted",
+			MaxText = 17,
 			LayoutOrder = i,
 			Parent = buttons,
 		}, function()
@@ -302,9 +361,10 @@ local function showDialog(spec: DialogSpec)
 		end)
 	end
 	UI.Button({
-		Size = UDim2.fromOffset(150, 48),
+		Size = UDim2.fromOffset(150, 46),
 		Text = t("shop.cancel"),
-		Color = UI.Theme.Red,
+		Variant = "Secondary",
+		MaxText = 17,
 		LayoutOrder = 99,
 		Parent = buttons,
 	}, hideDialog)
@@ -312,31 +372,42 @@ local function showDialog(spec: DialogSpec)
 end
 
 local function buildDialog(panel: Frame)
+	-- Detail-Dialog über dem Fenster-Inhalt: Bg-Glas, Ecke 16, 1-px-Rahmen, Titel Michroma + Akzentstrich
 	local frame = UI.Create("Frame", {
 		Name = "Details",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.fromRGB(20, 24, 48),
-		BackgroundTransparency = 0.08,
+		BackgroundColor3 = UI.Theme.Bg,
+		BackgroundTransparency = 0.03,
 		Visible = false,
 		Active = true,
 		ZIndex = 30,
 		Parent = panel,
-	}, { UI.Corner(20) })
+	}, { UI.Corner(16), UI.Stroke(nil, 1) })
 	dialogTitle = UI.Label({
-		Position = UDim2.fromOffset(16, 10),
-		Size = UDim2.new(1, -32, 0, 40),
+		Position = UDim2.fromOffset(20, 14),
+		Size = UDim2.new(1, -40, 0, 28),
 		Text = "",
+		Font = UI.Fonts.Heading,
+		TextColor3 = UI.Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 26,
-		Outline = 3,
+		MaxText = 20,
 		Parent = frame,
 	})
+	dialogAccent = UI.Create("Frame", {
+		Name = "Accent",
+		Position = UDim2.fromOffset(20, 46),
+		Size = UDim2.fromOffset(28, 2),
+		BackgroundColor3 = UI.Theme.Accent,
+		BorderSizePixel = 0,
+		Parent = frame,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	dialogList = UI.Create("ScrollingFrame", {
-		Position = UDim2.fromOffset(16, 56),
-		Size = UDim2.new(1, -32, 1, -130),
+		Position = UDim2.fromOffset(20, 58),
+		Size = UDim2.new(1, -40, 1, -132),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 6,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = UI.Theme.Muted,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		Parent = frame,
@@ -361,27 +432,31 @@ end
 -- =====================================================================
 -- 3) KARTEN
 -- =====================================================================
+-- Karte im Raster: Titel (Text), bis zu 3 Zeilen (Text2; lineColors färbt einzelne Zeilen grün/rot),
+-- Knopf unten (Variante). accent = Seltenheit/Premium nur als Rahmen + Streifen.
 local function card(
 	parent: Instance,
 	order: number,
 	titleText: string,
-	color: Color3,
+	accent: Color3?,
 	lines: { string },
 	buttonText: string,
-	buttonColor: Color3,
+	buttonVariant: string,
 	onClick: () -> (),
-	enabled: boolean?
+	enabled: boolean?,
+	lineColors: { [number]: Color3 }?
 ): (Frame, { TextLabel })
-	local frame = UI.Card({ Size = UDim2.fromOffset(180, 156), LayoutOrder = order, Parent = parent })
+	local frame = accentCard({ Size = UDim2.fromOffset(180, 156), LayoutOrder = order, Parent = parent }, accent)
 	local lineLabels: { TextLabel } = {}
 	UI.Label({
-		Position = UDim2.fromOffset(6, 4),
-		Size = UDim2.new(1, -12, 0, 30),
+		Position = UDim2.fromOffset(12, 10),
+		Size = UDim2.new(1, -24, 0, 24),
 		Text = titleText,
-		TextColor3 = color,
+		Font = UI.Fonts.Main,
+		TextColor3 = UI.Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
-		MaxText = 18,
-		Outline = 2,
+		MaxText = 17,
 		Parent = frame,
 	})
 	for i, line in ipairs(lines) do
@@ -391,12 +466,14 @@ local function card(
 		table.insert(
 			lineLabels,
 			UI.Label({
-				Position = UDim2.fromOffset(6, 34 + (i - 1) * 22),
-				Size = UDim2.new(1, -12, 0, 22),
+				Position = UDim2.fromOffset(12, 36 + (i - 1) * 20),
+				Size = UDim2.new(1, -24, 0, 19),
 				Text = line,
+				Font = if lineColors and lineColors[i] then UI.Fonts.Main else UI.Fonts.Body,
+				TextColor3 = lineColors and lineColors[i] or UI.Theme.Text2,
+				TextXAlignment = Enum.TextXAlignment.Left,
 				TextWrapped = true,
-				MaxText = 15,
-				Outline = 2,
+				MaxText = 14,
 				Parent = frame,
 			})
 		)
@@ -404,11 +481,12 @@ local function card(
 	local on = enabled ~= false
 	UI.Button({
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -6),
-		Size = UDim2.new(1, -14, 0, 42),
+		Position = UDim2.new(0.5, 0, 1, -10),
+		Size = UDim2.new(1, -20, 0, 38),
 		Text = buttonText,
-		Color = if on then buttonColor else UI.Theme.Gray,
-		MaxText = 16,
+		Variant = if on then buttonVariant else "Muted",
+		MaxText = 15,
+		Corner = 10,
 		Parent = frame,
 	}, function()
 		if on then
@@ -454,7 +532,7 @@ local function openCosmeticDetails(id: string, currencies: { string }, featured:
 		if price then
 			table.insert(buttons, {
 				Text = ("%s %s %s"):format(t("shop.buy"), num(price), CURRENCY_ICON[currency]),
-				Color = if currency == "Coins" then UI.Theme.Orange else UI.Theme.Purple,
+				Variant = "Success",
 				Enabled = not owned and balance(currency) >= price,
 				OnClick = function()
 					request("BuyItem", { Id = id, Currency = currency, Featured = featured or nil })
@@ -475,6 +553,7 @@ local function cosmeticCard(parent: Instance, order: number, id: string, currenc
 	end
 	local owned = ownsCosmetic(id)
 	local priceText = ""
+	local affordable = false
 	for _, currency in ipairs(currencies) do
 		local price = SHOP.PriceOf(COSMETICS, id, currency, seasonId(), featured and currency == "Gems")
 		if price then
@@ -485,14 +564,20 @@ local function cosmeticCard(parent: Instance, order: number, id: string, currenc
 				then ("%s→%s %s"):format(num(base), num(price), CURRENCY_ICON[currency])
 				else ("%s %s"):format(num(price), CURRENCY_ICON[currency])
 			priceText = if priceText == "" then part else priceText .. " / " .. part
+			affordable = affordable or balance(currency) >= price
 		end
 	end
 	local lines =
 		{ (KIND_ICON[def.Kind] or "") .. " " .. t("item.kind." .. def.Kind), t("item.rarity." .. tostring(def.Rarity)) }
-	table.insert(lines, if owned then t("shop.ownedLine") else priceText)
-	card(parent, order, pick(def.Name), rarityColor(def.Rarity), lines, t("shop.details"), UI.Theme.Blue, function()
+	table.insert(lines, if owned then "✓ " .. t("shop.ownedLine") else priceText)
+	-- Werte grün/rot: besessen bzw. leistbar = Up, zu teuer = Down; Seltenheit als Zeilen-Akzent
+	local colors = {
+		[2] = rarityColor(def.Rarity),
+		[3] = if owned or affordable then UI.Theme.Up else UI.Theme.Down,
+	}
+	card(parent, order, pick(def.Name), rarityColor(def.Rarity), lines, t("shop.details"), "Secondary", function()
 		openCosmeticDetails(id, currencies, featured)
-	end)
+	end, true, colors)
 end
 
 local function sortedCosmetics(filter: (id: string, def: any) -> boolean): { string }
@@ -518,6 +603,22 @@ end
 -- 5) TABS
 -- =====================================================================
 local Builders: { [string]: (Frame) -> () } = {}
+
+-- "Gratis testen": erst in den Schießstand teleportieren (QueueService "GoRange"), dann das Training-Fenster
+-- (Waffenwahl der Range) öffnen. Früher öffnete der Knopf nur das Fenster in der Lobby (Läufe gehen nur in der Range).
+local function tryInRange()
+	request("GoRange", nil, function()
+		ctx.Windows.Close("Shop")
+		local training = modules().Training
+		if training and type(training.Open) == "function" then
+			task.delay(0.6, function()
+				pcall(training.Open)
+			end)
+		else
+			ctx.Toast(t("shop.tryHint"), "Info")
+		end
+	end)
+end
 
 Builders.Weapons = function(root)
 	local list = Config.Weapons and Config.Weapons.List
@@ -545,7 +646,7 @@ Builders.Weapons = function(root)
 		freePicks = if type(weaponsState) == "table" then tonumber(weaponsState.FreePicks) or 0 else 0
 	end
 	if freePicks > 0 then
-		addLine(root, t("shop.freePicks", freePicks), 1, UI.Theme.Cash)
+		addLine(root, t("shop.freePicks", freePicks), 1, UI.Theme.Up)
 	end
 	local g = grid(root, 2)
 	for i, def in ipairs(weapons) do
@@ -554,17 +655,26 @@ Builders.Weapons = function(root)
 		if def.Enabled == false then
 			table.insert(lines, t("shop.weaponOff"))
 		end
-		table.insert(
-			lines,
-			if def.Free then t("shop.free") elseif owned then t("shop.ownedLine") else ("%s 💰"):format(num(def.Price))
-		)
-		card(g, i, pick(def.Name), Color3.new(1, 1, 1), lines, t("shop.details"), UI.Theme.Blue, function()
+		local priceLine = if def.Free
+			then t("shop.free")
+			elseif owned then "✓ " .. t("shop.ownedLine")
+			else ("%s 💰"):format(num(def.Price))
+		table.insert(lines, priceLine)
+		-- grün = besessen/gratis/leistbar, rot = zu teuer (letzte Zeile) bzw. per Not-Aus gesperrt
+		local affordable = balance("Coins") >= (tonumber(def.Price) or math.huge)
+		local colors: { [number]: Color3 } = {
+			[#lines] = if def.Free or owned or affordable then UI.Theme.Up else UI.Theme.Down,
+		}
+		if def.Enabled == false then
+			colors[2] = UI.Theme.Down
+		end
+		card(g, i, pick(def.Name), nil, lines, t("shop.details"), "Secondary", function()
 			local buttons: { DialogButton } = {}
 			if not owned then
 				table.insert(buttons, {
 					Text = ("%s %s 💰"):format(t("shop.buy"), num(def.Price)),
-					Color = UI.Theme.Orange,
-					Enabled = balance("Coins") >= (tonumber(def.Price) or math.huge),
+					Variant = "Success",
+					Enabled = affordable,
 					OnClick = function()
 						request("BuyWeapon", def.Key)
 					end,
@@ -572,25 +682,18 @@ Builders.Weapons = function(root)
 				if freePicks > 0 then
 					table.insert(buttons, {
 						Text = t("shop.pickFree"),
-						Color = UI.Theme.Green,
+						Variant = "Primary",
 						OnClick = function()
 							request("ClaimLevelPick", def.Key)
 						end,
 					})
 				end
 			end
+			-- "Gratis testen" (B21.1): in den Schießstand (Range) und dort das Training-Fenster öffnen
 			table.insert(buttons, {
 				Text = t("shop.tryFree"),
-				Color = UI.Theme.Cyan,
-				OnClick = function()
-					local training = modules().Training
-					if training and type(training.Open) == "function" then
-						ctx.Windows.Close("Shop")
-						pcall(training.Open)
-					else
-						ctx.Toast(t("shop.tryHint"), "Info")
-					end
-				end,
+				Variant = "Secondary",
+				OnClick = tryInRange,
 			})
 			local detail = {
 				t("shop.slot." .. tostring(def.Slot)),
@@ -598,7 +701,7 @@ Builders.Weapons = function(root)
 				t("shop.noP2WShort"),
 			}
 			showDialog({ Title = pick(def.Name), Lines = detail, Buttons = buttons })
-		end)
+		end, true, colors)
 	end
 end
 
@@ -610,8 +713,8 @@ local function updateTicker(label: TextLabel, endsAt: number)
 			if token ~= tickerToken or not (win and win.IsOpen) or label.Parent == nil then
 				return
 			end
-			local left = math.max(0, endsAt - os.time())
-			label.Text = t("shop.featuredTimer", Util.FormatTime(left))
+			local left = math.max(0, endsAt - workspace:GetServerTimeNow())
+			label.Text = t("shop.featuredTimer", Util.FormatTime(math.floor(left)))
 			task.wait(1)
 		end
 	end)
@@ -623,15 +726,8 @@ Builders.Featured = function(root)
 		addLine(root, t("core.loading"), 1)
 		return
 	end
-	local timer = UI.Label({
-		Size = UDim2.new(1, 0, 0, 30),
-		Text = "",
-		TextColor3 = UI.Theme.Yellow,
-		MaxText = 20,
-		Outline = 2,
-		LayoutOrder = 1,
-		Parent = root,
-	})
+	local timerRow = UI.Row(root, 1, 32)
+	local timer = pill(timerRow, "", 1, 300, UI.Theme.Warn)
 	updateTicker(timer, tonumber(featured.EndsAt) or 0)
 	local g = grid(root, 2)
 	for i, id in ipairs(featured.Ids) do
@@ -651,7 +747,7 @@ Builders.Catalog = function(root)
 				)
 		end)
 		if #ids > 0 then
-			UI.Section(root, (KIND_ICON[kind] or "") .. " " .. t("item.kinds." .. kind), order)
+			UI.Section(root, t("item.kinds." .. kind), order)
 			order += 1
 			local g = grid(root, order)
 			order += 1
@@ -677,25 +773,32 @@ Builders.Crates = function(root)
 	local pity = if type(crates) == "table" then tonumber(crates.Pity) or 0 else 0
 	local pityAfter = tonumber(crateDef.PityAfter) or 29
 	local allowed = randomAllowed()
-	UI.Section(root, "🎁 " .. pick(crateDef.Name), 1)
+	UI.Section(root, pick(crateDef.Name), 1)
 	local left = pityAfter + 1 - pity
-	addLine(root, if left <= 1 then t("shop.pityNext") else t("shop.pityLeft", left), 2, UI.Theme.Yellow)
-	addLine(root, t("shop.keysHave", balance("Keys")), 3)
+	local infoRow = UI.Row(root, 2, 32)
+	pill(infoRow, if left <= 1 then t("shop.pityNext") else t("shop.pityLeft", left), 1, 300, UI.Theme.Warn)
+	pill(
+		infoRow,
+		t("shop.keysHave", balance("Keys")),
+		2,
+		220,
+		if balance("Keys") >= 1 then UI.Theme.Up else UI.Theme.Down
+	)
 	local row = UI.Row(root, 4, 54)
 	local keys = balance("Keys")
 	UI.Button({
-		Size = UDim2.fromOffset(220, 50),
+		Size = UDim2.fromOffset(220, 48),
 		Text = t("shop.oddsTitle"),
-		Color = UI.Theme.Blue,
+		Variant = "Secondary",
 		LayoutOrder = 1,
 		Parent = row,
 	}, function()
 		showDialog({ Title = pick(crateDef.Name), Lines = { t("shop.crateIntro") }, Crate = crateDef, Buttons = {} })
 	end)
 	UI.Button({
-		Size = UDim2.fromOffset(240, 50),
+		Size = UDim2.fromOffset(240, 48),
 		Text = t("shop.openKey"),
-		Color = if keys >= 1 then UI.Theme.Green else UI.Theme.Gray,
+		Variant = if keys >= 1 then "Primary" else "Muted",
 		LayoutOrder = 2,
 		Parent = row,
 	}, function()
@@ -706,6 +809,7 @@ Builders.Crates = function(root)
 			Buttons = {
 				{
 					Text = t("shop.openKey"),
+					Variant = "Primary",
 					Enabled = keys >= 1,
 					OnClick = function()
 						openCrate("Key")
@@ -717,9 +821,9 @@ Builders.Crates = function(root)
 	if allowed == true then -- Gem-Öffnung nur, wenn bezahlte Zufallsitems erlaubt sind (B20.2)
 		local price = tonumber(crateDef.GemPrice) or 120
 		UI.Button({
-			Size = UDim2.fromOffset(240, 50),
+			Size = UDim2.fromOffset(240, 48),
 			Text = t("shop.openGems", price),
-			Color = if balance("Gems") >= price then UI.Theme.Purple else UI.Theme.Gray,
+			Variant = if balance("Gems") >= price then "Primary" else "Muted",
 			LayoutOrder = 3,
 			Parent = row,
 		}, function()
@@ -730,7 +834,7 @@ Builders.Crates = function(root)
 				Buttons = {
 					{
 						Text = t("shop.openGems", price),
-						Color = UI.Theme.Purple,
+						Variant = "Primary",
 						Enabled = balance("Gems") >= price,
 						OnClick = function()
 							openCrate("Gems")
@@ -740,27 +844,28 @@ Builders.Crates = function(root)
 			})
 		end)
 	elseif allowed == false then
-		addLine(root, t("shop.restricted") .. " – " .. t("shop.keysStillOk"), 5, UI.Theme.SubText)
+		addLine(root, t("shop.restricted") .. " – " .. t("shop.keysStillOk"), 5, UI.Theme.Text2)
 	end
-	addLine(root, t("shop.crateSingle"), 6, UI.Theme.SubText)
+	addLine(root, t("shop.crateSingle"), 6, UI.Theme.Muted)
 	local g = grid(root, 7)
 	for i, item in ipairs(crateDef.Items) do
 		local def = COSMETICS.ById[item.Id]
 		if def then
 			local lines = { t("item.kind." .. def.Kind), percent(item.Weight) }
 			if ownsCosmetic(item.Id) then
-				table.insert(lines, t("shop.ownedLine"))
+				table.insert(lines, "✓ " .. t("shop.ownedLine"))
 			end
-			card(g, i, pick(def.Name), rarityColor(item.Rarity), lines, t("shop.details"), UI.Theme.Blue, function()
+			card(g, i, pick(def.Name), rarityColor(item.Rarity), lines, t("shop.details"), "Secondary", function()
 				openCosmeticDetails(item.Id, { "Gems" }, false)
-			end)
+			end, true, { [2] = rarityColor(item.Rarity), [3] = UI.Theme.Up })
 		end
 	end
 end
 
 Builders.Shards = function(root)
-	addLine(root, t("shop.shardsHave", balance("Shards")), 1, UI.Theme.Yellow)
-	addLine(root, t("shop.shardsIntro"), 2, UI.Theme.SubText, 40)
+	local shardRow = UI.Row(root, 1, 32)
+	pill(shardRow, t("shop.shardsHave", balance("Shards")), 1, 260, UI.Theme.Accent)
+	addLine(root, t("shop.shardsIntro"), 2, UI.Theme.Text2, 40)
 	local g = grid(root, 3)
 	local items = table.clone(SHOP.Crates.S1.Items)
 	table.sort(items, function(a, b)
@@ -863,24 +968,26 @@ local function robuxCard(parent: Instance, order: number, entry: any, isPass: bo
 		parent,
 		order,
 		(entry.Icon or "") .. " " .. pick(entry.Name),
-		UI.Theme.Yellow,
+		UI.Theme.Warn, -- Premium/Robux = Warn-Akzent
 		{ lines[1] or "", priceLine },
 		t("shop.details"),
-		if ready then UI.Theme.Green else UI.Theme.Gray,
+		if ready then "Secondary" else "Muted",
 		function()
 			local buttons: { DialogButton } = {}
 			if not owned then
 				table.insert(buttons, {
 					Text = robuxButtonText(entry, livePrice),
-					Color = UI.Theme.Green,
+					Variant = "Premium",
 					Enabled = ready,
 					OnClick = function()
 						promptRobux(entry, isPass)
 					end,
 				})
 			end
-			showDialog({ Title = pick(entry.Name), Color = UI.Theme.Yellow, Lines = lines, Buttons = buttons })
-		end
+			showDialog({ Title = pick(entry.Name), Color = UI.Theme.Warn, Lines = lines, Buttons = buttons })
+		end,
+		true,
+		{ [2] = if owned then UI.Theme.Up elseif ready then UI.Theme.Warn else UI.Theme.Muted }
 	)
 	-- echter Preis aus Roblox (falls der Besitzer ihn im Dashboard geändert hat)
 	if ready and not owned then
@@ -905,7 +1012,8 @@ local function starterVisible(): boolean
 	if type(offer) ~= "table" or offer.Starter == true then
 		return false
 	end
-	return (tonumber(offer.StarterUntil) or 0) > os.time()
+	-- StarterUntil ist os.time() des Servers -> mit der Server-Zeit vergleichen (nicht mit der Geräte-Uhr)
+	return (tonumber(offer.StarterUntil) or 0) > workspace:GetServerTimeNow()
 end
 
 Builders.Robux = function(root)
@@ -970,8 +1078,9 @@ local function render()
 	hideDialog()
 	tickerToken += 1
 	clear(root)
+	-- aktiver Reiter = Accent (Primär), die anderen Sekundär
 	for name, button in pairs(tabButtons) do
-		button.SetColor(if name == currentTab then UI.Theme.Orange else UI.Theme.Blue)
+		button.SetVariant(if name == currentTab then "Primary" else "Secondary")
 	end
 	setCurrencies()
 	local builder = Builders[currentTab]
@@ -987,35 +1096,26 @@ local function ensureWindow()
 	if win then
 		return
 	end
-	win = UI.Window(t("shop.title"), 820, 560, UI.Theme.Orange)
+	win = UI.Window(t("shop.title"), 820, 560, UI.Theme.Accent)
 	local content = win.Content
-	UI.Label({
-		Size = UDim2.new(1, 0, 0, 30),
-		Text = t("shop.noP2W"),
-		TextColor3 = UI.Theme.Yellow,
-		MaxText = 22,
-		Outline = 3,
-		LayoutOrder = 1,
-		Parent = content,
-	})
-	local currencyRow = UI.Row(content, 2, 30)
+	-- Kopf-Banner als schlanke Pill mit grünem Punkt (B21.1: "ALLE WAFFEN ERSPIELBAR – KEIN PAY-TO-WIN")
+	local bannerRow = UI.Row(content, 1, 32)
+	pill(bannerRow, t("shop.noP2W"), 1, 520, UI.Theme.Up)
+	-- Guthaben als Chips (Zahl in Titillium Web)
+	local currencyRow = UI.Row(content, 2, 32)
 	for i, currency in ipairs({ "Coins", "Gems", "Keys", "Shards" }) do
-		currencyLabels[currency] = UI.Label({
-			Size = UDim2.fromOffset(150, 28),
-			Text = "",
-			MaxText = 20,
-			Outline = 2,
-			LayoutOrder = i,
-			Parent = currencyRow,
-		})
+		local chip = pill(currencyRow, "", i, 150, nil)
+		chip.Font = UI.Fonts.Number
+		currencyLabels[currency] = chip
 	end
 	local tabRow = UI.Row(content, 3, 46)
 	for i, name in ipairs(TABS) do
 		tabButtons[name] = UI.Button({
 			Size = UDim2.fromOffset(122, 42),
 			Text = t("shop.tab." .. name),
-			Color = UI.Theme.Blue,
+			Variant = "Secondary",
 			MaxText = 15,
+			Corner = 10,
 			LayoutOrder = i,
 			Parent = tabRow,
 		}, function()
@@ -1066,49 +1166,53 @@ function Shop.BuildStarterCard(parent: GuiObject): GuiObject?
 	if product == nil or (type(offer) == "table" and offer.Starter == true) then
 		return nil
 	end
-	local frame = UI.Card({
+	-- Premium-Karte: Surface2 mit Warn-Akzent (Rahmen + Streifen), Titel Michroma, Kaufen = Premium-Verlauf
+	local frame = accentCard({
 		Name = "StarterCard",
 		Size = UDim2.fromOffset(420, 220),
-		BackgroundColor3 = UI.Theme.Yellow,
 		Parent = parent,
-	})
+	}, UI.Theme.Warn)
 	UI.Label({
-		Position = UDim2.fromOffset(10, 6),
-		Size = UDim2.new(1, -20, 0, 36),
-		Text = "⭐ " .. UI.Upper(pick(product.Name)),
-		MaxText = 28,
-		Outline = 3,
+		Position = UDim2.fromOffset(16, 14),
+		Size = UDim2.new(1, -32, 0, 26),
+		Text = UI.Upper(pick(product.Name)),
+		Font = UI.Fonts.Heading,
+		TextColor3 = UI.Theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		MaxText = 20,
 		Parent = frame,
 	})
 	local lines = productLines(product)
 	for i = 1, math.min(4, #lines) do
 		UI.Label({
-			Position = UDim2.fromOffset(14, 42 + (i - 1) * 24),
-			Size = UDim2.new(1, -28, 0, 24),
+			Position = UDim2.fromOffset(16, 46 + (i - 1) * 22),
+			Size = UDim2.new(1, -32, 0, 22),
 			Text = lines[i],
+			Font = if i == 1 then UI.Fonts.Main else UI.Fonts.Body,
+			TextColor3 = if i == 1 then UI.Theme.Up else UI.Theme.Text2,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			MaxText = 17,
-			Outline = 2,
+			MaxText = 16,
 			Parent = frame,
 		})
 	end
 	local ready = (tonumber(product.Id) or 0) > 0
 	UI.Button({
-		Position = UDim2.new(0, 10, 1, -62),
-		Size = UDim2.new(0.5, -15, 0, 54),
+		Position = UDim2.new(0, 12, 1, -58),
+		Size = UDim2.new(0.5, -18, 0, 46),
 		Text = robuxButtonText(product, nil),
-		Color = if ready then UI.Theme.Green else UI.Theme.Gray,
-		MaxText = 18,
+		Variant = if ready then "Premium" else "Muted",
+		MaxText = 17,
 		Parent = frame,
 	}, function()
 		promptRobux(product, false)
 	end)
+	-- großer "Später"-Knopf (B23.2)
 	UI.Button({
-		Position = UDim2.new(0.5, 5, 1, -62),
-		Size = UDim2.new(0.5, -15, 0, 54),
+		Position = UDim2.new(0.5, 6, 1, -58),
+		Size = UDim2.new(0.5, -18, 0, 46),
 		Text = t("shop.later"),
-		Color = UI.Theme.Blue,
-		MaxText = 22,
+		Variant = "Secondary",
+		MaxText = 20,
 		Parent = frame,
 	}, function()
 		frame:Destroy()
@@ -1210,7 +1314,7 @@ function Shop.Start()
 	ctx.Windows.Register("Shop", openWindow, closeWindow)
 	local hud = modules().Hud
 	if hud and type(hud.AddRightButton) == "function" then
-		pcall(hud.AddRightButton, "🛒", "shop.hud.shop", UI.Theme.Orange, 20, function()
+		pcall(hud.AddRightButton, "🛒", "shop.hud.shop", UI.Theme.Accent, 20, function()
 			ctx.Windows.Open("Shop")
 		end)
 	end

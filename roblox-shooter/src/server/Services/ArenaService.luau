@@ -279,10 +279,14 @@ local function worldCFrames(origin: CFrame, list: { CFrame }): { CFrame }
 	return out
 end
 
+-- B9.3: nur die Map. Bewusst die klassische, überall gleich funktionierende Form (FilterType Include +
+-- FilterDescendantsInstances), damit Figuren/Bots/Puppen (liegen NICHT in der Map) Sichtlinien nie blockieren.
+-- Kein Mischen mit IncludeInstances/ExcludeInstances.
 local function mapParams(model: Instance): RaycastParams
 	local params = RaycastParams.new()
-	-- Nur IncludeInstances setzen: FilterType gilt nur für FilterDescendantsInstances (bleibt leer/Exclude)
-	params.IncludeInstances = { model }
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { model }
+	params.IgnoreWater = true
 	return params
 end
 

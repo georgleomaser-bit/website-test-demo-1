@@ -11,6 +11,9 @@
 --    (Leuchtpfeil + Leitstrahl, lokal), am Ende TutorialFlag "TourDone" (Funnel 8).
 --  Funnel 3–7 meldet MatchService, 1 MetricsService, 9–11 WP8/WP9.
 --
+--  Stil: docs/STYLE-AKYTEX.md – Glas-Karten mit Akzent-Streifen, Titel Michroma, Primär-Knopf Accent,
+--  "Überspringen" als Ghost; Leuchtpfeil + Leitstrahl der Tour in der Akzentfarbe.
+--
 --  Öffentliche API: Tutorial.ShowWelcome(), Tutorial.StartTour(), Tutorial.Init(ctx), Tutorial.Start()
 -- =====================================================================
 
@@ -88,27 +91,38 @@ end
 
 local function buildWelcome()
 	local theme = UI.Theme
+	-- abgedunkelter Hintergrund (Bg), darauf Titel in Michroma mit Akzent-Unterstrich und drei Glas-Karten
 	local frame = UI.Create("Frame", {
 		Name = "TutorialWelcome",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.45,
+		BackgroundColor3 = theme.Bg,
+		BackgroundTransparency = 0.3,
+		BorderSizePixel = 0,
 		Visible = false,
 		ZIndex = 60,
 		Parent = ctx.Gui,
 	})
-	UI.Label({
+	local title = UI.Label({
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.08, 0),
-		Size = UDim2.fromOffset(700, 64),
+		Position = UDim2.new(0.5, 0, 0.1, 0),
+		Size = UDim2.fromOffset(700, 44),
 		Text = T("match.tutorial.welcome"),
-		Font = UI.Fonts.Banner,
-		MaxText = 52,
-		Outline = 4,
-		TextColor3 = theme.Yellow,
+		Font = UI.Fonts.Heading,
+		MaxText = 32,
+		TextColor3 = theme.Text,
 		ZIndex = 61,
 		Parent = frame,
 	})
+	UI.Create("Frame", {
+		Name = "Underline",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 1, 6),
+		Size = UDim2.fromOffset(72, 3),
+		BackgroundColor3 = theme.Accent,
+		BorderSizePixel = 0,
+		ZIndex = 61,
+		Parent = title,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	local row = UI.Create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.46),
@@ -124,43 +138,60 @@ local function buildWelcome()
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 	})
+	-- Akzentfarben nur als Streifen oben (Duelle Accent, erspielbar Up, fair Warn)
 	local cards = {
-		{ "match.tutorial.card1Title", "match.tutorial.card1Text", theme.Orange, "⚔" },
-		{ "match.tutorial.card2Title", "match.tutorial.card2Text", theme.Green, "🔓" },
-		{ "match.tutorial.card3Title", "match.tutorial.card3Text", theme.Blue, "⚖" },
+		{ "match.tutorial.card1Title", "match.tutorial.card1Text", theme.Accent, "⚔" },
+		{ "match.tutorial.card2Title", "match.tutorial.card2Text", theme.Up, "🔓" },
+		{ "match.tutorial.card3Title", "match.tutorial.card3Text", theme.Warn, "⚖" },
 	}
 	for i, card in ipairs(cards) do
-		local c = UI.Card({
+		local c = UI.Create("Frame", {
 			LayoutOrder = i,
 			Size = UDim2.fromOffset(224, 230),
-			BackgroundColor3 = card[3],
+			BackgroundColor3 = theme.Surface,
+			BackgroundTransparency = 0.06,
+			BorderSizePixel = 0,
 			ZIndex = 62,
 			Parent = row,
-		})
+		}, { UI.Corner(14), UI.Stroke(nil, 1) })
+		UI.Create("Frame", {
+			Name = "Accent",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 0, 0),
+			Size = UDim2.new(1, -28, 0, 3),
+			BackgroundColor3 = card[3],
+			BorderSizePixel = 0,
+			ZIndex = 63,
+			Parent = c,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		UI.Label({
-			Position = UDim2.fromOffset(0, 10),
-			Size = UDim2.new(1, 0, 0, 56),
+			Position = UDim2.fromOffset(0, 16),
+			Size = UDim2.new(1, 0, 0, 46),
 			Text = card[4],
-			MaxText = 48,
+			MaxText = 40,
+			TextColor3 = card[3],
 			ZIndex = 63,
 			Parent = c,
 		})
 		UI.Label({
-			Position = UDim2.fromOffset(10, 70),
-			Size = UDim2.new(1, -20, 0, 40),
+			Position = UDim2.fromOffset(14, 70),
+			Size = UDim2.new(1, -28, 0, 30),
 			Text = UI.Upper(T(card[1])),
-			MaxText = 26,
-			Outline = 3,
+			Font = UI.Fonts.Strong,
+			MaxText = 20,
+			TextColor3 = theme.Text,
 			ZIndex = 63,
 			Parent = c,
 		})
 		UI.Label({
-			Position = UDim2.fromOffset(12, 114),
-			Size = UDim2.new(1, -24, 0, 104),
+			Position = UDim2.fromOffset(16, 108),
+			Size = UDim2.new(1, -32, 0, 108),
 			Text = T(card[2]),
-			MaxText = 18,
-			Outline = 2,
+			Font = UI.Fonts.Body,
+			MaxText = 16,
+			TextColor3 = theme.Text2,
 			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
 			ZIndex = 63,
 			Parent = c,
 		})
@@ -168,10 +199,10 @@ local function buildWelcome()
 	UI.Button({
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.72, 0),
-		Size = UDim2.fromOffset(320, 72),
+		Size = UDim2.fromOffset(320, 64),
 		Text = T("match.tutorial.start"),
-		Color = theme.Yellow,
-		MaxText = 32,
+		Variant = "Primary",
+		MaxText = 26,
 		ZIndex = 62,
 		Parent = frame,
 	}, function()
@@ -184,11 +215,11 @@ local function buildWelcome()
 	end)
 	UI.Button({
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0.72, 84),
+		Position = UDim2.new(0.5, 0, 0.72, 76),
 		Size = UDim2.fromOffset(200, 44),
 		Text = T("match.tutorial.skip"),
-		Color = theme.Gray,
-		MaxText = 20,
+		Variant = "Ghost",
+		MaxText = 18,
 		ZIndex = 62,
 		Parent = frame,
 	}, function()
@@ -212,24 +243,49 @@ end
 -- ---------------------------------------------------------------------
 -- 2) HINWEIS-KARTEN im Tutorial-Match
 -- ---------------------------------------------------------------------
+-- Glas-Karte mit Akzent-Streifen links (Hinweise im Tutorial-Match, Pfeil-Tour)
+local function glassCard(name: string, props: { [string]: any }): Frame
+	local theme = UI.Theme
+	local base: { [string]: any } = {
+		Name = name,
+		BackgroundColor3 = theme.Surface,
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
+		Visible = false,
+		Parent = ctx.Gui,
+	}
+	for key, value in pairs(props) do
+		base[key] = value
+	end
+	local card = UI.Create("Frame", base, { UI.Corner(14), UI.Stroke(nil, 1) })
+	UI.Create("Frame", {
+		Name = "Accent",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(0, 3, 1, -24),
+		BackgroundColor3 = theme.Accent,
+		BorderSizePixel = 0,
+		ZIndex = (base.ZIndex or 1) + 1,
+		Parent = card,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	return card
+end
+
 local function buildHint()
 	local theme = UI.Theme
-	local card = UI.Card({
-		Name = "TutorialHint",
+	local card = glassCard("TutorialHint", {
 		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.new(0.5, 0, 1, -170),
-		Size = UDim2.fromOffset(520, 92),
-		BackgroundColor3 = theme.PanelDark,
-		Visible = false,
+		Position = UDim2.new(0.5, 0, 1, -178),
+		Size = UDim2.fromOffset(520, 84),
 		ZIndex = 35,
-		Parent = ctx.Gui,
 	})
 	hintText = UI.Label({
-		Position = UDim2.fromOffset(14, 8),
-		Size = UDim2.new(1, -28, 1, -16),
+		Position = UDim2.fromOffset(20, 8),
+		Size = UDim2.new(1, -36, 1, -16),
 		Text = "",
-		MaxText = 22,
-		Outline = 2,
+		Font = UI.Fonts.Main,
+		MaxText = 20,
+		TextColor3 = theme.Text,
 		TextWrapped = true,
 		ZIndex = 36,
 		Parent = card,
@@ -309,7 +365,7 @@ local function buildArrow(pos: Vector3): BasePart
 		p.CanTouch = false
 		p.CastShadow = false
 		p.Material = Enum.Material.Neon
-		p.Color = UI.Theme.Yellow
+		p.Color = UI.Theme.Accent
 		p.Parent = model
 		return p
 	end
@@ -350,7 +406,7 @@ local function showTourStep()
 		local beam = Instance.new("Beam")
 		beam.Attachment0 = a0
 		beam.Attachment1 = stem:FindFirstChild("BeamEnd") :: Attachment
-		beam.Color = ColorSequence.new(UI.Theme.Yellow)
+		beam.Color = ColorSequence.new(UI.Theme.Accent)
 		beam.Transparency = NumberSequence.new(0.35)
 		beam.Width0 = 0.5
 		beam.Width1 = 0.5
@@ -376,22 +432,19 @@ end
 
 local function buildTourCard()
 	local theme = UI.Theme
-	local card = UI.Card({
-		Name = "TutorialTour",
+	local card = glassCard("TutorialTour", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 90),
-		Size = UDim2.fromOffset(560, 100),
-		BackgroundColor3 = theme.PanelDark,
-		Visible = false,
+		Size = UDim2.fromOffset(560, 92),
 		ZIndex = 34,
-		Parent = ctx.Gui,
 	})
 	tourText = UI.Label({
-		Position = UDim2.fromOffset(14, 8),
-		Size = UDim2.new(1, -170, 1, -16),
+		Position = UDim2.fromOffset(20, 8),
+		Size = UDim2.new(1, -176, 1, -16),
 		Text = "",
-		MaxText = 22,
-		Outline = 2,
+		Font = UI.Fonts.Main,
+		MaxText = 20,
+		TextColor3 = theme.Text,
 		TextWrapped = true,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 35,
@@ -399,11 +452,11 @@ local function buildTourCard()
 	})
 	UI.Button({
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -12, 0.5, 0),
-		Size = UDim2.fromOffset(140, 56),
+		Position = UDim2.new(1, -14, 0.5, 0),
+		Size = UDim2.fromOffset(136, 50),
 		Text = T("match.tutorial.next"),
-		Color = theme.Green,
-		MaxText = 20,
+		Variant = "Primary",
+		MaxText = 18,
 		ZIndex = 35,
 		Parent = card,
 	}, function()

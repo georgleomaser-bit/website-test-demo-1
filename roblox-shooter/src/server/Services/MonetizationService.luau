@@ -431,10 +431,11 @@ local function announceParty(p: Player)
 	if stateService == nil then
 		return
 	end
+	-- EIN Weg: Effect "PartyBoost" -> Client-Effects zeigt Toast + Konfetti (ein zusätzliches NotifyAll
+	-- "shop.partyBoost" ergab früher eine doppelte Meldung bei jedem Spieler)
 	if type(stateService.EffectAll) == "function" then
 		stateService.EffectAll("PartyBoost", 1, { Name = p.DisplayName, Until = partyUntil })
-	end
-	if type(stateService.NotifyAll) == "function" then
+	elseif type(stateService.NotifyAll) == "function" then
 		stateService.NotifyAll("shop.partyBoost", { p.DisplayName }, "Event")
 	end
 	for _, other in ipairs(Players:GetPlayers()) do

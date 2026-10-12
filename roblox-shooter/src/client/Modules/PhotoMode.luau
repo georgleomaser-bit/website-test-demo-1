@@ -6,6 +6,7 @@
 --  eigene UI (ctx.Gui), Touch-Knöpfe (ctx.TouchGui), Viewmodel, Fadenkreuz (CombatHud), Effekte (Ansagen/Zahlen),
 --  Roblox-Oberfläche (gemerkt und wiederhergestellt) und alle ProximityPrompts (auch wenn der Server sie wieder
 --  einschaltet). Nochmal = alles wieder an. Hook "PhotoMode"(on) für Admin-Anzeigen (ESP, F8).
+--  Handy/Tablet: ohne Tastatur und bei ausgeblendeter UI beendet ein langes Drücken auf den Bildschirm den Modus.
 --
 --  Öffentliche API (C7.4):
 --    PhotoMode.Toggle()
@@ -189,7 +190,8 @@ function PhotoMode.Toggle()
 	photoToken += 1
 	local token = photoToken
 	if ctx and type(ctx.Toast) == "function" then
-		ctx.Toast(T("admin.photoOn", keyName()), "Info")
+		local touchOnly = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+		ctx.Toast(if touchOnly then T("admin.photoOnTouch") else T("admin.photoOn", keyName()), "Info")
 	end
 	task.delay(DELAY, function()
 		if photoPending and photoToken == token then
@@ -214,6 +216,12 @@ function PhotoMode.Start()
 			return
 		end
 		PhotoMode.Toggle()
+	end)
+	-- Handy: die eigene UI (auch der Admin-Knopf) ist im Foto-Modus aus -> lang drücken = beenden
+	UserInputService.TouchLongPress:Connect(function(_positions, state: Enum.UserInputState)
+		if photoMode and state == Enum.UserInputState.Begin then
+			PhotoMode.Toggle()
+		end
 	end)
 end
 

@@ -8,7 +8,7 @@
 --  Öffentliche API (C5.8):
 --    RewardService.Track(p, kind, amount, ctx?)   Quest-Fortschritt (nur Server). ctx { Mode?, Map?, Pvp? }
 --    RewardService.FirstWinToday(p): boolean      true genau beim ersten Aufruf je UTC-Tag (markiert den Tag)
---  Zähl-Arten (kind): Match, Win, PvpWin, RoundWon, RoundFullHp, OvertimeRound, CrownDefence, Damage
+--  Zähl-Arten (kind): Match, Win, PvpWin, RoundWon, RoundFullHp, OvertimeRound, CrownDefence, Damage, Assist
 --    (ProgressionService bei Match-Ende) · Elim, HeadElim, MeleeElim, SecondaryElim, SmgShotgunElim,
 --    SlideElim, SplashElim, FfaStreak3, DummyHit (hier live aus CombatService) · Heal, Slide (WP3) ·
 --    MasteryTier (ProgressionService) · Commend (CommunityService) · Level, NewWeapon, LoadoutEdit

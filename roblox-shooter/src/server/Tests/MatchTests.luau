@@ -360,6 +360,24 @@ Tests["Rounds CLUTCH 1v2 und ACE ab 3v3 (B6.6)"] = function()
 	truthy(table.find(info.Banners, "Clutch") and table.find(info.Banners, "Ace"), "Banner")
 end
 
+Tests["Rounds meldet 1vX-Clutch-Chance einmal pro Runde (Skill-Moment)"] = function()
+	local m, fake = fakeMatch(3, 4)
+	local calls: { { Id: number, Vs: number } } = {}
+	m.Api.ClutchChance = function(id: number, vs: number)
+		table.insert(calls, { Id = id, Vs = vs })
+	end
+	Rounds.Start(m)
+	fake.Advance(4.2)
+	fake.Kill(1, 4)
+	eq(#calls, 0, "2v3 ist noch keine Clutch-Situation")
+	fake.Kill(2, 5)
+	eq(#calls, 1, "1v3 -> Ansage")
+	eq(calls[1].Id, 3, "der Letzte von Team 1")
+	eq(calls[1].Vs, 3, "gegen 3")
+	fake.Kill(4, 3)
+	eq(#calls, 1, "nur einmal pro Team und Runde")
+end
+
 -- ---------------------------------------------------------------------
 -- FFA (Respawn)
 -- ---------------------------------------------------------------------
@@ -403,6 +421,40 @@ Tests["Respawn Punkte, Führender, Spawn-Wertung (B4/FFA)"] = function()
 	local over, winner = Respawn.CheckEnd(m)
 	eq(over, true, "25 Punkte = Sieg")
 	eq(winner, 1, "FFA-Sieger")
+end
+
+Tests["Respawn heilt nicht selbst (FFA-Regeneration nur im CombatService-Takt)"] = function()
+	local clock = 0
+	local hurt = { Id = 1, Alive = true, Hp = 40, MaxHp = 100, LastDamageAt = -100 }
+	local m: any = {
+		Def = Config.Modes.Modes.FFA,
+		Scores = {},
+		Regen = { Delay = 5, Rate = 12 }, -- alter Schlüssel: darf keine zweite Heilung auslösen
+		Api = {
+			Now = function()
+				return clock
+			end,
+			Send = function() end,
+			GoLive = function() end,
+			Combatants = function()
+				return { hurt }
+			end,
+			Respawn = function() end,
+			Heal = function()
+				error("Respawn darf nicht heilen (doppelte Regeneration)")
+			end,
+			TeamOf = function(id: number)
+				return id
+			end,
+			DamageTable = function()
+				return {}
+			end,
+		},
+	}
+	Respawn.Start(m)
+	clock = 10
+	Respawn.Tick(m, 0.2)
+	eq(hurt.Hp, 40, "HP unverändert")
 end
 
 -- ---------------------------------------------------------------------

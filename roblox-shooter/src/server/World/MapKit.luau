@@ -17,8 +17,10 @@
 --    MapKit.Scenery(opts): { MapPart }                  Kulisse: Wand-Lisenen, Spielzeug-Stapel, Ballons
 --    MapKit.Clouds(seed, count, spreadX, minZ, maxZ)    Wolken-Haufen (Insel-Maps)
 --    MapKit.part(props) / wedge(props) / cyl(props, center, height, diameter) / ball(props, center, d)
---    MapKit.sign(part, face, lines, opts?): SurfaceGui  Schrift FredokaOne + dicke schwarze Kontur
---    MapKit.surfaceLetter(part, text, faces, color?)    großer Buchstabe auf Flächen (BlockYard, Lobby)
+--    MapKit.sign(part, face, lines, opts?): SurfaceGui  AKYTEX-Schild: dunkle Glas-Tafel, feiner Akzent-Rahmen,
+--                                                       Titel Michroma, Text Builder Sans (docs/STYLE-AKYTEX.md)
+--    MapKit.surfaceLetter(part, text, faces, color?)    großer Buchstabe auf Flächen (BlockYard, Lobby), Michroma
+--    MapKit.Aky / MapKit.Fonts                          AKYTEX-Farben/-Schriften für Server-Texte (kein UI.Theme)
 --    MapKit.barrier(parent, cf, size): Part             unsichtbar, Gruppe ArenaBarrier, CanQuery=false
 --    MapKit.Count(root): (parts, neon)                  Teilezähler
 --    MapKit.Build(layout): (Model, BuildInfo)           komplette Map UNPARENTED (Ursprung = Bodenmitte)
@@ -58,6 +60,30 @@ local CYLINDER_UP = CFrame.Angles(0, 0, math.rad(90))
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 local BARRIER_GROUP = "ArenaBarrier"
+
+-- AKYTEX-Farben (docs/STYLE-AKYTEX.md, Besitzer-Entscheidung): der Server hat kein UI.Theme, daher dieselben
+-- Hex-Werte als Konstanten. Nur für Schilder/Tafeln/Texte – die Welt selbst bleibt bunt.
+MapKit.Aky = {
+	Bg = Color3.fromRGB(11, 15, 23), -- AKYTEX-Farbe #0b0f17
+	Surface = Color3.fromRGB(18, 24, 36), -- AKYTEX-Farbe #121824
+	Surface2 = Color3.fromRGB(26, 33, 48), -- AKYTEX-Farbe #1a2130
+	Border = Color3.fromRGB(31, 41, 55), -- AKYTEX-Farbe #1f2937
+	Text = Color3.fromRGB(230, 236, 245), -- AKYTEX-Farbe #e6ecf5
+	Text2 = Color3.fromRGB(170, 180, 195), -- AKYTEX-Farbe #aab4c3
+	Muted = Color3.fromRGB(125, 136, 154), -- AKYTEX-Farbe #7d889a
+	Accent = Color3.fromRGB(79, 140, 255), -- AKYTEX-Farbe #4f8cff
+	Up = Color3.fromRGB(34, 197, 94), -- AKYTEX-Farbe #22c55e
+	Down = Color3.fromRGB(239, 68, 68), -- AKYTEX-Farbe #ef4444
+	Warn = Color3.fromRGB(234, 179, 8), -- AKYTEX-Farbe #eab308
+}
+MapKit.Fonts = {
+	Title = Enum.Font.Michroma, -- Titel, Logo, Schild-Überschriften
+	Text = Enum.Font.BuilderSansBold, -- Schild-Text, Namen, Zahlen
+	Body = Enum.Font.BuilderSans,
+}
+local AKY = MapKit.Aky
+local PANEL_TRANSPARENCY = 0.12 -- Glas-Tafel (0.1–0.2)
+local FINE_STROKE_T = 0.5 -- feine Text-Kontur über der Welt (1 px, halb durchsichtig)
 
 -- ---------------------------------------------------------------------
 -- 1) FARBEN & MATERIAL
@@ -427,14 +453,26 @@ function MapKit.ball(props: { [string]: any }, center: Vector3, diameter: number
 	return p
 end
 
--- Schild auf einer Fläche: Zeilen untereinander, FredokaOne, dicke schwarze Kontur, kein Kasten.
+-- Schild auf einer Fläche (AKYTEX): dunkle Glas-Tafel (Bg, Transparenz 0.12) mit feinem Rahmen in Akzent-
+-- oder Border-Farbe, Zeilen untereinander. Erste Zeile in Michroma (Titel), weitere in Builder Sans Bold.
+-- opts.Panel = false -> nur Text (Buchstaben auf Spielzeug-Klötzen, Tür-Aufschrift) mit feiner dunkler Kontur.
+-- opts.Accent = Rahmenfarbe (Standard: Border), opts.Title = false -> auch die erste Zeile in Builder Sans.
 function MapKit.sign(
 	part: BasePart,
 	face: Enum.NormalId,
 	lines: { SignLine },
-	opts: { Name: string?, Background: Color3?, MaxDistance: number?, Font: Enum.Font? }?
+	opts: {
+		Name: string?,
+		Background: Color3?,
+		MaxDistance: number?,
+		Font: Enum.Font?,
+		Panel: boolean?,
+		Accent: Color3?,
+		Title: boolean?,
+	}?
 ): SurfaceGui
 	local o = opts or {}
+	local panel = o.Panel ~= false
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = o.Name or "Sign"
 	gui.Face = face
@@ -449,9 +487,17 @@ function MapKit.sign(
 	frame.Name = "Frame"
 	frame.Size = UDim2.fromScale(1, 1)
 	frame.BorderSizePixel = 0
-	if o.Background then
-		frame.BackgroundColor3 = o.Background
-		frame.BackgroundTransparency = 0
+	if panel then
+		frame.BackgroundColor3 = o.Background or AKY.Bg
+		frame.BackgroundTransparency = PANEL_TRANSPARENCY
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 12)
+		corner.Parent = frame
+		local border = Instance.new("UIStroke")
+		border.Thickness = 1.5
+		border.Color = o.Accent or AKY.Border
+		border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		border.Parent = frame
 	else
 		frame.BackgroundTransparency = 1
 	end
@@ -467,17 +513,23 @@ function MapKit.sign(
 		local label = Instance.new("TextLabel")
 		label.Name = "Line" .. index
 		label.BackgroundTransparency = 1
-		label.Position = UDim2.fromScale(0.03, y)
-		label.Size = UDim2.fromScale(0.94, height)
-		label.Font = o.Font or Enum.Font.FredokaOne
+		-- auf der Tafel etwas Luft zum Rahmen; freie Buchstaben nutzen die ganze Zeilenhöhe
+		local inset = if panel then height * 0.12 else 0
+		label.Position = UDim2.fromScale(if panel then 0.05 else 0.03, y + inset)
+		label.Size = UDim2.fromScale(if panel then 0.9 else 0.94, height - 2 * inset)
+		label.Font = o.Font or (if index == 1 and o.Title ~= false then MapKit.Fonts.Title else MapKit.Fonts.Text)
 		label.TextScaled = true
-		label.TextColor3 = line.Color or WHITE
+		label.TextColor3 = line.Color or AKY.Text
 		label.Text = line.Text
-		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = if index == 1 then 5 else 4
-		stroke.Color = BLACK
-		stroke.LineJoinMode = Enum.LineJoinMode.Round
-		stroke.Parent = label
+		if not panel then
+			-- frei über der Welt: feine, halb durchsichtige Kontur für Lesbarkeit (keine dicke Comic-Kontur)
+			local stroke = Instance.new("UIStroke")
+			stroke.Thickness = 1
+			stroke.Color = BLACK
+			stroke.Transparency = FINE_STROKE_T
+			stroke.LineJoinMode = Enum.LineJoinMode.Round
+			stroke.Parent = label
+		end
 		label.Parent = frame
 		y += height
 	end
@@ -485,13 +537,14 @@ function MapKit.sign(
 	return gui
 end
 
--- Großer Buchstabe auf mehreren Flächen eines Teils (Spielzeug-Bauklotz)
+-- Großer Buchstabe auf mehreren Flächen eines Teils (Spielzeug-Bauklotz) – Michroma, ohne Tafel
 function MapKit.surfaceLetter(part: BasePart, text: string, faces: { Enum.NormalId }, color: Color3?)
 	for _, face in ipairs(faces) do
 		MapKit.sign(part, face, { { Text = text, Color = color or WHITE, Height = 0.86 } }, {
 			Name = "Letter" .. face.Name,
 			MaxDistance = 300,
-			Font = Enum.Font.LuckiestGuy,
+			Font = MapKit.Fonts.Title,
+			Panel = false,
 		})
 	end
 end

@@ -12,7 +12,7 @@
 --    6) Admin-Panel (B25.3)                Text-Längen, Kraft-Grenzen, Events
 --  Validate(Config): { string }            prüft alle Zahlen (SelfTest / Boot-warn)
 --
---  Zusätzlich zu C15 (nur WP7 liest sie): Weights.Noclip, ImpulseMaxSpeed, ImpulseGrace, FlagsLocalMax,
+--  Zusätzlich zu C15 (nur WP7 liest sie): Weights.Noclip, ImpulseMaxSpeed, ImpulseGrace, ImpulseAirSeconds, FlagsLocalMax,
 --  StoreMaxPerKey, StoreWritesPerMinute, StoreReadGap, BanLogMax, BanDisplayMax, BanPrivateMax,
 --  Powers (Grenzen der Admin-Kräfte), LobbyGravity, AutoBan.Keep, RateBurstPerMinute, LosBurstPerMinute,
 --  FlagCooldown, AnchorRadius, HistoryVersions, MutatorGlobalHours, SkillAirJumps, StallSeconds, StallCredit,
@@ -33,6 +33,9 @@ local Security = {
 	VerticalSlack = 3, -- Höhe über letztem Boden ≤ 7.2 × (Luftsprünge + 1) × VerticalMult + 3
 	-- Skill-Bewegung (docs/SKILL-WUENSCHE.md) darf NIE Fehlalarm geben: Doppelsprung + Wand-Absprung
 	-- zählen immer als 2 erlaubte Luftsprünge (Rutsch-Sprung-Ketten bleiben unter 32 Studs/s, Obergrenze 30).
+	-- Abgleich mit Client/Movement (Runde 2): schlimmste Kette Sprung 7.2 + Wand-Absprung 5 + Doppelsprung 6
+	-- + Kante hochziehen 3.8 = 22 Studs ≤ 7.2 × 3 + 3 = 24.6; waagrecht Rutschen 32, Slide-Hop/Rutsch-Sprung ≤ 30,
+	-- Wand-Absprung ≤ 26 – alles unter 32 × 1.15 + 6 = 42.8. Wer Movement-Werte erhöht, prüft diese Summe.
 	SkillAirJumps = 2,
 	MoonVerticalMult = 2.5, -- Mutator mit GravityLift (Mondsprung): Vertikal-Toleranz ×2.5 (B7)
 	StallSeconds = 0.6, -- so lange keine neue Position = Lag-Hänger (Sprung danach ist kein harter Teleport)
@@ -41,6 +44,7 @@ local Security = {
 	FlyAirSecondsMoon = 6, -- Mondsprung-Mutator
 	ImpulseMaxSpeed = 95, -- Standard-Höchsttempo während Grace("Impulse"/"Launch")
 	ImpulseGrace = 1.5, -- Standard-Dauer, wenn Grace ohne Sekunden kommt
+	ImpulseAirSeconds = 3, -- nach der Impuls-Gnade bleibt das Impuls-Tempo noch bis zur Landung erlaubt (höchstens so lange)
 	AnchorRadius = 30, -- während der Teleport-Gnade zählen nur Positionen so nah am Ziel
 
 	-- -----------------------------------------------------------------
@@ -54,7 +58,7 @@ local Security = {
 		Origin = 2, -- Schuss-Ursprung zu weit weg
 		Los = 1, -- Sichtlinie durch Wand (je)
 		LosBurst = 10, -- > 10 pro Minute
-		Mismatch = 10, -- Hitbox-Abweichung > 40 % über 30 Behauptungen
+		Mismatch = 10, -- Hitbox-Abweichung > 40 % über 30 Schüsse (Schuss zählt als abgelehnt, wenn KEIN Treffer zählt)
 		Speed = 2, -- zu schnell
 		Teleport = 8, -- Sprung > 40 Studs (hart)
 		Fly = 5, -- Fliegen / zu hoch gesprungen
@@ -82,7 +86,7 @@ local Security = {
 		MinHits = 60,
 		HeadRatio = 0.75,
 		Accuracy = 0.70,
-		MismatchClaims = 30,
+		MismatchClaims = 30, -- Schüsse mit Treffer-Behauptung (nicht Kugeln – Schrot zählt einmal)
 		MismatchRatio = 0.4,
 	},
 
@@ -162,6 +166,7 @@ function Security.Validate(_config: any): { string }
 		"FlyAirSecondsMoon",
 		"ImpulseMaxSpeed",
 		"ImpulseGrace",
+		"ImpulseAirSeconds",
 		"AnchorRadius",
 		"DecayEvery",
 		"Review",

@@ -11,6 +11,9 @@
 --    Searching, Phase) + halbtransparente Hologramm-Bots auf freien Sitzen, solange ein Bot-Timer läuft.
 --  - Bot-Duell-Kabine: Server-Prompts (Tag "CCPracticePrompt") werden hier lokalisiert.
 --
+--  Stil: docs/STYLE-AKYTEX.md – Modus-Karten als Sekundär-Knöpfe mit farbigem Akzent-Streifen (Pad-Farbe),
+--  Such-Leiste als Glas-Pill, Pad-Schilder als dunkle Glas-Tafeln (Titel Michroma, Text Builder Sans).
+--
 --  Öffentliche API (C7.4): QueueUI.OpenPlay()   (+ QueueUI.Init(ctx), QueueUI.Start())
 -- =====================================================================
 
@@ -157,117 +160,110 @@ local function refreshWindow()
 	end
 end
 
+-- Farbiger Akzent-Streifen links im Knopf (Pad-/Modus-Farbe nur als Akzent, AKYTEX)
+local function accentStrip(button: any, color: Color3)
+	local btn = button.Button
+	UI.Create("Frame", {
+		Name = "Accent",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 8, 0.5, 0),
+		Size = UDim2.new(0, 3, 1, -24),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		ZIndex = btn.ZIndex + 2,
+		Parent = btn,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+end
+
+local function modeButton(
+	parent: Instance,
+	order: number,
+	text: string,
+	sub: string,
+	color: Color3,
+	onClick: () -> ()
+): any
+	local button = UI.Button({
+		LayoutOrder = order,
+		Parent = parent,
+		Size = UDim2.fromOffset(132, 78),
+		Text = text,
+		Sub = sub,
+		Variant = "Secondary",
+		MaxText = 18,
+		SubMax = 13,
+	}, onClick)
+	accentStrip(button, color)
+	return button
+end
+
+local function closePlayIfOk(result: any)
+	if result ~= nil then
+		ctx.Windows.Close("Play")
+	end
+end
+
 local function buildWindow()
 	local theme = UI.Theme
-	window = UI.Window(T("match.play.title"), 620, 580, theme.Yellow)
+	window = UI.Window(T("match.play.title"), 620, 580, theme.Accent)
 	local content = window.Content
 
-	UI.Section(content, T("match.play.duels"), 1, theme.Green)
+	UI.Section(content, T("match.play.duels"), 1, theme.Accent)
 	local duels = UI.Grid(content, 2, 132, 78)
+	local duelColors = { theme.Up, theme.Accent, theme.Purple, theme.Down } -- Pad-Farben P1–P7 (B3.2)
 	for i, mode in ipairs(DUEL_MODES) do
-		modeButtons[mode] = UI.Button({
-			LayoutOrder = i,
-			Parent = duels,
-			Size = UDim2.fromOffset(132, 78),
-			Text = modeName(mode),
-			Sub = searchingText(mode),
-			Color = if i == 1
-				then theme.Green
-				elseif i == 2 then theme.Blue
-				elseif i == 3 then theme.Purple
-				else theme.Red,
-			MaxText = 22,
-		}, function()
+		modeButtons[mode] = modeButton(duels, i, modeName(mode), searchingText(mode), duelColors[i], function()
 			joinMode(mode)
 		end)
 	end
 
-	UI.Section(content, T("match.play.special"), 3, theme.Pink)
+	UI.Section(content, T("match.play.special"), 3, theme.Accent)
 	local special = UI.Grid(content, 4, 132, 78)
-	mutatorButton = UI.Button({
-		LayoutOrder = 1,
-		Parent = special,
-		Size = UDim2.fromOffset(132, 78),
-		Text = modeName("Mutator"),
-		Sub = searchingText("Mutator"),
-		Color = theme.Yellow,
-		MaxText = 20,
-	}, function()
+	mutatorButton = modeButton(special, 1, modeName("Mutator"), searchingText("Mutator"), theme.Warn, function()
 		joinMode("Mutator")
 	end)
 	modeButtons.Mutator = mutatorButton
-	modeButtons.FFA = UI.Button({
-		LayoutOrder = 2,
-		Parent = special,
-		Size = UDim2.fromOffset(132, 78),
-		Text = modeName("FFA"),
-		Sub = searchingText("FFA"),
-		Color = theme.Pink,
-		MaxText = 20,
-	}, function()
+	modeButtons.FFA = modeButton(special, 2, modeName("FFA"), searchingText("FFA"), theme.Pink, function()
 		joinMode("FFA")
 	end)
-	modeButtons.Crown = UI.Button({
-		LayoutOrder = 3,
-		Parent = special,
-		Size = UDim2.fromOffset(132, 78),
-		Text = T("match.play.crown"),
-		Sub = T("match.play.noKing"),
-		Color = theme.Gold,
-		MaxText = 20,
-	}, function()
-		request("CrownJoin", nil, function(result)
-			if result ~= nil then
-				ctx.Windows.Close("Play")
-			end
-		end)
+	modeButtons.Crown = modeButton(special, 3, T("match.play.crown"), T("match.play.noKing"), theme.Gold, function()
+		request("CrownJoin", nil, closePlayIfOk)
 	end)
-	modeButtons.Training = UI.Button({
-		LayoutOrder = 4,
-		Parent = special,
-		Size = UDim2.fromOffset(132, 78),
-		Text = T("match.play.training"),
-		Sub = T("match.play.trainingSub"),
-		Color = theme.Cyan,
-		MaxText = 20,
-	}, function()
-		request("GoRange", nil, function(result)
-			if result ~= nil then
-				ctx.Windows.Close("Play")
-			end
-		end)
-	end)
+	modeButtons.Training = modeButton(
+		special,
+		4,
+		T("match.play.training"),
+		T("match.play.trainingSub"),
+		theme.Cyan,
+		function()
+			request("GoRange", nil, closePlayIfOk)
+		end
+	)
 
-	UI.Section(content, T("match.play.practice"), 5, theme.Orange)
-	local bots = UI.Grid(content, 6, 104, 56)
+	UI.Section(content, T("match.play.practice"), 5, theme.Accent)
+	local bots = UI.Grid(content, 6, 104, 52)
+	local diffColors = { theme.Up, theme.Up, theme.Accent, theme.Orange, theme.Down }
 	for i, diff in ipairs(DIFFICULTIES) do
-		UI.Button({
+		local button = UI.Button({
 			LayoutOrder = i,
 			Parent = bots,
-			Size = UDim2.fromOffset(104, 56),
+			Size = UDim2.fromOffset(104, 52),
 			Text = T("bot.diff." .. diff),
-			Color = if i <= 2
-				then theme.Green
-				elseif i == 3 then theme.Blue
-				elseif i == 4 then theme.Orange
-				else theme.Red,
-			MaxText = 18,
+			Variant = "Secondary",
+			MaxText = 16,
 		}, function()
-			request("PracticeStart", diff, function(result)
-				if result ~= nil then
-					ctx.Windows.Close("Play")
-				end
-			end)
+			request("PracticeStart", diff, closePlayIfOk)
 		end)
+		accentStrip(button, diffColors[i])
 	end
 
 	local row = UI.Row(content, 7, 54)
 	UI.Button({
 		Parent = row,
-		Size = UDim2.fromOffset(260, 50),
+		Size = UDim2.fromOffset(260, 48),
 		Text = T("match.queue.cancel"),
-		Color = theme.Red,
-		MaxText = 20,
+		Variant = "Danger",
+		MaxText = 18,
 	}, function()
 		request("QueueLeave")
 		request("CrownLeave")
@@ -295,45 +291,59 @@ end
 -- ---------------------------------------------------------------------
 local function buildStatusBar()
 	local theme = UI.Theme
+	-- Glas-Pill unten Mitte: Modus + "N suchen · BOT KOMMT IN 6", rechts BOTS JETZT (Primär) und ✕ (Ghost)
 	local bar = UI.Create("Frame", {
 		Name = "QueueStatus",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -150),
-		Size = UDim2.fromOffset(520, 76),
-		BackgroundColor3 = theme.PanelDark,
-		BackgroundTransparency = 0.15,
+		Size = UDim2.fromOffset(520, 68),
+		BackgroundColor3 = theme.Surface,
+		BackgroundTransparency = 0.08,
+		BorderSizePixel = 0,
 		Visible = false,
 		ZIndex = 12,
 		Parent = ctx.Gui,
-	}, { UI.Corner(14), UI.Stroke(theme.Black, 3) })
+	}, { UI.Corner(16), UI.Stroke(nil, 1) })
+	-- Akzent-Punkt = "Suche läuft"
+	UI.Create("Frame", {
+		Name = "Dot",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 16, 0, 22),
+		Size = UDim2.fromOffset(8, 8),
+		BackgroundColor3 = theme.Accent,
+		BorderSizePixel = 0,
+		ZIndex = 13,
+		Parent = bar,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	statusTitle = UI.Label({
-		Position = UDim2.fromOffset(12, 4),
-		Size = UDim2.new(1, -230, 0, 34),
+		Position = UDim2.fromOffset(32, 8),
+		Size = UDim2.new(1, -236, 0, 28),
 		Text = "",
-		MaxText = 24,
-		Outline = 3,
+		Font = UI.Fonts.Main,
+		MaxText = 20,
+		TextColor3 = theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 13,
 		Parent = bar,
 	})
 	statusLine = UI.Label({
-		Position = UDim2.fromOffset(12, 40),
-		Size = UDim2.new(1, -230, 0, 28),
+		Position = UDim2.fromOffset(32, 38),
+		Size = UDim2.new(1, -236, 0, 20),
 		Text = "",
-		MaxText = 18,
-		Outline = 2,
-		TextColor3 = theme.Yellow,
+		Font = UI.Fonts.Main,
+		MaxText = 15,
+		TextColor3 = theme.Text2,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 13,
 		Parent = bar,
 	})
 	botsNowButton = UI.Button({
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -66, 0.5, 0),
-		Size = UDim2.fromOffset(150, 54),
+		Position = UDim2.new(1, -64, 0.5, 0),
+		Size = UDim2.fromOffset(140, 46),
 		Text = T("match.queue.botsNow"),
-		Color = theme.Orange,
-		MaxText = 18,
+		Variant = "Primary",
+		MaxText = 16,
 		ZIndex = 13,
 		Parent = bar,
 	}, function()
@@ -341,11 +351,11 @@ local function buildStatusBar()
 	end)
 	UI.Button({
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -8, 0.5, 0),
-		Size = UDim2.fromOffset(52, 54),
+		Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.fromOffset(46, 46),
 		Text = "✕",
-		Color = theme.Red,
-		MaxText = 24,
+		Variant = "Ghost",
+		MaxText = 18,
 		ZIndex = 13,
 		Parent = bar,
 	}, function()
@@ -419,14 +429,22 @@ end
 -- ---------------------------------------------------------------------
 -- 3) PAD-SCHILDER + HOLOGRAMM-BOTS
 -- ---------------------------------------------------------------------
-local function makeLabel(parent: Instance, y: number, h: number, maxText: number, color: Color3?): TextLabel
+local function makeLabel(
+	parent: Instance,
+	y: number,
+	h: number,
+	maxText: number,
+	color: Color3?,
+	font: Enum.Font?
+): TextLabel
 	return UI.Label({
-		Position = UDim2.fromScale(0, y),
-		Size = UDim2.fromScale(1, h),
+		Position = UDim2.new(0, 10, y, 0),
+		Size = UDim2.new(1, -20, h, 0),
 		Text = "",
+		Font = font or UI.Fonts.Main,
 		MaxText = maxText,
-		Outline = 3,
-		TextColor3 = color or Color3.new(1, 1, 1),
+		TextColor3 = color or UI.Theme.Text,
+		ZIndex = 2,
 		Parent = parent,
 	})
 end
@@ -441,10 +459,11 @@ local function addPad(part: BasePart)
 	if not folder then
 		return
 	end
+	local theme = UI.Theme
 	local gui = UI.Create("BillboardGui", {
 		Name = "Pad" .. tostring(part:GetAttribute("PadId")),
 		Adornee = part,
-		Size = UDim2.fromOffset(280, 120),
+		Size = UDim2.fromOffset(260, 112),
 		StudsOffsetWorldSpace = Vector3.new(0, 7, 0),
 		MaxDistance = BILLBOARD_DISTANCE,
 		LightInfluence = 0,
@@ -452,13 +471,22 @@ local function addPad(part: BasePart)
 		ResetOnSpawn = false,
 		Parent = folder,
 	})
+	-- dunkle Glas-Tafel mit 1-px-Akzent-Rahmen (Welt-Texte, AKYTEX): Titel Michroma, Zahlen Titillium
+	local panel = UI.Create("Frame", {
+		Name = "Panel",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = theme.Bg,
+		BackgroundTransparency = 0.15,
+		BorderSizePixel = 0,
+		Parent = gui,
+	}, { UI.Corner(14), UI.Stroke(theme.Accent, 1) })
 	table.insert(padViews, {
 		Part = part,
 		Gui = gui,
-		Title = makeLabel(gui, 0, 0.3, 30, UI.Theme.Yellow),
-		Counts = makeLabel(gui, 0.3, 0.26, 26),
-		Status = makeLabel(gui, 0.56, 0.24, 22, UI.Theme.Cyan),
-		Searching = makeLabel(gui, 0.8, 0.2, 18, UI.Theme.SubText),
+		Title = makeLabel(panel, 0.07, 0.24, 20, theme.Text, UI.Fonts.Heading),
+		Counts = makeLabel(panel, 0.33, 0.24, 22, theme.Text, UI.Fonts.Number),
+		Status = makeLabel(panel, 0.58, 0.2, 16, theme.Accent),
+		Searching = makeLabel(panel, 0.79, 0.15, 13, theme.Text2),
 	})
 end
 
@@ -517,7 +545,7 @@ local function newGhost(): Model
 		p.CanTouch = false
 		p.CastShadow = false
 		p.Material = Enum.Material.Neon
-		p.Color = UI.Theme.Cyan
+		p.Color = UI.Theme.Accent -- Hologramm in der Akzentfarbe
 		p.Transparency = 0.65
 		p:SetAttribute("Offset", offset)
 		p.Parent = model
@@ -595,9 +623,18 @@ local function refreshPads()
 				status = T("match.pad.idle")
 			end
 			setText(view.Status, status)
+			local theme = UI.Theme
+			local statusColor = if phase == "Full" or phase == "Vote"
+				then theme.Up
+				elseif phase == "Held" then theme.Warn
+				elseif phase == "Waiting" then theme.Accent
+				else theme.Text2
+			if view.Status.TextColor3 ~= statusColor then
+				view.Status.TextColor3 = statusColor
+			end
 			setText(view.Searching, T("match.searching", searching))
-			-- Hologramm-Bots auf freien Sitzen, solange ein Bot-Timer läuft
-			if folder and phase == "Waiting" and botAt > 0 then
+			-- Hologramm-Bots auf freien Sitzen, solange ein Bot-Timer läuft (nicht während man selbst im Match ist)
+			if folder and phase == "Waiting" and botAt > 0 and not inMatch then
 				for _, seat in ipairs(seatOffsets(mode, part)) do
 					local cf = part.CFrame * CFrame.new(seat.Offset)
 					local need = if seat.Side == "A" then needA else needB

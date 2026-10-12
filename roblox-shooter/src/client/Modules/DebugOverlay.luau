@@ -7,6 +7,8 @@
 --  (Combat "Reject" kommt für Admins immer). Abfrage 1×/s nur solange sichtbar.
 --  Zusätzlich: Hitbox-Anzeige (Admin-Debug "Hitboxen zeigen" = workspace-Attribut DebugShowHitboxes):
 --  Kopf-Kugel + Körper-Kasten (analytisch wie B13.2) an allen Combatants in 150 Studs, 10 Hz, ≤ 32 Paare.
+--  Look (docs/STYLE-AKYTEX.md): Glas-Karte (Surface, 1-px-Rahmen, Ecke 12), Titel Michroma + Akzent-Strich,
+--  Werte in Text2 (Monospace nur für die Takt-Tabelle, damit die Spalten stehen).
 --
 --  Öffentliche API:
 --    DebugOverlay.Toggle()
@@ -26,13 +28,21 @@ local POLL_SECONDS = 1
 local HITBOX_HZ = 10
 local HITBOX_RANGE = 150
 local HITBOX_MAX = 32
-local WHITE = Color3.new(1, 1, 1)
-local BLACK = Color3.new(0, 0, 0)
+-- AKYTEX-Farben als Ersatz, falls das UI-Kit fehlt (sonst UI.Theme)
+local FALLBACK_THEME = {
+	Surface = Color3.fromRGB(18, 24, 36),
+	Border = Color3.fromRGB(31, 41, 55),
+	Text = Color3.fromRGB(230, 236, 245),
+	Text2 = Color3.fromRGB(170, 180, 195),
+	Accent = Color3.fromRGB(79, 140, 255),
+	Down = Color3.fromRGB(239, 68, 68),
+}
 
 local visible = false
 local hiddenByPhoto = false
 local frame: Frame? = nil
 local lines: TextLabel? = nil
+local titleLabel: TextLabel? = nil
 local pollToken = 0
 local lastInfo: { [string]: any }? = nil
 local lastReject: { Shot: number, Why: string, T: number }? = nil
@@ -62,6 +72,12 @@ local function formatTime(seconds: number): string
 	return ("%ds"):format(math.floor(seconds))
 end
 
+local function theme(): { [string]: Color3 }
+	local ui = ctx and ctx.UI
+	local t = ui and ui.Theme
+	return if type(t) == "table" then t else FALLBACK_THEME
+end
+
 local function build()
 	if frame then
 		return
@@ -70,50 +86,86 @@ local function build()
 	if typeof(parent) ~= "Instance" then
 		return
 	end
+	local th = theme()
 	local box = Instance.new("Frame")
 	box.Name = "CC_DebugOverlay"
 	box.Position = UDim2.fromOffset(12, 120)
 	box.Size = UDim2.fromOffset(430, 0)
 	box.AutomaticSize = Enum.AutomaticSize.Y
-	box.BackgroundColor3 = BLACK
-	box.BackgroundTransparency = 0.35
+	box.BackgroundColor3 = th.Surface or FALLBACK_THEME.Surface
+	box.BackgroundTransparency = 0.12
 	box.BorderSizePixel = 0
 	box.ZIndex = 50
 	box.Visible = false
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
+	corner.CornerRadius = UDim.new(0, 12)
 	corner.Parent = box
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = th.Border or FALLBACK_THEME.Border
+	stroke.Thickness = 1
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = box
 	local pad = Instance.new("UIPadding")
-	pad.PaddingLeft = UDim.new(0, 8)
-	pad.PaddingRight = UDim.new(0, 8)
-	pad.PaddingTop = UDim.new(0, 6)
-	pad.PaddingBottom = UDim.new(0, 6)
+	pad.PaddingLeft = UDim.new(0, 14)
+	pad.PaddingRight = UDim.new(0, 14)
+	pad.PaddingTop = UDim.new(0, 10)
+	pad.PaddingBottom = UDim.new(0, 12)
 	pad.Parent = box
+	local layout = Instance.new("UIListLayout")
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 6)
+	layout.Parent = box
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(1, 0, 0, 18)
+	title.Font = Enum.Font.Michroma
+	title.TextSize = 13
+	title.TextColor3 = th.Text or FALLBACK_THEME.Text
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Text = T("admin.dbgTitle")
+	title.LayoutOrder = 1
+	title.ZIndex = 51
+	title.Parent = box
+	local underline = Instance.new("Frame")
+	underline.Name = "Underline"
+	underline.Size = UDim2.fromOffset(24, 2)
+	underline.BackgroundColor3 = th.Accent or FALLBACK_THEME.Accent
+	underline.BorderSizePixel = 0
+	underline.LayoutOrder = 2
+	underline.ZIndex = 51
+	underline.Parent = box
 	local label = Instance.new("TextLabel")
 	label.Name = "Lines"
 	label.BackgroundTransparency = 1
 	label.Size = UDim2.new(1, 0, 0, 0)
 	label.AutomaticSize = Enum.AutomaticSize.Y
 	label.Font = Enum.Font.RobotoMono
-	label.TextSize = 14
-	label.TextColor3 = WHITE
+	label.TextSize = 13
+	label.LineHeight = 1.1
+	label.TextColor3 = th.Text2 or FALLBACK_THEME.Text2
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Top
 	label.TextWrapped = true
 	label.RichText = false
 	label.Text = ""
+	label.LayoutOrder = 3
 	label.ZIndex = 51
 	label.Parent = box
 	box.Parent = parent
 	frame = box
 	lines = label
+	titleLabel = title
 end
 
 local function render()
 	if not lines then
 		return
 	end
-	local out: { string } = { T("admin.dbgTitle") }
+	local out: { string } = {}
+	if titleLabel then
+		titleLabel.Text = T("admin.dbgTitle")
+	end
 	local info = lastInfo
 	if info then
 		table.insert(out, T("admin.dbgHeartbeat", tonumber(info.HeartbeatMs) or 0, tonumber(info.HeartbeatMaxMs) or 0))
@@ -220,14 +272,14 @@ local function pairAt(index: number): HitboxPair?
 		hitboxFolder = folder
 	end
 	local head = Instance.new("SphereHandleAdornment")
-	head.Color3 = Color3.fromRGB(255, 60, 60)
+	head.Color3 = FALLBACK_THEME.Down -- AKYTEX Down: Kopf
 	head.Transparency = 0.6
 	head.AlwaysOnTop = true
 	head.ZIndex = 1
 	head.Visible = false
 	head.Parent = hitboxFolder
 	local body = Instance.new("BoxHandleAdornment")
-	body.Color3 = Color3.fromRGB(60, 200, 255)
+	body.Color3 = FALLBACK_THEME.Accent -- AKYTEX Accent: Körper
 	body.Transparency = 0.75
 	body.AlwaysOnTop = true
 	body.ZIndex = 0

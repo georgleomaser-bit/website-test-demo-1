@@ -58,6 +58,7 @@ return {
 		["match.forfeitWin"] = "Dein Gegner hat aufgegeben – Sieg!",
 		["match.tainted"] = "TAINTED – Admin-Show: zählt für niemanden negativ",
 		["match.taintedBadge"] = "TAINTED / Admin-Show",
+		["match.taintChip"] = "ADMIN-SHOW",
 
 		-- PLAY-Menü
 		["match.play.title"] = "Spielen",
@@ -125,6 +126,8 @@ return {
 		["match.quad"] = "QUAD!",
 		["match.clutchYou"] = "CLUTCH 1v%d!",
 		["match.clutchBy"] = "%s: CLUTCH 1v%d!",
+		["match.clutchChance"] = "1v%d – Clutch-Chance!",
+		["match.clutchChanceMate"] = "%s: 1v%d",
 		["match.aceYou"] = "ACE! Alle Gegner gepoppt!",
 		["match.bonusXp"] = "+%d XP",
 		["match.ffa.me"] = "DU: %d",
@@ -253,6 +256,7 @@ return {
 		["match.forfeitWin"] = "Your opponent forfeited – victory!",
 		["match.tainted"] = "TAINTED – admin show: counts against nobody",
 		["match.taintedBadge"] = "TAINTED / Admin show",
+		["match.taintChip"] = "ADMIN-SHOW",
 
 		-- PLAY menu
 		["match.play.title"] = "Play",
@@ -320,6 +324,8 @@ return {
 		["match.quad"] = "QUAD!",
 		["match.clutchYou"] = "CLUTCH 1v%d!",
 		["match.clutchBy"] = "%s: CLUTCH 1v%d!",
+		["match.clutchChance"] = "1v%d – clutch time!",
+		["match.clutchChanceMate"] = "%s: 1v%d",
 		["match.aceYou"] = "ACE! Every enemy popped!",
 		["match.bonusXp"] = "+%d XP",
 		["match.ffa.me"] = "YOU: %d",

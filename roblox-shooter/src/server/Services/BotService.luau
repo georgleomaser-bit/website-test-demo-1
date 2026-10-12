@@ -62,6 +62,7 @@ local HOLD_CF = CFrame.new(0, 3, 0)
 local FALLBACK_LOADOUT: Types.Loadout =
 	{ Primary = "PopRifle", Secondary = "PipPistol", Melee = "BoxingGloves", Utility = "PopGrenade" }
 local SLOTS: { Types.SlotName } = { "Primary", "Secondary", "Melee", "Utility" }
+local AKY_TEXT = Color3.fromRGB(230, 236, 245) -- AKYTEX-Farbe #e6ecf5 (Text); [BOT] = #7d889a (Muted)
 
 type Entry = {
 	C: Types.Combatant,
@@ -388,16 +389,17 @@ local function fallbackNameplate(model: Model, name: string)
 	gui.AlwaysOnTop = false
 	gui.MaxDistance = 90
 	gui.LightInfluence = 0
+	-- AKYTEX-Namensschild (docs/STYLE-AKYTEX.md): Builder Sans Bold, [BOT] in Muted, feine Kontur statt dicker
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Size = UDim2.fromScale(1, 1)
-	label.Font = Enum.Font.FredokaOne
+	label.Font = Enum.Font.BuilderSansBold
 	label.TextScaled = true
-	label.TextColor3 = if typeof(BOTS.NameplateColor) == "Color3"
-		then BOTS.NameplateColor
-		else Color3.fromRGB(190, 190, 200)
-	label.TextStrokeTransparency = 0.3
-	label.Text = "[BOT] " .. name
+	label.RichText = true
+	label.TextColor3 = AKY_TEXT
+	label.TextStrokeColor3 = Color3.new(0, 0, 0)
+	label.TextStrokeTransparency = 0.6
+	label.Text = ('<font color="#7d889a">[BOT]</font> %s'):format(name)
 	label.Parent = gui
 	gui.Parent = head
 end
@@ -496,6 +498,8 @@ local function removeEntry(entry: Entry)
 		return
 	end
 	entry.Removed = true
+	entry.Brain.Stopped = true -- FireStep schießt nicht mehr
+	entry.Brain.FireReady = false
 	entries[entry.C] = nil
 	listDirty = true
 	clearDebug(entry)
@@ -849,6 +853,18 @@ function BotService.Start()
 		rebuildList()
 		return list
 	end, tick)
+	-- Schüsse zwischen den Takten (echte Feuerrate schneller Waffen); nur Zahlenvergleiche, keine Strahlen
+	Scheduler.EveryFrame("BotsFire", function()
+		if #list == 0 then
+			return
+		end
+		local t = now()
+		for _, entry in list do
+			if not entry.Removed and entry.Brain.FireReady then
+				BotBrain.FireStep(entry.Brain, t)
+			end
+		end
+	end)
 	Scheduler.Every("BotsHousekeeping", 1, function()
 		rebuildList()
 		housekeeping()

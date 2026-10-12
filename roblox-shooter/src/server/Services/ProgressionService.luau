@@ -18,8 +18,11 @@
 --  Registriert sich selbst auf MatchService.OnMatchEnd (XP, Coins über ShopService.Grant, MMR,
 --  Meisterschaft, Statistik, Serien, Kopfgeld, Bestenliste) sowie CombatService.OnDamage/OnElimination
 --  und WeaponService.OnShot (Statistik pro Waffe: Genauigkeit, Kopf-Treffer, Leere-Schubser).
---  Request-Aktionen (C9): "ClaimPass" {Tier, Track} (4/s), "ClaimLevelPick" weaponKey (1/s).
---  State-Schlüssel: Level, XP, XPNext, Stats, Pass, Season, Achievements, Mastery, FreeWeaponPicks, LastMatch.
+--  Request-Aktionen (C9): "ClaimPass" {Tier, Track} (4/s), "ClaimLevelPick" weaponKey (1/s),
+--    "TrainerScore" {Mode = "Flick"|"Track"|"Reaction", Score} -> {Ok, Best} (1/2 s, Bestwerte in Data.Stats).
+--  State-Schlüssel: Level, XP, XPNext, Stats, Pass, Season, Achievements, Mastery, FreeWeaponPicks, LastMatch,
+--    Skill (sichtbarer Skill-Rang Bronze…Champion aus dem verdeckten MMR, nur Anzeige; MMR bleibt verdeckt).
+--  Gratis-Spur: Coins/Schlüssel nur für mit ERSPIELTER Pass-XP erreichte Stufen (Pass.Earned, Muss-Regel 4).
 --  Player-Attribute: Level, Title (Kosmetik-Id "TT_…" oder "").
 -- =====================================================================
 
@@ -61,6 +64,7 @@ local summaries: { [Player]: { [string]: any } } = {}
 local crownStreak: { [Player]: number } = {}
 local shotBuffer: { [Player]: { [string]: ShotStat } } = {}
 local headPopBuffer: { [Player]: { [string]: number } } = {}
+local deathBuffer: { [Player]: { [string]: number } } = {} -- ausgeschieden mit Waffe X in der Hand (K/D pro Waffe)
 local voidBuffer: { [Player]: number } = {}
 local titleSent: { [Player]: string } = {}
 -- Pro Combatant (Id): letzter Treffer { Id = Angreifer, T = os.clock() }, wird laufend ausgedünnt
@@ -264,17 +268,22 @@ local function premiumBoughtFor(data: Types.PlayerData, seasonId: number): boole
 end
 
 -- Pass-Daten der aktiven Saison (neue Saison -> frischer Pass; Premium bleibt, falls für diese Saison gekauft)
+-- Earned = erspielte Pass-XP (ohne gekaufte Stufen). Muss-Regel 4: Coins/Schlüssel der Gratis-Spur nur für
+-- Stufen, die mit erspielter XP erreicht sind – sonst gäben Robux-Stufen (PassTier1/10) Coins und Schlüssel.
 local function passOf(data: Types.PlayerData): { [string]: any }
 	local season = ProgressionService.Season()
 	local pass = tableField(data, "Pass")
 	if pass.Season ~= season.Id then
 		pass.Season = season.Id
 		pass.XP = 0
+		pass.Earned = 0
 		pass.Free = {}
 		pass.Prem = {}
 		pass.Premium = premiumBoughtFor(data, season.Id)
 	end
 	pass.XP = math.max(0, num(pass.XP, 0))
+	-- alter Spielstand ohne Earned: bisherige XP gelten als erspielt
+	pass.Earned = math.clamp(num(pass.Earned, pass.XP), 0, pass.XP)
 	pass.Premium = pass.Premium == true
 	tableField(pass, "Free")
 	tableField(pass, "Prem")
@@ -284,6 +293,18 @@ end
 local function passTier(pass: { [string]: any }): number
 	local season = ProgressionService.Season()
 	return ProgressMath.PassTier(pass.XP, season.TierXp, season.Tiers)
+end
+
+-- Mit erspielter XP erreichte Stufe (gekaufte Stufen zählen nicht)
+local function earnedTier(pass: { [string]: any }): number
+	local season = ProgressionService.Season()
+	return ProgressMath.PassTier(num(pass.Earned, 0), season.TierXp, season.Tiers)
+end
+
+-- Gratis-Belohnung mit Coins/Schlüsseln? (die dürfen nie über gekaufte Stufen kommen)
+local function needsEarnedTier(reward: any): boolean
+	return type(reward) == "table"
+		and (finite(reward.Coins) and reward.Coins > 0 or finite(reward.Keys) and reward.Keys > 0)
 end
 
 -- Anzahl erreichter, noch nicht eingelöster Belohnungen einer Spur
@@ -303,7 +324,8 @@ local function claimableCount(pass: { [string]: any }, track: "Free" | "Premium"
 	return count
 end
 
-function ProgressionService.AddPassXp(p: Player, amount: number, _reason: string)
+-- reason "PassTiers" = gekaufte Stufen (ShopService -> AddPassTiers): zählen nicht als erspielt
+function ProgressionService.AddPassXp(p: Player, amount: number, reason: string)
 	if not finite(amount) or amount <= 0 then
 		return
 	end
@@ -315,7 +337,11 @@ function ProgressionService.AddPassXp(p: Player, amount: number, _reason: string
 	local pass = passOf(data)
 	local before = passTier(pass)
 	local maxXp = season.Tiers * season.TierXp
-	pass.XP = math.min(maxXp, pass.XP + math.floor(math.min(amount, MAX_PASS_XP_PER_CALL) + 0.5))
+	local gain = math.floor(math.min(amount, MAX_PASS_XP_PER_CALL) + 0.5)
+	pass.XP = math.min(maxXp, pass.XP + gain)
+	if reason ~= "PassTiers" then
+		pass.Earned = math.min(pass.XP, num(pass.Earned, 0) + gain)
+	end
 	local after = passTier(pass)
 	if after > before then
 		notify(p, "prog.passTier", { after }, "Success")
@@ -390,6 +416,9 @@ local function handleClaimPass(p: Player, arg: any): Reply
 	end
 	if track == "Premium" and not pass.Premium then
 		return { Ok = false, Message = t(p, "prog.passLocked") }
+	end
+	if track == "Free" and needsEarnedTier(reward) and earnedTier(pass) < tier then
+		return { Ok = false, Message = t(p, "prog.passEarnFirst", tier) }
 	end
 	local claimed = if track == "Free" then pass.Free else pass.Prem
 	if claimed[key] then
@@ -790,6 +819,21 @@ local function teamAverages(result: Types.MatchResult, pre: { [Player]: PreInfo 
 		end
 	end
 	if teamCount ~= 2 then
+		-- Einzelbericht (Leaver/AFK): PerPlayer hat nur eine Seite, MatchService liefert den Team-Bezug mit
+		local given = result.TeamMmr
+		if type(given) == "table" and teamCount == 1 then
+			local avg: { [number]: number } = {}
+			local sides = 0
+			for team, value in pairs(given) do
+				if type(team) == "number" and finite(value) then
+					avg[team] = value
+					sides += 1
+				end
+			end
+			if sides == 2 then
+				return avg
+			end
+		end
 		return nil -- MMR nur bei genau zwei Seiten (Duelle, Mutator, Krone)
 	end
 	local avg: { [number]: number } = {}
@@ -803,6 +847,14 @@ end
 -- durch das Beenden fremder Serien kassiert. Ausgezahlt wird hier vom System (Opfer verliert nichts) –
 -- höchstens die Summe der echten Prämien der Verlierer (aus deren Serie VOR dem Match).
 local function payBounties(result: Types.MatchResult, pre: { [Player]: PreInfo })
+	-- MatchService trägt die volle Prämie bei JEDEM Sieger ein: im Team-Match wird sie geteilt
+	-- (sonst zahlt das System sie pro Sieger erneut aus – 2v2 = doppelte Prämie)
+	local winners = 0
+	for payee, r in pairs(result.PerPlayer) do
+		if r.Won and num(r.BountyClaimed, 0) > 0 and isPlayer(payee) then
+			winners += 1
+		end
+	end
 	for payee, r in pairs(result.PerPlayer) do
 		local claimed = math.floor(num(r.BountyClaimed, 0))
 		if r.Won and claimed > 0 and isPlayer(payee) then
@@ -818,7 +870,7 @@ local function payBounties(result: Types.MatchResult, pre: { [Player]: PreInfo }
 					end
 				end
 			end
-			local amount = math.min(claimed, available)
+			local amount = math.ceil(math.min(claimed, available) / math.max(1, winners))
 			local data = dataOf(payee)
 			if amount > 0 and data and grant(payee, { Coins = amount }, "Bounty") then
 				addStat(statsOf(data), "Bounties", 1)
@@ -846,6 +898,13 @@ local function commitWeaponStats(p: Player, data: Types.PlayerData, r: Types.Pla
 			entry.HeadPops = num(entry.HeadPops, 0) + n
 		end
 	end
+	local deaths = deathBuffer[p]
+	if deaths then
+		for key, n in pairs(deaths) do
+			local entry = masteryEntry(data, key)
+			entry.Deaths = num(entry.Deaths, 0) + n
+		end
+	end
 	local shots = shotBuffer[p]
 	if shots then
 		for key, s in pairs(shots) do
@@ -860,6 +919,7 @@ end
 local function clearMatchBuffers(p: Player)
 	shotBuffer[p] = nil
 	headPopBuffer[p] = nil
+	deathBuffer[p] = nil
 	voidBuffer[p] = nil
 end
 
@@ -1101,6 +1161,8 @@ local function processPlayer(
 		try("RewardService", "Track", p, "OvertimeRound", num(r.OvertimeCaps, 0), ctx)
 		try("RewardService", "Track", p, "CrownDefence", num(r.CrownDefences, 0), ctx)
 		try("RewardService", "Track", p, "Damage", math.floor(num(r.Damage, 0)), ctx)
+		-- Tagesquest "Assists 5" (Art "Assist"): sonst zählte sie niemand und blieb unlösbar
+		try("RewardService", "Track", p, "Assist", num(r.Assists, 0), ctx)
 	end
 
 	checkAchievements(p, data)
@@ -1140,7 +1202,7 @@ local function processPlayer(
 	}
 	clearMatchBuffers(p)
 	try("MetricsService", "Custom", p, "MatchEnd", xpGain, { Mode = mode, Won = r.Won == true, Bots = vsBots })
-	dirty(p, "Stats", "Level", "XP", "XPNext", "Pass", "Mastery", "Achievements", "LastMatch")
+	dirty(p, "Stats", "Level", "XP", "XPNext", "Pass", "Mastery", "Achievements", "LastMatch", "Skill")
 end
 
 local function onMatchEnd(result: Types.MatchResult)
@@ -1211,6 +1273,13 @@ local function onDamage(attacker: any, victim: any, dealt: number, _info: any)
 	end
 end
 
+-- Waffe, die ein Combatant gerade in der Hand hält (für K/D pro Waffe)
+local function heldWeapon(c: any): string?
+	local loadout = type(c) == "table" and c.Loadout or nil
+	local key = type(loadout) == "table" and loadout[c.Equipped] or nil
+	return if validWeaponKey(key) then key else nil
+end
+
 local function onElimination(victim: any, killer: any, info: any)
 	if type(victim) ~= "table" then
 		return
@@ -1218,6 +1287,17 @@ local function onElimination(victim: any, killer: any, info: any)
 	local hit = finite(victim.Id) and lastHit[victim.Id] or nil
 	if finite(victim.Id) then
 		lastHit[victim.Id] = nil
+	end
+	-- K/D pro Waffe: Opfer-Spieler verliert mit der Waffe in der Hand (nur Match-Kontexte)
+	local victimPlayer = playerOf(victim)
+	local held = victimPlayer and heldWeapon(victim)
+	if victimPlayer and held then
+		local deaths = deathBuffer[victimPlayer]
+		if not deaths then
+			deaths = {}
+			deathBuffer[victimPlayer] = deaths
+		end
+		deaths[held] = (deaths[held] or 0) + 1
 	end
 	local p = playerOf(killer)
 	if not p or type(info) ~= "table" or killer == victim then
@@ -1304,6 +1384,69 @@ local function handleClaimLevelPick(p: Player, arg: any): Reply
 end
 
 -- ---------------------------------------------------------------------
+-- 7b) AIM-TRAINER-BESTWERTE (Vertrag: Request "TrainerScore" {Mode, Score} -> {Ok, Best}, 1 pro 2 s)
+--     Flick/Track: größer besser, Reaction (ms): kleiner besser. Nur Anzeige (keine Belohnung) –
+--     trotzdem geprüft/geklemmt, damit die Bestwerte nicht frei setzbar sind.
+-- ---------------------------------------------------------------------
+local TRAINER_FIELD: { [string]: string } = { Flick = "FlickBest", Track = "TrackBest", Reaction = "ReactionBest" }
+
+local function trainerConfig(): { [string]: any }
+	local cfg = table.clone(type(P.Trainer) == "table" and P.Trainer or {})
+	-- Flick-Punkte = Ziele/Sekunde × Genauigkeit × 100, der Lauf dauert immer > 1 s -> höchstens 100 × Ziele
+	local bots = Config.Bots
+	local range = type(bots) == "table" and bots.Range or nil
+	local targets = type(range) == "table" and range.FlickTargets or nil
+	if finite(targets) and targets > 0 then
+		cfg.FlickMax = math.min(num(cfg.FlickMax, 5000), 100 * targets)
+	end
+	return cfg
+end
+
+local function handleTrainerScore(p: Player, arg: any): Reply
+	if type(arg) ~= "table" or type(arg.Mode) ~= "string" then
+		return { Ok = false, Message = t(p, "core.invalid") }
+	end
+	local field = TRAINER_FIELD[arg.Mode]
+	if not field or not finite(arg.Score) then
+		return { Ok = false, Message = t(p, "core.invalid") }
+	end
+	local data = dataOf(p)
+	if not data then
+		return { Ok = false, Message = t(p, "core.loading") }
+	end
+	local stats = statsOf(data)
+	local valid, best, improved = ProgressMath.TrainerBest(arg.Mode, arg.Score, stats[field], trainerConfig())
+	if not valid then
+		return { Ok = false, Best = best, Message = t(p, "prog.trainerInvalid") }
+	end
+	if improved then
+		stats[field] = best
+		dirty(p, "Stats")
+		try("MetricsService", "Custom", p, "Trainer" .. arg.Mode, best)
+	end
+	return { Ok = true, Best = best, Improved = improved }
+end
+
+-- Sichtbarer Skill-Rang (nur Anzeige aus dem verdeckten MMR; das MMR selbst geht nie an den Client)
+local function skillState(data: Types.PlayerData): { [string]: any }
+	local ranks = P.SkillRanks
+	local list = type(ranks) == "table" and ranks.List or {}
+	local games = math.max(0, math.floor(num(data.MmrGames, 0)))
+	local placement = math.max(0, math.floor(num(type(ranks) == "table" and ranks.Placement or 0, 0)))
+	local index, progress = ProgressMath.SkillRank(num(data.Mmr, P.Mmr.Start), list)
+	local rank = list[index]
+	local nextRank = list[index + 1]
+	return {
+		Placed = games >= placement,
+		Left = math.max(0, placement - games),
+		Rank = if type(rank) == "table" then rank.Key else "",
+		Index = index,
+		Next = if type(nextRank) == "table" then nextRank.Key else "",
+		Progress = math.floor(progress * 100 + 0.5) / 100,
+	}
+end
+
+-- ---------------------------------------------------------------------
 -- 8) STATE, ATTRIBUTE, BEITRITT
 -- ---------------------------------------------------------------------
 local function refreshTitle(p: Player)
@@ -1335,7 +1478,7 @@ local function onReady(p: Player)
 			end
 		end)
 	end
-	dirty(p, "Level", "XP", "XPNext", "Stats", "Pass", "Season", "Achievements", "Mastery", "FreeWeaponPicks")
+	dirty(p, "Level", "XP", "XPNext", "Stats", "Pass", "Season", "Achievements", "Mastery", "FreeWeaponPicks", "Skill")
 end
 
 local function achievementState(data: Types.PlayerData): { [string]: any }
@@ -1379,6 +1522,7 @@ local function provideAll()
 			Season = pass.Season,
 			XP = pass.XP,
 			Tier = passTier(pass),
+			EarnedTier = earnedTier(pass),
 			Premium = pass.Premium,
 			Free = pass.Free,
 			Prem = pass.Prem,
@@ -1399,6 +1543,9 @@ local function provideAll()
 	provide("Achievements", function(_p, data)
 		return achievementState(data)
 	end, {})
+	provide("Skill", function(_p, data)
+		return skillState(data)
+	end, false)
 	provide("Mastery", function(_p, data)
 		return tableField(tableField(data, "Weapons"), "Mastery")
 	end, {})
@@ -1415,6 +1562,7 @@ local function onPlayerRemoving(p: Player)
 	crownStreak[p] = nil
 	shotBuffer[p] = nil
 	headPopBuffer[p] = nil
+	deathBuffer[p] = nil
 	voidBuffer[p] = nil
 	titleSent[p] = nil
 	if p.UserId ~= 0 then
@@ -1433,6 +1581,7 @@ function ProgressionService.Start()
 	provideAll()
 	try("PlayerStateService", "Handle", "ClaimPass", handleClaimPass, { Rate = 4, Per = 1 })
 	try("PlayerStateService", "Handle", "ClaimLevelPick", handleClaimLevelPick, { Rate = 1, Per = 1 })
+	try("PlayerStateService", "Handle", "TrainerScore", handleTrainerScore, { Rate = 1, Per = 2 })
 	try("PlayerStateService", "OnReady", onReady)
 
 	if not try("MatchService", "OnMatchEnd", onMatchEnd) then

@@ -5,6 +5,8 @@
 --  Das Band zeigt nur Zufalls-Füller nach den ECHTEN Gewichten derselben Tabelle (Config.Shop.Crates.S1)
 --  und bleibt auf dem Ergebnis stehen – keine absichtlichen Beinahe-Treffer (keine seltenen Items gezielt
 --  neben das Ergebnis), kein Abbremsen kurz vor einem Legendary, kein Nachrutschen (B23.3).
+--  Look (docs/STYLE-AKYTEX.md): Karten Surface2 mit 1-px-Rahmen + Streifen in der Seltenheitsfarbe (nur Akzent),
+--  Band auf Glas-Fläche, Akzent-Mittellinie, Ergebnis mit Seltenheits-Glow, Titel Michroma, Öffnen Quint Out.
 --
 --  Öffentliche API:
 --    CrateReveal.Play(result: { Id, Rarity, Duplicate, Shards })   mehrere Aufrufe werden nacheinander gezeigt
@@ -93,6 +95,7 @@ local function honestFiller(): string
 	return items[#items].Id
 end
 
+-- Karte: Surface2, Ecke 12, 1-px-Rahmen in der Seltenheitsfarbe, Streifen oben, sanfter Farbschimmer von unten
 local function makeCard(parent: Instance, id: string, order: number, size: UDim2): Frame
 	local def = Config.Cosmetics.ById[id]
 	local rarity = def and def.Rarity or "Common"
@@ -100,28 +103,60 @@ local function makeCard(parent: Instance, id: string, order: number, size: UDim2
 	local card = UI.Create("Frame", {
 		Name = "Card",
 		Size = size,
-		BackgroundColor3 = Color3.new(1, 1, 1),
+		BackgroundColor3 = UI.Theme.Surface2,
+		BorderSizePixel = 0,
 		LayoutOrder = order,
 		Parent = parent,
 	}, {
 		UI.Corner(12),
-		UI.Stroke(Color3.new(0, 0, 0), 3),
-		UI.Gradient(color:Lerp(Color3.new(1, 1, 1), 0.25), color:Lerp(Color3.new(0, 0, 0), 0.35)),
+		UI.Create("UIStroke", {
+			Name = "Rarity",
+			Color = color,
+			Thickness = 1.5,
+			Transparency = 0.2,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
 	})
+	-- dezenter Glow der Seltenheit (unten, sehr durchsichtig) statt Vollfläche
+	UI.Create("Frame", {
+		Name = "Glow",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.fromScale(0, 1),
+		Size = UDim2.fromScale(1, 0.55),
+		BackgroundColor3 = color,
+		BackgroundTransparency = 0.82,
+		BorderSizePixel = 0,
+		Parent = card,
+	}, {
+		UI.Corner(12),
+		UI.Create("UIGradient", {
+			Rotation = 90,
+			Transparency = NumberSequence.new(1, 0),
+		}),
+	})
+	UI.Create("Frame", {
+		Name = "Stripe",
+		Position = UDim2.new(0.12, 0, 0, 0),
+		Size = UDim2.new(0.76, 0, 0, 3),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Parent = card,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	UI.Label({
-		Size = UDim2.new(1, 0, 0.5, 0),
-		Position = UDim2.fromScale(0, 0.05),
+		Size = UDim2.new(1, 0, 0.46, 0),
+		Position = UDim2.fromScale(0, 0.08),
 		Text = KIND_ICON[def and def.Kind or "Wrap"] or "🎁",
-		MaxText = 42,
+		MaxText = 40,
 		Parent = card,
 	})
 	UI.Label({
-		Size = UDim2.new(1, -8, 0.36, 0),
-		Position = UDim2.new(0, 4, 0.58, 0),
+		Size = UDim2.new(1, -12, 0.34, 0),
+		Position = UDim2.new(0, 6, 0.58, 0),
 		Text = itemName(id),
+		Font = UI.Fonts.Main,
+		TextColor3 = UI.Theme.Text,
 		TextWrapped = true,
-		MaxText = 18,
-		Outline = 2,
+		MaxText = 16,
 		Parent = card,
 	})
 	return card
@@ -139,8 +174,8 @@ local function ensureOverlay(): Frame
 	local frame = UI.Create("Frame", {
 		Name = "CrateReveal",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Color3.new(0, 0, 0),
-		BackgroundTransparency = 0.35,
+		BackgroundColor3 = UI.Theme.Bg,
+		BackgroundTransparency = 0.2,
 		Visible = false,
 		ZIndex = 60,
 		Active = true,
@@ -182,27 +217,39 @@ local function showResult(frame: Frame, result: any)
 		ZIndex = 61,
 		Parent = frame,
 	})
-	local scale = UI.Create("UIScale", { Scale = 0.6, Parent = panel })
+	local scale = UI.Create("UIScale", { Scale = 0.96, Parent = panel })
+	-- Seltenheit groß in Michroma, Farbe der Seltenheit nur im Text + Unterstrich
 	UI.Label({
-		Size = UDim2.new(1, 0, 0, 40),
-		Text = t("item.rarity." .. rarity),
+		Size = UDim2.new(1, 0, 0, 34),
+		Text = UI.Upper(t("item.rarity." .. rarity)),
+		Font = UI.Fonts.Banner,
 		TextColor3 = color,
-		MaxText = 34,
-		Outline = 3,
+		MaxText = 28,
 		ZIndex = 62,
 		Parent = panel,
 	})
+	UI.Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 38),
+		Size = UDim2.fromOffset(40, 2),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		ZIndex = 62,
+		Parent = panel,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	local card = makeCard(panel, id, 1, UDim2.fromOffset(220, 260))
 	card.AnchorPoint = Vector2.new(0.5, 0)
 	card.Position = UDim2.new(0.5, 0, 0, 48)
 	card.ZIndex = 62
-	if rarity == "Mythic" then
-		local gradient = card:FindFirstChildOfClass("UIGradient")
-		if gradient then
+	if rarity == "Legendary" or rarity == "Mythic" then
+		-- kleiner Glow: Rahmen atmet sanft (kein Comic-Glanz, kein Vollflächen-Regenbogen)
+		local stroke = card:FindFirstChild("Rarity")
+		if stroke and stroke:IsA("UIStroke") then
+			stroke.Thickness = 2
 			TweenService:Create(
-				gradient,
-				TweenInfo.new(1.6, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1),
-				{ Rotation = 360 }
+				stroke,
+				TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+				{ Transparency = 0.65 }
 			):Play()
 		end
 	end
@@ -211,24 +258,27 @@ local function showResult(frame: Frame, result: any)
 		then t("shop.crate.duplicate", tonumber(result.Shards) or 0)
 		else t("shop.crate.new")
 	UI.Label({
-		Size = UDim2.new(1, 0, 0, 30),
+		Size = UDim2.new(1, 0, 0, 28),
 		Position = UDim2.fromOffset(0, 316),
 		Text = (if def then t("item.kind." .. def.Kind) .. " · " else "") .. line,
-		MaxText = 22,
-		Outline = 2,
+		Font = UI.Fonts.Main,
+		-- Duplikat = Splitter (+ Wert grün), neu = Text
+		TextColor3 = if result.Duplicate then UI.Theme.Up else UI.Theme.Text,
+		MaxText = 20,
 		ZIndex = 62,
 		Parent = panel,
 	})
 	UI.Button({
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 356),
-		Size = UDim2.fromOffset(180, 50),
+		Size = UDim2.fromOffset(180, 48),
 		Text = t("shop.ok"),
-		Color = UI.Theme.Green,
+		Variant = "Primary",
 		ZIndex = 63,
 		Parent = panel,
 	}, close)
-	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 })
+	-- Öffnen iOS-artig: Scale 0.96 -> 1, Quint Out (kein Überschwingen)
+	TweenService:Create(scale, TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), { Scale = 1 })
 		:Play()
 	sfx(if rarity == "Legendary" or rarity == "Mythic" then "Win" else "UIClick")
 end
@@ -241,11 +291,12 @@ local function roll(result: any)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.45),
 		Size = UDim2.fromOffset(CARD_W * 5 + CARD_GAP * 4, CARD_H + 24),
-		BackgroundColor3 = Color3.fromRGB(28, 32, 64),
+		BackgroundColor3 = UI.Theme.Surface,
+		BackgroundTransparency = 0.06,
 		ClipsDescendants = true,
 		ZIndex = 61,
 		Parent = frame,
-	}, { UI.Corner(14), UI.Stroke(Color3.new(0, 0, 0), 4) })
+	}, { UI.Corner(16), UI.Stroke(nil, 1) })
 	local strip = UI.Create("Frame", {
 		Size = UDim2.fromOffset(STRIP_CARDS * (CARD_W + CARD_GAP), CARD_H),
 		Position = UDim2.fromOffset(0, 12),
@@ -268,8 +319,9 @@ local function roll(result: any)
 	UI.Create("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.fromScale(0.5, 0),
-		Size = UDim2.new(0, 4, 1, 0),
-		BackgroundColor3 = UI.Theme.Yellow,
+		Size = UDim2.new(0, 2, 1, 0),
+		BackgroundColor3 = UI.Theme.Accent,
+		BorderSizePixel = 0,
 		ZIndex = 64,
 		Parent = window,
 	})
@@ -301,9 +353,9 @@ local function roll(result: any)
 	UI.Button({
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0.45, CARD_H / 2 + 30),
-		Size = UDim2.fromOffset(200, 46),
+		Size = UDim2.fromOffset(200, 44),
 		Text = t("shop.crate.skip"),
-		Color = UI.Theme.Gray,
+		Variant = "Secondary",
 		ZIndex = 63,
 		Parent = frame,
 	}, reveal)

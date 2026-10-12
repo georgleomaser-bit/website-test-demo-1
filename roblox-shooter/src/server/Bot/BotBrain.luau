@@ -26,6 +26,7 @@
 --    BotBrain.Hear(brain, pos, now)           Schuss in Hörweite
 --    BotBrain.Hurt(brain, attacker, now)      Schaden bekommen (Angreifer bekannt)
 --    BotBrain.PathPoints(brain, graph): { Vector3 }   für das Admin-Pfad-Overlay
+--    BotBrain.FireStep(brain, now)            jeden Frame: Schüsse zwischen den Takten (echte Feuerrate)
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -49,6 +50,10 @@ local HINT_SECONDS = 4 -- gehörte Schüsse / Treffer bleiben so lange interessa
 local PATROL_REPICK = 4 -- s: Patrouillen-Ziel neu wählen
 local ZONE_HOLD_RADIUS = 4.5 -- in der Zone: innerhalb dieses Radius stehen bleiben/strafen
 local MOVE_SWITCH_EPS = 0.01
+-- Schießen zwischen den 10-Hz-Takten (BotBrain.FireStep jeden Frame): so lange nach dem letzten Takt, der das
+-- Ziel bestätigt hat, darf weitergeschossen werden (danach entscheidet erst wieder der nächste Takt)
+local FIRE_GRACE = 0.16
+local FIRE_RETRY = 0.01 -- abgelehnter Schuss (Frame-Raster, Nachladen): nächster Frame
 
 -- ---------------------------------------------------------------------
 -- TYPEN
@@ -116,6 +121,13 @@ export type Brain = {
 	NextSwitchAt: number,
 	LastAlive: boolean,
 	LastSpeed: number,
+	-- Feuer zwischen den Takten (FireStep)
+	FireReady: boolean,
+	FireAt: number,
+	FireTarget: Types.Combatant?,
+	FireDef: Types.WeaponDef?,
+	FireEnv: Env?,
+	Stopped: boolean,
 }
 
 -- ---------------------------------------------------------------------
@@ -299,6 +311,12 @@ function BotBrain.new(c: Types.Combatant, difficulty: string, rng: Random): Brai
 		NextSwitchAt = 0,
 		LastAlive = c.Alive,
 		LastSpeed = -1,
+		FireReady = false,
+		FireAt = -math.huge,
+		FireTarget = nil,
+		FireDef = nil,
+		FireEnv = nil,
+		Stopped = false,
 	}
 	return brain
 end
@@ -336,6 +354,8 @@ function BotBrain.Reset(b: Brain, now: number)
 	b.NextUtilityAt = now + num(BOTS.UtilityRollSeconds, 3)
 	b.NextSwitchAt = now
 	b.LastSpeed = -1
+	b.FireReady = false
+	b.FireTarget = nil
 end
 
 function BotBrain.SetGoal(b: Brain, goal: Goal)
@@ -1026,9 +1046,10 @@ local function currentError(b: Brain, target: Types.Combatant, dir: Vector3, now
 	return base + num(BOTS.LateralErrPerStud, 0.15) * lateral
 end
 
-local function fireAt(b: Brain, env: Env, target: Types.Combatant, def: Types.WeaponDef)
+-- Ein Schuss über WeaponService.ServerFire (gleiche Munition/Intervalle/Streuung wie Spieler).
+-- now = Server-Zeit dieses Aufrufs (Takt oder FireStep-Frame).
+local function fireAt(b: Brain, env: Env, target: Types.Combatant, def: Types.WeaponDef, now: number)
 	local c = b.C
-	local now = env.Now
 	local d = b.D
 	local weapons = env.Services.WeaponService
 	if not weapons then
@@ -1088,8 +1109,17 @@ local function fireAt(b: Brain, env: Env, target: Types.Combatant, def: Types.We
 			b.NextShotAt = now + num(def.Interval, 0.1) * intervalMult
 		end
 	else
-		-- nicht geschossen (Intervall, Nachladen, leer) -> gleich nochmal versuchen
-		b.NextShotAt = now + 0.05
+		-- nicht geschossen: Nachladen/Ausrüsten abwarten, sonst (Intervall knapp verfehlt – Frame-Raster)
+		-- im nächsten Frame nochmal (FireStep). Der Server (ServerFire) bleibt die einzige Instanz, die zählt.
+		local ammo = ammoOf(c, c.Equipped)
+		local waitUntil = now + FIRE_RETRY
+		if ammo and num(ammo.ReloadUntil, 0) > waitUntil then
+			waitUntil = num(ammo.ReloadUntil, 0)
+		end
+		if num(c.EquipReadyAt, 0) > waitUntil then
+			waitUntil = num(c.EquipReadyAt, 0)
+		end
+		b.NextShotAt = waitUntil
 	end
 end
 
@@ -1163,6 +1193,7 @@ end
 local function combat(b: Brain, env: Env)
 	local c = b.C
 	local now = env.Now
+	b.FireReady = false -- nur der Schuss-Zweig unten gibt FireStep wieder frei
 	local weapons = env.Services.WeaponService
 	if not weapons then
 		return
@@ -1218,7 +1249,14 @@ local function combat(b: Brain, env: Env)
 	end
 	if def.Kind == "Hitscan" or def.Kind == "Projectile" then
 		if dist <= num(def.Range, 500) then
-			fireAt(b, env, target, def)
+			-- Schnelle Waffen (z. B. BuzzSMG 0.065 s) schießen öfter als 10× pro Sekunde: FireStep feuert
+			-- zwischen den Takten jeden Frame nach, sobald NextShotAt erreicht ist (echte Feuerrate)
+			b.FireReady = true
+			b.FireAt = now
+			b.FireTarget = target
+			b.FireDef = def
+			b.FireEnv = env
+			fireAt(b, env, target, def, now)
 		end
 	end
 end
@@ -1233,6 +1271,7 @@ function BotBrain.Tick(b: Brain, _dt: number, env: Env)
 	local humanoid = c.Humanoid
 	if not c.Alive or model.Parent == nil or root.Parent == nil or humanoid == nil then
 		b.LastAlive = false
+		b.FireReady = false
 		return
 	end
 	local now = env.Now
@@ -1247,6 +1286,7 @@ function BotBrain.Tick(b: Brain, _dt: number, env: Env)
 	if root.Anchored then
 		-- eingefroren (Prep) oder im Vault: nicht laufen, nicht schießen, Waffe wählen erlaubt
 		b.MoveIntent = false
+		b.FireReady = false
 		b.StuckPos = nil
 		local weapons = env.Services.WeaponService
 		if weapons and c.Equipped ~= "Primary" and now >= b.NextSwitchAt then
@@ -1333,6 +1373,37 @@ function BotBrain.Tick(b: Brain, _dt: number, env: Env)
 	applySpeed(b, env, sprint)
 	checkStuck(b, env)
 	combat(b, env)
+end
+
+-- Jeden Frame (BotService, Scheduler.EveryFrame): weiterschießen, solange der letzte Takt Ziel + Waffe
+-- bestätigt hat (FireReady, ≤ FIRE_GRACE alt) und NextShotAt erreicht ist. So erreichen Bots die echte
+-- Feuerrate jeder Waffe (statt höchstens 1 Schuss pro 100-ms-Takt). Keine Sichtlinien-Strahlen hier
+-- (Raycast-Budget bleibt beim Takt), kein Yield.
+function BotBrain.FireStep(b: Brain, now: number)
+	if not b.FireReady or b.Stopped or now < b.NextShotAt then
+		return
+	end
+	local env = b.FireEnv
+	local target = b.FireTarget
+	local def = b.FireDef
+	local c = b.C
+	if env == nil or target == nil or def == nil or now - b.FireAt > FIRE_GRACE then
+		b.FireReady = false
+		return
+	end
+	local current = equippedDef(c)
+	if not c.Alive or c.Root.Parent == nil or c.Root.Anchored or not alive(target) then
+		b.FireReady = false
+		return
+	end
+	if current == nil or current.Key ~= def.Key then
+		b.FireReady = false -- Waffe gewechselt: der nächste Takt entscheidet neu
+		return
+	end
+	if b.State == "Idle" or b.State == "Melee" or now < b.ReactAt then
+		return
+	end
+	fireAt(b, env, target, current, now)
 end
 
 -- Welt-Punkte des aktuellen Pfads (für das Admin-Overlay "Bot-Wege zeigen")

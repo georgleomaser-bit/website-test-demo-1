@@ -263,12 +263,13 @@ end
 -- Boden unter einem Punkt finden (Lobby ist zu diesem Zeitpunkt gebaut)
 local function groundBelow(pos: Vector3): number
 	local params = RaycastParams.new()
+	-- klassische Form (FilterType + FilterDescendantsInstances), nicht mit Include/ExcludeInstances mischen
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	local exclude: { Instance } = {}
 	if dummyFolder then
 		table.insert(exclude, dummyFolder :: Folder)
 	end
-	params.ExcludeInstances = exclude
+	params.FilterDescendantsInstances = exclude
 	params.IgnoreWater = true
 	local hit = workspace:Raycast(pos + Vector3.new(0, 8, 0), Vector3.new(0, -30, 0), params)
 	if hit then
@@ -455,7 +456,7 @@ local function fallbackArena(): any
 	if bots then
 		table.insert(exclude, bots)
 	end
-	params.ExcludeInstances = exclude
+	params.FilterDescendantsInstances = exclude
 	return {
 		Slot = -1,
 		Key = "Range",
@@ -924,7 +925,10 @@ function RangeService.Init(services: any)
 		zoneCF = cf
 		zoneSize = size
 	end
-	floorY = zoneCF.Position.Y - math.max(zoneSize.Y, 0) / 2
+	-- Boden-Oberkante an der Schusslinie messen (die Lobby steht schon). Die Unterkante der Zone (Y −2) ist
+	-- NICHT der Boden – sonst landet man beim Teleport mit der Wurzel bei Y 1, die Beine im Boden.
+	local east = zoneCF:PointToWorldSpace(Vector3.new(zoneSize.X / 2, 0, 0)).X
+	floorY = groundBelow(Vector3.new(math.min(east - 2, FALLBACK_FIRING_X + 2), 0, 0))
 	if floorY < -5 or floorY > 5 then
 		floorY = 0 -- Boden-Oberkante der Lobby (B2)
 	end

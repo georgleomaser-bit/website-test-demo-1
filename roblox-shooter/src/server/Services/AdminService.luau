@@ -646,10 +646,13 @@ local function mutatorValid(key: any): boolean
 end
 
 local function applyMutator(key: string?, untilT: number?)
-	call("MatchService", "SetMutatorOverride", key)
 	mutatorUntil = if key then untilT else nil
-	local okActive, active = call("MatchService", "ActiveMutator")
-	effectAll("Mutator", 1, { Key = if okActive and type(active) == "string" then active else (key or "") })
+	-- MatchService.SetMutatorOverride meldet den neuen Mutator selbst an alle (Effect "Mutator" + State);
+	-- nur ohne MatchService hier melden (sonst kommt der Toast doppelt)
+	if call("MatchService", "SetMutatorOverride", key) then
+		return
+	end
+	effectAll("Mutator", 1, { Key = key or "" })
 end
 
 local function handleGlobal(message: any)
@@ -675,9 +678,15 @@ local function handleGlobal(message: any)
 	elseif kind == "Mutator" then
 		local key = message.Key
 		local untilT = message.Until
+		local maxSeconds = (tonumber(SEC.MutatorGlobalHours) or 24) * 3600 + 300
 		if key == nil or key == "" then
 			applyMutator(nil, nil)
-		elseif mutatorValid(key) and Util.IsFinite(untilT) and untilT > os.time() then
+		elseif
+			mutatorValid(key)
+			and Util.IsFinite(untilT)
+			and untilT > os.time()
+			and untilT <= os.time() + maxSeconds
+		then
 			applyMutator(key, untilT)
 		end
 	end
@@ -1093,8 +1102,10 @@ Actions.Pop = function(admin, args)
 		if c and c.Alive == true then
 			taintTargetMatch(p, "AdminPop")
 			local pos = if typeof(c.Root) == "Instance" then (c.Root :: BasePart).Position else Vector3.zero
+			-- KillerId = eigene Id: CombatService macht daraus "kein Schütze" (sonst bekäme der letzte Angreifer
+			-- den Pop samt XP/Kopfgeld gutgeschrieben, obwohl der Admin gepoppt hat)
 			local info: Types.ElimInfo =
-				{ WeaponKey = "Admin", Head = false, Kind = "Admin", KillerId = nil, Assists = {}, Pos = pos }
+				{ WeaponKey = "Admin", Head = false, Kind = "Admin", KillerId = c.Id, Assists = {}, Pos = pos }
 			if call("CombatService", "Eliminate", c, info) then
 				table.insert(done, p)
 			end
@@ -2049,6 +2060,9 @@ end
 -- LEBENSZYKLUS
 -- =====================================================================
 local function dispatch(p: Player, action: any, args: any): { Ok: boolean, Message: string?, Data: any? }
+	if p.Parent ~= Players then
+		return { Ok = false } -- schon gegangen (sonst bliebe ein Limiter-Eintrag nach PlayerRemoving liegen)
+	end
 	-- Spam-Bremse ZUERST (auch für Nicht-Admins, sonst fluten Exploiter das Server-Log)
 	if not limiter.Check(p) then
 		return { Ok = false, Message = L(p, "core.tooFast") }
@@ -2169,8 +2183,10 @@ function AdminService.Start()
 			return DataStoreService:GetDataStore(Config.Tech.LiveStore):GetAsync("Mutator")
 		end)
 		if ok and type(stored) == "table" and mutatorValid(stored.Key) then
-			if Util.IsFinite(stored.Until) and stored.Until > os.time() then
-				applyMutator(stored.Key, stored.Until)
+			local maxSeconds = (tonumber(SEC.MutatorGlobalHours) or 24) * 3600 + 300
+			local untilT = stored.Until
+			if Util.IsFinite(untilT) and untilT > os.time() and untilT <= os.time() + maxSeconds then
+				applyMutator(stored.Key, untilT)
 			end
 		end
 	end)

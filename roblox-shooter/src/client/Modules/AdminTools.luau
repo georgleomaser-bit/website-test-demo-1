@@ -10,8 +10,10 @@
 --    * Silent Aim (AdminSilentAim) / Triggerbot (AdminTriggerbot): AdminTools.AimTarget() / AdminTools.WantsFire()
 --      für den Feuer-Haken von WeaponClient (WP4); Hook "AdminTrigger"(on) bei jeder Änderung.
 --    * Noclip lokal (AdminNoclip), Tempo (AdminSpeed) und Super-Sprung (AdminJump) am eigenen Humanoid.
---    * Rotes Schild "TAINTED / Admin-Show", solange das aktuelle Match getaintet ist (Attribut TaintedMatch).
---    * Lobby-Licht-Event (Effect "LobbyLook") sofort lokal über ArenaLook.ApplyMood anzeigen.
+--    * Rotes Schild "TAINTED / Admin-Show", solange das aktuelle Match getaintet ist (Attribut TaintedMatch) –
+--      nur als Ersatz, falls MatchUI fehlt (MatchUI zeigt dafür den roten "ADMIN-SHOW"-Chip in Intro + HUD).
+--    (Lobby-Licht-Event "LobbyLook" wendet ArenaLook für alle Spieler an – hier nicht noch einmal.)
+--  Look (docs/STYLE-AKYTEX.md): ESP-Schilder BuilderSansBold mit feiner Kontur in Down (Gegner-Markierung).
 --
 --  Öffentliche API:
 --    AdminTools.WantsFire(): boolean                 Triggerbot: Fadenkreuz liegt auf einem Gegner
@@ -33,7 +35,8 @@ local ESP_OWNER = "AdminESP"
 local ESP_MAX = 20
 local ESP_HZ = 4
 local ESP_RANGE = 2000
-local ESP_COLOR = Color3.fromRGB(255, 60, 60)
+local ESP_COLOR = Color3.fromRGB(239, 68, 68) -- AKYTEX Down (#ef4444): Gegner-Markierung
+local TEXT_COLOR = Color3.fromRGB(230, 236, 245) -- AKYTEX Text (#e6ecf5)
 local AIM_CONE = math.rad(25) -- sichtbarer Aimbot: nur Ziele in diesem Kegel um das Fadenkreuz
 local AIM_SPEED = 14 -- je größer, desto schneller rastet die Kamera ein
 local AIM_RANGE = 500
@@ -320,13 +323,18 @@ local function espSlot(index: number): EspSlot
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Size = UDim2.fromScale(1, 1)
-	label.Font = Enum.Font.FredokaOne
+	label.Font = Enum.Font.BuilderSansBold
 	label.TextScaled = true
-	label.TextColor3 = ESP_COLOR
+	label.TextColor3 = ESP_COLOR:Lerp(TEXT_COLOR, 0.25)
 	label.Text = ""
+	local sizeLimit = Instance.new("UITextSizeConstraint")
+	sizeLimit.MaxTextSize = 18
+	sizeLimit.Parent = label
+	-- feine Kontur über der 3D-Welt (AKYTEX: 1 px, halb durchsichtig) statt dicker schwarzer Kante
 	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 2
+	stroke.Thickness = 1
 	stroke.Color = Color3.new(0, 0, 0)
+	stroke.Transparency = 0.4
 	stroke.Parent = label
 	label.Parent = gui
 	gui.Parent = player:FindFirstChildOfClass("PlayerGui")
@@ -438,7 +446,7 @@ local function updateEsp()
 				name = owner.DisplayName
 			end
 			local text = if type(hp) == "number"
-				then ("%s ❤%d · %dm"):format(name, math.floor(hp + 0.5), math.floor(entry.Dist))
+				then ("%s · %d HP · %dm"):format(name, math.floor(hp + 0.5), math.floor(entry.Dist))
 				else ("%s · %dm"):format(name, math.floor(entry.Dist))
 			if slot.Label.Text ~= text then
 				slot.Label.Text = text
@@ -504,35 +512,40 @@ end
 -- TAINTED-SCHILD
 -- ---------------------------------------------------------------------
 local function updateTaintSign()
-	local show = player:GetAttribute("TaintedMatch") ~= nil and not photoHidden
+	-- MatchUI zeigt den roten "ADMIN-SHOW"-Chip selbst (Vertrag Runde 2) -> Schild hier nur als Ersatz
+	local show = player:GetAttribute("TaintedMatch") ~= nil and not photoHidden and module("MatchUI") == nil
 	if show and not taintSign then
 		local parent = ctx and ctx.Gui
 		if typeof(parent) ~= "Instance" then
 			return
 		end
+		-- AKYTEX-Chip: voll rund, Down-Fläche halb durchsichtig, 1-px-Rahmen, weiße BuilderSansBold
 		local label = Instance.new("TextLabel")
 		label.Name = "CC_TaintedSign"
 		label.AnchorPoint = Vector2.new(0.5, 0)
-		label.Position = UDim2.new(0.5, 0, 0, 56)
-		label.Size = UDim2.fromOffset(300, 34)
-		label.BackgroundColor3 = Color3.fromRGB(200, 30, 40)
+		label.Position = UDim2.new(0.5, 0, 0, 96)
+		label.Size = UDim2.fromOffset(0, 26)
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.BackgroundColor3 = ESP_COLOR
+		label.BackgroundTransparency = 0.15
 		label.BorderSizePixel = 0
-		label.Font = Enum.Font.FredokaOne
-		label.TextScaled = true
+		label.Font = Enum.Font.BuilderSansBold
+		label.TextSize = 14
 		label.TextColor3 = Color3.new(1, 1, 1)
 		label.Text = T("admin.tainted")
 		label.ZIndex = 40
 		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 8)
+		corner.CornerRadius = UDim.new(0.5, 0)
 		corner.Parent = label
 		local stroke = Instance.new("UIStroke")
-		stroke.Thickness = 2
-		stroke.Color = Color3.new(0, 0, 0)
+		stroke.Thickness = 1
+		stroke.Color = ESP_COLOR:Lerp(Color3.new(1, 1, 1), 0.35)
+		stroke.Transparency = 0.4
 		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		stroke.Parent = label
 		local pad = Instance.new("UIPadding")
-		pad.PaddingTop = UDim.new(0, 4)
-		pad.PaddingBottom = UDim.new(0, 4)
+		pad.PaddingLeft = UDim.new(0, 14)
+		pad.PaddingRight = UDim.new(0, 14)
 		pad.Parent = label
 		label.Parent = parent
 		taintSign = label
@@ -607,20 +620,6 @@ function AdminTools.Start()
 		hooks.On("Disarmed", function()
 			armedInfo = nil
 			setWantsFire(false)
-		end)
-		-- Lobby-Licht (Admin-Event "LobbyLook"): auf dem eigenen Client sofort anwenden, solange man in der Lobby ist
-		local world = "Lobby"
-		hooks.On("World", function(w: any)
-			if type(w) == "string" then
-				world = w
-			end
-		end)
-		hooks.On("Effect:LobbyLook", function(_strength: any, data: any)
-			local mood = if type(data) == "table" then data.Mood else nil
-			local look = module("ArenaLook")
-			if type(mood) == "string" and world ~= "Match" and look and type(look.ApplyMood) == "function" then
-				pcall(look.ApplyMood, mood)
-			end
 		end)
 		hooks.On("PhotoMode", function(on: any)
 			photoHidden = on == true

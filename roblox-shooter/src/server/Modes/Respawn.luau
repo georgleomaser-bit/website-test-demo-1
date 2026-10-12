@@ -6,7 +6,8 @@
 --  Ablauf: Vote 5 → Load ≤ 4 → Intro 2 → Live 300 s → MatchEnd 10 s (Vote/Load/Intro/MatchEnd macht MatchService).
 --  Punkte: Pop +KillPoints (2), Assist +AssistPoints (1); Sieg bei ScoreToWin (25) oder nach MatchTime.
 --  Respawn nach RespawnDelay (3 s) am besten von 8 Kandidaten: minDist − 40 × (Gegner mit Sicht).
---  Regeneration: +Rate HP/s nach Delay s ohne Schaden (Config.Player.Regen, ContextRules.Regen).
+--  Regeneration: macht der CombatService-Takt (ContextRules.Regen = true, Config.Player.Regen) – hier NICHT
+--    noch einmal, sonst heilt FFA doppelt so schnell (24 statt 12 HP/s).
 --
 --  Lebenszyklus (C5.5): Respawn.Start(m) · Respawn.Tick(m, dt) · Respawn.OnElim(m, victim, killer, info) ·
 --    Respawn.CheckEnd(m): (boolean, number?)
@@ -15,7 +16,7 @@
 --    Respawn.Leader(scores, tiebreak?): (id?, tie)       höchste Punktzahl; Gleichstand -> tiebreak[id] höher gewinnt
 --
 --  m.Api (von MatchService): Now(), Send(kind, data), GoLive(), Combatants(): { Combatant },
---    Respawn(c), Heal(c, amount), TeamOf(id): number, DamageTable(): { [id]: Schaden }
+--    Respawn(c), TeamOf(id): number, DamageTable(): { [id]: Schaden }
 -- =====================================================================
 
 local Respawn = {}
@@ -98,12 +99,11 @@ function Respawn.RemoveCombatant(m: any, id: number)
 	end
 end
 
-function Respawn.Tick(m: any, dt: number)
+function Respawn.Tick(m: any, _dt: number)
 	if m.Phase ~= "Live" or m.MatchOver then
 		return
 	end
 	local now = m.Api.Now()
-	local regen = m.Regen
 	for _, c in ipairs(m.Api.Combatants()) do
 		local at = m.RespawnAt[c.Id]
 		if not c.Alive then
@@ -114,8 +114,6 @@ function Respawn.Tick(m: any, dt: number)
 				-- Pop ohne OnElim (z. B. Fallback) -> trotzdem wiederbeleben
 				m.RespawnAt[c.Id] = now + (m.Def.RespawnDelay or 3)
 			end
-		elseif regen and c.Hp < c.MaxHp and now - (c.LastDamageAt or 0) >= regen.Delay then
-			m.Api.Heal(c, regen.Rate * dt)
 		end
 	end
 	if now >= m.PhaseEnds then

@@ -305,7 +305,7 @@ Bots.Range = {
 	FlickTimeout = 30, -- s, danach Abbruch
 	DpsReset = 3, -- s ohne Treffer -> DPS-Anzeige beginnt neu
 	-- Aim-Trainer (SKILL-WUENSCHE): Tracking = Fadenkreuz auf einer wandernden Kugel halten,
-	-- Reaktion = schießen, sobald das Ziel erscheint. Bestwerte nur lokal (wie Flick, v1).
+	-- Reaktion = schießen, sobald das Ziel erscheint. Bestwerte: Request "TrainerScore" -> Data.Stats (Server).
 	TrackSeconds = 15, -- Dauer eines Tracking-Laufs
 	TrackDistance = 24, -- Studs vor der Kamera
 	TrackRadius = 1.3, -- Zielkugel-Radius
@@ -330,7 +330,7 @@ Bots.Range = {
 -- ---------------------------------------------------------------------
 Bots.PoolSize = 12 -- Klone in ServerStorage.BotPool (= MaxBots)
 Bots.Face = "rbxasset://textures/face.png"
-Bots.NameplateColor = Color3.fromRGB(190, 190, 200) -- grau = ehrlich als Bot markiert
+Bots.NameplateColor = Color3.fromRGB(125, 136, 154) -- AKYTEX-Farbe Muted #7d889a: [BOT] = ehrlich als Bot markiert
 Bots.Animations = {
 	Idle = "rbxassetid://507766388",
 	Walk = "rbxassetid://507777826",

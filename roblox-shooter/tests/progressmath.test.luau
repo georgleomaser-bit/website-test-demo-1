@@ -372,6 +372,53 @@ eq(
 )
 eq("Describe leer", ProgressMath.DescribeReward(nil, fakeT), "")
 
+-- 12) Sichtbarer Skill-Rang (nur Anzeige aus dem MMR)
+local RANKS = { { Min = 0 }, { Min = 950 }, { Min = 1100 }, { Min = 1250 }, { Min = 1400 }, { Min = 1550 } }
+do
+	local i, prog = ProgressMath.SkillRank(1000, RANKS)
+	eq("SkillRank Start 1000 = Silber", i, 2)
+	check("SkillRank Fortschritt 1000", math.abs(prog - 50 / 150) < 1e-9, tostring(prog))
+	i, prog = ProgressMath.SkillRank(400, RANKS)
+	check("SkillRank Bronze", i == 1 and math.abs(prog - 400 / 950) < 1e-9)
+	i, prog = ProgressMath.SkillRank(1550, RANKS)
+	check("SkillRank Champion", i == 6 and prog == 1)
+	i, prog = ProgressMath.SkillRank(0 / 0, RANKS)
+	check("SkillRank NaN -> Bronze", i == 1 and prog == 0)
+	i = ProgressMath.SkillRank(1249.9, RANKS)
+	eq("SkillRank knapp unter Platin", i, 3)
+	i, prog = ProgressMath.SkillRank(1000, {})
+	check("SkillRank leere Liste", i == 1 and prog == 0)
+end
+
+-- 13) Aim-Trainer-Bestwerte (Request "TrainerScore")
+local TRAINER = { FlickMax = 1000, TrackMax = 100, ReactionMinMs = 100, ReactionMaxMs = 2500 }
+do
+	local ok, best, better = ProgressMath.TrainerBest("Flick", 320.4, 0, TRAINER)
+	check("Trainer Flick erster Wert", ok and best == 320 and better)
+	ok, best, better = ProgressMath.TrainerBest("Flick", 200, 320, TRAINER)
+	check("Trainer Flick schlechter bleibt", ok and best == 320 and not better)
+	ok, best, better = ProgressMath.TrainerBest("Flick", 99999, 320, TRAINER)
+	check("Trainer Flick unmöglich", not ok and best == 320 and not better)
+	ok, best, better = ProgressMath.TrainerBest("Track", 87, 80, TRAINER)
+	check("Trainer Track besser", ok and best == 87 and better)
+	ok, best = ProgressMath.TrainerBest("Track", 101, 80, TRAINER)
+	check("Trainer Track > 100 abgelehnt", not ok and best == 80)
+	ok, best, better = ProgressMath.TrainerBest("Reaction", 240, 0, TRAINER)
+	check("Trainer Reaktion erster Wert", ok and best == 240 and better)
+	ok, best, better = ProgressMath.TrainerBest("Reaction", 210, 240, TRAINER)
+	check("Trainer Reaktion kleiner = besser", ok and best == 210 and better)
+	ok, best, better = ProgressMath.TrainerBest("Reaction", 260, 210, TRAINER)
+	check("Trainer Reaktion langsamer bleibt", ok and best == 210 and not better)
+	ok, best = ProgressMath.TrainerBest("Reaction", 40, 210, TRAINER)
+	check("Trainer Reaktion < 100 ms abgelehnt", not ok and best == 210)
+	ok = ProgressMath.TrainerBest("Reaction", 0 / 0, 210, TRAINER)
+	check("Trainer NaN abgelehnt", not ok)
+	ok = ProgressMath.TrainerBest("Aimbot", 10, 0, TRAINER)
+	check("Trainer unbekannter Modus", not ok)
+	ok, best, better = ProgressMath.TrainerBest("Reaction", 9000, 0, TRAINER)
+	check("Trainer Reaktion auf Timeout geklemmt", ok and best == 2500 and better)
+end
+
 print(("[progressmath.test] %d/%d PASS"):format(passed, passed + failed))
 if failed > 0 then
 	error(("%d Test(s) fehlgeschlagen"):format(failed))

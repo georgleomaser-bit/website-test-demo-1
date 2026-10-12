@@ -228,6 +228,11 @@ tests.AcquireReleaseCycle = function(services: any)
 	check(first.Model:GetAttribute("BuildId") == first.BuildId, "BuildId-Attribut fehlt")
 	check(#first.Spawns.A >= 1 and #first.Spawns.B == #first.Spawns.A, "Spawns A/B")
 	check(first.MapParams ~= nil and first.Vault ~= nil, "MapParams/Vault fehlen")
+	-- B9.3: Sichtlinien nur gegen die Map (klassische Include-Form, keine Figuren/Bots)
+	local params: RaycastParams = first.MapParams
+	check(params.FilterType == Enum.RaycastFilterType.Include, "MapParams: FilterType Include erwartet")
+	local list = params.FilterDescendantsInstances
+	check(#list == 1 and list[1] == first.Model, "MapParams: nur die Map erwartet")
 	service.Release(first)
 	local again = service.Acquire(key)
 	check(again ~= nil, "zweites Acquire nil")

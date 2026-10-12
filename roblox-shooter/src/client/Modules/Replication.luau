@@ -79,6 +79,7 @@ local lastBatchSeq = -1
 local entries: { [number]: Entry } = {}
 local slotToId: { [number]: number } = {}
 local idTeam: { [number]: number } = {}
+local startMatchId: any = nil -- MatchId des letzten Match:Start (erneutes Start im selben Match = Roster-Update)
 local myTeam = 0
 local origC0: { [Instance]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
 local bigBalls: { [Model]: BasePart } = setmetatable({}, { __mode = "k" }) :: any
@@ -774,7 +775,14 @@ function Replication.Start()
 			end
 		end)
 		hooks.On("Match:Start", function(data: any)
-			clearAll()
+			-- MatchService sendet Start im selben Match erneut (Ersatz-Bot, Auffüllen, Drop-in): dann nicht alle
+			-- Neigungen zurücksetzen (sichtbares Nicken), sondern nur Slots mit neuem/fehlendem Besitzer leeren
+			local matchId = if type(data) == "table" then data.MatchId else nil
+			local oldIds = if matchId ~= nil and matchId == startMatchId then table.clone(slotToId) else nil
+			startMatchId = matchId
+			if not oldIds then
+				clearAll()
+			end
 			table.clear(slotToId)
 			table.clear(idTeam)
 			if type(data) ~= "table" then
@@ -790,6 +798,14 @@ function Replication.Start()
 						if finite(r.Team) then
 							idTeam[r.Id] = r.Team
 						end
+					end
+				end
+			end
+			if oldIds then
+				for slot, e in pairs(entries) do
+					if slotToId[slot] ~= oldIds[slot] then
+						clearEntry(e)
+						entries[slot] = nil
 					end
 				end
 			end
@@ -809,6 +825,7 @@ function Replication.Start()
 			end
 		end)
 		hooks.On("Match:Closed", function()
+			startMatchId = nil
 			clearAll()
 			table.clear(slotToId)
 			table.clear(idTeam)

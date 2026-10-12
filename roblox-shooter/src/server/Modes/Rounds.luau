@@ -21,7 +21,8 @@
 --
 --  m.Api (von MatchService): Now(), Send(kind, data), BeginRound(suddenDeath), GoLive(), StartOvertime(endsAt),
 --    AliveByTeam(): { [team]: { Combatant } }, TeamHp(team), TeamDamage(team), ZonePresence(): { [team]: number },
---    AllReady(): boolean, RoundEnded(info), ZoneUpdate(team, progress, contested), AntiCamp(untilT)
+--    AllReady(): boolean, RoundEnded(info), ZoneUpdate(team, progress, contested), AntiCamp(untilT),
+--    ClutchChance(id, vs)? (optional: Letzter seines Teams gegen ≥ 2 -> Ansage an sein Team)
 --  Zusätzlich: Rounds.OnDamage(m, attacker, victim, dealt) (FLAWLESS/Anti-Camp), Rounds.Forfeit(m, winner)
 -- =====================================================================
 
@@ -428,6 +429,18 @@ local function phaseOf(m: any): string
 	return m.Phase
 end
 
+-- Team-leer-Prüfung im Takt erst im NÄCHSTEN Takt auslösen: CombatService meldet Pops per task.defer.
+-- Ein Pop aus einem Takt, der im selben Heartbeat VOR "Matches" läuft (Sturz/KillY, Projektile, Bot-Schüsse),
+-- kommt sonst erst nach diesem Takt bei Rounds.OnElim an -> die Runde wäre schon zu und der letzte Pop
+-- fehlte in RoundKills (ACE). OnElim beendet die Runde dann selbst; Verlassen/AFK endet 1 Takt später.
+local function wipeDue(m: any): boolean
+	if m.WipeRound == m.Round then
+		return true
+	end
+	m.WipeRound = m.Round
+	return false
+end
+
 function Rounds.Tick(m: any, dt: number)
 	if m.MatchOver and m.Phase ~= "RoundEnd" then
 		return
@@ -444,12 +457,15 @@ function Rounds.Tick(m: any, dt: number)
 		if phaseOf(m) ~= "Live" then
 			return
 		end
-		-- Team leer (z. B. verlassen/AFK mitten in der Runde) -> Runde sofort entscheiden
+		-- Team leer (z. B. verlassen/AFK mitten in der Runde) -> Runde entscheiden (1 Takt Aufschub, s. wipeDue)
 		local teams = aliveTeams(m)
 		if #teams <= 1 then
-			endRound(m, teams[1] or 0, if #teams == 1 then "Elim" else "Draw")
+			if wipeDue(m) then
+				endRound(m, teams[1] or 0, if #teams == 1 then "Elim" else "Draw")
+			end
 			return
 		end
+		m.WipeRound = nil
 		stepAntiCamp(m)
 		if now >= m.PhaseEnds then
 			if m.SuddenDeath then
@@ -468,9 +484,12 @@ function Rounds.Tick(m: any, dt: number)
 		end
 		local teams = aliveTeams(m)
 		if #teams <= 1 then
-			endRound(m, teams[1] or 0, if #teams == 1 then "Elim" else "Draw")
+			if wipeDue(m) then
+				endRound(m, teams[1] or 0, if #teams == 1 then "Elim" else "Draw")
+			end
 			return
 		end
+		m.WipeRound = nil
 		stepAntiCamp(m)
 		if now >= m.PhaseEnds then
 			resolveTimeout(m)
@@ -504,6 +523,10 @@ function Rounds.OnElim(m: any, victim: any, killer: any?, _info: any)
 			end
 			if enemies >= 2 then
 				m.RoundClutch[team] = { Id = mine[1].Id, Vs = enemies }
+				-- Skill-Moment ansagen ("1v3 – Clutch-Chance"), optional (Test-Matches haben keine Funktion)
+				if type(m.Api.ClutchChance) == "function" then
+					m.Api.ClutchChance(mine[1].Id, enemies)
+				end
 			end
 		end
 	end

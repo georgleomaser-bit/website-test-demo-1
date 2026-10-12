@@ -9,9 +9,11 @@
 --      "Zur Range"-Knopf (außerhalb der Range), Bot-Duell (Request "PracticeStart"), Aim-Trainer.
 --    * DPS-Anzeige rechts, solange man in der Range bewaffnet ist (Combat:Hit -> DPS, Schaden, letzter Treffer).
 --    * Lebensbalken + Entfernung über jeder Puppe (Tag "RangeDummy", Attribute Hp/MaxHp/Distance), nur lokal.
---    * Aim-Trainer mit lokalen Zielen (Teile unter der Kamera, nicht repliziert): Flick (10 Ziele, Bestzeit),
---      Tracking (Fadenkreuz auf wandernder Kugel halten, % auf dem Ziel), Reaktion (Ø ms über 5 Runden).
---      Treffer = Fadenkreuz-Strahl der Kamera beim Hook "Shot". Bestwerte nur in dieser Sitzung (v1).
+--    * Aim-Trainer mit lokalen Zielen (Teile unter der Kamera, nicht repliziert): Flick (10 Ziele, Punkte =
+--      Ziele/s × Genauigkeit × 100), Tracking (Fadenkreuz auf wandernder Kugel halten, % auf dem Ziel),
+--      Reaktion (Ø ms über 5 Runden). Treffer = Fadenkreuz-Strahl der Kamera beim Hook "Shot".
+--      Ergebnis -> Request "TrainerScore" {Mode = "Flick"|"Track"|"Reaction", Score} (ProgressionService
+--      speichert den besten Wert je Modus in Data.Stats); angezeigt wird der persönliche Bestwert.
 --    * Fallback: Bot-Kabinen-Prompts (Attribut "Practice") starten Practice, falls QueueUI fehlt.
 --
 --  Öffentliche API (C7.4):
@@ -32,7 +34,7 @@ local DUMMY_TAG = "RangeDummy"
 local HUD_REFRESH = 0.2
 local MAX_DUMMY_GUIS = 40
 
-type Card = { Button: any, Slot: string, Def: any, Stats: string, Color: Color3 }
+type Card = { Button: any, Slot: string, Def: any, Stats: string }
 type Run = {
 	Mode: string,
 	Phase: string, -- "Count" | "Live" | "Wait" | "Show"
@@ -70,7 +72,12 @@ local win: any = nil
 local cards: { [string]: Card } = {}
 local goRow: Frame? = nil
 local bestLabels: { [string]: TextLabel } = {}
-local best: { [string]: number } = {} -- Flick (s, kleiner besser), Tracking (%, größer), Reaction (ms, kleiner)
+-- Bestwerte dieser Sitzung (Flick = Punkte, größer besser; Tracking = %, größer; Reaction = ms, kleiner).
+-- Dauerhaft speichert der Server (Request "TrainerScore" -> Data.Stats.FlickBest/TrackBest/ReactionBest).
+local best: { [string]: number } = {}
+-- Modus im Client -> Modus im Vertrag "TrainerScore" und Feld in Data.Stats
+local SCORE_MODE: { [string]: string } = { Flick = "Flick", Tracking = "Track", Reaction = "Reaction" }
+local STAT_FIELD: { [string]: string } = { Flick = "FlickBest", Tracking = "TrackBest", Reaction = "ReactionBest" }
 
 local hud: { Frame: Frame, Dps: TextLabel, Total: TextLabel, Last: TextLabel, Popped: TextLabel }? = nil
 local dpsState = { Start = 0, Last = -math.huge, Session = 0, Total = 0, LastText = "–", PoppedUntil = 0 }
@@ -172,26 +179,28 @@ local function statsText(def: any): string
 	return T("bot.training.statsGun", damage, mag)
 end
 
-local function slotColor(slot: string): Color3
-	if slot == "Primary" then
-		return UI.Theme.Orange
-	elseif slot == "Secondary" then
-		return UI.Theme.Blue
-	elseif slot == "Melee" then
-		return UI.Theme.Purple
+-- AKYTEX-Knopf-Variante je Bot-Stufe (Erfolg = leicht, Primär = normal, Premium/Gold = schwer, Gefahr = Wahnsinn)
+local function diffVariant(diff: string): string
+	if diff == "Easy" then
+		return "Success"
+	elseif diff == "Normal" then
+		return "Primary"
+	elseif diff == "Hard" then
+		return "Premium"
 	end
-	return UI.Theme.Pink
+	return "Danger"
 end
 
-local function diffColor(diff: string): Color3
-	if diff == "Easy" then
-		return UI.Theme.Green
-	elseif diff == "Normal" then
-		return UI.Theme.Blue
-	elseif diff == "Hard" then
-		return UI.Theme.Orange
+-- Lebensbalken-Farbe wie im HUD: Up (voll) -> Warn -> Down (leer)
+local function hpColor(ratio: number): Color3
+	local theme = UI and UI.Theme
+	local up = if theme then theme.Up else Color3.fromRGB(34, 197, 94)
+	local warn = if theme then theme.Warn else Color3.fromRGB(234, 179, 8)
+	local down = if theme then theme.Down else Color3.fromRGB(239, 68, 68)
+	if ratio >= 0.5 then
+		return warn:Lerp(up, (ratio - 0.5) * 2)
 	end
-	return UI.Theme.Red
+	return down:Lerp(warn, ratio * 2)
 end
 
 local function request(action: string, arg: any): any
@@ -219,30 +228,41 @@ local function ensureTrainerHud(): { Frame: Frame, Title: TextLabel, Info: TextL
 	if UI == nil or ctx == nil or ctx.Gui == nil then
 		return nil
 	end
+	-- AKYTEX-Ansage: Titel in Michroma mit Akzent-Unterstrich, Info in Builder Sans, feine Kontur über der Welt
 	local frame = UI.Create("Frame", {
 		Name = "AimTrainer",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 120),
-		Size = UDim2.fromOffset(360, 74),
+		Size = UDim2.fromOffset(360, 80),
 		BackgroundTransparency = 1,
 		Visible = false,
 		Parent = ctx.Gui,
 	})
 	local title = UI.Label({
-		Size = UDim2.new(1, 0, 0, 38),
+		Size = UDim2.new(1, 0, 0, 34),
 		Text = "",
-		TextColor3 = UI.Theme.Yellow,
-		MaxText = 34,
-		Outline = 3,
+		TextColor3 = UI.Theme.Text,
+		MaxText = 26,
+		Outline = 1,
 		Font = UI.Fonts and UI.Fonts.Banner or UI.Font,
 		Parent = frame,
 	})
+	UI.Create("Frame", {
+		Name = "Underline",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 38),
+		Size = UDim2.fromOffset(72, 2),
+		BackgroundColor3 = UI.Theme.Accent,
+		BorderSizePixel = 0,
+		Parent = frame,
+	}, { UI.Corner(1) })
 	local info = UI.Label({
-		Position = UDim2.fromOffset(0, 40),
-		Size = UDim2.new(1, 0, 0, 30),
+		Position = UDim2.fromOffset(0, 46),
+		Size = UDim2.new(1, 0, 0, 28),
 		Text = "",
-		MaxText = 24,
-		Outline = 2.5,
+		TextColor3 = UI.Theme.Text,
+		MaxText = 20,
+		Outline = 1,
 		Parent = frame,
 	})
 	trainerHud = { Frame = frame, Title = title, Info = info }
@@ -279,13 +299,43 @@ local function hideTrainerHud(delaySeconds: number?)
 	end
 end
 
+local function lowerIsBetter(mode: string): boolean
+	return mode == "Reaction"
+end
+
+-- Ist a besser als b (b == nil -> ja)?
+local function isBetter(mode: string, a: number, b: number?): boolean
+	if b == nil then
+		return true
+	end
+	return if lowerIsBetter(mode) then a < b else a > b
+end
+
+-- Persönlicher Bestwert: Server (State.Stats, 0 = keiner) und diese Sitzung – der bessere zählt
+local function personalBest(mode: string): number?
+	local value: number? = nil
+	local stats = ctx and ctx.State and ctx.State.Stats
+	local field = STAT_FIELD[mode]
+	if type(stats) == "table" and field then
+		local saved = tonumber(stats[field])
+		if saved and saved == saved and saved > 0 then
+			value = saved
+		end
+	end
+	local session = best[mode]
+	if session ~= nil and isBetter(mode, session, value) then
+		value = session
+	end
+	return value
+end
+
 local function bestText(mode: string): string
-	local value = best[mode]
+	local value = personalBest(mode)
 	if value == nil then
 		return T("bot.training.noBest")
 	end
 	if mode == "Flick" then
-		return T("bot.training.flickBest", formatSeconds(value))
+		return T("bot.training.flickBest", math.floor(value + 0.5))
 	elseif mode == "Tracking" then
 		return T("bot.training.trackingBest", math.floor(value + 0.5))
 	end
@@ -368,14 +418,34 @@ local function abortRun(showToast: boolean)
 	end
 end
 
+-- Ergebnis an den Server (Vertrag: Request "TrainerScore" {Mode, Score} -> {Ok, Best}; 1 pro 2 s, der
+-- Server prüft/klemmt und behält den besten Wert je Modus). Still: Rückmeldung zeigt das Fenster selbst.
+local function submitScore(mode: string, value: number)
+	local scoreMode = SCORE_MODE[mode]
+	if scoreMode == nil or ctx == nil or type(ctx.RequestFull) ~= "function" then
+		return
+	end
+	local action = "TrainerScore"
+	task.spawn(function()
+		local score = math.floor(value + 0.5)
+		local ok, reply = pcall(ctx.RequestFull, action, { Mode = scoreMode, Score = score }, true)
+		if ok and type(reply) == "table" and reply.Ok == true then
+			local saved = tonumber(reply.Best)
+			if saved and saved == saved and saved > 0 and isBetter(mode, saved, best[mode]) then
+				best[mode] = saved
+			end
+			refreshBestLabels()
+		end
+	end)
+end
+
 local function finish(mode: string, value: number, resultText: string)
 	stopRun()
-	local better = best[mode] == nil
-		or (mode == "Tracking" and value > best[mode])
-		or (mode ~= "Tracking" and value < best[mode])
-	if better then
+	local better = isBetter(mode, value, personalBest(mode))
+	if isBetter(mode, value, best[mode]) then
 		best[mode] = value
 	end
+	submitScore(mode, value)
 	local h = ensureTrainerHud()
 	if h then
 		h.Title.Text = if better then T("bot.training.newBest") else T("bot.training." .. string.lower(mode))
@@ -439,9 +509,16 @@ local function onShot()
 			r.Index += 1
 			local total = math.max(1, math.floor(cfgNum("FlickTargets", 10)))
 			if r.Index >= total then
-				local elapsed = now() - r.T0
-				local acc = math.floor(r.Hits / math.max(1, r.Shots) * 100 + 0.5)
-				finish("Flick", elapsed, T("bot.training.flickResult", formatSeconds(elapsed), r.Hits, r.Shots, acc))
+				local elapsed = math.max(0.1, now() - r.T0)
+				local accuracy = r.Hits / math.max(1, r.Shots)
+				local acc = math.floor(accuracy * 100 + 0.5)
+				-- Punkte (größer = besser): Ziele pro Sekunde × Genauigkeit × 100 – schnell UND genau zählt
+				local points = math.clamp(math.floor(total / elapsed * accuracy * 100 + 0.5), 0, 9999)
+				finish(
+					"Flick",
+					points,
+					T("bot.training.flickResult", points, formatSeconds(elapsed), r.Hits, r.Shots, acc)
+				)
 				return
 			end
 			spawnFlick(r)
@@ -595,34 +672,32 @@ local function ensureHud()
 	if hud or UI == nil or ctx == nil or ctx.Gui == nil then
 		return
 	end
-	local frame = UI.Create("Frame", {
+	-- AKYTEX-Glas-Panel (Surface, leicht durchsichtig, 1-px-Rahmen); Zahlen in Titillium Web
+	local frame = UI.Panel({
 		Name = "TrainingDps",
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -14, 0.45, 0),
 		Size = UDim2.fromOffset(190, 150),
-		BackgroundColor3 = UI.Theme.PanelDark,
-		BackgroundTransparency = 0.25,
 		Visible = false,
 		Parent = ctx.Gui,
-	}, { UI.Corner(12), UI.Stroke(UI.Theme.Black, 3) })
+	})
 	local function row(y: number, caption: string, height: number, maxText: number): TextLabel
 		UI.Label({
-			Position = UDim2.fromOffset(10, y),
-			Size = UDim2.new(0.45, -10, 0, height),
+			Position = UDim2.fromOffset(12, y),
+			Size = UDim2.new(0.45, -12, 0, height),
 			Text = caption,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = UI.Theme.SubText,
-			MaxText = 16,
-			Outline = 2,
+			TextColor3 = UI.Theme.Text2,
+			MaxText = 15,
 			Parent = frame,
 		})
 		return UI.Label({
 			Position = UDim2.new(0.45, 0, 0, y),
-			Size = UDim2.new(0.55, -10, 0, height),
+			Size = UDim2.new(0.55, -12, 0, height),
 			Text = "0",
 			TextXAlignment = Enum.TextXAlignment.Right,
+			TextColor3 = UI.Theme.Text,
 			MaxText = maxText,
-			Outline = 2.5,
 			Font = UI.Fonts and UI.Fonts.Number or UI.Font,
 			Parent = frame,
 		})
@@ -634,14 +709,13 @@ local function ensureHud()
 		Position = UDim2.fromOffset(6, 114),
 		Size = UDim2.new(1, -12, 0, 30),
 		Text = T("bot.training.popped"),
-		TextColor3 = UI.Theme.Yellow,
-		MaxText = 26,
-		Outline = 3,
+		TextColor3 = UI.Theme.Up,
+		MaxText = 22,
 		Visible = false,
 		Font = UI.Fonts and UI.Fonts.Pop or UI.Font,
 		Parent = frame,
 	})
-	dps.TextColor3 = UI.Theme.Yellow
+	dps.TextColor3 = UI.Theme.Accent
 	hud = { Frame = frame, Dps = dps, Total = total, Last = last, Popped = popped }
 end
 
@@ -760,7 +834,7 @@ local function updateDummy(model: Model)
 	local hp = tonumber(model:GetAttribute("Hp")) or maxHp
 	local ratio = math.clamp(hp / math.max(1, maxHp), 0, 1)
 	entry.Fill.Size = UDim2.fromScale(ratio, 1)
-	entry.Fill.BackgroundColor3 = Color3.fromRGB(255, 65, 75):Lerp(Color3.fromRGB(70, 210, 80), ratio)
+	entry.Fill.BackgroundColor3 = hpColor(ratio)
 end
 
 local function addDummy(instance: Instance)
@@ -782,31 +856,41 @@ local function addDummy(instance: Instance)
 		gui.ResetOnSpawn = false
 		gui.Adornee = head
 		local distance = tonumber(model:GetAttribute("Distance")) or 0
+		-- AKYTEX über der Welt: Builder Sans Bold, feine dunkle Kontur, schlanker Balken Up -> Warn -> Down
+		local fonts = UI and UI.Fonts
 		local label = Instance.new("TextLabel")
 		label.BackgroundTransparency = 1
 		label.Size = UDim2.new(1, 0, 0, 18)
-		label.Font = Enum.Font.FredokaOne
+		label.Font = if fonts then fonts.Main else Enum.Font.BuilderSansBold
 		label.TextScaled = true
-		label.TextColor3 = Color3.new(1, 1, 1)
-		label.TextStrokeTransparency = 0.2
+		label.TextColor3 = if UI then UI.Theme.Text else Color3.new(1, 1, 1)
+		label.TextStrokeColor3 = Color3.new(0, 0, 0)
+		label.TextStrokeTransparency = 0.6
 		label.Text = T("bot.training.dummy", math.floor(distance + 0.5))
 		label.Parent = gui
 		local back = Instance.new("Frame")
-		back.Position = UDim2.new(0.1, 0, 0, 21)
-		back.Size = UDim2.new(0.8, 0, 0, 10)
-		back.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+		back.Position = UDim2.new(0.1, 0, 0, 22)
+		back.Size = UDim2.new(0.8, 0, 0, 7)
+		back.BackgroundColor3 = if UI then UI.Theme.Bg else Color3.fromRGB(11, 15, 23)
+		back.BackgroundTransparency = 0.15
 		back.BorderSizePixel = 0
 		back.Parent = gui
 		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 5)
+		corner.CornerRadius = UDim.new(1, 0)
 		corner.Parent = back
+		local backStroke = Instance.new("UIStroke")
+		backStroke.Thickness = 1
+		backStroke.Color = Color3.new(0, 0, 0)
+		backStroke.Transparency = 0.5
+		backStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		backStroke.Parent = back
 		local fill = Instance.new("Frame")
 		fill.Size = UDim2.fromScale(1, 1)
 		fill.BorderSizePixel = 0
-		fill.BackgroundColor3 = Color3.fromRGB(70, 210, 80)
+		fill.BackgroundColor3 = hpColor(1)
 		fill.Parent = back
 		local fillCorner = Instance.new("UICorner")
-		fillCorner.CornerRadius = UDim.new(0, 5)
+		fillCorner.CornerRadius = UDim.new(1, 0)
 		fillCorner.Parent = fill
 		gui.Parent = head
 		local conns: { RBXScriptConnection } = {}
@@ -842,7 +926,7 @@ local function refreshWindow()
 	end
 	for key, card in cards do
 		local equipped = inRange and rangeLoadout[card.Slot] == key
-		card.Button.SetColor(if equipped then UI.Theme.Green else card.Color)
+		card.Button.SetVariant(if equipped then "Success" else "Secondary")
 		card.Button.SetSub(if equipped then T("bot.training.equipped") else card.Stats)
 	end
 	refreshBestLabels()
@@ -890,7 +974,7 @@ local function startPractice(diff: string)
 end
 
 local function buildWindow()
-	win = UI.Window(T("bot.training.title"), 660, 560, UI.Theme.Cyan)
+	win = UI.Window(T("bot.training.title"), 660, 560, UI.Theme.Accent)
 	local content = win.Content
 	local order = 0
 	local function nextOrder(): number
@@ -901,8 +985,9 @@ local function buildWindow()
 		Size = UDim2.new(1, 0, 0, 26),
 		Text = T("bot.training.hint"),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 18,
-		Outline = 2,
+		TextColor3 = UI.Theme.Text2,
+		Font = UI.Fonts and UI.Fonts.Body or UI.Font,
+		MaxText = 17,
 		LayoutOrder = nextOrder(),
 		Parent = content,
 	})
@@ -913,16 +998,16 @@ local function buildWindow()
 		Text = T("bot.training.goRange"),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		TextWrapped = true,
+		Font = UI.Fonts and UI.Fonts.Body or UI.Font,
 		MaxText = 16,
-		Outline = 2,
 		LayoutOrder = 1,
 		Parent = row,
 	})
 	UI.Button({
 		Size = UDim2.fromOffset(186, 44),
 		Text = T("bot.training.goButton"),
-		Color = UI.Theme.Green,
-		MaxText = 20,
+		Variant = "Primary",
+		MaxText = 18,
 		LayoutOrder = 2,
 		Parent = row,
 	}, goToRange)
@@ -935,29 +1020,28 @@ local function buildWindow()
 			Size = UDim2.new(1, 0, 0, 22),
 			Text = T("bot.training.slot." .. slot),
 			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = UI.Theme.SubText,
-			MaxText = 16,
-			Outline = 2,
+			TextColor3 = UI.Theme.Text2,
+			MaxText = 15,
 			LayoutOrder = nextOrder(),
 			Parent = content,
 		})
 		local grid = UI.Grid(content, nextOrder(), 196, 66)
-		local color = slotColor(slot)
 		for i, def in weaponsOf(slot) do
 			local stats = statsText(def)
+			-- Waffen-Karte = Sekundär-Knopf (Surface2 + Rahmen); ausgerüstet = Erfolg (Up)
 			local button = UI.Button({
 				Name = def.Key,
 				Text = weaponName(def),
 				Sub = stats,
-				Color = color,
-				MaxText = 20,
+				Variant = "Secondary",
+				MaxText = 18,
 				SubMax = 13,
 				LayoutOrder = i,
 				Parent = grid,
 			}, function()
 				chooseWeapon(def)
 			end)
-			cards[def.Key] = { Button = button, Slot = slot, Def = def, Stats = stats, Color = color }
+			cards[def.Key] = { Button = button, Slot = slot, Def = def, Stats = stats }
 		end
 	end
 
@@ -967,8 +1051,9 @@ local function buildWindow()
 		Size = UDim2.new(1, 0, 0, 22),
 		Text = T("bot.training.duelHint"),
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = UI.Theme.Text2,
+		Font = UI.Fonts and UI.Fonts.Body or UI.Font,
 		MaxText = 16,
-		Outline = 2,
 		LayoutOrder = nextOrder(),
 		Parent = content,
 	})
@@ -977,8 +1062,8 @@ local function buildWindow()
 		UI.Button({
 			Size = UDim2.fromOffset(146, 46),
 			Text = T("bot.diff." .. diff),
-			Color = diffColor(diff),
-			MaxText = 20,
+			Variant = diffVariant(diff),
+			MaxText = 18,
 			LayoutOrder = i,
 			Parent = duelRow,
 		}, function()
@@ -992,8 +1077,9 @@ local function buildWindow()
 		Size = UDim2.new(1, 0, 0, 22),
 		Text = T("bot.training.aimHint"),
 		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = UI.Theme.Text2,
+		Font = UI.Fonts and UI.Fonts.Body or UI.Font,
 		MaxText = 15,
-		Outline = 2,
 		LayoutOrder = nextOrder(),
 		Parent = content,
 	})
@@ -1005,13 +1091,12 @@ local function buildWindow()
 	for _, m in modes do
 		local card = UI.Card({ Size = UDim2.new(1, 0, 0, 64), LayoutOrder = nextOrder(), Parent = content })
 		UI.Label({
-			Position = UDim2.fromOffset(12, 4),
-			Size = UDim2.new(1, -190, 0, 26),
+			Position = UDim2.fromOffset(12, 6),
+			Size = UDim2.new(1, -190, 0, 24),
 			Text = T("bot.training." .. string.lower(m.Mode)),
 			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = UI.Theme.Yellow,
-			MaxText = 22,
-			Outline = 2.5,
+			TextColor3 = UI.Theme.Text,
+			MaxText = 19,
 			Parent = card,
 		})
 		UI.Label({
@@ -1019,19 +1104,20 @@ local function buildWindow()
 			Size = UDim2.new(0.5, -100, 0, 28),
 			Text = m.Hint,
 			TextXAlignment = Enum.TextXAlignment.Left,
+			TextColor3 = UI.Theme.Text2,
 			TextWrapped = true,
+			Font = UI.Fonts and UI.Fonts.Body or UI.Font,
 			MaxText = 14,
-			Outline = 2,
 			Parent = card,
 		})
+		-- persönlicher Bestwert (Server-Stats + Sitzung) in Up (Gewinn/+ Werte)
 		bestLabels[m.Mode] = UI.Label({
 			Position = UDim2.new(0.5, -84, 0, 30),
 			Size = UDim2.new(0.5, -104, 0, 28),
 			Text = bestText(m.Mode),
 			TextXAlignment = Enum.TextXAlignment.Right,
-			TextColor3 = UI.Theme.Cash,
+			TextColor3 = UI.Theme.Up,
 			MaxText = 15,
-			Outline = 2,
 			Parent = card,
 		})
 		UI.Button({
@@ -1039,8 +1125,8 @@ local function buildWindow()
 			Position = UDim2.new(1, -10, 0.5, 0),
 			Size = UDim2.fromOffset(160, 46),
 			Text = T("bot.training.start"),
-			Color = UI.Theme.Orange,
-			MaxText = 20,
+			Variant = "Primary",
+			MaxText = 18,
 			Parent = card,
 		}, function()
 			startRun(m.Mode)
@@ -1122,6 +1208,12 @@ function Training.Start()
 			refreshWindow()
 		end)
 		hooks.On("Combat:Hit", onHit)
+		-- Bestwerte vom Server (Data.Stats) neu anzeigen, sobald sie sich ändern
+		hooks.On("State", function(_state: any, changed: any)
+			if type(changed) == "table" and changed.Stats then
+				refreshBestLabels()
+			end
+		end)
 		hooks.On("Shot", function()
 			onShot()
 		end)

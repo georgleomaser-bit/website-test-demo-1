@@ -13,8 +13,12 @@
 --    Skill-Bewegung (docs/SKILL-WUENSCHE.md: Rutsch-Sprung-Ketten, Doppelsprung, Wand-Absprung, Schwerkraft-Lift)
 --    ist im Budget eingeplant (SkillAirJumps, Kontext-Regeln, Lobby-Schwerkraft) und gibt keinen Fehlalarm;
 --    Lag-Hänger (eingefrorene Position bei Bewegung) werden als Nachholen gewertet, nicht als Teleport.
+--    Nach Raketensprung/Rückstoß gilt das Impuls-Tempo bis zur ersten Landung (höchstens ImpulseAirSeconds länger
+--    als die Gnade), weil der Client den Schwung in der Luft behält. Lokal ausgeblendete Lobby-Teile
+--    (Kisten-Automat, VIP-Tür für VIPs) zählen nicht als Wand.
 --  Verdacht (C12.4): Gewichte aus Config.Security.Weights, Abbau 1 Punkt je 30 s, ≥ 25 Prüf-Flag (gespeichert in
 --    CC_Mod_v1 F_<yyyymmdd>_<shard>), ≥ 60 Kick. Honeypot-Remote "GrantCoins" = +100, Kick, Flag.
+--    Mismatch-Quote je SCHUSS: ein Schuss zählt nur dann als abgelehnt, wenn keiner seiner Treffer anerkannt wurde.
 --  Meldungen (C9 "Report"): 3 pro 10 min, Server hängt einen Statistik-Schnappschuss an (R_<yyyymmdd>_<shard>).
 --
 --  Öffentliche API (C5.7):
@@ -98,6 +102,7 @@ type Track = {
 	Anchor: Vector3?, -- Ziel des letzten Server-Teleports
 	ImpulseUntil: number,
 	ImpulseSpeed: number,
+	ImpulseAirUntil: number, -- Impuls-Schwung in der Luft: Tempo-Erlaubnis bleibt bis zur Landung (höchstens bis hier)
 	ExemptUntil: number,
 	GroundY: number?,
 	AirSince: number?,
@@ -130,7 +135,8 @@ type ShotStats = {
 	Hits: number,
 	Heads: number,
 	Pops: number,
-	Claims: { boolean },
+	Claims: { boolean }, -- je SCHUSS mit Treffer-Behauptung: true = mind. ein Treffer anerkannt, false = alle abgelehnt
+	Rejects: number, -- abgelehnte Treffer-Behauptungen seit dem letzten Schuss (Hitbox, je Kugel)
 	StatsFlagged: boolean,
 }
 
@@ -487,6 +493,7 @@ local function statsOf(p: Player): ShotStats
 			Heads = 0,
 			Pops = 0,
 			Claims = {},
+			Rejects = 0,
 			StatsFlagged = false,
 		}
 		shotStats[p] = st
@@ -802,13 +809,12 @@ local function addPoints(p: Player, reason: string, points: number, evidence: an
 		return
 	end
 
-	-- einzelne abgelehnte Treffer-Behauptung -> Mismatch-Quote
+	-- abgelehnte Treffer-Behauptung (je Kugel): wird beim nächsten OnShot zum Schuss zusammengefasst.
+	-- Ein Schrot-Schuss mit ein paar knapp danebenliegenden Kugeln ist so KEIN Mismatch (ehrliche Spieler),
+	-- nur Schüsse, bei denen ALLE behaupteten Treffer abgelehnt wurden, zählen gegen die Quote.
 	if key == "Hitbox" then
 		local st = statsOf(p)
-		table.insert(st.Claims, false)
-		while #st.Claims > (SEC.Stats.MismatchClaims or 30) do
-			table.remove(st.Claims, 1)
-		end
+		st.Rejects = math.min(st.Rejects + 1, 64)
 	end
 
 	local extra = 0
@@ -845,7 +851,7 @@ local function addPoints(p: Player, reason: string, points: number, evidence: an
 	end
 end
 
--- Mismatch-Quote prüfen (> 40 % abgelehnte Behauptungen über 30 Behauptungen -> +10)
+-- Mismatch-Quote prüfen (> 40 % Schüsse mit nur abgelehnten Treffer-Behauptungen über 30 solche Schüsse -> +10)
 local function checkMismatch(p: Player, st: ShotStats)
 	local stats = SEC.Stats
 	local needed = stats.MismatchClaims or 30
@@ -899,7 +905,9 @@ type Effective = { SpeedMult: number, VerticalMult: number, AirJumps: number, Mo
 local function capacityFor(track: Track, now: number): (number, number)
 	local speedMult = math.max(track.Allowance.SpeedMult, track.EffSpeed)
 	local rate = SEC.BaseAllowedSpeed * speedMult * SEC.SpeedTolerance + SEC.SpeedSlack
-	if now < track.ImpulseUntil then
+	-- Impuls-Gnade, danach noch bis zur ersten Landung (der Client behält den Raketen-/Rückstoß-Schwung in der
+	-- Luft mit sehr kleiner Bremsung – Mondsprung oder Sturz von oben dauern länger als die Gnade)
+	if now < math.max(track.ImpulseUntil, track.ImpulseAirUntil) then
 		rate = math.max(rate, track.ImpulseSpeed)
 	end
 	return rate, rate * SEC.BucketSeconds
@@ -997,6 +1005,7 @@ local function newTrack(): Track
 		Anchor = nil,
 		ImpulseUntil = 0,
 		ImpulseSpeed = 0,
+		ImpulseAirUntil = 0,
 		ExemptUntil = 0,
 		GroundY = nil,
 		AirSince = nil,
@@ -1008,6 +1017,12 @@ local function newTrack(): Track
 		Allowance = { SpeedMult = 1, VerticalMult = 1, AirJumps = 0 },
 		Probe = probe,
 	}
+end
+
+-- Nur Spieler, die noch im Spiel sind (PlayerRemoving-Handler anderer Services rufen NoteTeleport/
+-- SetAllowance evtl. NACH unserem Aufräumen auf -> sonst bliebe ein Track für immer liegen)
+local function present(p: any): boolean
+	return typeof(p) == "Instance" and p:IsA("Player") and p.Parent == Players
 end
 
 local function trackOf(p: Player): Track
@@ -1073,6 +1088,11 @@ end
 -- Treffer, die kein Noclip sind: VIP-Tür für VIPs (lokal offen), Puppen/Bots/Combatants
 local function ignorableHit(p: Player, inst: Instance): boolean
 	if inst.Name == "VipDoor" and (p:GetAttribute("Vip") == true or p:GetAttribute("VIP") == true) then
+		return true
+	end
+	-- Kisten-Automat: der Client blendet ihn lokal aus (Shop: bezahlte Zufallsitems nicht erlaubt/noch unbekannt)
+	-- -> ehrliche Spieler laufen dort hindurch, wo der Server ihn noch hat
+	if inst:FindFirstAncestor("CrateMachine") ~= nil then
 		return true
 	end
 	local model = inst:FindFirstAncestorOfClass("Model")
@@ -1239,6 +1259,10 @@ local function checkPlayer(p: Player, _dt: number)
 	local eff = effectiveAllowance(p, track, character)
 	track.EffSpeed = eff.SpeedMult
 	local impulse = now < track.ImpulseUntil
+	local grounded = isGrounded(track, root, humanoid)
+	if not impulse and track.ImpulseAirUntil > 0 and (grounded or now >= track.ImpulseAirUntil) then
+		track.ImpulseAirUntil = 0 -- gelandet (oder Obergrenze erreicht): ab jetzt normales Budget
+	end
 	local rate, capacity = capacityFor(track, now)
 	local elapsed = math.clamp(now - track.Time, 0, 2)
 	local dx, dz = pos.X - last.X, pos.Z - last.Z
@@ -1272,7 +1296,6 @@ local function checkPlayer(p: Player, _dt: number)
 		end
 	end
 	-- 4) Höhe und Fliegen
-	local grounded = isGrounded(track, root, humanoid)
 	if impulse then
 		-- Raketensprung/Rückstoß: höchsten Punkt merken, Luftzeit zählt erst nach der Gnade
 		track.GroundY = math.max(track.GroundY or pos.Y, pos.Y)
@@ -1314,7 +1337,7 @@ end
 -- ÖFFENTLICHE API (C5.7)
 -- ---------------------------------------------------------------------
 function AntiCheatService.NoteTeleport(p: Player, cf: CFrame)
-	if typeof(p) ~= "Instance" or not p:IsA("Player") or typeof(cf) ~= "CFrame" then
+	if not present(p) or typeof(cf) ~= "CFrame" then
 		return
 	end
 	local track = trackOf(p)
@@ -1333,7 +1356,7 @@ function AntiCheatService.NoteTeleport(p: Player, cf: CFrame)
 end
 
 function AntiCheatService.Grace(p: Player, kind: "Impulse" | "Launch" | "Teleport", seconds: number, maxSpeed: number?)
-	if typeof(p) ~= "Instance" or not p:IsA("Player") then
+	if not present(p) then
 		return
 	end
 	local track = trackOf(p)
@@ -1352,11 +1375,12 @@ function AntiCheatService.Grace(p: Player, kind: "Impulse" | "Launch" | "Telepor
 		track.ImpulseSpeed = speed :: number
 	end
 	track.ImpulseUntil = math.max(track.ImpulseUntil, now + duration)
+	track.ImpulseAirUntil = math.max(track.ImpulseAirUntil, track.ImpulseUntil + (tonumber(SEC.ImpulseAirSeconds) or 3))
 	track.Budget = math.max(track.Budget, track.ImpulseSpeed * SEC.BucketSeconds)
 end
 
 function AntiCheatService.SetAllowance(p: Player, a: { SpeedMult: number?, VerticalMult: number?, AirJumps: number? })
-	if typeof(p) ~= "Instance" or not p:IsA("Player") then
+	if not present(p) then
 		return
 	end
 	local raw: any = if type(a) == "table" then a else {}
@@ -1369,7 +1393,7 @@ function AntiCheatService.SetAllowance(p: Player, a: { SpeedMult: number?, Verti
 end
 
 function AntiCheatService.Exempt(p: Player, seconds: number)
-	if typeof(p) ~= "Instance" or not p:IsA("Player") then
+	if not present(p) then
 		return
 	end
 	local track = trackOf(p)
@@ -1659,14 +1683,17 @@ function AntiCheatService.Start()
 		local st = statsOf(p)
 		local h = if Util.IsFinite(hits) then math.max(0, math.floor(hits)) else 0
 		local hd = if Util.IsFinite(heads) then math.clamp(math.floor(heads), 0, h) else 0
+		local rejected = st.Rejects
+		st.Rejects = 0
 		st.Shots += 1
 		st.Hits += h
 		st.Heads += hd
 		if h > 0 then
 			st.ShotsHit += 1
-			for _ = 1, math.min(h, 16) do
-				table.insert(st.Claims, true)
-			end
+		end
+		-- Mismatch-Quote je Schuss (nicht je Kugel): anerkannt, sobald ein Treffer zählt
+		if h > 0 or rejected > 0 then
+			table.insert(st.Claims, h > 0)
 			while #st.Claims > (SEC.Stats.MismatchClaims or 30) do
 				table.remove(st.Claims, 1)
 			end

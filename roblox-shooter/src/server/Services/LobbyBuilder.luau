@@ -49,6 +49,10 @@ local NEON = Enum.Material.Neon
 local WHITE = Color3.new(1, 1, 1)
 local P = MapKit.part
 local C = MapKit.Color
+-- AKYTEX-Look für Schilder/Tafeln (docs/STYLE-AKYTEX.md); Welt-Geometrie bleibt bunt
+local AKY = MapKit.Aky
+local FONT_TITLE = MapKit.Fonts.Title
+local FONT_TEXT = MapKit.Fonts.Text
 
 local root: Folder? = nil
 local pads: { PadInfo } = {}
@@ -102,19 +106,29 @@ local function prompt(parent: BasePart, attrs: { [string]: string }, action: str
 	return pp
 end
 
--- Schild-Tafel (Teil + SurfaceGui vorne)
+-- Schild-Tafel (Teil + SurfaceGui vorne): dunkle AKYTEX-Tafel, accent = Rahmenfarbe, textColor = Schrift
 local function signBoard(
 	parent: Instance,
 	name: string,
 	cf: CFrame,
 	size: Vector3,
 	text: string,
-	color: Color3,
+	accent: Color3?,
 	textColor: Color3?
 ): Part
-	local board = P({ Name = name, CFrame = cf, Size = size, Color = color, Parent = parent })
-	MapKit.sign(board, Enum.NormalId.Front, { { Text = text, Color = textColor or WHITE } })
+	local board = P({ Name = name, CFrame = cf, Size = size, Color = AKY.Surface, Parent = parent })
+	MapKit.sign(board, Enum.NormalId.Front, { { Text = text, Color = textColor or AKY.Text } }, { Accent = accent })
 	return board
+end
+
+-- Rückseite eines Schilds mit demselben Text (beidseitig lesbar)
+local function signBack(board: BasePart, text: string, accent: Color3?, textColor: Color3?)
+	MapKit.sign(
+		board,
+		Enum.NormalId.Back,
+		{ { Text = text, Color = textColor or AKY.Text } },
+		{ Name = "SignBack", Accent = accent }
+	)
 end
 
 -- ---------------------------------------------------------------------
@@ -297,11 +311,11 @@ local function buildPlaza(parent: Folder)
 			Name = "SignBoard",
 			CFrame = CFrame.lookAt(at, at + s.Look),
 			Size = V(7, 1.8, 0.3),
-			Color = C("Navy"),
+			Color = AKY.Surface,
 			Parent = plaza,
 		})
-		MapKit.sign(board, Enum.NormalId.Front, { { Text = bi(s.Key), Color = C("Yellow") } })
-		MapKit.sign(board, Enum.NormalId.Back, { { Text = bi(s.Key), Color = C("Yellow") } }, { Name = "SignBack" })
+		MapKit.sign(board, Enum.NormalId.Front, { { Text = bi(s.Key), Color = AKY.Text } }, { Accent = AKY.Accent })
+		signBack(board, bi(s.Key), AKY.Accent)
 	end
 end
 
@@ -428,15 +442,10 @@ local function buildDuelHall(parent: Folder)
 		CFrame.lookAt(s, s + V(0, 0, 1)),
 		V(40, 6, 1),
 		bi("world.sign.duels"),
-		C("Navy"),
-		C("Yellow")
+		AKY.Accent,
+		AKY.Text
 	)
-	MapKit.sign(
-		board,
-		Enum.NormalId.Back,
-		{ { Text = bi("world.sign.duels"), Color = C("Yellow") } },
-		{ Name = "SignBack" }
-	)
+	signBack(board, bi("world.sign.duels"), AKY.Accent)
 	deco({
 		Name = "ArchTrim",
 		CFrame = CFrame.new(s.X, s.Y + 3.3, s.Z),
@@ -515,15 +524,10 @@ local function buildCrownArea(parent: Folder)
 		CFrame.lookAt(signPos, signPos + V(0, 0, 1)),
 		V(32, 4, 0.6),
 		bi("world.sign.crown"),
-		C("Navy"),
-		C("Gold")
+		AKY.Warn,
+		AKY.Warn
 	)
-	MapKit.sign(
-		crownSign,
-		Enum.NormalId.Back,
-		{ { Text = bi("world.sign.crown"), Color = C("Gold") } },
-		{ Name = "SignBack" }
-	)
+	signBack(crownSign, bi("world.sign.crown"), AKY.Warn, AKY.Warn)
 
 	-- Herausforderer-Linie: 6 Neon-Kreise r 1.6
 	for _, pos in ipairs(Layout.CrownLine) do
@@ -551,14 +555,14 @@ local function buildCrownArea(parent: Folder)
 		CFrame.lookAt(lineSignPos, lineSignPos + V(-1, 0, 0)),
 		V(9, 1.8, 0.3),
 		bi("world.sign.challengers"),
-		C("Navy"),
-		C("Gold")
+		AKY.Warn,
+		AKY.Text
 	)
 
 	-- Königs-Tafel 20×10 bei (128,10,0), Blick nach Westen
 	local def = Layout.CrownBoard
 	local cf = CFrame.lookAt(def.Pos, def.Pos + def.Look)
-	local boardPart = P({ Name = "CrownBoard", CFrame = cf, Size = def.Size, Color = C("Navy"), Parent = area })
+	local boardPart = P({ Name = "CrownBoard", CFrame = cf, Size = def.Size, Color = AKY.Surface, Parent = area })
 	P({
 		Name = "BoardLeg",
 		CFrame = cf * CFrame.new(-8, -5, 0.8),
@@ -581,6 +585,8 @@ local function buildCrownArea(parent: Folder)
 		Parent = area,
 	})
 
+	-- Königs-Tafel im AKYTEX-Look: dunkle Glas-Tafel, Gold-Akzent (Warn), Titel Michroma, Namen Builder Sans.
+	-- Instanz-Namen "KingBoard"/"Avatar"/"Name"/"Streak" bleiben (QueueService schreibt hinein).
 	local gui = Instance.new("SurfaceGui")
 	gui.Name = "KingBoard"
 	gui.Face = Enum.NormalId.Front
@@ -588,56 +594,79 @@ local function buildCrownArea(parent: Folder)
 	gui.PixelsPerStud = 30
 	gui.LightInfluence = 0
 	gui.MaxDistance = 400
+	gui.ResetOnSpawn = false
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.fromScale(1, 1)
+	panel.BackgroundColor3 = AKY.Bg
+	panel.BackgroundTransparency = 0.12
+	panel.BorderSizePixel = 0
+	panel.ZIndex = 0
+	local panelCorner = Instance.new("UICorner")
+	panelCorner.CornerRadius = UDim.new(0, 16)
+	panelCorner.Parent = panel
+	local panelStroke = Instance.new("UIStroke")
+	panelStroke.Thickness = 1.5
+	panelStroke.Color = AKY.Warn
+	panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	panelStroke.Parent = panel
+	panel.Parent = gui
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
 	title.BackgroundTransparency = 1
-	title.Position = UDim2.fromScale(0.05, 0.04)
-	title.Size = UDim2.fromScale(0.9, 0.22)
-	title.Font = Enum.Font.LuckiestGuy
+	title.Position = UDim2.fromScale(0.05, 0.06)
+	title.Size = UDim2.fromScale(0.9, 0.16)
+	title.Font = FONT_TITLE
 	title.TextScaled = true
-	title.TextColor3 = C("Gold")
+	title.TextColor3 = AKY.Warn
 	title.Text = "👑 " .. bi("world.crown.king")
-	local titleStroke = Instance.new("UIStroke")
-	titleStroke.Thickness = 5
-	titleStroke.Parent = title
 	title.Parent = gui
+	local underline = Instance.new("Frame")
+	underline.Name = "TitleLine"
+	underline.AnchorPoint = Vector2.new(0.5, 0)
+	underline.Position = UDim2.fromScale(0.5, 0.245)
+	underline.Size = UDim2.fromScale(0.3, 0.012)
+	underline.BackgroundColor3 = AKY.Warn
+	underline.BorderSizePixel = 0
+	underline.Parent = gui
 	local avatar = Instance.new("ImageLabel")
 	avatar.Name = "Avatar"
-	avatar.BackgroundColor3 = C("NavyLight")
+	avatar.BackgroundColor3 = AKY.Surface2
 	avatar.BorderSizePixel = 0
-	avatar.Position = UDim2.fromScale(0.05, 0.3)
-	avatar.Size = UDim2.fromScale(0.3, 0.62)
+	avatar.Position = UDim2.fromScale(0.05, 0.31)
+	avatar.Size = UDim2.fromScale(0.28, 0.6)
 	avatar.Image = ""
 	avatar.ScaleType = Enum.ScaleType.Fit
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0.12, 0)
+	corner.CornerRadius = UDim.new(0, 12)
 	corner.Parent = avatar
+	local avatarStroke = Instance.new("UIStroke")
+	avatarStroke.Thickness = 1.5
+	avatarStroke.Color = AKY.Border
+	avatarStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	avatarStroke.Parent = avatar
 	avatar.Parent = gui
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name = "Name"
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Position = UDim2.fromScale(0.39, 0.32)
-	nameLabel.Size = UDim2.fromScale(0.58, 0.3)
-	nameLabel.Font = Enum.Font.FredokaOne
+	nameLabel.Position = UDim2.fromScale(0.38, 0.34)
+	nameLabel.Size = UDim2.fromScale(0.58, 0.28)
+	nameLabel.Font = FONT_TEXT
 	nameLabel.TextScaled = true
-	nameLabel.TextColor3 = WHITE
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.TextColor3 = AKY.Text
 	nameLabel.Text = bi("world.crown.empty")
-	local nameStroke = Instance.new("UIStroke")
-	nameStroke.Thickness = 4
-	nameStroke.Parent = nameLabel
 	nameLabel.Parent = gui
 	local streak = Instance.new("TextLabel")
 	streak.Name = "Streak"
 	streak.BackgroundTransparency = 1
-	streak.Position = UDim2.fromScale(0.39, 0.64)
-	streak.Size = UDim2.fromScale(0.58, 0.26)
-	streak.Font = Enum.Font.FredokaOne
+	streak.Position = UDim2.fromScale(0.38, 0.66)
+	streak.Size = UDim2.fromScale(0.58, 0.2)
+	streak.Font = FONT_TEXT
 	streak.TextScaled = true
-	streak.TextColor3 = C("Yellow")
+	streak.TextXAlignment = Enum.TextXAlignment.Left
+	streak.TextColor3 = AKY.Text2
 	streak.Text = ""
-	local streakStroke = Instance.new("UIStroke")
-	streakStroke.Thickness = 4
-	streakStroke.Parent = streak
 	streak.Parent = gui
 	gui.Parent = boardPart
 	crownBoard = boardPart
@@ -689,10 +718,15 @@ local function buildRange(parent: Folder): Model
 			Name = "LaneNumber",
 			CFrame = CFrame.new(-68.5, 0.07, z),
 			Size = V(3, 0.05, 3),
-			Color = C("Navy"),
+			Color = AKY.Surface,
 			Parent = model,
 		})
-		MapKit.sign(label, Enum.NormalId.Top, { { Text = tostring(i), Color = C("Yellow") } }, { Name = "LaneSign" })
+		MapKit.sign(
+			label,
+			Enum.NormalId.Top,
+			{ { Text = tostring(i), Color = AKY.Text } },
+			{ Name = "LaneSign", Accent = AKY.Accent, Title = false }
+		)
 		-- Bullseye an der Rückwand
 		local tx = r.BackX + 1.2
 		for k, d in ipairs({ 8, 5, 2 }) do
@@ -730,13 +764,14 @@ local function buildRange(parent: Folder): Model
 			Name = "DistanceSign",
 			CFrame = CFrame.lookAt(V(x, 4.8, -45), V(x + 1, 4.8, -45)),
 			Size = V(5, 1.4, 0.3),
-			Color = C("Navy"),
+			Color = AKY.Surface,
 			Parent = model,
 		})
 		MapKit.sign(
 			board,
 			Enum.NormalId.Front,
-			{ { Text = bi("world.sign.distance", r.DummyDistances[i]), Color = WHITE } }
+			{ { Text = bi("world.sign.distance", r.DummyDistances[i]), Color = AKY.Text } },
+			{ Title = false }
 		)
 		post:SetAttribute("Distance", r.DummyDistances[i])
 		deco({
@@ -804,15 +839,10 @@ local function buildRange(parent: Folder): Model
 		CFrame.lookAt(beamPos, beamPos + V(1, 0, 0)),
 		V(42, 3, 1.5),
 		bi("world.sign.training"),
-		C("Navy"),
-		C("Yellow")
+		AKY.Accent,
+		AKY.Text
 	)
-	MapKit.sign(
-		beam,
-		Enum.NormalId.Back,
-		{ { Text = bi("world.sign.training"), Color = C("Yellow") } },
-		{ Name = "SignBack" }
-	)
+	signBack(beam, bi("world.sign.training"), AKY.Accent)
 
 	-- Bot-Duell-Kabine: 4 Pads mit Prompt-Attribut Practice = "<Stufe>"
 	table.clear(booth)
@@ -844,8 +874,8 @@ local function buildRange(parent: Folder): Model
 			CFrame.lookAt(signPos, signPos + V(0, 0, -1)),
 			V(6, 1.4, 0.3),
 			bi("world.diff." .. difficulty),
-			color,
-			WHITE
+			color, -- Stufen-Farbe nur als Rahmen-Akzent
+			AKY.Text
 		)
 		table.insert(booth, { Pos = V(x, r.BoothPadSize.Y, r.BoothZ), Difficulty = difficulty })
 	end
@@ -873,8 +903,8 @@ local function buildRange(parent: Folder): Model
 		CFrame.lookAt(canopySign, canopySign + V(0, 0, -1)),
 		V(30, 2, 0.4),
 		bi("world.sign.botBooth"),
-		C("Navy"),
-		C("Yellow")
+		AKY.Accent,
+		AKY.Text
 	)
 
 	-- Waffen-Regal (öffnet das Training-Fenster)
@@ -895,8 +925,8 @@ local function buildRange(parent: Folder): Model
 		CFrame.lookAt(rackTop, rackTop + V(0, 0, 1)),
 		V(14, 2, 0.4),
 		bi("world.sign.rack"),
-		C("Navy"),
-		C("Yellow")
+		AKY.Accent,
+		AKY.Text
 	)
 	-- Spielzeug-Blaster an der Wand (orange Spitze, Muss-Regel 12)
 	local blasterColors = { C("Pink"), C("Mint"), C("Lilac"), C("Blue") }
@@ -974,8 +1004,10 @@ local function buildKiosk(def: any, parent: Folder)
 		Parent = model,
 	})
 	local signCf = at(0, 9.3, -2.9)
-	local sign = P({ Name = "KioskSign", CFrame = signCf, Size = V(7.5, 1.8, 0.3), Color = C("Navy"), Parent = model })
-	MapKit.sign(sign, Enum.NormalId.Front, { { Text = bi(def.Label), Color = C("Yellow") } })
+	local sign =
+		P({ Name = "KioskSign", CFrame = signCf, Size = V(7.5, 1.8, 0.3), Color = AKY.Surface, Parent = model })
+	-- Buden-Farbe nur als Rahmen-Akzent (die Bude selbst bleibt bunt)
+	MapKit.sign(sign, Enum.NormalId.Front, { { Text = bi(def.Label), Color = AKY.Text } }, { Accent = color })
 	prompt(counter, { Window = def.Window }, bi("world.prompt.open"), bi(def.Label))
 	model.WorldPivot = base
 	model.Parent = parent
@@ -1023,9 +1055,19 @@ local function buildCrateMachine(parent: Folder): Model
 		at(0, 15.2, 0).Position,
 		2.6
 	)
-	local sign =
-		P({ Name = "CrateSign", CFrame = at(0, 13, -6.2), Size = V(10, 1.6, 0.3), Color = C("Navy"), Parent = model })
-	MapKit.sign(sign, Enum.NormalId.Front, { { Text = bi("world.sign.crates"), Color = C("Yellow") } })
+	local sign = P({
+		Name = "CrateSign",
+		CFrame = at(0, 13, -6.2),
+		Size = V(10, 1.6, 0.3),
+		Color = AKY.Surface,
+		Parent = model,
+	})
+	MapKit.sign(
+		sign,
+		Enum.NormalId.Front,
+		{ { Text = bi("world.sign.crates"), Color = AKY.Text } },
+		{ Accent = AKY.Warn }
+	)
 	local pp = prompt(foot, { Window = "Shop", Tab = "Crates" }, bi("world.prompt.open"), bi("world.sign.crates"))
 	pp.UIOffset = Vector2.new(0, 40)
 	model.WorldPivot = base
@@ -1043,6 +1085,10 @@ end
 
 -- ---------------------------------------------------------------------
 -- 7) Bestenlisten-Tafeln (leere SurfaceGui "Board" mit 10 Zeilen-Rahmen, Titel zweisprachig)
+--    AKYTEX: dunkle Glas-Tafel, Titel Michroma, Zeilen Surface2/Bg im Wechsel. Das ist nur der Platzhalter:
+--    LeaderboardService legt seine eigene Tafel ("CC_Board") auf dieselbe Fläche. Damit beide sich nicht
+--    überdecken, liegt der Platzhalter dahinter (ZOffset −1) und schaltet sich ab, sobald eine andere
+--    SurfaceGui am Teil auftaucht. Die Namen "Board"/"Title"/"Row1".."Row10" bleiben (WorldTests, C5.3).
 -- ---------------------------------------------------------------------
 local function boardGui(part: BasePart, title: string)
 	local gui = Instance.new("SurfaceGui")
@@ -1052,35 +1098,68 @@ local function boardGui(part: BasePart, title: string)
 	gui.PixelsPerStud = 30
 	gui.LightInfluence = 0
 	gui.MaxDistance = 300
+	gui.ZOffset = -1
+	gui.ResetOnSpawn = false
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.fromScale(1, 1)
+	panel.BackgroundColor3 = AKY.Bg
+	panel.BackgroundTransparency = 0.12
+	panel.BorderSizePixel = 0
+	panel.ZIndex = 0
+	local panelCorner = Instance.new("UICorner")
+	panelCorner.CornerRadius = UDim.new(0, 16)
+	panelCorner.Parent = panel
+	local panelStroke = Instance.new("UIStroke")
+	panelStroke.Thickness = 1.5
+	panelStroke.Color = AKY.Border
+	panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	panelStroke.Parent = panel
+	panel.Parent = gui
 	local titleLabel = Instance.new("TextLabel")
 	titleLabel.Name = "Title"
 	titleLabel.BackgroundTransparency = 1
-	titleLabel.Position = UDim2.fromScale(0.04, 0.02)
-	titleLabel.Size = UDim2.fromScale(0.92, 0.14)
-	titleLabel.Font = Enum.Font.LuckiestGuy
+	titleLabel.Position = UDim2.fromScale(0.05, 0.03)
+	titleLabel.Size = UDim2.fromScale(0.9, 0.11)
+	titleLabel.Font = FONT_TITLE
 	titleLabel.TextScaled = true
-	titleLabel.TextColor3 = C("Yellow")
+	titleLabel.TextColor3 = AKY.Text
 	titleLabel.Text = title
-	local stroke = Instance.new("UIStroke")
-	stroke.Thickness = 5
-	stroke.Parent = titleLabel
 	titleLabel.Parent = gui
-	local rowHeight = 0.078
+	local underline = Instance.new("Frame")
+	underline.Name = "TitleLine"
+	underline.AnchorPoint = Vector2.new(0.5, 0)
+	underline.Position = UDim2.fromScale(0.5, 0.155)
+	underline.Size = UDim2.fromScale(0.24, 0.01)
+	underline.BackgroundColor3 = AKY.Accent
+	underline.BorderSizePixel = 0
+	underline.Parent = gui
+	local rowHeight = 0.07
 	for i = 1, Layout.BoardRows do
 		local row = Instance.new("Frame")
 		row.Name = "Row" .. i
-		row.Position = UDim2.fromScale(0.04, 0.18 + (i - 1) * (rowHeight + 0.004))
+		row.Position = UDim2.fromScale(0.04, 0.19 + (i - 1) * (rowHeight + 0.008))
 		row.Size = UDim2.fromScale(0.92, rowHeight)
-		row.BackgroundColor3 = if i % 2 == 0 then Color3.fromRGB(40, 46, 88) else Color3.fromRGB(52, 60, 110)
+		row.BackgroundColor3 = if i % 2 == 0 then AKY.Bg else AKY.Surface2
 		row.BackgroundTransparency = 0.1
 		row.BorderSizePixel = 0
 		row.LayoutOrder = i
 		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0.25, 0)
+		corner.CornerRadius = UDim.new(0, 10)
 		corner.Parent = row
 		row.Parent = gui
 	end
 	gui.Parent = part
+	-- Echte Tafel da (LeaderboardService) -> Platzhalter aus
+	local function check(child: Instance)
+		if child ~= gui and child:IsA("SurfaceGui") and child.Face == gui.Face then
+			gui.Enabled = false
+		end
+	end
+	for _, child in ipairs(part:GetChildren()) do
+		check(child)
+	end
+	part.ChildAdded:Connect(check)
 end
 
 local function buildBoards(parent: Folder)
@@ -1090,8 +1169,13 @@ local function buildBoards(parent: Folder)
 		local x = Layout.BoardX[i]
 		local pos = V(x, Layout.BoardY, Layout.BoardZ)
 		local cf = CFrame.lookAt(pos, pos + V(0, 0, -1)) -- Blick nach Norden
-		local part =
-			P({ Name = "Board_" .. key, CFrame = cf, Size = Layout.BoardSize, Color = C("Navy"), Parent = boardFolder })
+		local part = P({
+			Name = "Board_" .. key,
+			CFrame = cf,
+			Size = Layout.BoardSize,
+			Color = AKY.Surface,
+			Parent = boardFolder,
+		})
 		part:SetAttribute("Board", key)
 		P({
 			Name = "BoardPost",
@@ -1186,8 +1270,8 @@ local function buildVip(parent: Folder)
 		CFrame.lookAt(vipSign, vipSign + V(0, 0, 1)),
 		V(10, 2.4, 0.3),
 		bi("world.sign.vip"),
-		C("Navy"),
-		C("Gold")
+		AKY.Warn,
+		AKY.Warn
 	)
 	-- Sofas
 	for _, x in ipairs({ cx - 8, cx + 8 }) do
@@ -1273,7 +1357,13 @@ local function buildVip(parent: Folder)
 		Parent = vip,
 	})
 	vipDoor.CanCollide = true -- Server: zu. VIP-Clients schalten lokal CanCollide aus (WP9).
-	MapKit.sign(vipDoor, Enum.NormalId.Back, { { Text = bi("world.sign.vipOnly"), Color = C("Navy") } })
+	-- Aufschrift direkt auf der goldenen Tür (ohne Tafel): dunkle Schrift, feine Kontur
+	MapKit.sign(
+		vipDoor,
+		Enum.NormalId.Back,
+		{ { Text = bi("world.sign.vipOnly"), Color = AKY.Bg } },
+		{ Panel = false, Title = false }
+	)
 	-- Wendeltreppe: 14 Stufen à 1 Stud, 30° pro Stufe, letzte Stufe zeigt nach −Z auf den Balkon
 	local center = def.StairCenter
 	MapKit.cyl(

@@ -8,6 +8,9 @@
 --  Datenquelle: Roster aus Match:Start, live K/D/A aus Match:Elim, Schaden aus den Stats-Schnappschüssen
 --  in Match:RoundEnd / Match:End (Server-Werte gewinnen). Außerhalb eines Matches unsichtbar.
 --
+--  Stil: docs/STYLE-AKYTEX.md – Glas-Fenster, Zeilen als Karten (Surface2, 1-px-Rahmen), Team-Streifen links
+--  (eigenes Team Accent, Gegner Down), eigene Zeile mit Akzent-Rahmen, Zahlen in Titillium Web, Bots Muted.
+--
 --  Öffentliche API: Scoreboard.Show(on), Scoreboard.Toggle(), Scoreboard.IsOpen(), Scoreboard.Init(ctx), Scoreboard.Start()
 -- =====================================================================
 
@@ -62,15 +65,13 @@ local function T(key: string, ...: any): string
 	return if ctx then ctx.T(key, ...) else key
 end
 
+-- Team-Akzent aus Sicht des Spielers (AKYTEX): eigenes Team Accent, Gegner Down; FFA: ich Accent, andere Muted
 local function teamColor(team: number): Color3
-	local colors = ctx and ctx.Config and ctx.Config.Colors
+	local theme = UI.Theme
 	if matchMode == "FFA" then
-		return UI.Theme.Pink
+		return if team == myTeam then theme.Accent else theme.Muted
 	end
-	if colors then
-		return if team == 2 then colors.TeamB else colors.TeamA
-	end
-	return if team == 2 then UI.Theme.Cyan else UI.Theme.Orange
+	return if team == myTeam then theme.Accent else theme.Down
 end
 
 local function titleText(title: string): string
@@ -102,30 +103,44 @@ end
 -- ---------------------------------------------------------------------
 local function build()
 	local gui = ctx.Gui
+	local theme = UI.Theme
+	-- Glas-Fenster (AKYTEX): Surface, 1-px-Rahmen, Ecke 16, Titel Michroma mit Akzent-Unterstrich
 	local frame = UI.Create("Frame", {
 		Name = "Scoreboard",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.48),
 		Size = UDim2.fromOffset(640, 440),
-		BackgroundColor3 = UI.Theme.PanelDark,
-		BackgroundTransparency = 0.1,
+		BackgroundColor3 = theme.Surface,
+		BackgroundTransparency = 0.06,
+		BorderSizePixel = 0,
 		Visible = false,
 		ZIndex = 40,
 		Parent = gui,
-	}, { UI.Corner(16), UI.Stroke(UI.Theme.Black, 3) })
+	}, { UI.Corner(16), UI.Stroke(nil, 1) })
 	titleLabel = UI.Label({
-		Position = UDim2.fromOffset(12, 6),
-		Size = UDim2.new(1, -24, 0, 34),
+		Position = UDim2.fromOffset(20, 14),
+		Size = UDim2.new(1, -40, 0, 24),
 		Text = T("match.scoreboard.title"),
-		MaxText = 26,
-		Outline = 3,
+		Font = UI.Fonts.Heading,
+		MaxText = 20,
+		TextColor3 = theme.Text,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 41,
 		Parent = frame,
 	})
-	-- Spaltenköpfe
+	UI.Create("Frame", {
+		Name = "Underline",
+		Position = UDim2.fromOffset(20, 42),
+		Size = UDim2.fromOffset(28, 2),
+		BackgroundColor3 = theme.Accent,
+		BorderSizePixel = 0,
+		ZIndex = 41,
+		Parent = frame,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	-- Spaltenköpfe (leise, Muted)
 	local head = UI.Create("Frame", {
-		Position = UDim2.fromOffset(12, 42),
-		Size = UDim2.new(1, -24, 0, 22),
+		Position = UDim2.fromOffset(16, 52),
+		Size = UDim2.new(1, -32, 0, 18),
 		BackgroundTransparency = 1,
 		ZIndex = 41,
 		Parent = frame,
@@ -138,23 +153,35 @@ local function build()
 	}
 	for _, col in ipairs(columns) do
 		UI.Label({
-			Position = UDim2.fromScale(col[2], 0),
+			Position = UDim2.new(col[2], 8, 0, 0),
 			Size = UDim2.fromScale(col[3], 1),
 			Text = T(col[1]),
-			MaxText = 14,
-			Outline = 2,
+			Font = UI.Fonts.Main,
+			MaxText = 12,
+			TextColor3 = theme.Muted,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			ZIndex = 41,
 			Parent = head,
 		})
 	end
+	UI.Create("Frame", {
+		Name = "Divider",
+		Position = UDim2.fromOffset(16, 74),
+		Size = UDim2.new(1, -32, 0, 1),
+		BackgroundColor3 = theme.Border,
+		BorderSizePixel = 0,
+		ZIndex = 41,
+		Parent = frame,
+	})
 	local list = UI.Create("ScrollingFrame", {
 		Name = "List",
-		Position = UDim2.fromOffset(12, 68),
-		Size = UDim2.new(1, -24, 1, -80),
+		Position = UDim2.fromOffset(16, 82),
+		Size = UDim2.new(1, -24, 1, -96),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		ScrollBarThickness = 6,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = theme.Muted,
+		ScrollBarImageTransparency = 0.3,
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		CanvasSize = UDim2.new(),
 		ZIndex = 41,
@@ -165,21 +192,32 @@ local function build()
 	listFrame = list
 	root = frame
 
-	-- Touch: kleiner Knopf oben links (nur im Match sichtbar)
+	-- Touch: kleiner Glas-Knopf oben links (nur im Match sichtbar)
 	local button = UI.Create("TextButton", {
 		Name = "ScoreboardButton",
 		AnchorPoint = Vector2.new(0, 0),
 		Position = UDim2.fromOffset(12, 70),
 		Size = UDim2.fromOffset(56, 56),
-		BackgroundColor3 = UI.Theme.PanelDark,
+		BackgroundColor3 = theme.Surface,
+		BackgroundTransparency = 0.12,
+		AutoButtonColor = false,
 		Text = "☰",
 		TextScaled = true,
-		Font = UI.Font,
-		TextColor3 = Color3.new(1, 1, 1),
+		Font = UI.Fonts.Main,
+		TextColor3 = theme.Text,
 		Visible = false,
 		ZIndex = 30,
 		Parent = ctx.TouchGui or gui,
-	}, { UI.Corner(12), UI.Stroke(UI.Theme.Black, 2) })
+	}, {
+		UI.Corner(12),
+		UI.Stroke(nil, 1),
+		UI.Create("UIPadding", {
+			PaddingTop = UDim.new(0, 12),
+			PaddingBottom = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, 12),
+			PaddingRight = UDim.new(0, 12),
+		}),
+	})
 	button.Activated:Connect(function()
 		Scoreboard.Toggle()
 	end)
@@ -225,6 +263,7 @@ local function redraw()
 	if not list then
 		return
 	end
+	local theme = UI.Theme
 	dirty = false
 	for _, child in ipairs(list:GetChildren()) do
 		if child:IsA("Frame") then
@@ -236,19 +275,31 @@ local function redraw()
 		local r = rows[id]
 		local color = teamColor(r.Team)
 		local mine = id == myId
+		-- Zeile = Karte (Surface2, 1-px-Rahmen); eigene Zeile mit Akzent-Rahmen, Team-Streifen links
 		local row = UI.Create("Frame", {
 			Name = "Row" .. i,
 			LayoutOrder = i,
 			Size = UDim2.new(1, -8, 0, ROW_H),
-			BackgroundColor3 = if mine then UI.Theme.Yellow:Lerp(color, 0.35) else color:Lerp(UI.Theme.PanelDark, 0.45),
+			BackgroundColor3 = if mine then theme.Hover else theme.Surface2,
+			BorderSizePixel = 0,
 			ZIndex = 42,
 			Parent = list,
-		}, { UI.Corner(10), UI.Stroke(UI.Theme.Black, 2) })
+		}, { UI.Corner(10), UI.Stroke(if mine then theme.Accent else nil, 1) })
+		UI.Create("Frame", {
+			Name = "Stripe",
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, 0, 0.5, 0),
+			Size = UDim2.new(0, 3, 1, -16),
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+			ZIndex = 43,
+			Parent = row,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		local p = playerById(id)
 		UI.Create("ImageLabel", {
-			Position = UDim2.fromOffset(4, 3),
-			Size = UDim2.fromOffset(ROW_H - 6, ROW_H - 6),
-			BackgroundColor3 = UI.Theme.PanelLight,
+			Position = UDim2.fromOffset(8, 5),
+			Size = UDim2.fromOffset(ROW_H - 10, ROW_H - 10),
+			BackgroundColor3 = theme.Bg2,
 			Image = if p
 					and id > 0
 					and not r.IsBot
@@ -256,7 +307,7 @@ local function redraw()
 				else FACE,
 			ZIndex = 43,
 			Parent = row,
-		}, { UI.Corner(20) })
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 		local nameText = r.Name
 		if r.IsBot then
 			nameText = T("match.scoreboard.bot") .. " " .. nameText
@@ -265,25 +316,25 @@ local function redraw()
 		end
 		local title = titleText(r.Title)
 		UI.Label({
-			Position = UDim2.new(0.06, 8, 0, 2),
-			Size = UDim2.new(0.42, 0, 0, if title ~= "" then 24 else ROW_H - 4),
+			Position = UDim2.new(0.06, 14, 0, if title ~= "" then 4 else 2),
+			Size = UDim2.new(0.42, -6, 0, if title ~= "" then 22 else ROW_H - 4),
 			Text = nameText,
-			MaxText = 20,
-			Outline = 2,
+			Font = UI.Fonts.Main,
+			MaxText = 18,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = if r.IsBot then Color3.fromRGB(200, 200, 205) else Color3.new(1, 1, 1),
+			TextColor3 = if r.IsBot then theme.Muted elseif mine then theme.Accent else theme.Text,
 			ZIndex = 43,
 			Parent = row,
 		})
 		if title ~= "" then
 			UI.Label({
-				Position = UDim2.new(0.06, 8, 0, 25),
-				Size = UDim2.new(0.42, 0, 0, 17),
+				Position = UDim2.new(0.06, 14, 0, 26),
+				Size = UDim2.new(0.42, -6, 0, 15),
 				Text = title,
-				MaxText = 13,
-				Outline = 1,
+				Font = UI.Fonts.Body,
+				MaxText = 12,
 				TextXAlignment = Enum.TextXAlignment.Left,
-				TextColor3 = UI.Theme.SubText,
+				TextColor3 = theme.Text2,
 				ZIndex = 43,
 				Parent = row,
 			})
@@ -293,35 +344,35 @@ local function redraw()
 			kda = ("%d  ·  %s"):format(r.Score, kda)
 		end
 		UI.Label({
-			Position = UDim2.fromScale(0.5, 0),
+			Position = UDim2.new(0.5, 8, 0, 0),
 			Size = UDim2.fromScale(0.16, 1),
 			Text = kda,
 			Font = UI.Fonts.Number,
-			MaxText = 18,
-			Outline = 2,
+			MaxText = 17,
+			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			ZIndex = 43,
 			Parent = row,
 		})
 		UI.Label({
-			Position = UDim2.fromScale(0.66, 0),
+			Position = UDim2.new(0.66, 8, 0, 0),
 			Size = UDim2.fromScale(0.12, 1),
 			Text = tostring(math.floor(r.Dmg + 0.5)),
 			Font = UI.Fonts.Number,
-			MaxText = 18,
-			Outline = 2,
+			MaxText = 17,
+			TextColor3 = theme.Text,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			ZIndex = 43,
 			Parent = row,
 		})
 		local ping = UI.Label({
 			Name = "Ping",
-			Position = UDim2.fromScale(0.78, 0),
+			Position = UDim2.new(0.78, 8, 0, 0),
 			Size = UDim2.fromScale(0.1, 1),
 			Text = if r.IsBot then "BOT" else "–",
 			Font = UI.Fonts.Number,
-			MaxText = 16,
-			Outline = 2,
+			MaxText = 15,
+			TextColor3 = theme.Text2,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			ZIndex = 43,
 			Parent = row,
@@ -330,18 +381,18 @@ local function redraw()
 		-- Loben (nach dem Match) / Melden (Menschen, nicht man selbst)
 		if not r.IsBot and not mine and p then
 			if matchOver and not commended then
-				local commend = UI.Create("TextButton", {
+				UI.Button({
+					Name = "Commend",
 					AnchorPoint = Vector2.new(1, 0.5),
-					Position = UDim2.new(1, -46, 0.5, 0),
-					Size = UDim2.fromOffset(38, 34),
-					BackgroundColor3 = UI.Theme.Green,
+					Position = UDim2.new(1, -48, 0.5, 0),
+					Size = UDim2.fromOffset(38, 32),
 					Text = "👍",
-					TextScaled = true,
-					Font = UI.Font,
+					Variant = "Success",
+					Corner = 10,
+					MaxText = 16,
 					ZIndex = 44,
 					Parent = row,
-				}, { UI.Corner(8), UI.Stroke(UI.Theme.Black, 2) })
-				commend.Activated:Connect(function()
+				}, function()
 					if commended then
 						return
 					end
@@ -351,19 +402,18 @@ local function redraw()
 				end)
 			end
 			if not reported[id] then
-				local report = UI.Create("TextButton", {
+				UI.Button({
+					Name = "Report",
 					AnchorPoint = Vector2.new(1, 0.5),
-					Position = UDim2.new(1, -4, 0.5, 0),
-					Size = UDim2.fromOffset(38, 34),
-					BackgroundColor3 = UI.Theme.Red,
+					Position = UDim2.new(1, -6, 0.5, 0),
+					Size = UDim2.fromOffset(38, 32),
 					Text = "⚑",
-					TextScaled = true,
-					Font = UI.Font,
-					TextColor3 = Color3.new(1, 1, 1),
+					Variant = "Ghost",
+					Corner = 10,
+					MaxText = 16,
 					ZIndex = 44,
 					Parent = row,
-				}, { UI.Corner(8), UI.Stroke(UI.Theme.Black, 2) })
-				report.Activated:Connect(function()
+				}, function()
 					if reported[id] then
 						return
 					end

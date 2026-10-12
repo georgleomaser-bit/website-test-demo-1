@@ -15,6 +15,8 @@
 --  Zusätzlich: Spectate.Target(): Model?, Spectate.Init(ctx).
 --  Modul-Start (C7.1): Main.client ruft Spectate.Start() OHNE Argument -> Hooks anmelden (einmal).
 --  Feuert Hooks "Spectate"(model?) (Controls schaltet damit den Eingabe-Kontext).
+--  Stil: docs/STYLE-AKYTEX.md – Glas-Pill unten Mitte (nicht oben, dort stehen Score-Leiste und Meldungen):
+--  Bezwinger-Name mit Down-Punkt, Teamkollege mit Accent-Punkt, Hinweis leise in Text2.
 -- =====================================================================
 
 local CollectionService = game:GetService("CollectionService")
@@ -47,6 +49,7 @@ local myTeam = 0
 local myId = player.UserId
 local unbinds: { () -> () } = {}
 local panel: Frame? = nil
+local panelDot: Frame? = nil
 local nameLabel: TextLabel? = nil
 local hintLabel: TextLabel? = nil
 local accum = 0
@@ -154,6 +157,10 @@ local function updatePanel()
 	local text = T(key, name, math.max(0, math.floor(hp + 0.5)))
 	if label.Text ~= text then
 		label.Text = text
+	end
+	local dot = panelDot
+	if dot then
+		dot.BackgroundColor3 = if followMode then UI.Theme.Accent else UI.Theme.Down
 	end
 	if hintLabel then
 		hintLabel.Visible = followMode and #candidates > 1
@@ -323,31 +330,56 @@ local function buildPanel()
 	if not gui then
 		return
 	end
+	local theme = UI.Theme
 	local frame = UI.Create("Frame", {
 		Name = "SpectatePanel",
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 132),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -196),
 		Size = UDim2.fromOffset(420, 64),
 		BackgroundTransparency = 1,
 		Visible = false,
 		ZIndex = 22,
 		Parent = gui,
 	})
-	nameLabel = UI.Label({
-		Size = UDim2.new(1, 0, 0, 36),
-		Text = "",
-		MaxText = 26,
-		Outline = 3,
+	local pill = UI.Create("Frame", {
+		Name = "Pill",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0),
+		Size = UDim2.new(1, 0, 0, 38),
+		BackgroundColor3 = theme.Surface,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
 		ZIndex = 22,
 		Parent = frame,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), UI.Stroke(nil, 1) })
+	panelDot = UI.Create("Frame", {
+		Name = "Dot",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 16, 0.5, 0),
+		Size = UDim2.fromOffset(8, 8),
+		BackgroundColor3 = theme.Down,
+		BorderSizePixel = 0,
+		ZIndex = 23,
+		Parent = pill,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	nameLabel = UI.Label({
+		Position = UDim2.fromOffset(32, 0),
+		Size = UDim2.new(1, -48, 1, 0),
+		Text = "",
+		Font = UI.Fonts.Main,
+		MaxText = 18,
+		TextColor3 = theme.Text,
+		ZIndex = 23,
+		Parent = pill,
 	})
 	hintLabel = UI.Label({
-		Position = UDim2.fromOffset(0, 38),
-		Size = UDim2.new(1, 0, 0, 22),
+		Position = UDim2.fromOffset(0, 42),
+		Size = UDim2.new(1, 0, 0, 18),
 		Text = T("match.spectate.hint"),
-		MaxText = 16,
-		Outline = 2,
-		TextColor3 = UI.Theme.SubText,
+		Font = UI.Fonts.Main,
+		MaxText = 14,
+		Outline = 1,
+		TextColor3 = theme.Text2,
 		Visible = false,
 		ZIndex = 22,
 		Parent = frame,

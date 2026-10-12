@@ -799,8 +799,12 @@ local function statsSnapshot(m: any): { [string]: any }
 	return snap
 end
 
+-- Start-Paket (unten definiert): neue Ersatz-Bots brauchen ein frisches Roster bei den Clients
+local sendStart: (m: any) -> ()
+
 local function spawnPendingBots(m: any)
 	local t = now()
+	local spawned = false
 	for _, pending in ipairs(m.PendingBots) do
 		if not pending.Done then
 			local teamEmpty = true
@@ -816,6 +820,7 @@ local function spawnPendingBots(m: any)
 					local e = newEntry(m, { Bot = true, Difficulty = pending.Difficulty }, pending.Team)
 					if e and spawnEntry(m, e) then
 						pending.Done = true
+						spawned = true
 						if m.Ffa then
 							Respawn.AddCombatant(m, e.Combatant)
 						end
@@ -833,6 +838,10 @@ local function spawnPendingBots(m: any)
 		end
 	end
 	m.PendingBots = open
+	if spawned then
+		-- Roster neu senden (wie Auffüllen/Drop-in): Scoreboard-Zeile, Killfeed-Name, Replikation, Umrisse
+		sendStart(m)
+	end
 end
 
 local function makeApi(m: any): any
@@ -963,6 +972,11 @@ local function makeApi(m: any): any
 		sendMembers(m, "AntiCamp", { Until = untilT })
 	end
 
+	-- Skill-Moment: Letzter seines Teams gegen ≥ 2 (MatchUI zeigt es nur seinem Team)
+	function api.ClutchChance(id: number, vs: number)
+		sendMembers(m, "Clutch", { Id = id, Vs = vs })
+	end
+
 	function api.RoundEnded(info: any)
 		local dmg = roundDamage(m)
 		local mvpId: number? = nil
@@ -1051,10 +1065,6 @@ local function makeApi(m: any): any
 		if e.IsBot then
 			call("BotService", "SetGoal", c, { Kind = "Engage" })
 		end
-	end
-
-	function api.Heal(c: Combatant, amount: number)
-		call("CombatService", "Heal", c, amount)
 	end
 
 	function api.TeamOf(id: number): number
@@ -1372,6 +1382,28 @@ local function buildMe(m: any, e: Entry, before: any, after: any, r: Types.Playe
 	return me
 end
 
+-- Durchschnitts-MMR je Team aller noch eingetragenen Menschen (MMR-Bezug für den Einzelbericht)
+local function teamMmr(m: any): { [number]: number }
+	local sums: { [number]: { Sum: number, N: number } } = {}
+	for _, e in ipairs(humanEntries(m)) do
+		local ok, mmr = call("ProgressionService", "Mmr", e.Player)
+		if ok and type(mmr) == "number" and mmr == mmr and math.abs(mmr) ~= math.huge then
+			local entry = sums[e.Team]
+			if not entry then
+				entry = { Sum = 0, N = 0 }
+				sums[e.Team] = entry
+			end
+			entry.Sum += mmr
+			entry.N += 1
+		end
+	end
+	local avg: { [number]: number } = {}
+	for team, entry in pairs(sums) do
+		avg[team] = entry.Sum / math.max(1, entry.N)
+	end
+	return avg
+end
+
 -- Ergebnis für einen einzelnen Leaver/AFK sofort melden (Verlierer-Wertung, B5)
 local function reportSingle(m: any, e: Entry)
 	local p = e.Player
@@ -1384,6 +1416,12 @@ local function reportSingle(m: any, e: Entry)
 	r.Draw = false
 	local result = matchResult(m, winner, { [p] = r })
 	result.Draw = false
+	if not m.Ffa then
+		-- PerPlayer enthält nur den Leaver -> ohne Bezug änderte ProgressionService das MMR nicht
+		-- (Verlassen eines verlorenen PvP-Matches wäre sonst ein Weg, dem MMR-Verlust zu entgehen)
+		result.TeamMmr = teamMmr(m)
+		m.LeaverMmr = result.TeamMmr -- auch fürs End-Ergebnis (1v1: Gegner gewinnt voll, B5)
+	end
 	fireMatchEnd(result)
 	e.Reported = true
 end
@@ -1416,6 +1454,9 @@ local function teardown(m: any, keepPlayers: boolean)
 				if not c.Alive then
 					call("CombatService", "Revive", c, spawnFor(m, e))
 				end
+				-- MatchEnd hat alle verankert: lösen (Rematch verankert gleich neu; schlägt das Rematch fehl,
+				-- stünde der Spieler sonst eingefroren in der Lobby)
+				call("CharacterService", "Freeze", c, false)
 				call("CharacterService", "ClearGunVisuals", c)
 				call("CombatService", "Unregister", c)
 				m.ById[c.Id] = nil
@@ -1575,6 +1616,8 @@ local function finishMatch(m: any, winner: number)
 		end
 	end
 	local result = matchResult(m, winner, perPlayer)
+	-- MMR-Bezug, falls eine Seite komplett gegangen ist (ProgressionService nutzt ihn nur bei einer Seite)
+	result.TeamMmr = m.LeaverMmr
 	m.ResultSent = true
 	fireMatchEnd(result)
 
@@ -1619,8 +1662,8 @@ local function finishMatch(m: any, winner: number)
 	end
 end
 
--- Start-Paket (pro Spieler eigenes Team)
-local function sendStart(m: any)
+-- Start-Paket (pro Spieler eigenes Team); oben vorab deklariert (spawnPendingBots)
+function sendStart(m: any)
 	local roster = rosterStart(m)
 	local arena = m.Arena
 	for _, e in ipairs(humanEntries(m)) do
@@ -2059,7 +2102,6 @@ function MatchService.Create(spec: Types.MatchSpec): number?
 		OvertimeTime = def.Overtime,
 		Cfg = MCFG,
 		AntiCamp = (Config.Combat and Config.Combat.AntiCamp) or { Duel = 30, Team = 40, Pulse = 10, Show = 1 },
-		Regen = if ffa then (Config.Player.Regen or { Delay = 5, Rate = 12 }) else nil,
 		Mutator = mutator,
 		Rules = buildRules(spec.Mode, mutator, tutorial),
 		Entries = {},
@@ -2394,6 +2436,8 @@ function MatchService.Taint(id: number, reason: string)
 	m.Tainted = true
 	m.TaintReason = tostring(reason)
 	notifyMembers(m, "match.tainted", nil, "Alarm")
+	-- Schild sofort bei allen (sonst erst mit der nächsten Prep/Ergebnis-Nachricht)
+	sendMembers(m, "Tainted", { Tainted = true })
 end
 
 function MatchService.OnMatchEnd(cb: (result: Types.MatchResult) -> ())
@@ -2446,9 +2490,11 @@ function MatchService.DropIn(p: Player): boolean
 					-- einen Bot ersetzen
 					for _, e in ipairs(m.Entries) do
 						if e.IsBot and not e.Removed then
-							Respawn.RemoveCombatant(m, e.Id)
+							local botId = e.Id
+							Respawn.RemoveCombatant(m, botId)
 							despawnBot(m, e)
 							e.Removed = true
+							sendMembers(m, "Left", { Id = botId }) -- Scoreboard/Umrisse/Replikation räumen auf
 							break
 						end
 					end

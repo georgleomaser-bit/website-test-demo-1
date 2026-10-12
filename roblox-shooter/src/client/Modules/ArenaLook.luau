@@ -7,7 +7,8 @@
 --            Slot k  = workspace.Arenas.Slot_k
 --  Verstecken = für alle Nachfahren LOKAL: BasePart.LocalTransparencyModifier = 1,
 --            SurfaceGui/BillboardGui/ParticleEmitter/Beam/Trail/Light.Enabled = false.
---            Originalwerte in einer schwachen Tabelle; neue Nachfahren (DescendantAdded) sofort mit.
+--            Originalwerte je Wurzel in einer starken Tabelle; neue Nachfahren (DescendantAdded) sofort mit,
+--            entfernte Nachfahren (DescendantRemoving) bekommen ihren Originalwert zurück.
 --  Stimmungen: eigene Instanzen CC_MoodAtmosphere/CC_MoodBloom/CC_MoodColorCorrection; die Lobby-
 --            Effekte des Servers werden solange lokal geparkt/abgeschaltet. Snowy = Schnee an der Kamera.
 --
@@ -15,7 +16,9 @@
 --    ArenaLook.SetWorld(world: "Lobby" | number)   Slot-Nummer (0 = Crown = Lobby)
 --    ArenaLook.ApplyMood(moodKey: string)
 --    ArenaLook.RestoreLobby()
---  Hooks (C7.2): "Match:Start" {Slot, Mood, Map} · "Match:Closed" · "Armed" {Ctx} · "Disarmed"
+--  Hooks (C7.2): "Match:Start" {Slot, Mood, Map} · "Match:Closed" · "Armed" {Ctx} · "Disarmed" ·
+--    "Effect:LobbyLook" {Mood} (Admin-Lobby-Licht, gilt für alle in der Lobby; zusätzlich workspace-Attribut
+--    "LobbyMood" für später Beigetretene und aus dem Match Zurückkehrende)
 -- =====================================================================
 
 local Lighting = game:GetService("Lighting")
@@ -32,12 +35,16 @@ local SNOW_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
 local SNOW_RATE = 60
 local SNOW_HEIGHT = 14
 
--- Originalwerte versteckter Instanzen (schwach: zerstörte Instanzen verschwinden von selbst)
-local saved: { [Instance]: any } = setmetatable({}, { __mode = "k" }) :: any
-local hiddenRoots: { [Instance]: RBXScriptConnection } = {}
+-- Versteckte Wurzeln: je Wurzel die Originalwerte ihrer Nachfahren (STARKE Tabelle – Instanzen als
+-- schwache Schlüssel können vom GC entfernt werden, obwohl die Instanz noch lebt; dann blieben Teile nach
+-- dem Match unsichtbar). Was die Wurzel verlässt (Map zerstört, Automat umgehängt), bekommt sofort seinen
+-- Originalwert zurück und wird vergessen -> kein Leck, nichts bleibt versteckt.
+type Hidden = { Saved: { [Instance]: any }, Added: RBXScriptConnection, Removing: RBXScriptConnection }
+local hiddenRoots: { [Instance]: Hidden } = {}
 local currentWorld: string | number = "Lobby"
 local inMatch = false
 local watchers: { RBXScriptConnection } = {}
+local lobbyMood: string? = nil -- Admin-Event "LobbyLook" (Effect bzw. workspace-Attribut "LobbyMood")
 
 local moodActive = false
 local lightingSnapshot: { ClockTime: number, Ambient: Color3, OutdoorAmbient: Color3 }? = nil
@@ -51,7 +58,7 @@ local snowConn: RBXScriptConnection? = nil
 -- ---------------------------------------------------------------------
 -- Verstecken / Zeigen
 -- ---------------------------------------------------------------------
-local function hideOne(inst: Instance)
+local function hideOne(saved: { [Instance]: any }, inst: Instance)
 	if inst:IsA("BasePart") then
 		if saved[inst] == nil then
 			saved[inst] = inst.LocalTransparencyModifier
@@ -73,7 +80,7 @@ local function hideOne(inst: Instance)
 	end
 end
 
-local function showOne(inst: Instance)
+local function restoreOne(saved: { [Instance]: any }, inst: Instance)
 	local value = saved[inst]
 	if value == nil then
 		return
@@ -90,22 +97,39 @@ local function hideRoot(root: Instance)
 	if hiddenRoots[root] then
 		return
 	end
+	local saved: { [Instance]: any } = {}
 	for _, inst in ipairs(root:GetDescendants()) do
-		hideOne(inst)
+		hideOne(saved, inst)
 	end
-	hiddenRoots[root] = root.DescendantAdded:Connect(hideOne)
+	hiddenRoots[root] = {
+		Saved = saved,
+		Added = root.DescendantAdded:Connect(function(inst: Instance)
+			hideOne(saved, inst)
+		end),
+		Removing = root.DescendantRemoving:Connect(function(inst: Instance)
+			restoreOne(saved, inst)
+		end),
+	}
+end
+
+local function forgetRoot(root: Instance, restore: boolean)
+	local hidden = hiddenRoots[root]
+	if not hidden then
+		return
+	end
+	hiddenRoots[root] = nil
+	hidden.Added:Disconnect()
+	hidden.Removing:Disconnect()
+	if restore then
+		for inst in pairs(hidden.Saved) do
+			restoreOne(hidden.Saved, inst)
+		end
+	end
+	table.clear(hidden.Saved)
 end
 
 local function showRoot(root: Instance)
-	local conn = hiddenRoots[root]
-	if not conn then
-		return
-	end
-	conn:Disconnect()
-	hiddenRoots[root] = nil
-	for _, inst in ipairs(root:GetDescendants()) do
-		showOne(inst)
-	end
+	forgetRoot(root, true)
 end
 
 -- Alle Welt-Wurzeln: { Root, Kind = "Lobby" | "Slot", Slot }
@@ -133,10 +157,9 @@ end
 
 local function applyWorld()
 	-- zerstörte Wurzeln vergessen
-	for root, conn in pairs(hiddenRoots) do
+	for root in pairs(hiddenRoots) do
 		if root.Parent == nil then
-			conn:Disconnect()
-			hiddenRoots[root] = nil
+			forgetRoot(root, false)
 		end
 	end
 	for _, entry in ipairs(worldRoots()) do
@@ -381,9 +404,36 @@ local function moodFor(data: any): string
 	return (maps and maps.LobbyMood) or "Day"
 end
 
+-- Lobby-Licht: Server-Look (GraphicsService) oder – nach dem Admin-Event "LobbyLook" – dessen Stimmung
+local function applyLobbyLook()
+	ArenaLook.RestoreLobby()
+	local mood = lobbyMood
+	if mood then
+		ArenaLook.ApplyMood(mood)
+	end
+end
+
 local function backToLobby()
 	ArenaLook.SetWorld("Lobby")
-	ArenaLook.RestoreLobby()
+	applyLobbyLook()
+end
+
+-- Effect "LobbyLook" {Mood} (AdminService) bzw. workspace-Attribut "LobbyMood": gilt für alle in der Lobby
+-- (Lobby, Range, Crown Ring). Wer gerade in einer Arena ist, bekommt die Stimmung beim Zurückkommen.
+local function setLobbyMood(value: any)
+	local moods = Config and Config.Maps and Config.Maps.Moods
+	local mood: string? = if type(value) == "string"
+			and type(moods) == "table"
+			and moods[value] ~= nil
+		then value
+		else nil
+	if mood == lobbyMood then
+		return
+	end
+	lobbyMood = mood
+	if currentWorld == "Lobby" then
+		applyLobbyLook()
+	end
 end
 
 local function onMatchStart(data: any)
@@ -427,6 +477,9 @@ function ArenaLook.Start()
 				backToLobby()
 			end
 		end)
+		hooks.On("Effect:LobbyLook", function(_strength: any, data: any)
+			setLobbyMood(if type(data) == "table" then data.Mood else nil)
+		end)
 	else
 		warn("[ArenaLook] ctx.Hooks fehlt – Welt-Ausblendung reagiert nicht auf Matches")
 	end
@@ -446,6 +499,14 @@ function ArenaLook.Start()
 	if arenas then
 		table.insert(watchers, arenas.ChildAdded:Connect(applyWorld))
 	end
+	-- Admin-Lobby-Licht auch für später Beigetretene / aus dem Match Zurückkehrende (AdminService setzt das Attribut)
+	table.insert(
+		watchers,
+		workspace:GetAttributeChangedSignal("LobbyMood"):Connect(function()
+			setLobbyMood(workspace:GetAttribute("LobbyMood"))
+		end)
+	)
+	setLobbyMood(workspace:GetAttribute("LobbyMood"))
 end
 
 return ArenaLook
