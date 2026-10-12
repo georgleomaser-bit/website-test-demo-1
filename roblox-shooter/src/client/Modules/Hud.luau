@@ -3,9 +3,10 @@
 --  Besitzer: WP10 (Client-Hülle). Basis: Meteor-Heist-Hud (REUSE §1.4: squareButton, squareBar,
 --  AddRightButton, Badges nur bei Änderung, Refresh/Tick-Trennung). Vertrag: DESIGN.md C7.4, B3.3.
 --
---  Oben links: 🪙 Coins, 💎 Gems, 🔑 Schlüssel (flüssig zählend) + Level-Abzeichen mit XP-Balken.
---  Unten Mitte: großer gelber PLAY-Knopf (öffnet das Fenster "Play" von WP5).
---  Rechts: quadratische Menü-Knöpfe in 2 Spalten (andere Pakete hängen sich mit AddRightButton ein).
+--  AKYTEX-Look (docs/STYLE-AKYTEX.md): Glas-Karte unten links (auf Touch oben links) mit Level, XP-Balken
+--  (Accent) und 🪙 Coins, 💎 Gems, 🔑 Schlüssel (flüssig zählend, große Zahlen in Builder Sans ExtraBold).
+--  Unten Mitte: großer PLAY-Knopf (Primär/Accent, Titel in Michroma; öffnet das Fenster "Play" von WP5).
+--  Rechts: quadratische Menü-Knöpfe (Sekundär + feiner Farbstreifen) in 2 Spalten (AddRightButton).
 --  Oben rechts (immer, wenn eingeschaltet): FPS + Ping (Einstellung "Ping/FPS zeigen").
 --  Auf Touch rutscht die Anzeige nach oben (unten links liegt der Lauf-Stick); Wechsel live.
 --
@@ -27,10 +28,12 @@ local Hud = {}
 local Theme = UI.Theme
 local player = Players.LocalPlayer
 
-local SQUARE = 86 -- quadratische Menü-Knöpfe (auch auf dem Handy ≥ 44 px nach Skalierung)
+local SQUARE = 82 -- quadratische Menü-Knöpfe (auch auf dem Handy ≥ 44 px nach Skalierung)
 local SQUARE_GAP = 10
 local PLAY_WIDTH = 300
-local PLAY_HEIGHT = 92
+local PLAY_HEIGHT = 84
+local STATS_W = 300
+local STATS_H = 122
 
 local ctx: any = nil
 local root: Frame? = nil -- alles Lobby-HUD (für SetVisible)
@@ -44,6 +47,7 @@ local coinCounter: UI.Counter? = nil
 local gemCounter: UI.Counter? = nil
 local keyCounter: UI.Counter? = nil
 local levelLabel: TextLabel? = nil
+local xpLabel: TextLabel? = nil
 local xpBar: UI.Bar? = nil
 local progressMath: any = nil
 
@@ -94,7 +98,8 @@ local function setting(key: string): any
 	return nil
 end
 
--- Quadratischer Knopf: großes Emoji oben, kurzes Wort in GROSSBUCHSTABEN darunter (MH)
+-- Quadratischer Knopf (AKYTEX): Sekundär-Fläche, Emoji oben, kurzes Wort in GROSSBUCHSTABEN darunter,
+-- unten ein feiner Streifen in der Farbe des Pakets (Akzent, keine Vollfläche)
 local function squareButton(
 	parent: Instance,
 	icon: string,
@@ -103,17 +108,28 @@ local function squareButton(
 	order: number,
 	onClick: () -> ()
 ): UI.Button
-	return UI.Button({
+	local button = UI.Button({
 		Size = UDim2.fromOffset(SQUARE, SQUARE),
 		Text = icon,
 		Sub = UI.Upper(caption),
-		Color = color,
+		Variant = "Secondary",
 		LayoutOrder = order,
-		MaxText = 42,
-		SubMax = 16,
-		Corner = 16,
+		MaxText = 34,
+		SubMax = 13,
+		Corner = 12,
 		Parent = parent,
 	}, onClick)
+	UI.Create("Frame", {
+		Name = "Accent",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -5),
+		Size = UDim2.new(0, 22, 0, 3),
+		BackgroundColor3 = if typeof(color) == "Color3" then color else Theme.Accent,
+		BorderSizePixel = 0,
+		ZIndex = button.Button.ZIndex + 1,
+		Parent = button.Button,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	return button
 end
 
 -- Leiste mit quadratischen Knöpfen in 2 Spalten (MH)
@@ -191,50 +207,72 @@ end
 -- AUFBAU
 -- ---------------------------------------------------------------------
 local function buildStats(parent: Frame)
-	local frame = UI.Create("Frame", {
+	-- Glas-Karte (Surface, leicht durchsichtig, 1-px-Rahmen)
+	local frame = UI.Panel({
 		Name = "Stats",
-		Size = UDim2.fromOffset(360, 150),
-		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(STATS_W, STATS_H),
 		Parent = parent,
 	})
 	stats = frame
-	-- Level-Abzeichen + XP-Balken
+	UI.Create("UIPadding", {
+		PaddingLeft = UDim.new(0, 14),
+		PaddingRight = UDim.new(0, 14),
+		PaddingTop = UDim.new(0, 10),
+		PaddingBottom = UDim.new(0, 10),
+		Parent = frame,
+	})
+	-- Level (Michroma) + XP-Text rechts, darunter der dünne XP-Balken (Accent)
 	levelLabel = UI.Label({
 		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.fromOffset(92, 34),
+		Size = UDim2.new(0.4, 0, 0, 20),
 		Text = "LV 1",
-		Font = UI.Fonts.Banner,
-		TextColor3 = Theme.Yellow,
+		Font = UI.Fonts.Heading,
+		TextColor3 = Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 30,
-		Outline = 3,
+		MaxText = 15,
 		Parent = frame,
 	})
 	xpBar = UI.Bar({
-		Position = UDim2.fromOffset(96, 4),
-		Size = UDim2.fromOffset(220, 26),
-		Color = Theme.Cyan,
-		MaxText = 16,
+		Position = UDim2.fromOffset(0, 26),
+		Size = UDim2.new(1, 0, 0, 8),
+		Color = Theme.Accent,
+		MaxText = 1,
 		Parent = frame,
 	})
-	-- Währungen (nur Text mit dicker Kontur, kein Kasten)
-	local function currency(y: number, color: Color3, size: number): TextLabel
+	if xpBar then
+		xpBar.Text.Visible = false -- 8 px sind zu dünn für Text: der steht rechts darüber
+	end
+	xpLabel = UI.Label({
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, 0, 0, 2),
+		Size = UDim2.new(0.6, 0, 0, 16),
+		Text = "",
+		Font = UI.Fonts.Main,
+		TextColor3 = Theme.Text2,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		MaxText = 13,
+		Parent = frame,
+	})
+	-- Währungen: Coins groß, Gems + Schlüssel klein nebeneinander
+	local function currency(position: UDim2, size: UDim2, font: Enum.Font, maxText: number): TextLabel
 		return UI.Label({
-			Position = UDim2.fromOffset(0, y),
-			Size = UDim2.new(1, 0, 0, size),
+			Position = position,
+			Size = size,
 			Text = "",
+			Font = font,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = color,
-			MaxText = size - 4,
-			Outline = 3,
+			TextColor3 = Theme.Text,
+			MaxText = maxText,
 			Parent = frame,
 		})
 	end
-	local coins = currency(38, Theme.Yellow, 46)
+	local coins = currency(UDim2.fromOffset(0, 42), UDim2.new(1, 0, 0, 34), UI.Fonts.Strong, 30)
 	coinScale = UI.Create("UIScale", { Parent = coins })
 	coinLabel = coins
-	local gems = currency(86, Theme.Cyan, 30)
-	local keys = currency(118, Theme.Orange, 30)
+	local gems = currency(UDim2.fromOffset(0, 80), UDim2.new(0.5, -4, 0, 22), UI.Fonts.Main, 18)
+	local keys = currency(UDim2.new(0.5, 4, 0, 80), UDim2.new(0.5, -4, 0, 22), UI.Fonts.Main, 18)
+	gems.TextColor3 = Theme.Text2
+	keys.TextColor3 = Theme.Text2
 	coinCounter = UI.Counter(coins, function(value: number): string
 		return "🪙 " .. format(value)
 	end)
@@ -266,20 +304,21 @@ local function openPlay()
 end
 
 local function buildPlay(parent: Frame)
-	playButton = UI.Button({
+	local play = UI.Button({
 		Name = "Play",
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -18),
 		Size = UDim2.fromOffset(PLAY_WIDTH, PLAY_HEIGHT),
 		Text = T("ui.play"),
 		Sub = T("ui.playSub"),
-		Color = Theme.Yellow,
-		MaxText = 54,
-		SubMax = 18,
-		Corner = 20,
-		StrokeSize = 4,
+		Variant = "Primary",
+		MaxText = 34,
+		SubMax = 14,
+		Corner = 14,
 		Parent = parent,
 	}, openPlay)
+	play.Label.Font = UI.Fonts.Heading -- PLAY = Logo-Schrift (sparsam, kurz, GROSS)
+	playButton = play
 end
 
 local function buildNet()
@@ -287,12 +326,13 @@ local function buildNet()
 		Name = "NetStats",
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -12, 0, 4),
-		Size = UDim2.fromOffset(220, 22),
+		Size = UDim2.fromOffset(220, 20),
 		Text = "",
 		Font = UI.Fonts.Number,
+		TextColor3 = Theme.Text2,
 		TextXAlignment = Enum.TextXAlignment.Right,
-		MaxText = 18,
-		Outline = 2,
+		MaxText = 16,
+		Outline = 1,
 		Visible = false,
 		ZIndex = 8,
 		Parent = ctx.Gui,
@@ -307,7 +347,7 @@ local function layout()
 	end
 	if inputKind() == "Touch" then
 		frame.AnchorPoint = Vector2.new(0, 0)
-		frame.Position = UDim2.fromOffset(14, 6)
+		frame.Position = UDim2.fromOffset(12, 8)
 	else
 		frame.AnchorPoint = Vector2.new(0, 1)
 		frame.Position = UDim2.new(0, 16, 1, -14)
@@ -360,12 +400,12 @@ function Hud.Refresh(state: { [string]: any })
 			levelLabel.Text = T("ui.levelShort", math.floor(level))
 		end
 		local bar = xpBar
+		local text = if nextXp > 0 then format(xp) .. " / " .. format(nextXp) .. " XP" else "MAX"
 		if bar then
-			if nextXp > 0 then
-				UI.SetBar(bar, xp / nextXp, format(xp) .. " / " .. format(nextXp) .. " XP")
-			else
-				UI.SetBar(bar, 1, "MAX")
-			end
+			UI.SetBar(bar, if nextXp > 0 then xp / nextXp else 1, text)
+		end
+		if xpLabel then
+			xpLabel.Text = text
 		end
 	end
 end

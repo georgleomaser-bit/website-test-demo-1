@@ -25,6 +25,7 @@
 --    WeaponClient.Team(): number   WeaponClient.CombatantId(): number   WeaponClient.Rules(): table
 --    WeaponClient.Enemies(): { Model }   WeaponClient.Combatants(): { Model }   WeaponClient.ModelOf(id): Model?
 --    WeaponClient.SetTrigger(down: boolean)          Feuer-Haken (Admin-Triggerbot, Tests)
+--    WeaponClient.TracerOfSlot(slot): string?        Tracer-Kosmetik des Schützen eines FX-Eintrags (CombatFX)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -79,6 +80,8 @@ local myTeam = 0
 local rules: { [string]: any } = {}
 local loadout: { [string]: string } = {}
 local mapModel: Instance? = nil
+local armedTracer: string? = nil
+local mySlot = -1
 
 local equipped: SlotName = "Primary"
 local lastSlot: SlotName = "Secondary"
@@ -125,6 +128,7 @@ local dryClickAt = 0
 local lastMovingAt = -10
 local lastAirAt = -10
 
+local fireLockUntil = 0 -- Server-Zeit: Vorbereitung (Match "Prep") – Server lehnt Schüsse ab (Phase)
 local autoDwellSince: number? = nil
 local lastSpreadShown = -1
 
@@ -132,9 +136,11 @@ local registryAt = -10
 local allModels: { Model } = {}
 local enemyModels: { Model } = {}
 local byId: { [number]: Model } = {}
-local includeKey = ""
+local includedMap: Instance? = nil -- Map, die gerade in rayParams.IncludeInstances steht
+local includeSet = false
+-- Nur IncludeInstances setzen (wie ArenaService.MapParams): FilterType gilt für FilterDescendantsInstances,
+-- "Include" mit leerer Liste würde sonst alles herausfiltern
 local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Include
 rayParams.IgnoreWater = true
 local excludeParams = RaycastParams.new()
 excludeParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -290,7 +296,11 @@ local function cosmeticsFor(key: string): { Skin: string, Wrap: string, Charm: s
 	}
 end
 
+-- eigener Tracer: vom Server im Armed-Paket (ShopService.Tracer), sonst aus dem Spielstand
 local function tracerId(): string?
+	if armedTracer then
+		return armedTracer
+	end
 	local state = ctx and ctx.State
 	local cos = type(state) == "table" and state.Cosmetics
 	local eq = type(cos) == "table" and cos.Equipped
@@ -336,19 +346,13 @@ local function isEnemy(model: Model): boolean
 	return team ~= myTeam
 end
 
+-- Wand-Strahlen nur gegen die Kontext-Map (genau wie die Server-Sichtlinie gegen MapParams);
+-- Ziele kommen ausschließlich aus den analytischen Hitboxen (wie der Server, C10 Schritt 8)
 local function rebuildInclude()
-	local list: { Instance } = {}
-	local key = ""
-	if mapModel then
-		table.insert(list, mapModel :: Instance)
-	end
-	for _, m in ipairs(enemyModels) do
-		table.insert(list, m)
-		key ..= tostring(m:GetAttribute("CombatantId")) .. ","
-	end
-	if key ~= includeKey or #list ~= #rayParams.IncludeInstances then
-		includeKey = key
-		rayParams.IncludeInstances = list
+	if not includeSet or mapModel ~= includedMap then
+		includeSet = true
+		includedMap = mapModel
+		rayParams.IncludeInstances = if mapModel then { mapModel :: Instance } else {}
 	end
 	local char = character()
 	local camera = workspace.CurrentCamera
@@ -555,7 +559,8 @@ local function spreadScale(d: any, tServer: number, now: number): number
 		end
 	end
 	local claim = scale * Spread.FirstShot(d, shotTimes, tServer) + Spread.Bloom(d, shotTimes, tServer)
-	if call("Movement", "IsSliding") == true then
+	-- Rutschen = mehr Streuung, außer Waffen, die dafür gebaut sind (MobileSpread: Schrot, Rakete)
+	if d.MobileSpread ~= true and call("Movement", "IsSliding") == true then
 		local slide = config().Player and config().Player.Slide
 		claim += if type(slide) == "table" then num(slide.SpreadAdd, 1) else 1
 	end
@@ -614,9 +619,9 @@ local function silentAim(origin: Vector3): (Vector3?, number?)
 	return nil, nil
 end
 
--- ein Strahl: Ziel-Id (0 = keins), Endpunkt, Normale, Region
--- Map-Strahl, der unsichtbare Barrieren überspringt (der Server prüft Sichtlinie ohne Barrieren);
--- Rückgabe: Treffer + Gesamtentfernung ab origin
+-- Map-Strahl wie die Server-Sichtlinie (Barrieren sind CanQuery = false und werden nie getroffen).
+-- Ohne Kontext-Map (Exclude-Strahl) überspringt er Teile von Combatant-Modellen und Figuren – Ziele
+-- entscheidet nur die analytische Hitbox. Rückgabe: Treffer + Gesamtentfernung ab origin
 local function mapCast(origin: Vector3, dir: Vector3, range: number, params: RaycastParams): (RaycastResult?, number)
 	local travelled = 0
 	for _ = 1, 4 do
@@ -625,7 +630,9 @@ local function mapCast(origin: Vector3, dir: Vector3, range: number, params: Ray
 			return nil, range
 		end
 		local part = result.Instance
-		if part:IsA("BasePart") and part.Transparency >= 0.99 and combatantOf(part) == nil then
+		local inModel = part:FindFirstAncestorOfClass("Model")
+		local isBody = combatantOf(part) ~= nil or (inModel ~= nil and inModel:FindFirstChildOfClass("Humanoid") ~= nil)
+		if params == excludeParams and isBody then
 			travelled += result.Distance + 0.05
 			if travelled >= range then
 				return nil, range
@@ -637,26 +644,14 @@ local function mapCast(origin: Vector3, dir: Vector3, range: number, params: Ray
 	return nil, range
 end
 
+-- ein Strahl: Ziel-Id (0 = keins), Endpunkt, Normale, Region, Modell
 local function castPellet(origin: Vector3, dir: Vector3, range: number): (number, Vector3, Vector3?, string?, Model?)
 	local params = if mapModel then rayParams else excludeParams
 	local result, maxDist = mapCast(origin, dir, range, params)
 	local radius = combatCfg("HeadRadius", 0.8) * num(rules.HeadRadiusMult, 1)
 	local tol = combatCfg("HitTol", 0.35)
-	if result then
-		local model, id = combatantOf(result.Instance)
-		if model and id and model ~= character() and isEnemy(model) then
-			local root, head = rootHead(model)
-			local region: string? = if result.Instance.Name == "Head" then "Head" else "Body"
-			if root and head then
-				local r = Hitbox.Ray(origin, dir, range, root.CFrame, head.Position, radius, tol)
-				if r then
-					region = r
-				end
-			end
-			return id, result.Position, result.Normal, region, model
-		end
-	end
-	-- analytische Hitboxen (fest, wie der Server) vor der nächsten Wand
+	-- analytische Hitboxen (fest, wie der Server) vor der nächsten Wand. Ein Strahl, der nur einen
+	-- ausgestreckten Arm trifft, ist für den Server kein Treffer -> wird hier auch nicht behauptet.
 	local bestId, bestDist, bestRegion, bestModel = 0, maxDist, nil, nil
 	for _, m in ipairs(enemyModels) do
 		local root, head = rootHead(m)
@@ -948,7 +943,7 @@ end
 
 local function utilityPress(now: number)
 	local d = defOf("Utility")
-	if not d then
+	if not d or (fireLockUntil > 0 and serverNow() < fireLockUntil) then
 		return
 	end
 	if d.Kind == "Consumable" then
@@ -1094,6 +1089,12 @@ local function shotTime(scheduled: number, now: number, gap: number): number?
 end
 
 local function tryFire(d: any, now: number, auto: boolean)
+	if fireLockUntil > 0 and serverNow() < fireLockUntil then
+		-- Vorbereitung: nicht vorhersagen (der Server würde verwerfen -> Munition/Treffer falsch)
+		burstLeft = 0
+		spinStart = nil
+		return
+	end
 	local held = triggerDown or hookTrigger or auto
 	local pressed = not pressUsed and now - pressAt <= PRESS_BUFFER
 	local mode = d.FireMode
@@ -1204,12 +1205,15 @@ local function tryFire(d: any, now: number, auto: boolean)
 end
 
 local function step(dt: number)
-	if not armed or popped then
+	if not armed then
 		return
 	end
 	local now = os.clock()
 	if now - registryAt >= REGISTRY_INTERVAL then
-		refreshRegistry()
+		refreshRegistry() -- auch gepoppt: Zuschauen braucht Modelle/Tracer der anderen (Replication, CombatFX)
+	end
+	if popped then
+		return
 	end
 	local d = currentDef()
 	if not d then
@@ -1333,6 +1337,8 @@ local function onArmed(data: any)
 	myId = newId
 	myCtx = if type(data.Ctx) == "string" then data.Ctx else ""
 	myTeam = num(data.Team, 0)
+	mySlot = num(data.Slot, -1)
+	armedTracer = if type(data.Tracer) == "string" and data.Tracer ~= "" then data.Tracer else nil
 	rules = if type(data.Rules) == "table" then data.Rules else {}
 	mapModel = if typeof(data.Map) == "Instance" then data.Map else nil
 	loadout = {}
@@ -1358,6 +1364,7 @@ local function onArmed(data: any)
 	popped = false
 	triggerDown = false
 	burstLeft = 0
+	fireLockUntil = 0
 	adsSent = false
 	adsAlpha = 0
 	blocking = false
@@ -1384,6 +1391,7 @@ end
 local function onDisarmed()
 	armed = false
 	popped = false
+	fireLockUntil = 0
 	triggerDown = false
 	hookTrigger = false
 	burstLeft = 0
@@ -1396,10 +1404,13 @@ local function onDisarmed()
 	loadout = {}
 	ammo = {}
 	mapModel = nil
+	armedTracer = nil
+	mySlot = -1
 	table.clear(allModels)
 	table.clear(enemyModels)
 	table.clear(byId)
-	includeKey = ""
+	includedMap = nil
+	includeSet = false
 	call("Viewmodel", "Unequip")
 	call("FpsCamera", "SetAds", 0, 1)
 	call("FpsCamera", "SetScope", false)
@@ -1720,6 +1731,24 @@ function WeaponClient.ModelOf(id: number): Model?
 	return nil
 end
 
+-- Tracer-Kosmetik eines Schützen per Roster-Slot (FX-Einträge anderer, Vertrag mit CombatFX):
+-- Attribut "Tracer" am Combatant-Modell (CombatService), eigener Slot = Armed-Paket. nil = Standard.
+function WeaponClient.TracerOfSlot(slot: number): string?
+	if not armed or not finite(slot) then
+		return nil
+	end
+	if slot == mySlot then
+		return tracerId()
+	end
+	for _, m in ipairs(allModels) do
+		if m:GetAttribute("Slot") == slot then
+			local id = m:GetAttribute("Tracer")
+			return if type(id) == "string" and id ~= "" then id else nil
+		end
+	end
+	return nil
+end
+
 function WeaponClient.SetTrigger(down: boolean)
 	local want = down == true and armed and not popped
 	if want and not hookTrigger then
@@ -1751,10 +1780,18 @@ function WeaponClient.Start()
 		hooks.On("Combat:Ammo", onAmmo)
 		hooks.On("Combat:Equip", onEquipCorrection)
 		hooks.On("Combat:Hurt", onHurt)
-		hooks.On("Match:Prep", function()
+		hooks.On("Match:Prep", function(data: any)
 			if armed then
 				fillAll() -- Rundenstart füllt alles (B11.1)
+				-- Server hat Ads beim Rundenstart zurückgesetzt (ResetForRound): neu melden, sonst rechnet er
+				-- mit Hüft-Streuung, während der Client noch ADS-Strahlen schießt (alle Treffer verworfen)
+				adsSent = false
+				local endsAt = if type(data) == "table" then data.EndsAt else nil
+				fireLockUntil = if finite(endsAt) then endsAt :: number else serverNow() + 10
 			end
+		end)
+		hooks.On("Match:Live", function()
+			fireLockUntil = 0
 		end)
 		hooks.On("WindowOpened", function()
 			triggerDown = false

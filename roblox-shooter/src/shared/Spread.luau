@@ -18,7 +18,8 @@
 --    Spread.MinScale(def, adsOk, speed, airborne): number
 --        Untergrenze des Server-Spreads (C10 Schritt 7): (adsOk ? SpreadAds : SpreadHip)
 --        + (speed > Config.Combat.MovingSpeed ? SpreadMove : 0) + (airborne ? SpreadAir : 0).
---        Ohne Bloom (der Server nimmt max(Client-Anspruch, MinScale)).
+--        Ohne Bloom/Erster-Schuss-Faktor: die Server-Untergrenze (WeaponService.minScaleFor) ist
+--        MinScale-Mischung × FirstShot + Bloom aus der Server-Schussliste; Strahlen = max(Anspruch, Untergrenze).
 --    Spread.MaxBloomChain                  Obergrenze der Kettenlänge (Schleifen-Grenze)
 --  Ergänzungen von WP3 (Besitzer-Wunsch docs/SKILL-WUENSCHE.md – Client und Server rechnen gleich):
 --    Spread.Chain(def, shotTimes, t): number       Anzahl vorheriger Schüsse in der laufenden Kette
@@ -27,7 +28,8 @@
 --        Rückstoß des index-ten Schusses der Kette (1 = erster). Mit def.RecoilPattern fest und lernbar,
 --        sonst RecoilPitch hoch + RecoilYaw zufällig ± (aus seed deterministisch).
 --
---  Client-Formel (B11.1, WP4): lerp(SpreadHip, SpreadAds, adsAlpha) + Move + Air + Bloom (+ Rutschen).
+--  Client-Formel (B11.1, WP4): lerp(SpreadHip, SpreadAds, adsAlpha) + Move + Air, × FirstShot, + Bloom
+--  (+ Rutschen, außer def.MobileSpread).
 --  Solange das Zielen noch nicht "fertig" ist (AdsTime − 0.1 s), rechnet der Server mit SpreadHip.
 -- =====================================================================
 

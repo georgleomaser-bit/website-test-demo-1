@@ -10,6 +10,11 @@
 --  FOV-Punch), Schadenszahlen (stapeln pro Ziel 0.6 s), Richtungspfeile + rote Rand-Blende,
 --  Kill-Banner + DOUBLE!/TRIPLE!/QUAD!/ACE!, Gegner-Umrisse über den Highlights-Verteiler.
 --  Alles ist vorgebaut/gepoolt; UI-Werte werden nur bei Änderung geschrieben.
+--  AKYTEX/RIVALS-minimal (docs/STYLE-AKYTEX.md): Leben unten links als Glas-Karte mit Balken
+--  Up -> Warn -> Down, Munition unten rechts groß in Titillium Web, Fadenkreuz weiß mit feiner dunkler
+--  Kontur, Marker weiß / Kopf Warn / Kill Down, Ansagen in Michroma mit Akzent-Unterstrich statt Comic-Kontur.
+--  FOV-Punch über FpsCamera.Punch (einziger FOV-Besitzer); Leben folgt zusätzlich den Attributen
+--  "Hp"/"MaxHp" am eigenen Character (Wiederbelebung/neue Runde setzt die Anzeige zurück).
 --
 --  Öffentliche API (C7.4):
 --    CombatHud.Show(on)  CombatHud.SetHp(hp, max)  CombatHud.SetAmmo(mag, max, reloading, reloadProgress?)
@@ -36,8 +41,9 @@ local player = Players.LocalPlayer
 local Theme = UI.Theme
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
-local RED = Color3.fromRGB(255, 50, 60)
-local YELLOW = Color3.fromRGB(255, 225, 40)
+local RED = Theme.Down -- Kill, Schaden, wenig Leben (AKYTEX Down)
+local YELLOW = Theme.Warn -- Kopfschuss (AKYTEX Warn)
+local GLASS_T = 0.18 -- Glas-Flächen über der Welt
 local HIDDEN_CF = CFrame.new(0, -4000, 0)
 local TRIANGLE = "rbxasset://textures/triangle.png"
 
@@ -132,7 +138,7 @@ local function outline(parent: Instance, thickness: number?)
 	UI.Create("UIStroke", {
 		Thickness = thickness or 1,
 		Color = BLACK,
-		Transparency = 0.25,
+		Transparency = 0.35,
 		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		Parent = parent,
 	})
@@ -319,8 +325,8 @@ local function buildMarker(parent: Instance)
 		Text = "",
 		Font = UI.Fonts.Pop,
 		TextColor3 = YELLOW,
-		MaxText = 36,
-		Outline = 3,
+		MaxText = 26,
+		Outline = 1,
 		Visible = false,
 		ZIndex = 7,
 		Parent = parent,
@@ -381,7 +387,9 @@ local function stepMarker(dt: number)
 end
 
 -- ---------------------------------------------------------------------
--- FOV-PUNCH + TREFFER-STOPP (nach der FpsCamera, ohne deren FOV zu verfälschen)
+-- FOV-PUNCH + TREFFER-STOPP
+-- Das FOV gehört der FpsCamera (einziger Besitzer): der Punch läuft über FpsCamera.Punch(deg).
+-- Nur wenn die FpsCamera fehlt, schreibt ein eigener RenderStep kurz das FOV (Rückfall).
 -- ---------------------------------------------------------------------
 local FOV_BIND = "ClutchClashFovPunch"
 local punchAmount = 0
@@ -398,7 +406,7 @@ local function stepPunch(dt: number)
 	end
 	punchLeft -= dt
 	local current = camera.FieldOfView
-	-- Hat jemand (FpsCamera) seit unserem letzten Schreiben das FOV gesetzt? Dann ist das die neue Basis.
+	-- Hat jemand seit unserem letzten Schreiben das FOV gesetzt? Dann ist das die neue Basis.
 	local base = if lastWrittenFov
 			and math.abs(current - lastWrittenFov) < 1e-3
 			and lastBaseFov
@@ -427,6 +435,12 @@ local function fovPunch(amount: number, duration: number)
 	end
 	if amount <= 0.05 then
 		return
+	end
+	local camera = module("FpsCamera")
+	if camera and type(camera.Punch) == "function" then
+		if pcall(camera.Punch, amount) then
+			return
+		end
 	end
 	punchAmount = amount
 	punchTime = duration
@@ -482,38 +496,67 @@ local multiScale: UIScale? = nil
 local multiUntil = 0
 local killTimes: { number } = {}
 local MULTI_KEYS = { "", "ui.multi2", "ui.multi3", "ui.multi4", "ui.multi5" }
-local BANNER_POP = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local BANNER_POP = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+
+-- Akzent-Unterstrich unter einer Ansage (AKYTEX statt Comic-Kontur)
+local function underline(parent: TextLabel, color: Color3, width: number): Frame
+	return frame({
+		Name = "Underline",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 1, 2),
+		Size = UDim2.fromOffset(width, 3),
+		BackgroundColor3 = color,
+		ZIndex = parent.ZIndex,
+		Parent = parent,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+end
+
+local multiLine: Frame? = nil
 
 local function buildBanners(parent: Instance)
 	bannerLabel = UI.Label({
 		Name = "KillBanner",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.66),
-		Size = UDim2.fromOffset(560, 52),
+		Size = UDim2.fromOffset(560, 34),
 		Text = "",
-		Font = UI.Fonts.Pop,
+		Font = UI.Fonts.Main,
 		TextColor3 = WHITE,
-		MaxText = 46,
-		Outline = 4,
+		MaxText = 26,
+		Outline = 1,
 		Visible = false,
 		ZIndex = 8,
 		Parent = parent,
 	})
 	bannerScale = UI.Create("UIScale", { Parent = bannerLabel })
+	if bannerLabel then
+		underline(bannerLabel, RED, 44)
+	end
 	multiLabel = UI.Label({
 		Name = "MultiKill",
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.6),
-		Size = UDim2.fromOffset(420, 60),
+		Position = UDim2.fromScale(0.5, 0.59),
+		Size = UDim2.fromOffset(460, 50),
 		Text = "",
 		Font = UI.Fonts.Banner,
-		TextColor3 = YELLOW,
-		MaxText = 56,
-		Outline = 4,
+		TextColor3 = WHITE,
+		MaxText = 40,
 		Visible = false,
 		ZIndex = 8,
 		Parent = parent,
 	})
+	if multiLabel then
+		-- Akzent-Glow (halb durchsichtige farbige Kontur) + Unterstrich
+		UI.Create("UIStroke", {
+			Name = "Glow",
+			Color = YELLOW,
+			Thickness = 2.5,
+			Transparency = 0.65,
+			LineJoinMode = Enum.LineJoinMode.Round,
+			Parent = multiLabel,
+		})
+		multiLine = underline(multiLabel, YELLOW, 72)
+	end
 	multiScale = UI.Create("UIScale", { Parent = multiLabel })
 end
 
@@ -555,7 +598,7 @@ function CombatHud.KillBanner(name: string)
 	label.Visible = true
 	bannerUntil = os.clock() + HUD.KillBanner
 	if bannerScale then
-		bannerScale.Scale = 0.5
+		bannerScale.Scale = 0.85
 		TweenService:Create(bannerScale, BANNER_POP, { Scale = 1 }):Play()
 	end
 	local n = countKill()
@@ -566,8 +609,12 @@ function CombatHud.KillBanner(name: string)
 		multiLabel.Visible = true
 		multiUntil = os.clock() + HUD.KillBanner + 0.3
 		if multiScale then
-			multiScale.Scale = 1.8
+			multiScale.Scale = 1.25
 			TweenService:Create(multiScale, BANNER_POP, { Scale = 1 }):Play()
+		end
+		local line = multiLine
+		if line then
+			line.BackgroundColor3 = if n >= 5 then RED else YELLOW -- ACE in Down
 		end
 		local effects = module("Effects")
 		if n >= 3 and effects and type(effects.Confetti) == "function" then
@@ -694,8 +741,9 @@ local function buildDamagePool(size: number)
 			Size = UDim2.fromScale(1, 1),
 			Text = "",
 			Font = UI.Fonts.Pop,
-			MaxText = 44,
-			Outline = 3,
+			TextColor3 = WHITE,
+			MaxText = 34,
+			Outline = 1,
 			Parent = gui,
 		})
 		local scale: UIScale = UI.Create("UIScale", { Parent = label })
@@ -761,7 +809,7 @@ local function showDamage(key: string, pos: Vector3, amount: number, head: boole
 	e.Label.Text = if e.Head then tostring(e.Total) .. "!" else tostring(e.Total)
 	e.Label.TextColor3 = if e.Head then YELLOW else WHITE
 	e.Label.TextTransparency = 0
-	e.Scale.Scale = if head then 1.9 else 1.5
+	e.Scale.Scale = if head then 1.6 else 1.35
 	e.Gui.Enabled = true
 	e.Attachment.WorldPosition = pos
 end
@@ -850,7 +898,7 @@ local function buildHurt(parent: Instance)
 			AnchorPoint = spec.AnchorPoint,
 			Position = spec.Position,
 			Size = spec.Size,
-			BackgroundColor3 = Color3.fromRGB(255, 20, 30),
+			BackgroundColor3 = RED,
 			BackgroundTransparency = 1,
 			ZIndex = 1,
 			Parent = parent,
@@ -953,41 +1001,54 @@ local slotEquipped = "Primary"
 local SLOT_NAMES = { "Primary", "Secondary", "Melee", "Utility" }
 
 local function buildPanels(parent: Frame)
-	-- Leben unten links
-	local hp = frame({
+	-- Leben unten links: Glas-Karte, Zahl in Titillium Web, Balken Up -> Warn -> Down
+	local hp = UI.Panel({
 		Name = "Health",
-		Size = UDim2.fromOffset(260, 64),
-		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(248, 58),
+		BackgroundTransparency = GLASS_T,
 		Parent = parent,
 	})
-	hpText = UI.Label({
-		Position = UDim2.fromOffset(0, 0),
-		Size = UDim2.fromOffset(150, 40),
-		Text = "❤ 100",
-		Font = UI.Fonts.Number,
+	UI.Label({
+		Name = "Caption",
+		Position = UDim2.fromOffset(14, 9),
+		Size = UDim2.fromOffset(30, 16),
+		Text = "HP",
+		Font = UI.Fonts.Main,
+		TextColor3 = Theme.Muted,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 36,
-		Outline = 3,
+		MaxText = 13,
+		Parent = hp,
+	})
+	hpText = UI.Label({
+		Name = "Value",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -14, 0, 2),
+		Size = UDim2.fromOffset(120, 30),
+		Text = "100",
+		Font = UI.Fonts.Number,
+		TextColor3 = WHITE,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		MaxText = 28,
 		Parent = hp,
 	})
 	local back = frame({
-		Position = UDim2.fromOffset(0, 44),
-		Size = UDim2.fromOffset(240, 14),
-		BackgroundColor3 = Color3.fromRGB(30, 30, 40),
-		BackgroundTransparency = 0.25,
+		Name = "Track",
+		Position = UDim2.fromOffset(14, 38),
+		Size = UDim2.new(1, -28, 0, 8),
+		BackgroundColor3 = Theme.Bg2,
 		Parent = hp,
 	})
-	UI.Create("UICorner", { CornerRadius = UDim.new(0, 7), Parent = back })
-	UI.Create("UIStroke", { Thickness = 2, Color = BLACK, Parent = back })
+	UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = back })
 	hpFill = frame({
+		Name = "Fill",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = Theme.Green,
+		BackgroundColor3 = Theme.Up,
 		Parent = back,
 	})
-	UI.Create("UICorner", { CornerRadius = UDim.new(0, 7), Parent = hpFill })
+	UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = hpFill })
 	hpPanel = hp
 
-	-- Munition unten rechts
+	-- Munition unten rechts: große Zahl (Titillium Web) + "/ Max" in Text2, Nachlade-Balken Accent
 	local ammo = frame({
 		Name = "Ammo",
 		AnchorPoint = Vector2.new(1, 1),
@@ -999,48 +1060,50 @@ local function buildPanels(parent: Frame)
 	ammoText = UI.Label({
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -78, 0, 0),
-		Size = UDim2.fromOffset(150, 52),
+		Size = UDim2.fromOffset(150, 56),
 		Text = "",
 		Font = UI.Fonts.Number,
+		TextColor3 = WHITE,
 		TextXAlignment = Enum.TextXAlignment.Right,
-		MaxText = 50,
-		Outline = 3,
+		MaxText = 54,
+		Outline = 1,
 		Parent = ammo,
 	})
 	ammoMaxText = UI.Label({
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 18),
-		Size = UDim2.fromOffset(76, 30),
+		Position = UDim2.new(1, 0, 0, 22),
+		Size = UDim2.fromOffset(76, 28),
 		Text = "",
 		Font = UI.Fonts.Number,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = Color3.fromRGB(220, 225, 235),
-		MaxText = 26,
-		Outline = 2,
+		TextColor3 = Theme.Text2,
+		MaxText = 24,
+		Outline = 1,
 		Parent = ammo,
 	})
 	local rBack = frame({
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 56),
-		Size = UDim2.fromOffset(200, 8),
-		BackgroundColor3 = Color3.fromRGB(30, 30, 40),
-		BackgroundTransparency = 0.25,
+		Position = UDim2.new(1, 0, 0, 60),
+		Size = UDim2.fromOffset(200, 4),
+		BackgroundColor3 = Theme.Bg2,
+		BackgroundTransparency = 0.2,
 		Visible = false,
 		Parent = ammo,
 	})
-	UI.Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = rBack })
-	reloadFill = frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = YELLOW, Parent = rBack })
-	UI.Create("UICorner", { CornerRadius = UDim.new(0, 4), Parent = reloadFill })
+	UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = rBack })
+	reloadFill = frame({ Size = UDim2.fromScale(0, 1), BackgroundColor3 = Theme.Accent, Parent = rBack })
+	UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = reloadFill })
 	reloadBack = rBack
 	reloadHint = UI.Label({
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 64),
-		Size = UDim2.fromOffset(240, 26),
+		Position = UDim2.new(1, 0, 0, 66),
+		Size = UDim2.fromOffset(240, 22),
 		Text = "",
+		Font = UI.Fonts.Main,
 		TextColor3 = RED,
 		TextXAlignment = Enum.TextXAlignment.Right,
-		MaxText = 22,
-		Outline = 2,
+		MaxText = 17,
+		Outline = 1,
 		Visible = false,
 		Parent = ammo,
 	})
@@ -1066,44 +1129,48 @@ local function buildPanels(parent: Frame)
 	for i = 1, 4 do
 		local cell = frame({
 			Name = "Slot" .. i,
-			Size = UDim2.fromOffset(92, 56),
-			BackgroundColor3 = Color3.fromRGB(25, 28, 45),
+			Size = UDim2.fromOffset(92, 52),
+			BackgroundColor3 = Theme.Surface,
 			BackgroundTransparency = 0.35,
 			LayoutOrder = i,
 			Parent = slots,
 		})
 		UI.Create("UICorner", { CornerRadius = UDim.new(0, 10), Parent = cell })
-		local stroke: UIStroke = UI.Create("UIStroke", { Thickness = 2, Color = BLACK, Parent = cell })
+		local stroke: UIStroke = UI.Create("UIStroke", {
+			Thickness = 1,
+			Color = Theme.Border,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			Parent = cell,
+		})
 		local scale: UIScale = UI.Create("UIScale", { Parent = cell })
 		local key = UI.Label({
-			Position = UDim2.fromOffset(6, 2),
-			Size = UDim2.fromOffset(20, 18),
+			Position = UDim2.fromOffset(8, 4),
+			Size = UDim2.fromOffset(24, 14),
 			Text = tostring(i),
 			Font = UI.Fonts.Number,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			TextColor3 = Color3.fromRGB(200, 205, 220),
-			MaxText = 16,
-			Outline = 1.5,
+			TextColor3 = Theme.Muted,
+			MaxText = 13,
 			Parent = cell,
 		})
 		local name = UI.Label({
-			Position = UDim2.fromOffset(4, 18),
-			Size = UDim2.new(1, -8, 0, 32),
+			Position = UDim2.fromOffset(6, 19),
+			Size = UDim2.new(1, -12, 0, 26),
 			Text = "",
-			MaxText = 22,
-			Outline = 2,
+			Font = UI.Fonts.Main,
+			TextColor3 = Theme.Text,
+			MaxText = 17,
 			Parent = cell,
 		})
 		local charges = UI.Label({
 			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.new(1, -6, 0, 2),
-			Size = UDim2.fromOffset(40, 18),
+			Position = UDim2.new(1, -8, 0, 4),
+			Size = UDim2.fromOffset(40, 14),
 			Text = "",
 			Font = UI.Fonts.Number,
 			TextXAlignment = Enum.TextXAlignment.Right,
 			TextColor3 = YELLOW,
-			MaxText = 16,
-			Outline = 1.5,
+			MaxText = 13,
 			Parent = cell,
 		})
 		table.insert(
@@ -1150,13 +1217,13 @@ function CombatHud.SetHp(hp: number, max: number)
 	lastHpKey = key
 	local ratio = hpNow / hpMax
 	if hpText then
-		hpText.Text = "❤ " .. tostring(shownHp)
+		hpText.Text = tostring(shownHp)
 		hpText.TextColor3 = if hpNow <= HUD.LowHp then RED else WHITE
 	end
 	local fill = hpFill
 	if fill then
 		fill.Size = UDim2.fromScale(ratio, 1)
-		fill.BackgroundColor3 = if ratio > 0.6 then Theme.Green elseif ratio > 0.3 then Theme.Yellow else RED
+		fill.BackgroundColor3 = if ratio > 0.6 then Theme.Up elseif ratio > 0.3 then Theme.Warn else RED
 	end
 end
 
@@ -1205,7 +1272,7 @@ function CombatHud.SetAmmo(mag: number, max: number, reloading: boolean, reloadP
 		ammoText.TextColor3 = if unlimited
 			then WHITE
 			elseif m == 0 then RED
-			elseif m / mx <= HUD.LowAmmo then Theme.Orange
+			elseif m / mx <= HUD.LowAmmo then YELLOW
 			else WHITE
 	end
 	if ammoMaxText then
@@ -1287,10 +1354,12 @@ function CombatHud.SetSlots(loadout: { [string]: string }, equipped: string, cha
 				local charge = slotCharges[name]
 				cell.Charges.Text = if type(charge) == "number" and name == "Utility" then "x" .. charge else ""
 				local active = name == slotEquipped
-				cell.Stroke.Color = if active then YELLOW else BLACK
-				cell.Stroke.Thickness = if active then 3 else 2
-				cell.Frame.BackgroundTransparency = if active then 0.1 else 0.45
-				cell.Scale.Scale = if active then 1.08 else 1
+				cell.Stroke.Color = if active then Theme.Accent else Theme.Border
+				cell.Stroke.Thickness = if active then 1.5 else 1
+				cell.Frame.BackgroundColor3 = if active then Theme.Surface2 else Theme.Surface
+				cell.Frame.BackgroundTransparency = if active then 0.1 else 0.4
+				cell.Name.TextColor3 = if active then WHITE else Theme.Text2
+				cell.Scale.Scale = if active then 1.05 else 1
 			end
 		end
 	end
@@ -1453,28 +1522,75 @@ local function refreshEnemies()
 		return
 	end
 	local color = enemyColor()
+	local wanted: { [number]: Model } = {}
 	for id in pairs(roster) do
-		local handle = enemyHandles[id]
-		local model = if isEnemy(id) then modelOf(id) else nil
-		local alive = model ~= nil and model:GetAttribute("Alive") ~= false
-		if model and alive then
-			local ok, newHandle = pcall(highlights.Acquire, "Enemy", model, {
-				Outline = color,
-				FillTransparency = 1,
-				Depth = Enum.HighlightDepthMode.Occluded,
-			})
-			enemyHandles[id] = if ok then newHandle else nil
-		elseif handle then
-			pcall(highlights.Release, handle)
-			enemyHandles[id] = nil
+		if isEnemy(id) then
+			local model = modelOf(id)
+			if model and model:GetAttribute("Alive") ~= false then
+				wanted[id] = model
+			end
 		end
+	end
+	-- Mitten im Match nachgerückte Bots (nicht im Start-Roster): über die Modell-Attribute Ctx/Team erkennen
+	scanModels()
+	for id, model in pairs(modelCache) do
+		if
+			not roster[id]
+			and id ~= myId
+			and model.Parent
+			and model:GetAttribute("Ctx") == myCtx
+			and model:GetAttribute("Alive") ~= false
+		then
+			local team = model:GetAttribute("Team")
+			if matchMode == "FFA" or team == 0 or team ~= myTeam then
+				wanted[id] = model
+			end
+		end
+	end
+	for id, model in pairs(wanted) do
+		local ok, newHandle = pcall(highlights.Acquire, "Enemy", model, {
+			Outline = color,
+			FillTransparency = 1,
+			Depth = Enum.HighlightDepthMode.Occluded,
+		})
+		enemyHandles[id] = if ok then newHandle else nil
 	end
 	for id, handle in pairs(enemyHandles) do
-		if not roster[id] then
+		if not wanted[id] then
 			pcall(highlights.Release, handle)
 			enemyHandles[id] = nil
 		end
 	end
+end
+
+-- Eigener Character: Attribute "Hp"/"MaxHp" (CombatService) als zweite Quelle für die Lebensanzeige.
+-- Wiederbelebung (Respawn-Modus) und neue Runden schicken kein "Heal" – ohne das bliebe die Anzeige
+-- auf dem alten Wert (z. B. 0) stehen.
+local hpConns: { RBXScriptConnection } = {}
+
+local function readHpAttributes(character: Model?)
+	if not character then
+		return
+	end
+	local hp = character:GetAttribute("Hp")
+	local maxHp = character:GetAttribute("MaxHp")
+	if type(hp) == "number" then
+		CombatHud.SetHp(hp, if type(maxHp) == "number" and maxHp > 0 then maxHp else hpMax)
+	end
+end
+
+local function watchHp(character: Model)
+	for _, conn in ipairs(hpConns) do
+		conn:Disconnect()
+	end
+	table.clear(hpConns)
+	local function update()
+		if shown then
+			readHpAttributes(character)
+		end
+	end
+	table.insert(hpConns, character:GetAttributeChangedSignal("Hp"):Connect(update))
+	table.insert(hpConns, character:GetAttributeChangedSignal("MaxHp"):Connect(update))
 end
 
 -- ---------------------------------------------------------------------
@@ -1544,9 +1660,14 @@ local function onArmed(info: any)
 	popped = false
 	table.clear(killTimes)
 	local config = ctx.Config
-	local maxHp = config and config.Player and tonumber(config.Player.MaxHp) or 100
+	local character = player.Character
+	local attrMax = character and character:GetAttribute("MaxHp")
+	local maxHp = if type(attrMax) == "number" and attrMax > 0
+		then attrMax
+		else (config and config.Player and tonumber(config.Player.MaxHp) or 100)
 	lastHpKey = ""
 	CombatHud.SetHp(maxHp, maxHp)
+	readHpAttributes(character)
 	if type(info.Loadout) == "table" then
 		local charges: { [string]: number } = {}
 		if type(info.Ammo) == "table" then
@@ -1592,17 +1713,23 @@ end
 -- VORSCHAU (Einstellungen-Fenster)
 -- ---------------------------------------------------------------------
 function CombatHud.MakePreview(parent: GuiObject): Frame
+	-- mittelhelle "Welt"-Fläche (Himmel -> Boden, gedämpft), damit man Farbe/Kontur beurteilen kann
 	local holder = frame({
 		Name = "CrosshairPreview",
 		Size = UDim2.new(1, 0, 0, 90),
-		BackgroundColor3 = Color3.fromRGB(70, 90, 110),
+		BackgroundColor3 = WHITE,
 		Parent = parent,
 	})
 	UI.Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = holder })
-	UI.Create("UIStroke", { Thickness = 2, Color = BLACK, Parent = holder })
+	UI.Create("UIStroke", {
+		Thickness = 1,
+		Color = Theme.Border,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = holder,
+	})
 	UI.Create("UIGradient", {
 		Rotation = 90,
-		Color = ColorSequence.new(Color3.fromRGB(140, 190, 230), Color3.fromRGB(90, 120, 90)),
+		Color = ColorSequence.new(Color3.fromRGB(96, 122, 150), Color3.fromRGB(70, 84, 72)),
 		Parent = holder,
 	})
 	local c = buildCrosshair(holder, 3)
@@ -1742,6 +1869,7 @@ function CombatHud.Init(context: any)
 	hooks.On("LocalRevived", function()
 		popped = false
 		applyShown()
+		readHpAttributes(player.Character)
 		refreshEnemies()
 	end)
 	hooks.On("Settings", function()
@@ -1765,6 +1893,10 @@ function CombatHud.Init(context: any)
 		end
 		enemyHandles[leaving.UserId] = nil
 	end)
+	player.CharacterAdded:Connect(watchHp)
+	if player.Character then
+		watchHp(player.Character)
+	end
 	hooks.On("PhotoMode", function(on)
 		photoHidden = on == true
 		if photoHidden then

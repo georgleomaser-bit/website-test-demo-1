@@ -231,6 +231,9 @@ end
 local function flushFx(_dt: number)
 	for ctx, queue in pairs(fxQueues) do
 		if #queue == 0 then
+			if not contextOf(ctx) then
+				fxQueues[ctx] = nil -- Match vorbei: leere Warteschlange nicht ewig behalten
+			end
 			continue
 		end
 		fxQueues[ctx] = {}

@@ -10,10 +10,16 @@
 --    Rutsch-Sprung: Sprung im Rutschen behält 90 % horizontal (max. 30).
 --    Slide-Hop: Landen mit gehaltener/kurz zuvor gedrückter Rutsch-Taste kettet ein neues Rutschen mit dem
 --               mitgebrachten Tempo (ohne Cooldown, ohne Auffüllen – Obergrenze JumpCap, klingt ab).
---    Luftsteuerung: Schwung bleibt in der Luft, Richtung begrenzt lenkbar (Air-Strafe).
+--    Luftsteuerung: Schwung bleibt in der Luft, Richtung begrenzt lenkbar (Air-Strafe) – auch bei normalen
+--               Sprüngen: Lenken AIR_STRAFE_TURN °/s, Gegenlenken bremst, ohne Eingabe bleibt der Schwung.
+--    Wand-Absprung: Sprung-Taste in der Luft an einer Wand (≤ 2.6 Studs) = einmal pro Luftzeit weg von der
+--               Wand + WALL_KICK_HEIGHT hoch (≤ 26 Studs/s horizontal).
+--    Kante hochziehen (Mantle): in der Luft gegen niedrige Deckung (Kante 1.0–2.6 Studs über den Füßen,
+--               Platz darüber) -> einmal pro Luftzeit sauber hoch. Der HRP bleibt dabei über der Kante (Noclip-Prüfung).
 --    Doppelsprung: nur mit Melee.AirJump (BoxingGloves): 1 Luftsprung Höhe 6, Richtung neu wählbar.
 --    GravityLift: VectorForce hebt den Anteil frac der Schwerkraft auf (Mutatoren, z. B. MoonJump).
 --  Budget des Anti-Cheats (C12.3): 32 × SpeedMult × 1.15 + 6 – Rutschen (32) und Slide-Hop (≤ 30) bleiben darunter.
+--  Höhe: Config.Security.SkillAirJumps = 2 erlaubt Sprung + Wand-Absprung + Doppelsprung (7.2 × 3 + 3 Studs).
 --
 --  Öffentliche API (C7.4):
 --    Movement.ApplyImpulse(v: Vector3)     Rückstoß/Raketensprung (auch aus Combat("Impulse"))
@@ -31,7 +37,9 @@ local Movement = {}
 local player = Players.LocalPlayer
 local ctx: any = nil
 
-type Carry = { Dir: Vector3, Speed: number }
+-- Air = Schwung eines normalen Sprungs/Wand-Absprungs (begrenzte Luftsteuerung, endet bei der Landung,
+-- kettet kein Rutschen); sonst Rutsch-Sprung/Impuls-Schwung (Slide-Hop möglich)
+type Carry = { Dir: Vector3, Speed: number, Air: boolean? }
 
 -- ---------------------------------------------------------------------
 -- 1) KONSTANTEN (Startwerte = Config.Player, zur Laufzeit von dort gelesen)
@@ -64,6 +72,20 @@ local SLIDE_TURN = math.rad(70) -- rad/s Lenken im Rutschen
 local AIR_TURN = math.rad(150) -- rad/s Luftsteuerung
 local AIR_DRAG = 0.18 -- 1/s Abbau des Schwungs in der Luft
 local AIR_JUMP_DELAY = 0.1 -- Luftsprung frühestens 0.1 s nach dem Abheben
+local AIR_STRAFE_TURN = math.rad(260) -- rad/s Lenken bei normalen Sprüngen (Roblox-Standard: sofort)
+local AIR_BRAKE = 40 -- Studs/s² Abbremsen beim Gegenlenken in der Luft
+local AIR_ACCEL = 40 -- Studs/s² Beschleunigen in der Luft bis Gehtempo (Sprung aus dem Stand)
+local AIR_FREE_SPEED = 6 -- darunter ist kaum Schwung da: Richtung frei
+local WALL_KICK_REACH = 2.6 -- Abstand HRP-Mitte -> Wand
+local WALL_KICK_HEIGHT = 5 -- Studs hoch
+local WALL_KICK_OUT = 18 -- Studs/s weg von der Wand
+local WALL_KICK_KEEP = 0.85 -- Anteil des Tempos entlang der Wand
+local WALL_KICK_MAX = 26 -- horizontale Obergrenze (Anti-Cheat-Budget 42.8)
+local MANTLE_REACH = 2.2 -- Wand vor den Beinen (ab HRP-Mitte)
+local MANTLE_MIN = 1.0 -- Kante mindestens so hoch über den Füßen (darunter: normaler Schritt)
+local MANTLE_MAX = 2.6 -- höchstens: HRP-Mitte (Füße + ~3) bleibt über der Kante
+local MANTLE_CLEAR = 1.2 -- so weit über die Kante heben
+local MANTLE_FORWARD = 10 -- Studs/s nach vorn auf die Deckung
 local IMPULSE_MAX = 95
 local DUST_TEXTURE = "rbxasset://textures/particles/smoke_main.dds"
 
@@ -96,6 +118,8 @@ local slideEndAt = -10
 local slideSpeedAtEnd = 0
 local carry: Carry? = nil
 local airJumpsUsed = 0
+local wallKickUsed = false
+local mantleUsed = false
 local wasGrounded = true
 local leftGroundAt = -10
 local landedAt = -10
@@ -104,6 +128,9 @@ local camDropAlpha = 0
 local appliedWalk: number? = nil
 local appliedJump: number? = nil
 local restored = true
+local moveParams = RaycastParams.new() -- Wand-/Kanten-Strahlen (ohne eigene Figur und Kamera)
+moveParams.FilterType = Enum.RaycastFilterType.Exclude
+moveParams.IgnoreWater = true
 
 -- ---------------------------------------------------------------------
 -- 3) HELFER
@@ -244,6 +271,8 @@ end
 -- ---------------------------------------------------------------------
 local function attachCharacter(char: Model)
 	character = char
+	local camera = workspace.CurrentCamera
+	moveParams.ExcludeInstances = if camera then { char, camera } else { char }
 	humanoid = nil
 	root = nil
 	liftForce = nil
@@ -334,7 +363,97 @@ local function wantsSlide(now: number): boolean
 end
 
 -- ---------------------------------------------------------------------
--- 6) SPRUNG-ANFRAGE (Rutsch-Sprung, Doppelsprung)
+-- 5b) WAND & KANTE (Wand-Absprung, Mantle) – nur feste Map-Teile, nie Figuren
+-- ---------------------------------------------------------------------
+local function solid(part: Instance): boolean
+	if not part:IsA("BasePart") or not part.CanCollide then
+		return false
+	end
+	local model = part:FindFirstAncestorOfClass("Model")
+	return not (model and (model:FindFirstChildOfClass("Humanoid") or model:GetAttribute("CombatantId") ~= nil))
+end
+
+-- nächste fast senkrechte Wand um den HRP (horizontale Normale) oder nil
+local function wallNormal(r: BasePart, h: Humanoid): Vector3?
+	local look = flatLook()
+	local right = Vector3.new(-look.Z, 0, look.X)
+	local dirs = { look, -look, right, -right }
+	local md = horizontal(h.MoveDirection)
+	if md.Magnitude > 0.1 then
+		table.insert(dirs, 1, md.Unit)
+	end
+	local flat = horizontal(r.AssemblyLinearVelocity)
+	if flat.Magnitude > 1 then
+		table.insert(dirs, 1, flat.Unit)
+	end
+	local best: Vector3? = nil
+	local bestDist = math.huge
+	for _, dir in ipairs(dirs) do
+		local hit = workspace:Raycast(r.Position, dir * WALL_KICK_REACH, moveParams)
+		if hit and math.abs(hit.Normal.Y) < 0.35 and solid(hit.Instance) and hit.Distance < bestDist then
+			local n = horizontal(hit.Normal)
+			if n.Magnitude > 0.1 then
+				best = n.Unit
+				bestDist = hit.Distance
+			end
+		end
+	end
+	return best
+end
+
+-- Kante hochziehen: true, wenn ausgelöst
+local function tryMantle(h: Humanoid, r: BasePart, md: Vector3): boolean
+	if md.Magnitude < 0.1 then
+		return false
+	end
+	local fwd = md.Unit
+	if fwd:Dot(flatLook()) < 0.3 then
+		return false -- nur nach vorn (kein versehentliches Hochziehen beim Rückwärtslaufen)
+	end
+	local vel = r.AssemblyLinearVelocity
+	if vel.Y < -30 then
+		return false -- fällt schon zu schnell
+	end
+	-- Füße: R15 = HRP-Hälfte + HipHeight; R6 (toleriert) hat HipHeight 0 -> Beine 2 Studs
+	local legs0 = if h.RigType == Enum.HumanoidRigType.R6 then 2 else h.HipHeight
+	local feetY = r.Position.Y - (r.Size.Y / 2 + legs0)
+	-- 1) Wand vor den Beinen
+	local legs = Vector3.new(r.Position.X, feetY + 0.9, r.Position.Z)
+	local wall = workspace:Raycast(legs, fwd * MANTLE_REACH, moveParams)
+	if not wall or math.abs(wall.Normal.Y) > 0.35 or not solid(wall.Instance) then
+		return false
+	end
+	-- 2) Oberkante knapp hinter der Vorderseite (von oben nach unten)
+	local probe = wall.Position + fwd * 0.6
+	local top = feetY + MANTLE_MAX + 0.6
+	local down =
+		workspace:Raycast(Vector3.new(probe.X, top, probe.Z), Vector3.new(0, -(MANTLE_MAX + 0.4), 0), moveParams)
+	if not down or down.Normal.Y < 0.7 or not solid(down.Instance) then
+		return false
+	end
+	local rise = down.Position.Y - feetY
+	if rise < MANTLE_MIN or rise > MANTLE_MAX then
+		return false
+	end
+	-- 3) Platz: über der Kante frei (Kopf) und die Wand endet wirklich (kein Hochziehen an hohen Wänden)
+	if workspace:Raycast(down.Position + Vector3.new(0, 0.2, 0), Vector3.new(0, 5, 0), moveParams) then
+		return false
+	end
+	local above = Vector3.new(r.Position.X, down.Position.Y + 1.5, r.Position.Z)
+	if workspace:Raycast(above, fwd * (MANTLE_REACH + 0.8), moveParams) then
+		return false
+	end
+	local g = workspace.Gravity * (1 - gravityLift)
+	local vy = math.sqrt(2 * math.max(g, 1) * (rise + MANTLE_CLEAR))
+	local speed = math.max(horizontal(vel).Magnitude, MANTLE_FORWARD)
+	r.AssemblyLinearVelocity = Vector3.new(fwd.X * speed, math.max(vel.Y, vy), fwd.Z * speed)
+	carry = { Dir = fwd, Speed = speed, Air = true }
+	call("Sfx", "Play", "MeleeSwing", nil, { Volume = 0.3, Speed = 0.9 })
+	return true
+end
+
+-- ---------------------------------------------------------------------
+-- 6) SPRUNG-ANFRAGE (Rutsch-Sprung, Wand-Absprung, Doppelsprung)
 -- ---------------------------------------------------------------------
 local function onJumpRequest()
 	local h, r = humanoid, root
@@ -360,6 +479,31 @@ local function onJumpRequest()
 		r.AssemblyLinearVelocity = Vector3.new(slideDir.X * keep, v.Y, slideDir.Z * keep)
 		return
 	end
+	-- Wand-Absprung: einmal pro Luftzeit, vor dem Doppelsprung
+	if not grounded and not wallKickUsed and now - leftGroundAt >= AIR_JUMP_DELAY then
+		local n = wallNormal(r, h)
+		-- nur bewusst: in die Wand gedrückt oder auf sie zu geflogen (nicht beim Entlanglaufen mit gehaltenem Sprung)
+		local pushing = n ~= nil
+			and (horizontal(r.AssemblyLinearVelocity):Dot(-n) > 2 or horizontal(h.MoveDirection):Dot(-n) > 0.3)
+		if n and pushing then
+			wallKickUsed = true
+			endSlide(now)
+			local g = workspace.Gravity * (1 - gravityLift)
+			local vy = math.sqrt(2 * math.max(g, 1) * WALL_KICK_HEIGHT)
+			local flat = horizontal(r.AssemblyLinearVelocity)
+			local along = flat - n * flat:Dot(n)
+			local out = along * WALL_KICK_KEEP + n * WALL_KICK_OUT
+			if out.Magnitude > WALL_KICK_MAX then
+				out = out.Unit * WALL_KICK_MAX
+			end
+			r.AssemblyLinearVelocity = Vector3.new(out.X, vy, out.Z)
+			if out.Magnitude > 0.1 then
+				carry = { Dir = out.Unit, Speed = out.Magnitude, Air = true }
+			end
+			call("Sfx", "Play", "MeleeSwing", nil, { Volume = 0.4, Speed = 1.2 })
+			return
+		end
+	end
 	if not grounded and now - leftGroundAt >= AIR_JUMP_DELAY and airJumpsUsed < airJumpsAllowed() then
 		airJumpsUsed += 1
 		local g = workspace.Gravity * (1 - gravityLift)
@@ -370,8 +514,12 @@ local function onJumpRequest()
 		local speed = math.max(flat.Magnitude, h.WalkSpeed)
 		local newFlat = if md.Magnitude > 0.1 then md.Unit * speed else flat
 		r.AssemblyLinearVelocity = Vector3.new(newFlat.X, vy, newFlat.Z)
-		if carry and newFlat.Magnitude > 0.1 then
-			carry.Dir = newFlat.Unit
+		local c = carry
+		if c and newFlat.Magnitude > 0.1 then
+			c.Dir = newFlat.Unit
+			if c.Air then
+				c.Speed = newFlat.Magnitude -- Doppelsprung wählt Richtung UND Tempo neu (Ausweich-Tool)
+			end
 		end
 		call("Sfx", "Play", "MeleeSwing", nil, { Volume = 0.4, Speed = 1.4 })
 	end
@@ -431,17 +579,37 @@ local function step(dt: number)
 	if grounded and not wasGrounded then
 		landedAt = now
 		airJumpsUsed = 0
-		if carry then
+		wallKickUsed = false
+		mantleUsed = false
+		local c = carry
+		if c and c.Air then
+			carry = nil -- normaler Sprung: am Boden gilt wieder die normale Steuerung
+		elseif c then
 			-- Slide-Hop: Rutsch-Taste gehalten oder kurz vor der Landung gedrückt
 			if slideHeld or now - slideQueuedAt <= HOP_WINDOW then
-				local c = carry :: Carry
 				startSlide(now, math.min(c.Speed, slideCfg("JumpCap")), true)
 			end
 		end
 	elseif not grounded and wasGrounded then
 		leftGroundAt = now
+		-- normaler Sprung/Kante: Schwung mitnehmen (begrenzte Luftsteuerung statt Roblox-Sofortlenkung)
+		if carry == nil and not sliding then
+			local flat = horizontal(r.AssemblyLinearVelocity)
+			carry = {
+				Dir = if flat.Magnitude > 0.5 then flat.Unit else flatLook(),
+				Speed = flat.Magnitude,
+				Air = true,
+			}
+		end
 	end
 	wasGrounded = grounded
+
+	-- Kante hochziehen (einmal pro Luftzeit)
+	if not grounded and not mantleUsed and not sliding and now - leftGroundAt > 0.05 then
+		if tryMantle(h, r, horizontal(h.MoveDirection)) then
+			mantleUsed = true
+		end
+	end
 
 	-- Tempo-Werte
 	local d = currentDef()
@@ -500,7 +668,31 @@ local function step(dt: number)
 	end
 	if not sliding then
 		local c = carry
-		if c then
+		if c and c.Air then
+			if grounded then
+				carry = nil
+			else
+				-- Air-Strafe: lenkbar, aber begrenzt; Gegenlenken bremst; ohne Eingabe bleibt der Schwung
+				if md.Magnitude > 0.1 then
+					local wish = md.Unit
+					if c.Speed < AIR_FREE_SPEED then
+						c.Dir = wish
+						c.Speed = math.min(walk, c.Speed + AIR_ACCEL * dt)
+					elseif c.Dir:Dot(wish) < -0.3 then
+						c.Speed = math.max(0, c.Speed - AIR_BRAKE * dt)
+					else
+						c.Dir = turnToward(c.Dir, wish, AIR_STRAFE_TURN * dt)
+						if c.Speed < walk then
+							c.Speed = math.min(walk, c.Speed + AIR_ACCEL * dt)
+						end
+					end
+				else
+					c.Speed *= math.exp(-AIR_DRAG * dt)
+				end
+				setWalk(h, math.min(c.Speed, IMPULSE_MAX))
+				h:Move(c.Dir, false)
+			end
+		elseif c then
 			if grounded and now - landedAt > GROUND_CARRY then
 				carry = nil
 			else
@@ -511,7 +703,8 @@ local function step(dt: number)
 					c.Dir = turnToward(c.Dir, md.Unit, AIR_TURN * dt)
 				end
 				if c.Speed <= walk + 0.5 then
-					carry = nil
+					-- Schwung aufgebraucht: in der Luft weiter mit begrenzter Luftsteuerung, am Boden normal
+					carry = if grounded then nil else { Dir = c.Dir, Speed = c.Speed, Air = true }
 				else
 					setWalk(h, math.min(c.Speed, IMPULSE_MAX))
 					h:Move(c.Dir, false)

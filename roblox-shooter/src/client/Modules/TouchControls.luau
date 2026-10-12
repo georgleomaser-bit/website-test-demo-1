@@ -11,6 +11,9 @@
 --    letzte Waffe), oben rechts Scoreboard/Loadout/Inspizieren/Menü, BEREIT in der Vorbereitung.
 --  Linkshänder spiegelt alles, Knopfgröße 90–130 % (Einstellungen). Automatisch sprinten bei Stick ≥ 0.9.
 --  Alle Knöpfe speisen Aktionen über Controls.Emit ein (andere Module hören nur Controls).
+--  AKYTEX-Look: dunkle Glas-Scheiben (Bg2, halb durchsichtig) mit feinem Ring, FEUER mit Down-Tönung,
+--  gedrückt = heller + Accent-Ring + Feder 0.94; aktiver Slot / ZIELEN an = Accent-Ring (bleibt auch nach
+--  dem Antippen stehen).
 --
 --  Öffentliche API (C7.4):
 --    TouchControls.Show(set)          "Match" | "Range" | "Lobby" | "None"
@@ -28,10 +31,15 @@ local UI = require(script.Parent:WaitForChild("UI"))
 local TouchControls = {}
 
 local player = Players.LocalPlayer
+local Theme = UI.Theme
 local WHITE = Color3.new(1, 1, 1)
-local DISK = "rbxasset://textures/ui/Input/Disk_padded.png"
-local RING = "rbxasset://textures/ui/Input/Ring_padded.png"
 local AIM_ICON = "rbxasset://textures/ui/Input/AimStrafeButtonRegular.png"
+local GLASS = Theme.Bg2 -- Scheiben-Fläche
+local GLASS_T = 0.38 -- normal halb durchsichtig (Welt bleibt sichtbar)
+local GLASS_T_DOWN = 0.12 -- gedrückt / aktiv
+local RING_IDLE = Theme.Text2
+local RING_IDLE_T = 0.55
+local PRESS_SCALE = 0.94
 
 local SLOT_NAMES = { "Primary", "Secondary", "Melee", "Utility" }
 local SLOT_ACTIONS = { "Slot1", "Slot2", "Slot3", "Slot4" }
@@ -39,13 +47,15 @@ local SLOT_ACTIONS = { "Slot1", "Slot2", "Slot3", "Slot4" }
 type TouchButton = {
 	Name: string,
 	Root: ImageButton,
-	Ring: ImageLabel,
+	Ring: UIStroke,
+	Scale: UIScale,
 	Label: TextLabel,
 	Base: number, -- Größe bei 100 %
 	Sets: { [string]: boolean },
 	Visible: boolean,
 	Pressed: boolean,
-	Color: Color3,
+	Active: boolean, -- aktiver Slot / ZIELEN eingeschaltet (Accent-Ring bleibt stehen)
+	Color: Color3, -- Tönung der Scheibe (Bg2 oder Down beim FEUER)
 }
 
 local ctx: any = nil
@@ -126,7 +136,7 @@ local function scaled(base: number): number
 end
 
 -- ---------------------------------------------------------------------
--- KNOPF-BAUSTEIN (runde Scheibe + Ring, Text in der Mitte)
+-- KNOPF-BAUSTEIN (runde Glas-Scheibe + feiner Ring, Text in der Mitte)
 -- ---------------------------------------------------------------------
 local function makeButton(
 	name: string,
@@ -137,34 +147,34 @@ local function makeButton(
 	maxText: number?
 ): TouchButton
 	local parent = holder
+	local ring: UIStroke = UI.Create("UIStroke", {
+		Name = "Ring",
+		Color = RING_IDLE,
+		Transparency = RING_IDLE_T,
+		Thickness = 1.5,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	})
+	local scale: UIScale = UI.Create("UIScale")
 	local root: ImageButton = UI.Create("ImageButton", {
 		Name = name,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Size = UDim2.fromOffset(base, base),
-		BackgroundTransparency = 1,
-		Image = DISK,
-		ImageColor3 = color,
-		ImageTransparency = 0.25,
+		BackgroundColor3 = color,
+		BackgroundTransparency = GLASS_T,
+		Image = "",
 		AutoButtonColor = false,
 		Visible = false,
 		Parent = parent,
-	})
-	local ring: ImageLabel = UI.Create("ImageLabel", {
-		Name = "Ring",
-		Size = UDim2.fromScale(1, 1),
-		BackgroundTransparency = 1,
-		Image = RING,
-		ImageColor3 = WHITE,
-		ImageTransparency = 0.1,
-		Parent = root,
-	})
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), ring, scale })
 	local label = UI.Label({
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.86, 0.5),
+		Size = UDim2.fromScale(0.82, 0.42),
 		Text = text,
-		MaxText = maxText or 22,
-		Outline = 2,
+		Font = UI.Fonts.Main,
+		TextColor3 = WHITE,
+		MaxText = maxText or 18,
+		Outline = 1,
 		Parent = root,
 	})
 	local setMap: { [string]: boolean } = {}
@@ -175,21 +185,42 @@ local function makeButton(
 		Name = name,
 		Root = root,
 		Ring = ring,
+		Scale = scale,
 		Label = label,
 		Base = base,
 		Sets = setMap,
 		Visible = false,
 		Pressed = false,
+		Active = false,
 		Color = color,
 	}
 	buttons[name] = button
 	return button
 end
 
+-- Aussehen aus dem Zustand: gedrückt > aktiv > normal (Antippen setzt nie den aktiven Ring zurück)
+local function paint(button: TouchButton)
+	local lit = button.Pressed or button.Active
+	button.Root.BackgroundTransparency = if lit then GLASS_T_DOWN else GLASS_T
+	button.Root.BackgroundColor3 = if button.Active and not button.Pressed
+		then button.Color:Lerp(Theme.Accent, 0.35)
+		else button.Color
+	button.Ring.Color = if lit then Theme.Accent else RING_IDLE
+	button.Ring.Transparency = if lit then 0 else RING_IDLE_T
+	button.Ring.Thickness = if lit then 2 else 1.5
+	button.Scale.Scale = if button.Pressed then PRESS_SCALE else 1
+end
+
 local function setPressed(button: TouchButton, on: boolean)
 	button.Pressed = on
-	button.Root.ImageTransparency = if on then 0.05 else 0.25
-	button.Ring.ImageColor3 = if on then Color3.fromRGB(255, 230, 80) else WHITE
+	paint(button)
+end
+
+local function setActive(button: TouchButton, on: boolean)
+	if button.Active ~= on then
+		button.Active = on
+		paint(button)
+	end
 end
 
 -- Halten-Knopf: Begin beim Drücken, End beim Loslassen (auch wenn der Finger rausrutscht)
@@ -272,17 +303,17 @@ local ammoLabel: TextLabel? = nil
 
 local function build()
 	local cfg = touchCfg
-	local fire =
-		makeButton("Fire", cfg.FireSize, Color3.fromRGB(255, 70, 70), T("ui.touch.fire"), { "Match", "Range" }, 26)
+	local fire = makeButton("Fire", cfg.FireSize, Theme.Down, T("ui.touch.fire"), { "Match", "Range" }, 22)
 	bindFire(fire)
 	autoBadge = UI.Label({
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, -18),
-		Size = UDim2.fromOffset(64, 18),
+		Size = UDim2.fromOffset(64, 16),
 		Text = "AUTO",
-		TextColor3 = Color3.fromRGB(120, 255, 120),
-		MaxText = 16,
-		Outline = 2,
+		Font = UI.Fonts.Main,
+		TextColor3 = Theme.Up,
+		MaxText = 14,
+		Outline = 1,
 		Visible = false,
 		Parent = fire.Root,
 	})
@@ -293,19 +324,14 @@ local function build()
 		Size = UDim2.fromScale(0.6, 0.24),
 		Text = "",
 		Font = UI.Fonts.Number,
+		TextColor3 = WHITE,
 		MaxText = 22,
-		Outline = 2,
+		Outline = 1,
 		Parent = fire.Root,
 	})
-	local small = makeButton(
-		"FireSmall",
-		cfg.SmallFireSize,
-		Color3.fromRGB(255, 70, 70),
-		T("ui.touch.fire"),
-		{ "Match", "Range" }
-	)
+	local small = makeButton("FireSmall", cfg.SmallFireSize, Theme.Down, T("ui.touch.fire"), { "Match", "Range" })
 	bindFire(small)
-	local ads = makeButton("Ads", cfg.ButtonSize, Color3.fromRGB(60, 140, 255), T("ui.touch.ads"), { "Match", "Range" })
+	local ads = makeButton("Ads", cfg.ButtonSize, GLASS, T("ui.touch.ads"), { "Match", "Range" })
 	ads.Label.Position = UDim2.fromScale(0.5, 0.72)
 	ads.Label.Size = UDim2.fromScale(0.8, 0.3)
 	UI.Create("ImageLabel", {
@@ -320,22 +346,20 @@ local function build()
 		-- Touch: immer umschalten (B15.1)
 		adsOn = not adsOn
 		emit("Ads", if adsOn then "Begin" else "End")
-		ads.Ring.ImageColor3 = if adsOn then Color3.fromRGB(255, 230, 80) else WHITE
+		setActive(ads, adsOn)
 	end)
-	local reload = makeButton("Reload", cfg.ButtonSize, Color3.fromRGB(255, 170, 40), T("ui.touch.reload"), {
+	local reload = makeButton("Reload", cfg.ButtonSize, GLASS, T("ui.touch.reload"), {
 		"Match",
 		"Range",
 	})
 	bindTap(reload, function()
 		tap("Reload")
 	end)
-	local slide =
-		makeButton("Slide", cfg.ButtonSize, Color3.fromRGB(150, 110, 255), T("ui.touch.slide"), { "Match", "Range" })
+	local slide = makeButton("Slide", cfg.ButtonSize, GLASS, T("ui.touch.slide"), { "Match", "Range" })
 	bindHold(slide, "Slide")
-	local utility =
-		makeButton("Utility", cfg.ButtonSize, Color3.fromRGB(70, 210, 120), T("ui.touch.utility"), { "Match", "Range" })
+	local utility = makeButton("Utility", cfg.ButtonSize, GLASS, T("ui.touch.utility"), { "Match", "Range" })
 	bindHold(utility, "Utility")
-	local ready = makeButton("Ready", cfg.ButtonSize + 8, Color3.fromRGB(70, 210, 80), T("ui.touch.ready"), { "Match" })
+	local ready = makeButton("Ready", cfg.ButtonSize + 8, Theme.Up, T("ui.touch.ready"), { "Match" })
 	bindTap(ready, function()
 		tap("Ready")
 	end)
@@ -348,8 +372,7 @@ local function build()
 	}
 	for _, spec in ipairs(smallButtons) do
 		local action = spec[1] :: string
-		local b =
-			makeButton(action, cfg.SmallSize, Color3.fromRGB(40, 45, 70), spec[2] :: string, spec[3] :: { string }, 30)
+		local b = makeButton(action, cfg.SmallSize, GLASS, spec[2] :: string, spec[3] :: { string }, 26)
 		if action == "Scoreboard" then
 			bindHold(b, action) -- Scoreboard nur solange gedrückt
 		else
@@ -360,7 +383,7 @@ local function build()
 	end
 	-- Slot-Leiste (aktives Icon tippen = letzte Waffe)
 	for i = 1, 4 do
-		local b = makeButton("Slot" .. i, cfg.SlotSize, Color3.fromRGB(30, 34, 55), "", { "Match", "Range" }, 18)
+		local b = makeButton("Slot" .. i, cfg.SlotSize, GLASS, "", { "Match", "Range" }, 15)
 		bindTap(b, function()
 			if SLOT_NAMES[i] == equippedSlot then
 				tap("LastWeapon")
@@ -482,7 +505,7 @@ function TouchControls.Show(set: string)
 			emit("Ads", "End")
 			local ads = buttons.Ads
 			if ads then
-				ads.Ring.ImageColor3 = WHITE
+				setActive(ads, false)
 			end
 		end
 	end
@@ -542,9 +565,7 @@ function TouchControls.SetSlots(loadout: { [string]: string }, equipped: string,
 			text ..= " x" .. charge
 		end
 		b.Label.Text = text
-		local active = name == equippedSlot
-		b.Ring.ImageColor3 = if active then Color3.fromRGB(255, 230, 80) else WHITE
-		b.Root.ImageTransparency = if active then 0.05 else 0.35
+		setActive(b, name == equippedSlot)
 	end
 end
 
@@ -566,7 +587,7 @@ function TouchControls.SetAmmo(mag: number, max: number, reloading: boolean, rel
 	if label.Text ~= text then
 		label.Text = text
 	end
-	label.TextColor3 = if mag <= 0 and not reloading and max > 0 then Color3.fromRGB(255, 80, 80) else WHITE
+	label.TextColor3 = if mag <= 0 and not reloading and max > 0 then Theme.Warn else WHITE
 end
 
 local function relabel()

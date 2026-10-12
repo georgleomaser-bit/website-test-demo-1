@@ -8,6 +8,8 @@
 --  "SaveSettings" (nur geänderte Schlüssel, geklemmt wie auf dem Server). Fällt die Bildrate
 --  5 s lang unter 35 FPS, schaltet sich "Reduzierte Effekte" einmal automatisch ein (mit Hinweis).
 --  Info-Bereich: Regeln + Einspruch bei Banns (C19), Version.
+--  AKYTEX-Look: Glas-Fenster (UI.Window), jede Einstellung eine Zeile auf Surface2 mit 1-px-Rahmen,
+--  Schalter als Pill (an = Accent), Regler mit Accent-Füllung, Auswahl als Sekundär-Knopf.
 --
 --  Öffentliche API (C7.4):
 --    Settings.Get(): { [string]: any }      aktuelle Werte (NICHT verändern – Settings.Set benutzen)
@@ -16,6 +18,7 @@
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
@@ -25,17 +28,18 @@ local Settings = {}
 
 local Theme = UI.Theme
 local WHITE = Color3.new(1, 1, 1)
-local BLACK = Color3.new(0, 0, 0)
+local SWITCH_INFO = TweenInfo.new(0.14, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 
 local SAVE_DELAY = 0.8 -- Sekunden nach der letzten Änderung speichern (Server-Limit 2/s)
 local WINDOW_W = 620
 local WINDOW_H = 560
+local ROW_H = 48
 
 -- Reihenfolge + Abschnitte im Fenster (Schlüssel aus dem Schema; "Crosshair.<Feld>" = Teilwert)
 local SECTIONS: { { Key: string, Color: Color3, Items: { string } } } = {
 	{
 		Key = "controls",
-		Color = Theme.Orange,
+		Color = Theme.Accent,
 		Items = {
 			"SensMouse",
 			"SensPad",
@@ -52,17 +56,17 @@ local SECTIONS: { { Key: string, Color: Color3, Items: { string } } } = {
 	},
 	{
 		Key = "crosshair",
-		Color = Theme.Pink,
+		Color = Theme.Accent,
 		Items = { "Crosshair.Style", "Crosshair.Color", "Crosshair.Size", "Crosshair.Gap", "Crosshair.Dot" },
 	},
 	{
 		Key = "visual",
-		Color = Theme.Cyan,
+		Color = Theme.Accent,
 		Items = { "Fov", "EnemyColor", "DamageNumbers", "HitSound", "ReducedFx", "Shake", "ShowNet" },
 	},
-	{ Key = "touch", Color = Theme.Purple, Items = { "LeftHanded", "ButtonScale" } },
-	{ Key = "audio", Color = Theme.Green, Items = { "Sfx", "Music", "Ui" } },
-	{ Key = "game", Color = Theme.Yellow, Items = { "Lang", "AutoRequeue", "PublicDrops" } },
+	{ Key = "touch", Color = Theme.Accent, Items = { "LeftHanded", "ButtonScale" } },
+	{ Key = "audio", Color = Theme.Accent, Items = { "Sfx", "Music", "Ui" } },
+	{ Key = "game", Color = Theme.Accent, Items = { "Lang", "AutoRequeue", "PublicDrops" } },
 }
 -- Regler, die als Prozent angezeigt werden
 local PERCENT = {
@@ -188,7 +192,7 @@ local function setStatus(text: string, color: Color3?)
 	local label = statusLabel
 	if label then
 		label.Text = text
-		label.TextColor3 = color or WHITE
+		label.TextColor3 = color or Theme.Text2
 	end
 end
 
@@ -200,9 +204,9 @@ local function flush()
 	pending = {}
 	local reply = ctx.RequestFull("SaveSettings", batch, true)
 	if reply.Ok then
-		setStatus(T("ui.set.saved"), Theme.Cash)
+		setStatus(T("ui.set.saved"), Theme.Up)
 	else
-		setStatus(T("ui.set.saveFailed"), Theme.Red)
+		setStatus(T("ui.set.saveFailed"), Theme.Down)
 		if type(reply.Message) == "string" and reply.Message ~= "" then
 			UI.Toast(reply.Message, "Error")
 		end
@@ -216,7 +220,7 @@ local function scheduleSave(key: string)
 	pending[key] = deepCopy(current[key])
 	saveToken += 1
 	local token = saveToken
-	setStatus(T("ui.set.saving"), Theme.SubText)
+	setStatus(T("ui.set.saving"), Theme.Muted)
 	task.delay(SAVE_DELAY, function()
 		if token == saveToken then
 			flush()
@@ -324,51 +328,100 @@ local function formatNumber(path: string, entry: any, value: number): string
 end
 
 local function makeRow(parent: Instance, order: number): (Frame, Frame)
-	-- eigene Zeile ohne Listen-Layout (Beschriftung links, Bedienelement rechtsbündig)
-	local row: Frame = UI.Create("Frame", {
-		Size = UDim2.new(1, 0, 0, 46),
-		BackgroundTransparency = 1,
+	-- Zeile auf Surface2 mit 1-px-Rahmen: Beschriftung links, Bedienelement rechtsbündig
+	local row: Frame = UI.Card({
+		Size = UDim2.new(1, 0, 0, ROW_H),
 		LayoutOrder = order,
 		Parent = parent,
 	})
 	local label = UI.Label({
-		Size = UDim2.new(0.5, -6, 1, 0),
+		Position = UDim2.fromOffset(14, 0),
+		Size = UDim2.new(0.5, -18, 1, 0),
 		Text = "",
+		Font = UI.Fonts.Main,
+		TextColor3 = Theme.Text,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		MaxText = 20,
-		Outline = 2,
+		MaxText = 16,
 		Parent = row,
 	})
 	label.Name = "Label"
 	local control = UI.Create("Frame", {
 		Name = "Control",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(0.5, 0, 1, 0),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.new(0.5, -8, 1, -12),
 		BackgroundTransparency = 1,
 		Parent = row,
 	})
 	return row, control
 end
 
+-- Schalter als Pill (an = Accent, Knopf rechts; aus = Hover-Fläche, Knopf links) + AN/AUS-Text
 local function boolRow(parent: Instance, order: number, path: string)
 	local row, control = makeRow(parent, order)
-	local button = UI.Button({
-		Size = UDim2.fromScale(1, 1),
+	local track: TextButton = UI.Create("TextButton", {
+		Name = "Switch",
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.fromScale(1, 0.5),
+		Size = UDim2.fromOffset(52, 28),
+		BackgroundColor3 = Theme.Hover,
+		AutoButtonColor = false,
 		Text = "",
-		Color = Theme.Gray,
-		MaxText = 20,
 		Parent = control,
-	}, function()
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		UI.Create("UIStroke", { Color = Theme.Border, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+	})
+	local knob: Frame = UI.Create("Frame", {
+		Name = "Knob",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 4, 0.5, 0),
+		Size = UDim2.fromOffset(20, 20),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		Parent = track,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	local state = UI.Label({
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -62, 0.5, 0),
+		Size = UDim2.new(1, -66, 0, 18),
+		Text = "",
+		Font = UI.Fonts.Main,
+		TextColor3 = Theme.Text2,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		MaxText = 14,
+		Parent = control,
+	})
+	track.Activated:Connect(function()
+		local modules = ctx and ctx.Modules
+		local sfx = modules and modules.Sfx
+		if sfx and type(sfx.Play) == "function" then
+			pcall(sfx.Play, "UIClick")
+		end
 		Settings.Set(path, not (getValue(path) == true))
 	end)
 	local label = row:FindFirstChild("Label") :: TextLabel
+	local shownOn: boolean? = nil
 	table.insert(rows, {
 		Refresh = function()
 			label.Text = labelFor(path)
 			local on = getValue(path) == true
-			button.SetText(if on then T("ui.on") else T("ui.off"))
-			button.SetColor(if on then Theme.Green else Theme.Gray)
+			state.Text = if on then T("ui.on") else T("ui.off")
+			state.TextColor3 = if on then Theme.Text else Theme.Muted
+			if shownOn == on then
+				return
+			end
+			local first = shownOn == nil
+			shownOn = on
+			local color = if on then Theme.Accent else Theme.Hover
+			local pos = if on then UDim2.new(1, -24, 0.5, 0) else UDim2.new(0, 4, 0.5, 0)
+			if first then
+				track.BackgroundColor3 = color
+				knob.Position = pos
+			else
+				TweenService:Create(track, SWITCH_INFO, { BackgroundColor3 = color }):Play()
+				TweenService:Create(knob, SWITCH_INFO, { Position = pos }):Play()
+			end
 		end,
 	})
 end
@@ -386,8 +439,9 @@ local function enumRow(parent: Instance, order: number, path: string, entry: any
 	local button = UI.Button({
 		Size = UDim2.fromScale(1, 1),
 		Text = "",
-		Color = Theme.Blue,
-		MaxText = 20,
+		Variant = "Secondary",
+		MaxText = 16,
+		Corner = 10,
 		Parent = control,
 	}, function()
 		local value = getValue(path)
@@ -401,7 +455,7 @@ local function enumRow(parent: Instance, order: number, path: string, entry: any
 	table.insert(rows, {
 		Refresh = function()
 			label.Text = labelFor(path)
-			button.SetText("◀ " .. optionText(path, getValue(path)) .. " ▶")
+			button.SetText("‹  " .. optionText(path, getValue(path)) .. "  ›")
 		end,
 	})
 end
@@ -416,10 +470,11 @@ local function numberRow(parent: Instance, order: number, path: string, entry: a
 		Settings.Set(path, value + direction * step)
 	end
 	UI.Button({
-		Size = UDim2.new(0, 40, 1, 0),
+		Size = UDim2.new(0, 34, 1, 0),
 		Text = "−",
-		Color = Theme.Red,
-		MaxText = 26,
+		Variant = "Ghost",
+		MaxText = 22,
+		Corner = 10,
 		Parent = control,
 	}, function()
 		nudge(-1)
@@ -427,36 +482,42 @@ local function numberRow(parent: Instance, order: number, path: string, entry: a
 	UI.Button({
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, 0, 0, 0),
-		Size = UDim2.new(0, 40, 1, 0),
+		Size = UDim2.new(0, 34, 1, 0),
 		Text = "+",
-		Color = Theme.Green,
-		MaxText = 26,
+		Variant = "Ghost",
+		MaxText = 22,
+		Corner = 10,
 		Parent = control,
 	}, function()
 		nudge(1)
 	end)
-	-- Regler-Schiene zum Ziehen (Maus/Touch)
+	-- Regler-Schiene zum Ziehen (Maus/Touch): Bg2 mit Accent-Füllung, Wert in Titillium Web
 	local track: Frame = UI.Create("Frame", {
 		Name = "Track",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(1, -96, 0, 26),
-		BackgroundColor3 = Theme.PanelDark:Lerp(BLACK, 0.4),
+		Size = UDim2.new(1, -84, 0, 24),
+		BackgroundColor3 = Theme.Bg2,
 		Active = true,
 		Parent = control,
-	}, { UI.Corner(10), UI.Stroke(BLACK, 2) })
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		UI.Create("UIStroke", { Color = Theme.Border, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+	})
 	local fill: Frame = UI.Create("Frame", {
 		Name = "Fill",
 		Size = UDim2.fromScale(0, 1),
-		BackgroundColor3 = Theme.Yellow,
+		BackgroundColor3 = Theme.Accent,
+		BorderSizePixel = 0,
 		Parent = track,
-	}, { UI.Corner(10) })
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	local valueLabel = UI.Label({
 		Size = UDim2.fromScale(1, 1),
 		Text = "",
 		Font = UI.Fonts.Number,
-		MaxText = 18,
-		Outline = 2,
+		TextColor3 = WHITE,
+		MaxText = 16,
+		Outline = 1,
 		ZIndex = 2,
 		Parent = track,
 	})
@@ -540,11 +601,12 @@ local function buildContent()
 		return order
 	end
 	statusLabel = UI.Label({
-		Size = UDim2.new(1, 0, 0, 24),
+		Size = UDim2.new(1, 0, 0, 22),
 		Text = T("ui.set.hint"),
-		TextColor3 = Theme.SubText,
-		MaxText = 18,
-		Outline = 2,
+		Font = UI.Fonts.Body,
+		TextColor3 = Theme.Text2,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		MaxText = 15,
 		LayoutOrder = nextOrder(),
 		Parent = content,
 	})
@@ -574,26 +636,28 @@ local function buildContent()
 		end
 	end
 	-- Info: Regeln + Einspruch (C19) + Version
-	UI.Section(content, T("ui.sec.info"), nextOrder(), Theme.Gray)
+	UI.Section(content, T("ui.sec.info"), nextOrder(), Theme.Muted)
 	for _, key in ipairs({ "ui.info.rules", "ui.info.appeal" }) do
 		UI.Label({
-			Size = UDim2.new(1, 0, 0, 64),
+			Size = UDim2.new(1, 0, 0, 56),
 			Text = T(key),
+			Font = UI.Fonts.Body,
+			TextColor3 = Theme.Text2,
 			TextWrapped = true,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			MaxText = 17,
-			Outline = 2,
+			MaxText = 15,
 			LayoutOrder = nextOrder(),
 			Parent = content,
 		})
 	end
 	local config = ctx.Config
 	UI.Label({
-		Size = UDim2.new(1, 0, 0, 22),
+		Size = UDim2.new(1, 0, 0, 20),
 		Text = T("core.version", tostring(config and config.Version or "?")),
-		TextColor3 = Theme.SubText,
-		MaxText = 16,
-		Outline = 2,
+		Font = UI.Fonts.Body,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		MaxText = 14,
 		LayoutOrder = nextOrder(),
 		Parent = content,
 	})
@@ -604,7 +668,7 @@ end
 
 local function openWindow()
 	if not window then
-		window = UI.Window(T("ui.settingsTitle"), WINDOW_W, WINDOW_H, Theme.Blue)
+		window = UI.Window(T("ui.settingsTitle"), WINDOW_W, WINDOW_H, Theme.Accent)
 		buildContent()
 	elseif builtLang ~= ctx.Lang_() then
 		buildContent()
@@ -701,7 +765,7 @@ function Settings.Init(context: any)
 	end
 	local hud = ctx.Modules.Hud
 	if hud and type(hud.AddRightButton) == "function" then
-		hud.AddRightButton("⚙️", "ui.btn.settings", Theme.Gray, 90, function()
+		hud.AddRightButton("⚙️", "ui.btn.settings", Theme.Muted, 90, function()
 			ctx.Windows.Toggle("Settings")
 		end)
 	end

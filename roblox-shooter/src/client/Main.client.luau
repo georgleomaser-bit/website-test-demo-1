@@ -240,7 +240,9 @@ local function startModules(names: { string })
 	end
 	for _, entry in ipairs(ready) do
 		if not safeCall(entry.Name .. ".Init", entry.Module.Init, ctx) then
+			-- halb gebautes Modul nicht weiter benutzen: kein Start, kein Frame/Tick, für andere "fehlt"
 			entry.Module = nil
+			ctx.Modules[entry.Name] = nil
 		end
 	end
 	for _, entry in ipairs(ready) do

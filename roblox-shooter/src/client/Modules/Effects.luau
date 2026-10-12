@@ -3,9 +3,11 @@
 --  Besitzer: WP10 (Client-Hülle). Basis: Meteor-Heist-Effects (REUSE §1.4, announce/adminWarn 1:1).
 --
 --  Remote "Effect"(name, strength, data) -> Effects.Play:
---    "Announce"  {Text, UserId, Name}  Besitzer-Ansage oben in der Mitte: rundes Kopfbild, Name in Blau +
---                selbst gezeichneter blauer Haken, ":" und weißer Text – OHNE Kasten, ploppt auf, ~8 s
---    "AdminWarn" {Text}                großer roter Hinweis in der Bildschirmmitte (ohne Kasten)
+--    "Announce"  {Text, UserId, Name}  Besitzer-Ansage oben in der Mitte: rundes Kopfbild, Name in Accent-Blau +
+--                selbst gezeichneter blauer Haken, ":" und weißer Text – OHNE Kasten, gleitet weich ein, ~8 s.
+--                Ohne UserId/Name (lokalisierte System-Ansage von CommunityService.Announce) = Toast "Announce"
+--                (kein falscher "Admin"-Haken).
+--    "AdminWarn" {Text}                Hinweis in der Bildschirmmitte: Titel Michroma in Down + Unterstrich
 --    "Confetti"  (strength = Menge)    Konfetti-Kanonen links/rechts
 --    "LevelUp"   {Level, Rewards}      "LEVEL 12!" + Blitz + Konfetti + Jingle (Belohnungskarte macht WP8)
 --    "CoinFly"   (strength = Coins)    Münzen fliegen zum Coin-Zähler im HUD
@@ -13,6 +15,8 @@
 --    "CrateFound", "PartyBoost", "Event", "Friend", "Mutator"  lokalisierte Lobby-Hinweise (Toast)
 --  Bausteine: Effects.Burst / Ring / Puff (Welt), Effects.Shake, Effects.Flash(color, text?)
 --  Effects.SetHidden(on) / Effects.IsHidden() für den Foto-Modus.
+--  AKYTEX-Look (docs/STYLE-AKYTEX.md): Builder Sans / Michroma, feine Kontur statt dicker schwarzer,
+--  Level-Up = Akzent-Rand-Glühen + Michroma-Titel mit Unterstrich (kein weißer Vollbild-Blitz).
 --  Öffentliche API (C7.4): Effects.Play(name, strength, data?), Effects.SetHidden(on)
 -- =====================================================================
 
@@ -330,7 +334,7 @@ local function buildCoins()
 			BackgroundTransparency = 1,
 			Text = "🪙",
 			TextScaled = true,
-			Font = Enum.Font.FredokaOne,
+			Font = UI.Fonts.Main,
 			Visible = false,
 			ZIndex = 30,
 			Parent = gui,
@@ -516,61 +520,79 @@ end
 -- GROSSER BLITZ MIT TEXT (Level-Up, Sieg …) – MH-RebirthFlash
 -- ---------------------------------------------------------------------
 local FLASH_FADE_INFO = TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local FLASH_POP_INFO = TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local FLASH_TILT_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Elastic, Enum.EasingDirection.Out)
-local FLASH_OUT_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 1.1)
+local FLASH_POP_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local FLASH_OUT_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In, 0, false, 1.1)
 local flashBusy = false
 
+-- Akzent-Glühen an den Bildrändern + zentrierter Titel (Michroma) mit Unterstrich und feinem Glow
 function Effects.Flash(color: Color3, text: string?)
 	local gui = overlay
 	if not gui or hidden or flashBusy then
 		return
 	end
 	flashBusy = true
-	local flash: Frame = UI.Create("Frame", {
+	local tint = if typeof(color) == "Color3" then color else UI.Theme.Accent
+	local glow: Frame = UI.Create("Frame", {
 		Name = "BigFlash",
 		Size = UDim2.fromScale(1, 1),
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = if reducedFx() then 0.5 else 0.1,
+		BackgroundColor3 = tint,
+		BackgroundTransparency = if reducedFx() then 0.8 else 0.55,
+		BorderSizePixel = 0,
 		ZIndex = 40,
 		Parent = gui,
 	}, {
+		-- Mitte durchsichtig, Ränder farbig (Vignette statt weißem Vollbild)
 		UI.Create("UIGradient", {
-			Color = ColorSequence.new({
-				ColorSequenceKeypoint.new(0, color),
-				ColorSequenceKeypoint.new(0.5, WHITE),
-				ColorSequenceKeypoint.new(1, color),
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0),
+				NumberSequenceKeypoint.new(0.3, 0.85),
+				NumberSequenceKeypoint.new(0.7, 0.85),
+				NumberSequenceKeypoint.new(1, 0),
 			}),
 		}),
 	})
 	local label: TextLabel? = nil
 	if text and text ~= "" then
-		local textScale: UIScale = UI.Create("UIScale", { Scale = 0.3 })
+		local textScale: UIScale = UI.Create("UIScale", { Scale = 0.9 })
 		local newLabel = UI.Label({
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			Position = UDim2.fromScale(0.5, 0.4),
-			Size = UDim2.fromOffset(640, 120),
+			Size = UDim2.fromOffset(640, 80),
 			Text = text,
 			Font = UI.Fonts.Banner,
-			TextColor3 = UI.Theme.Yellow,
-			MaxText = 96,
-			Outline = 5,
+			TextColor3 = WHITE,
+			MaxText = 64,
 			ZIndex = 41,
 			Parent = gui,
 		})
 		textScale.Parent = newLabel
-		newLabel.Rotation = -6
+		local glowStroke: UIStroke = UI.Create("UIStroke", {
+			Color = tint,
+			Thickness = 3,
+			Transparency = 0.6,
+			LineJoinMode = Enum.LineJoinMode.Round,
+			Parent = newLabel,
+		})
+		local line: Frame = UI.Create("Frame", {
+			Name = "Underline",
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(0.5, 0, 1, 4),
+			Size = UDim2.fromOffset(96, 3),
+			BackgroundColor3 = tint,
+			BorderSizePixel = 0,
+			ZIndex = 41,
+			Parent = newLabel,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+		newLabel.TextTransparency = 1
+		TweenService:Create(newLabel, FLASH_POP_INFO, { TextTransparency = 0 }):Play()
 		TweenService:Create(textScale, FLASH_POP_INFO, { Scale = 1 }):Play()
-		TweenService:Create(newLabel, FLASH_TILT_INFO, { Rotation = 0 }):Play()
-		local stroke = newLabel:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			TweenService:Create(stroke, FLASH_OUT_INFO, { Transparency = 1 }):Play()
-		end
+		TweenService:Create(glowStroke, FLASH_OUT_INFO, { Transparency = 1 }):Play()
+		TweenService:Create(line, FLASH_OUT_INFO, { BackgroundTransparency = 1 }):Play()
 		label = newLabel
 	end
-	TweenService:Create(flash, FLASH_FADE_INFO, { BackgroundTransparency = 1 }):Play()
+	TweenService:Create(glow, FLASH_FADE_INFO, { BackgroundTransparency = 1 }):Play()
 	task.delay(1.6, function()
-		flash:Destroy()
+		glow:Destroy()
 		if label then
 			label:Destroy()
 		end
@@ -584,7 +606,7 @@ end
 local function levelUp(data: any)
 	local level = type(data) == "table" and tonumber(data.Level) or nil
 	local text = if level then T("ui.levelUp", math.floor(level)) else T("ui.levelUpShort")
-	Effects.Flash(UI.Theme.Orange, text)
+	Effects.Flash(UI.Theme.Accent, text)
 	confetti(2)
 	shake(0.4)
 	sfx("LevelUp")
@@ -593,15 +615,16 @@ end
 -- ---------------------------------------------------------------------
 -- BESITZER-ANSAGE (MH 1:1): Kopfbild, Name in Blau + Haken, ":" und Text – ohne Kasten
 -- ---------------------------------------------------------------------
-local ANNOUNCE_BLUE = Color3.fromRGB(40, 140, 255)
+local ANNOUNCE_BLUE = UI.Theme.Accent -- Name + Haken in Accent-Blau (AKYTEX)
 local ANNOUNCE_TIME = 8
 local ANNOUNCE_MAX_QUEUE = 5
 local ANNOUNCE_AVATAR = 64
-local ANNOUNCE_NAME_SIZE = 34
-local ANNOUNCE_BADGE = 30
+local ANNOUNCE_NAME_SIZE = 28
+local ANNOUNCE_BADGE = 24
 local ANNOUNCE_Y = 14
-local ANNOUNCE_IN = TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local ANNOUNCE_FADE_IN = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local ANNOUNCE_IN = TweenInfo.new(0.3, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local ANNOUNCE_FADE_IN = TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local ANNOUNCE_FONT = UI.Fonts.Main
 local ANNOUNCE_OUT = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 local THUMB_CACHE_MAX = 64
 
@@ -620,10 +643,12 @@ local announceBusy = false
 local thumbCache: { [number]: string } = {}
 local thumbCount = 0
 
-local function textStroke(parent: Instance, thickness: number)
+-- feine Kontur für Text über der Welt (AKYTEX: 1 px, halb durchsichtig)
+local function textStroke(parent: Instance)
 	UI.Create("UIStroke", {
-		Thickness = thickness,
+		Thickness = 1,
 		Color = BLACK,
+		Transparency = 0.45,
 		LineJoinMode = Enum.LineJoinMode.Round,
 		Parent = parent,
 	})
@@ -651,26 +676,31 @@ local function buildAnnounce(): AnnounceUI?
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, 4, 0.5, 0),
 		Size = UDim2.fromOffset(ANNOUNCE_AVATAR, ANNOUNCE_AVATAR),
-		BackgroundColor3 = Color3.fromRGB(200, 205, 215),
+		BackgroundColor3 = UI.Theme.Surface2,
 		Image = "",
 		ZIndex = 31,
 		Parent = group,
 	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
-	UI.Create("UIStroke", { Thickness = 3, Color = BLACK, Parent = avatar })
+	UI.Create("UIStroke", {
+		Thickness = 1.5,
+		Color = ANNOUNCE_BLUE,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = avatar,
+	})
 	local nameLabel: TextLabel = UI.Create("TextLabel", {
 		Name = "Name",
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.new(0, ANNOUNCE_AVATAR + 14, 0.5, 0),
 		Size = UDim2.fromOffset(100, 44),
 		BackgroundTransparency = 1,
-		Font = Enum.Font.FredokaOne,
+		Font = ANNOUNCE_FONT,
 		TextSize = ANNOUNCE_NAME_SIZE,
 		TextColor3 = ANNOUNCE_BLUE,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 31,
 		Parent = group,
 	})
-	textStroke(nameLabel, 3)
+	textStroke(nameLabel)
 	-- Haken-Badge (selbst gezeichnet): zwei gedrehte blaue Quadrate = Zackenkreis, weißer Haken
 	local badge: Frame = UI.Create("Frame", {
 		Name = "Badge",
@@ -695,7 +725,7 @@ local function buildAnnounce(): AnnounceUI?
 	UI.Create("TextLabel", {
 		Size = UDim2.fromScale(1, 1),
 		BackgroundTransparency = 1,
-		Font = Enum.Font.FredokaOne,
+		Font = UI.Fonts.Strong,
 		Text = "✓",
 		TextScaled = true,
 		TextColor3 = WHITE,
@@ -707,19 +737,19 @@ local function buildAnnounce(): AnnounceUI?
 		AnchorPoint = Vector2.new(0, 0.5),
 		Size = UDim2.fromOffset(14, 44),
 		BackgroundTransparency = 1,
-		Font = Enum.Font.FredokaOne,
+		Font = ANNOUNCE_FONT,
 		TextSize = ANNOUNCE_NAME_SIZE,
 		Text = ":",
-		TextColor3 = WHITE,
+		TextColor3 = UI.Theme.Text2,
 		ZIndex = 31,
 		Parent = group,
 	})
-	textStroke(colon, 3)
+	textStroke(colon)
 	local text: TextLabel = UI.Create("TextLabel", {
 		Name = "Text",
 		AnchorPoint = Vector2.new(0, 0.5),
 		BackgroundTransparency = 1,
-		Font = Enum.Font.FredokaOne,
+		Font = ANNOUNCE_FONT,
 		TextScaled = true,
 		TextWrapped = true,
 		TextColor3 = WHITE,
@@ -727,8 +757,8 @@ local function buildAnnounce(): AnnounceUI?
 		ZIndex = 31,
 		Parent = group,
 	})
-	UI.Create("UITextSizeConstraint", { MaxTextSize = 44, MinTextSize = 14, Parent = text })
-	textStroke(text, 3)
+	UI.Create("UITextSizeConstraint", { MaxTextSize = 34, MinTextSize = 14, Parent = text })
+	textStroke(text)
 	return {
 		Group = group,
 		Scale = scale,
@@ -764,8 +794,7 @@ local function headshot(userId: number): string
 end
 
 local function layoutAnnounce(ui: AnnounceUI, name: string)
-	local nameWidth = TextService:GetTextSize(name, ANNOUNCE_NAME_SIZE, Enum.Font.FredokaOne, Vector2.new(1000, 100)).X
-		+ 4
+	local nameWidth = TextService:GetTextSize(name, ANNOUNCE_NAME_SIZE, ANNOUNCE_FONT, Vector2.new(1000, 100)).X + 4
 	local x = ANNOUNCE_AVATAR + 14
 	ui.Name.Size = UDim2.fromOffset(nameWidth, 44)
 	x += nameWidth + 6
@@ -792,9 +821,10 @@ local function showNextAnnounce()
 		layoutAnnounce(ui, name)
 		ui.Group.Visible = not hidden
 		ui.Group.GroupTransparency = 1
-		ui.Group.Position = UDim2.new(0.5, 0, 0, ANNOUNCE_Y)
-		ui.Scale.Scale = 0.6
+		ui.Group.Position = UDim2.new(0.5, 0, 0, ANNOUNCE_Y - 8)
+		ui.Scale.Scale = 0.96
 		TweenService:Create(ui.Group, ANNOUNCE_FADE_IN, { GroupTransparency = 0 }):Play()
+		TweenService:Create(ui.Group, ANNOUNCE_IN, { Position = UDim2.new(0.5, 0, 0, ANNOUNCE_Y) }):Play()
 		TweenService:Create(ui.Scale, ANNOUNCE_IN, { Scale = 1 }):Play()
 		sfx("Countdown", nil, { Speed = 1.5 })
 		task.wait(ANNOUNCE_TIME)
@@ -809,6 +839,13 @@ end
 
 local function announce(data: any)
 	if type(data) ~= "table" or type(data.Text) ~= "string" or data.Text == "" then
+		return
+	end
+	-- System-Ansage ohne Absender (CommunityService.Announce schickt nur {Text}): schlanke Pill statt
+	-- Besitzer-Banner – sonst stünde dort "Admin" mit blauem Haken, obwohl kein Mensch spricht
+	local userId = tonumber(data.UserId) or 0
+	if userId <= 0 and (type(data.Name) ~= "string" or data.Name == "") then
+		UI.Toast(data.Text, "Announce")
 		return
 	end
 	if not announceUI then
@@ -827,9 +864,9 @@ end
 -- ADMIN-WARNUNG (MH 1:1): riesige rote Überschrift + weißer Text, dicke Kontur, ohne Kasten
 -- ---------------------------------------------------------------------
 local WARN_TIME = 7
-local WARN_RED = Color3.fromRGB(255, 55, 55)
-local WARN_IN = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-local WARN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local WARN_RED = UI.Theme.Down
+local WARN_IN = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local WARN_OUT = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 local warnToken = 0
 local warnFrame: Frame? = nil
 local warnTitle: TextLabel? = nil
@@ -854,22 +891,36 @@ local function buildWarn()
 		UI.Create("UISizeConstraint", { MinSize = Vector2.new(300, 0), MaxSize = Vector2.new(820, 400) }),
 	})
 	local scale: UIScale = UI.Create("UIScale", { Scale = 1, Parent = frame })
+	-- Titel in Michroma (Down) mit Unterstrich, Text weiß mit feiner Kontur – ohne Kasten
 	local title = UI.Label({
-		Size = UDim2.new(1, 0, 0, 58),
+		Size = UDim2.new(1, 0, 0, 44),
 		Text = "",
+		Font = UI.Fonts.Banner,
 		TextColor3 = WARN_RED,
-		MaxText = 52,
-		Outline = 4,
+		MaxText = 34,
+		Outline = 1,
 		ZIndex = 41,
 		Parent = frame,
 	})
+	UI.Create("Frame", {
+		Name = "Underline",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 50),
+		Size = UDim2.fromOffset(84, 3),
+		BackgroundColor3 = WARN_RED,
+		BorderSizePixel = 0,
+		ZIndex = 41,
+		Parent = frame,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	local text = UI.Label({
-		Position = UDim2.fromOffset(0, 62),
-		Size = UDim2.new(1, 0, 1, -62),
+		Position = UDim2.fromOffset(0, 64),
+		Size = UDim2.new(1, 0, 1, -64),
 		Text = "",
+		Font = UI.Fonts.Main,
+		TextColor3 = WHITE,
 		TextWrapped = true,
-		MaxText = 36,
-		Outline = 3,
+		MaxText = 30,
+		Outline = 1,
 		ZIndex = 41,
 		Parent = frame,
 	})
@@ -890,7 +941,9 @@ local function adminWarn(data: any)
 	title.Text = T("ui.adminWarn")
 	text.Text = data.Text
 	frame.Visible = true
-	scale.Scale = 0.6
+	scale.Scale = 0.94
+	title.TextTransparency = 0
+	text.TextTransparency = 0
 	TweenService:Create(scale, WARN_IN, { Scale = 1 }):Play()
 	shake(0.5)
 	sfx("UIError")
@@ -898,7 +951,9 @@ local function adminWarn(data: any)
 		if warnToken ~= token then
 			return
 		end
-		local out = TweenService:Create(scale, WARN_OUT, { Scale = 0 })
+		TweenService:Create(title, WARN_OUT, { TextTransparency = 1 }):Play()
+		TweenService:Create(text, WARN_OUT, { TextTransparency = 1 }):Play()
+		local out = TweenService:Create(scale, WARN_OUT, { Scale = 0.96 })
 		out.Completed:Once(function()
 			if warnToken == token then
 				frame.Visible = false
@@ -943,6 +998,11 @@ local function lobbyNotice(name: string, data: any)
 		return
 	end
 	if name == "CrateFound" then
+		-- Shop (WP9) zeigt denselben Fund schon als Toast (Hook "Effect:CrateFound") – nur ohne Shop hier
+		local modules = ctx and ctx.Modules
+		if modules and modules.Shop then
+			return
+		end
 		local who = string.sub(tostring(data.Name or "?"), 1, 40)
 		local rarity = tostring(data.Rarity or "")
 		local rarityText = T("ui.rarity." .. rarity)

@@ -153,7 +153,9 @@ local function impulse(c: Combatant, v: Vector3, graceKind: "Impulse" | "Launch"
 end
 
 local function feetOf(c: Combatant): Vector3
-	local hip = if c.Humanoid then c.Humanoid.HipHeight else 2
+	local h = c.Humanoid
+	-- R15: HRP-Hälfte + HipHeight; R6 (toleriert) hat HipHeight 0 -> Beine 2 Studs
+	local hip = if not h then 2 elseif h.RigType == Enum.HumanoidRigType.R6 then 2 else h.HipHeight
 	return c.Root.Position - Vector3.new(0, c.Root.Size.Y / 2 + hip, 0)
 end
 

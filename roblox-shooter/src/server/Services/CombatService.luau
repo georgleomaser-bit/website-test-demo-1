@@ -9,7 +9,8 @@
 --
 --  Öffentliche API (C5.4):
 --    CombatService.NewCombatant(p): Combatant           p = { Kind, Player?, Model, Ctx, Team, Slot, Name, Loadout, Difficulty?, MaxHp? }
---    CombatService.Register(c) / Unregister(c)          Attribute CombatantId/Ctx/Team/Alive/Hp, Salt, Combat("Armed"/"Disarmed")
+--    CombatService.Register(c) / Unregister(c)          Attribute CombatantId/Ctx/Team/Alive/Hp/Slot/Tracer, Salt,
+--                                                        Combat("Armed"/"Disarmed"); Armed enthält Rules + Tracer
 --    CombatService.Get(id) / OfPlayer(p) / InCtx(ctx)
 --    CombatService.RegisterContext(info) / UnregisterContext(ctx) / Context(ctx)
 --    CombatService.ApplyDamage(attacker?, victim, amount, info): (dealt, killed)
@@ -132,12 +133,25 @@ local function hpAttr(c: Combatant)
 	setAttr(c, "Hp", math.max(0, math.ceil(c.Hp - 1e-6)))
 end
 
+-- Ausgerüsteter Tracer des Spielers (Kosmetik, ShopService.Tracer); Bots/Puppen: nil = Standard
+local function tracerOf(c: Combatant): string?
+	local p = c.Player
+	if not p then
+		return nil
+	end
+	local ok, id = call("ShopService", "Tracer", p)
+	return if ok and type(id) == "string" and id ~= "" then id else nil
+end
+
 local function stampAttributes(c: Combatant)
 	setAttr(c, "CombatantId", c.Id)
 	setAttr(c, "Ctx", c.Ctx)
 	setAttr(c, "Team", c.Team)
 	setAttr(c, "Alive", c.Alive)
 	setAttr(c, "MaxHp", c.MaxHp)
+	-- Roster-Slot (FX/LookBatch -> Modell ohne Roster, z. B. Range) und Tracer-Kosmetik für fremde Schüsse
+	setAttr(c, "Slot", c.Slot)
+	setAttr(c, "Tracer", tracerOf(c))
 	hpAttr(c)
 end
 
@@ -225,6 +239,8 @@ local function armedPayload(c: Combatant): { [string]: any }
 			ammo[slot] = { Mag = state.Mag, Charges = state.Charges }
 		end
 	end
+	local tracer = tracerOf(c)
+	setAttr(c, "Tracer", tracer)
 	return {
 		Id = c.Id,
 		Ctx = c.Ctx,
@@ -234,6 +250,7 @@ local function armedPayload(c: Combatant): { [string]: any }
 		Loadout = table.clone(c.Loadout),
 		Origin = if arena and typeof(arena.Origin) == "CFrame" then arena.Origin.Position else Vector3.zero,
 		Map = if arena then arena.Model else nil,
+		-- Alles, was der Client für Vorhersage braucht (Feuerrate/Nachladen wie der Server, Mutator "Turbo")
 		Rules = {
 			SpeedMult = rules.SpeedMult,
 			GravityLift = rules.GravityLift,
@@ -241,8 +258,14 @@ local function armedPayload(c: Combatant): { [string]: any }
 			AllowedSlots = rules.AllowedSlots,
 			UtilityMode = rules.UtilityMode,
 			IgnoreOwnership = rules.IgnoreOwnership,
+			IntervalMult = rules.IntervalMult,
+			ReloadMult = rules.ReloadMult,
+			DamageMult = rules.DamageMult,
+			HeadOnly = rules.HeadOnly,
+			AirJumps = rules.AirJumps,
 		},
 		Ammo = ammo,
+		Tracer = tracer, -- eigene Schüsse: Tracer-Kosmetik (CombatFX.Tracer(…, tracerId))
 	}
 end
 
@@ -453,6 +476,8 @@ function CombatService.Unregister(c: Combatant)
 	setAttr(c, "Hp", nil)
 	setAttr(c, "MaxHp", nil)
 	setAttr(c, "ShieldUntil", nil)
+	setAttr(c, "Slot", nil)
+	setAttr(c, "Tracer", nil)
 	call("CharacterService", "Disarm", c)
 	sendCombat(c, "Disarmed", {})
 end

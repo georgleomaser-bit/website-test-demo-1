@@ -48,7 +48,7 @@ type AmmoState = Types.AmmoState
 type HealState = { TickAt: number, Left: number, Per: number, Step: number }
 type WState = {
 	RecvLast: number, -- os.clock() des letzten angenommenen Schusses (Empfangsabstand)
-	RecvPrev: number, -- … und des vorletzten (zwei gebündelte Pakete durch Jitter sind erlaubt)
+	RecvCredit: number, -- angesparte Empfangs-Zeit (s): gebündelte Pakete nach Lag-Spitzen sind erlaubt
 	SwingId: number,
 	SwingT: number,
 	ThrowId: number,
@@ -153,7 +153,7 @@ end
 local function stateOf(c: Combatant): WState
 	local s = wstates[c]
 	if not s then
-		s = { RecvLast = 0, RecvPrev = 0, SwingId = 0, SwingT = 0, ThrowId = 0, Heal = nil, AmmoFixAt = 0 }
+		s = { RecvLast = 0, RecvCredit = 0, SwingId = 0, SwingT = 0, ThrowId = 0, Heal = nil, AmmoFixAt = 0 }
 		wstates[c] = s
 	end
 	return s
@@ -248,17 +248,20 @@ local function contextLive(c: Combatant): boolean
 	if id == nil then
 		return true
 	end
+	-- MatchService.Phase ist ein Tabellen-Zugriff: immer frisch fragen. Ein Cache würde direkt nach
+	-- Prep -> Live noch 0.25 s "nicht live" melden und die ersten ehrlichen Schüsse verwerfen.
+	local okPhase, phase = call("MatchService", "Phase", id)
+	if okPhase and type(phase) == "string" then
+		return LIVE_PHASES[phase] == true
+	end
 	local clock = os.clock()
 	local cached = phaseCache[id]
 	if cached and clock - cached.At < PHASE_CACHE_SECONDS then
 		return cached.Live
 	end
 	local live = true -- ohne MatchService (oder ohne Phase) nicht blockieren
-	local okPhase, phase = call("MatchService", "Phase", id) -- günstig (WP5-Ergänzung), sonst Info(id).Phase
-	if not (okPhase and type(phase) == "string") then
-		local ok, result = call("MatchService", "Info", id)
-		phase = if ok and type(result) == "table" then result.Phase else nil
-	end
+	local ok, result = call("MatchService", "Info", id) -- Ersatz ohne Phase(): teurer, daher kurz gecacht
+	phase = if ok and type(result) == "table" then result.Phase else nil
 	if type(phase) == "string" then
 		live = LIVE_PHASES[phase] == true
 	end
@@ -268,6 +271,11 @@ end
 
 local function partsAlive(c: Combatant): boolean
 	return c.Alive and c.Root.Parent ~= nil and c.Head.Parent ~= nil
+end
+
+-- Admin "One-Shot": sicher tödlich, auch durch Laserschwert-Block (×0.4) hindurch
+local function oneShotAmount(target: Combatant): number
+	return (math.max(target.Hp, target.MaxHp) + 1) * 10
 end
 
 local function headRadius(rules: Types.ContextRules): number
@@ -443,6 +451,10 @@ end
 
 -- ---------------------------------------------------------------------
 -- SPREAD-UNTERGRENZE (C10 Schritt 7)
+-- Untergrenze = (Hüfte↔ADS + Bewegt + Luft) × Erster-Schuss-Faktor + Bloom (Dauerfeuer, SKILL-WUENSCHE).
+-- Die Server-Schussliste ist immer eine Teilmenge der Client-Liste (abgelehnte Schüsse fehlen hier, nie
+-- umgekehrt) -> der Server-Bloom ist nie größer als der ehrliche Client-Anspruch, Cheater können ihn aber
+-- nicht mehr weglassen.
 -- ---------------------------------------------------------------------
 local function minScaleFor(c: Combatant, def: WeaponDef, t: number, speed: number, air: boolean): number
 	local adsTime = num(def.AdsTime, 0.15)
@@ -465,7 +477,41 @@ local function minScaleFor(c: Combatant, def: WeaponDef, t: number, speed: numbe
 	else
 		scale = hipMin
 	end
-	return math.max(0, scale * Spread.FirstShot(def, c.ShotTimes, t))
+	return math.max(0, scale * Spread.FirstShot(def, c.ShotTimes, t) + Spread.Bloom(def, c.ShotTimes, t))
+end
+
+-- Tempo für die Spread-Untergrenze: der Verlauf bei t zeigt den Schützen um seine Upload-Latenz zu früh
+-- (Gegenstrafen = anhalten und schießen). Der jüngere Wert bei t + Alter entspricht seinem Stand beim Schuss.
+-- Untergrenze nimmt das kleinere (nie strenger als ein ehrlicher Client), der Ursprungs-Check das größere.
+local function shotSpeeds(c: Combatant, t: number, age: number): (number, number)
+	local history = Services.HistoryService
+	local atShot = history.Speed(c, t)
+	local late = history.Speed(c, t + math.clamp(age, 0, num(COMBAT.MaxRewind, 0.38)))
+	return math.min(atShot, late), math.max(atShot, late)
+end
+
+-- Rückspul-Zeitpunkte: Standard t − InterpDelay (C10) und zusätzlich um die Einweg-Latenz älter
+-- (was ein Spieler mit hohem Ping wirklich gesehen hat). Beide innerhalb MaxRewind.
+local function rewindTimes(t: number, nowT: number, ping: number): { number }
+	local maxRewind = num(COMBAT.MaxRewind, 0.38)
+	local base = math.clamp(t - num(COMBAT.InterpDelay, 0.1), nowT - maxRewind, nowT)
+	local oneWay = math.clamp(num(ping, 0) * 0.5, 0, 0.15)
+	if oneWay < 0.02 then
+		return { base }
+	end
+	return { base, math.clamp(base - oneWay, nowT - maxRewind, nowT) }
+end
+
+-- Alle Rückspul-Fenster (je T−0.075 / T / T+0.075) für ein Ziel
+local function rewindWindows(target: Combatant, times: { number }): { { Root: CFrame, Head: Vector3 } }
+	local history = Services.HistoryService
+	local out = history.SampleWindow(target, times[1])
+	for i = 2, #times do
+		for _, w in ipairs(history.SampleWindow(target, times[i])) do
+			table.insert(out, w)
+		end
+	end
+	return out
 end
 
 -- ---------------------------------------------------------------------
@@ -577,12 +623,12 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 	local shotId, weaponId, t = packet.ShotId, packet.WeaponId, packet.T
 	local origin, aim, claim, targets = packet.Origin, packet.Aim, packet.Scale, packet.Targets
 
-	-- 1) TYPE
-	local def = defIn(c, c.Equipped)
+	-- 1) TYPE (Form des Pakets – unabhängig vom Zustand)
 	local typeOk = isInt(shotId)
 		and shotId >= 0
 		and shotId < 2147483647
 		and isInt(weaponId)
+		and Config.WeaponById(weaponId) ~= nil
 		and Util.IsFinite(t)
 		and Util.IsFiniteVector(origin)
 		and Util.IsFiniteVector(aim)
@@ -590,28 +636,57 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 		and claim >= 0
 		and claim <= num(COMBAT.MaxScale, 30)
 		and type(targets) == "table"
-		and def ~= nil
-		and def.Id == weaponId
-		and (def.Kind == "Hitscan" or def.Kind == "Projectile")
 	if typeOk then
 		local mag = (aim :: Vector3).Magnitude
 		local tol = num(COMBAT.AimNormTol, 0.01)
 		typeOk = mag >= 1 - tol and mag <= 1 + tol
 	end
-	if typeOk then
-		local n = #targets
-		local expected = if (def :: WeaponDef).Kind == "Projectile" then 0 else (def :: WeaponDef).Pellets
-		typeOk = n == expected and n <= MAX_TARGETS
-		if typeOk then
-			for i = 1, n do
-				if not isInt(targets[i]) then
-					typeOk = false
+	if not typeOk then
+		noteReject(c, "TYPE", shotId, opts)
+		return false, "TYPE"
+	end
+
+	-- 1b) STATE: Schuss-Nummer. LastShotId rückt SOFORT vor (auch wenn der Schuss danach verworfen wird):
+	-- sonst bleibt nach 4 verworfenen Schüssen in Folge (z. B. Dauerfeuer, während man schon gepoppt ist)
+	-- jede weitere Nummer außerhalb des Fensters – der Spieler könnte bis zum Match-Ende nie mehr schießen.
+	local maxGap = math.floor(num(COMBAT.ShotIdGap, 4))
+	if shotId <= c.LastShotId or shotId > c.LastShotId + maxGap then
+		noteReject(c, "STATE", shotId, opts)
+		return false, "STATE"
+	end
+	c.LastShotId = shotId :: number
+
+	-- Ausgerüstete Waffe: eine andere (gültige) Id ist ein Wechsel-Rennen (Range-Waffentausch, Equip-Korrektur),
+	-- kein kaputtes Paket -> STATE ohne Verdacht
+	local def = defIn(c, c.Equipped)
+	if not def or def.Id ~= weaponId or (def.Kind ~= "Hitscan" and def.Kind ~= "Projectile") then
+		noteReject(c, "STATE", shotId, opts)
+		if not opts.DryRun then
+			-- Client hält eine andere Waffe seines Loadouts (Equip-Aktion verloren, z. B. Mausrad schneller als
+			-- der WeaponAction-Eimer): Server zieht nach (Equip-Zeit gilt), statt jeden Schuss zu verwerfen
+			for _, slot in ipairs(SLOT_NAMES) do
+				local other = defIn(c, slot)
+				if slot ~= c.Equipped and other and other.Id == weaponId then
+					WeaponService.Equip(c, slot)
 					break
 				end
 			end
 		end
+		ammoFix(c, opts)
+		return false, "STATE"
 	end
-	if typeOk and (def :: WeaponDef).AdminOnly and not c.IsAdmin then
+	local n = #targets
+	local expected = if def.Kind == "Projectile" then 0 else def.Pellets
+	typeOk = n == expected and n <= MAX_TARGETS
+	if typeOk then
+		for i = 1, n do
+			if not isInt(targets[i]) then
+				typeOk = false
+				break
+			end
+		end
+	end
+	if typeOk and def.AdminOnly and not c.IsAdmin then
 		typeOk = false
 	end
 	if not typeOk then
@@ -630,12 +705,7 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 		return false, "RATE"
 	end
 
-	-- 3) STATE
-	local maxGap = math.floor(num(COMBAT.ShotIdGap, 4))
-	if shotId <= c.LastShotId or shotId > c.LastShotId + maxGap then
-		noteReject(c, "STATE", shotId, opts)
-		return false, "STATE"
-	end
+	-- 3) STATE (Schuss-Nummer siehe 1b)
 	if not c.Alive or not contextLive(c) or c.EquipReadyAt > tShot or c.Blocking or c.HealUntil > tShot then
 		noteReject(c, "STATE", shotId, opts)
 		return false, "STATE"
@@ -658,17 +728,23 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 		end
 		ammo.Mag -= 1
 	end
-	c.LastShotId = shotId :: number
 
 	-- 4) RATE (Intervall, Empfangsabstand, Schüsse pro Sekunde)
 	local tolerance = num(COMBAT.IntervalTolerance, 0.75)
 	local okInterval, gapBase = intervalCheck(c, d, tShot, tolerance, f)
 	local s = stateOf(c)
+	-- Empfangsabstand ≥ 0.5 × Intervall als Zeit-Guthaben: Ruhezeit wird bis Ping + PingSlack angespart.
+	-- Nach einer Lag-Spitze kommen ehrliche Schüsse gebündelt an (Zeitstempel korrekt, nur spät) – die
+	-- wurden vorher ab dem 3. Paket verworfen (+ Feuerraten-Verdacht, ab 20/min hartes Signal).
+	-- Mehr als das TIME-Fenster (Alter ≤ Ping + 0.35) erlaubt, lässt sich so nicht ansparen.
 	local recvMin = gapBase * num(COMBAT.RecvTolerance, 0.5)
-	if okInterval and s.RecvLast > 0 and opts.Recv - s.RecvLast < recvMin then
-		-- Jitter bündelt manchmal zwei Pakete in einem Frame: erst ab dem dritten zu dichten Paket verwerfen
-		if s.RecvPrev > 0 and opts.Recv - s.RecvPrev < recvMin * 2 then
+	local cap = math.clamp(opts.Ping, 0, 0.5) + num(COMBAT.PingSlack, 0.35)
+	local credit = if s.RecvLast > 0 then math.min(cap, s.RecvCredit + math.max(0, opts.Recv - s.RecvLast)) else cap
+	if okInterval then
+		if credit < recvMin then
 			okInterval = false
+		else
+			credit -= recvMin
 		end
 	end
 	if okInterval and not perSecondOk(c, d, tShot, f) then
@@ -678,13 +754,13 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 		noteReject(c, "RATE", shotId, opts)
 		return false, "RATE"
 	end
-	-- Untergrenze braucht die Kette VOR diesem Schuss (Erster-Schuss-Genauigkeit)
-	local speedT = Services.HistoryService.Speed(c, tShot)
+	-- Untergrenze braucht die Kette VOR diesem Schuss (Erster-Schuss-Genauigkeit, Bloom)
+	local speedSpread, speedT = shotSpeeds(c, tShot, opts.Now - tShot)
 	local air = airborne(c)
-	local minScale = minScaleFor(c, d, tShot, speedT, air)
+	local minScale = minScaleFor(c, d, tShot, speedSpread, air)
 	c.LastShotT = tShot
 	pushShotTime(c, tShot)
-	s.RecvPrev = s.RecvLast
+	s.RecvCredit = credit
 	s.RecvLast = opts.Recv
 	if c.ShieldUntil > opts.Now and not opts.DryRun then
 		cs.SetShield(c, 0) -- Spawn-Schutz endet beim ersten Schuss
@@ -761,7 +837,7 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 	local rules = rulesOf(c)
 	local headR = headRadius(rules)
 	local tol = num(COMBAT.HitTol, 0.35)
-	local rewindT = math.clamp(tShot - num(COMBAT.InterpDelay, 0.1), opts.Now - num(COMBAT.MaxRewind, 0.38), opts.Now)
+	local rewinds = rewindTimes(tShot, opts.Now, opts.Ping)
 	local shorten = num(COMBAT.LosShorten, 0.75)
 	local results: { [Combatant]: PelletHit } = {}
 	local order: { Combatant } = {}
@@ -790,7 +866,7 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 			region = "Head"
 			dist = (target.Head.Position - o).Magnitude
 		else
-			for _, w in ipairs(Services.HistoryService.SampleWindow(target, rewindT)) do
+			for _, w in ipairs(rewindWindows(target, rewinds)) do
 				region, dist = Hitbox.Ray(o, dir, d.Range, w.Root, w.Head, headR, tol)
 				if region then
 					break
@@ -852,7 +928,7 @@ local function processFire(c: Combatant, packet: FirePacket, opts: FireOpts): (b
 		local r = results[target]
 		local amount = r.Damage
 		if oneShot then
-			amount = target.Hp + 1
+			amount = oneShotAmount(target)
 			taint(c, "AdminOneShot")
 		end
 		local dealt, killed = cs.ApplyDamage(c, target, amount, {
@@ -925,7 +1001,7 @@ function WeaponService.ServerFire(c: Combatant, aim: Vector3, opts: { ForceMiss:
 	local shotId = c.LastShotId
 	local speed = Services.HistoryService.Speed(c, t)
 	local air = airborne(c)
-	local scale = minScaleFor(c, def, t, speed, air) + Spread.Bloom(def, c.ShotTimes, t)
+	local scale = minScaleFor(c, def, t, speed, air) -- enthält Erster-Schuss-Faktor + Bloom
 	c.LastShotT = t
 	pushShotTime(c, t)
 	local forceMiss = opts ~= nil and opts.ForceMiss == true
@@ -1024,7 +1100,7 @@ local function meleeReach(
 	target: Combatant,
 	headPos: Vector3,
 	aim: Vector3,
-	rewindT: number?
+	rewinds: { number }?
 ): boolean
 	local melee: any = def.Melee or {}
 	local maxDist = num(melee.Range, def.Range) + num(COMBAT.MeleeRangeSlack, 1.5)
@@ -1032,8 +1108,8 @@ local function meleeReach(
 	local cosMax = math.cos(math.rad(math.min(maxAngle, 180)))
 	local params = mapParamsOf(c)
 	local windows: { { Root: CFrame, Head: Vector3 } }
-	if rewindT then
-		windows = Services.HistoryService.SampleWindow(target, rewindT)
+	if rewinds then
+		windows = rewindWindows(target, rewinds)
 	else
 		windows = { { Root = target.Root.CFrame, Head = target.Head.Position } }
 	end
@@ -1065,7 +1141,7 @@ local function applyMelee(c: Combatant, def: WeaponDef, target: Combatant, swing
 	local rules = rulesOf(c)
 	local amount = Damage.Compute(def, 0, "Body", rules)
 	if power(c, "AdminOneShot") then
-		amount = target.Hp + 1
+		amount = oneShotAmount(target)
 		taint(c, "AdminOneShot")
 	end
 	local dealt, killed = cs.ApplyDamage(c, target, amount, {
@@ -1104,20 +1180,21 @@ local function startSwing(c: Combatant, def: WeaponDef, target: Combatant?, swin
 	end
 end
 
-local function meleeReady(c: Combatant, t: number, tolerance: number): (boolean, WeaponDef?)
+-- Rückgabe: bereit, Waffe, Grund ("STATE" = Zustand/Phase ohne Verdacht, "RATE" = zu schnell)
+local function meleeReady(c: Combatant, t: number, tolerance: number): (boolean, WeaponDef?, string?)
 	if c.Equipped ~= "Melee" or not partsAlive(c) or c.Blocking or c.HealUntil > t or c.EquipReadyAt > t then
-		return false, nil
+		return false, nil, "STATE"
 	end
 	local def = defIn(c, "Melee")
 	if not def or def.Kind ~= "Melee" or not contextLive(c) then
-		return false, nil
+		return false, nil, "STATE"
 	end
 	local s = stateOf(c)
 	local interval = num(def.Interval, 0.5) * num(rulesOf(c).IntervalMult, 1) / rapidFactor(c)
 	if s.SwingT > 0 and t - s.SwingT < interval * tolerance then
-		return false, nil
+		return false, nil, "RATE"
 	end
-	return true, def
+	return true, def, nil
 end
 
 function WeaponService.ServerMelee(c: Combatant, target: Combatant?): boolean
@@ -1568,21 +1645,26 @@ ACTIONS.Melee = function(p, c, swingId, t, aim, targetId)
 		noteReject(c, "TYPE", swingId, nil)
 		return
 	end
-	if not timeOk(p, t) then
-		noteReject(c, "TIME", swingId, nil)
-		return
-	end
 	local s = stateOf(c)
 	if swingId <= s.SwingId or swingId > s.SwingId + 8 then
 		noteReject(c, "STATE", swingId, nil)
 		return
 	end
-	local ready, def = meleeReady(c, t, num(COMBAT.IntervalTolerance, 0.75))
-	if not ready or not def then
-		noteReject(c, "RATE", swingId, nil)
+	-- sofort vorrücken: sonst hängt der Nahkampf nach 8 verworfenen Schlägen in Folge (z. B. gepoppt
+	-- weitergeschlagen, Lag-Spitze) bis zum Match-Ende
+	s.SwingId = swingId
+	if not timeOk(p, t) then
+		noteReject(c, "TIME", swingId, nil)
 		return
 	end
-	s.SwingId = swingId
+	if c.Equipped ~= "Melee" then
+		WeaponService.Equip(c, "Melee") -- Equip-Aktion verloren (Eimer): nachziehen, Equip-Zeit gilt
+	end
+	local ready, def, why = meleeReady(c, t, num(COMBAT.IntervalTolerance, 0.75))
+	if not ready or not def then
+		noteReject(c, why or "STATE", swingId, nil) -- Zustand (Phase, tot, Block, Trinken) ist kein Raten-Verstoß
+		return
+	end
 	s.SwingT = t
 	if c.ShieldUntil > now() then
 		combat().SetShield(c, 0)
@@ -1592,10 +1674,9 @@ ACTIONS.Melee = function(p, c, swingId, t, aim, targetId)
 		local cs = combat()
 		local other: Combatant? = cs.Get(targetId)
 		if other and other.Ctx == c.Ctx and partsAlive(other) and cs.IsEnemy(c, other) then
-			local nowT = now()
-			local rewindT = math.clamp(t - num(COMBAT.InterpDelay, 0.1), nowT - num(COMBAT.MaxRewind, 0.38), nowT)
+			local rewinds = rewindTimes(t, now(), num(p:GetNetworkPing(), 0))
 			local _, headPos = Services.HistoryService.Sample(c, t)
-			if meleeReach(c, def, other, headPos or c.Head.Position, aim.Unit, rewindT) then
+			if meleeReach(c, def, other, headPos or c.Head.Position, aim.Unit, rewinds) then
 				target = other
 			else
 				noteReject(c, "HITBOX", swingId, nil)

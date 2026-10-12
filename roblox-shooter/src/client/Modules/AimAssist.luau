@@ -41,8 +41,9 @@ local DEFAULTS = {
 
 local smokes: { Smoke } = {}
 local losCache: { [Model]: { T: number, Visible: boolean } } = setmetatable({}, { __mode = "k" }) :: any
+-- Nur IncludeInstances (wie ArenaService.MapParams/WeaponClient): FilterType "Include" mit leerer
+-- FilterDescendantsInstances-Liste würde alles herausfiltern
 local mapParams = RaycastParams.new()
-mapParams.FilterType = Enum.RaycastFilterType.Include
 mapParams.IgnoreWater = true
 local mapInstance: Instance? = nil
 local ranked = false

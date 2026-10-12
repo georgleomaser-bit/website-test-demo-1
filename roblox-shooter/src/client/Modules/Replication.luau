@@ -9,6 +9,8 @@
 --                Rutschen -> Staub, ADS mit Fernschuss -> Zielfernrohr-Glanz nach ScopeGlintAfter s (nur Gegner).
 --    Eigener Character: toolnone 507768375 (Looped, Priority Action) solange bewaffnet.
 --    BigHead-Bälle: Combatant-Modelle mit Attribut BigHead bekommen lokal eine große Kopf-Kugel.
+--    Namensschilder (AKYTEX): Rahmen "Edge" der Server-Tafel lokal relativ zum Betrachter färben –
+--                eigenes Team Accent, Gegner Down (der Server kennt nur Team 1/2).
 --  Slot -> Combatant: Roster aus Match("Start"); sonst Attribut "Slot" am Modell (Range).
 --
 --  Öffentliche API (C7.4):
@@ -81,6 +83,8 @@ local myTeam = 0
 local origC0: { [Instance]: CFrame } = setmetatable({}, { __mode = "k" }) :: any
 local bigBalls: { [Model]: BasePart } = setmetatable({}, { __mode = "k" }) :: any
 local bigHeadAccum = 0
+type Tint = { Orig: Color3, Tint: Color3 }
+local plateTints: { [UIStroke]: Tint } = setmetatable({}, { __mode = "k" }) :: any
 
 local holdAnimation = Instance.new("Animation")
 holdAnimation.AnimationId = TOOLNONE_ID
@@ -568,6 +572,53 @@ local function updateBigHeads()
 	end
 end
 
+-- Namensschild-Rahmen relativ zum Betrachter (nur lokal; Server-Änderungen überschreiben, 1 Hz neu)
+local function themeColor(key: string, fallback: Color3): Color3
+	local ui = ctx and ctx.UI
+	local theme = ui and ui.Theme
+	local c = if type(theme) == "table" then theme[key] else nil
+	return if typeof(c) == "Color3" then c else fallback
+end
+
+local function tintPlates()
+	local list = call("WeaponClient", "Combatants")
+	if type(list) ~= "table" or not armed then
+		list = {}
+	end
+	local accent = themeColor("Accent", Color3.fromRGB(79, 140, 255))
+	local down = themeColor("Down", Color3.fromRGB(239, 68, 68))
+	local seen: { [UIStroke]: boolean } = {}
+	for _, m in ipairs(list) do
+		if typeof(m) == "Instance" and m:IsA("Model") and m ~= player.Character then
+			local head = m:FindFirstChild("Head") or m.PrimaryPart
+			local gui = head and head:FindFirstChild("CC_Nameplate")
+			local edge = gui and gui:FindFirstChild("Edge", true)
+			if edge and edge:IsA("UIStroke") then
+				local want = if isEnemyModel(m) then down else accent
+				local entry = plateTints[edge]
+				if not entry or edge.Color ~= entry.Tint then
+					entry = { Orig = edge.Color, Tint = want }
+					plateTints[edge] = entry
+				end
+				entry.Tint = want
+				if edge.Color ~= want then
+					edge.Color = want
+				end
+				seen[edge] = true
+			end
+		end
+	end
+	-- nicht mehr im Kampf: Server-Farbe zurück (falls der Server sie inzwischen nicht selbst geändert hat)
+	for edge, entry in pairs(plateTints) do
+		if not seen[edge] then
+			if edge.Parent and edge.Color == entry.Tint then
+				edge.Color = entry.Orig
+			end
+			plateTints[edge] = nil
+		end
+	end
+end
+
 local function onRender(dt: number)
 	local camera = workspace.CurrentCamera
 	if not camera then
@@ -585,6 +636,7 @@ local function onRender(dt: number)
 	if bigHeadAccum >= 1 then
 		bigHeadAccum = 0
 		updateBigHeads()
+		tintPlates()
 	end
 end
 

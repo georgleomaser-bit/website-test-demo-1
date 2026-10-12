@@ -9,7 +9,7 @@
 --  Partikel und schalten Lichter aus.
 --
 --  Öffentliche API (C7.4):
---    CombatFX.Tracer(from, to, color?, tracerId?)
+--    CombatFX.Tracer(from, to, color?, tracerId?, team?)   tracerId -> CosmeticModels.TracerStyle(id, Teamfarbe)
 --    CombatFX.Impact(pos, normal?, kind)          kind "Surface" | "Player" | "Head" | "Water"
 --    CombatFX.Muzzle(cf, weaponKey)
 --    CombatFX.Explosion(pos, radius)
@@ -20,6 +20,12 @@
 --    CombatFX.Frame(dt) (aus dem einen PreRender-Loop), CombatFX.Init(ctx) / CombatFX.Start()
 --  Hört selbst: Remote "FX" (Buffer der anderen Schützen), Hooks "Combat:Proj/Boom/Smoke",
 --  "Match:Start"/"Combat:Armed" (Arena-Ursprung + Map für Abpraller).
+--  Leuchtspur-Kosmetik (Vertrag Runde 2): eigene Schüsse = tracerId vom Aufrufer (WeaponClient: Armed.Tracer
+--    bzw. State Cosmetics.Equipped.Tracer); fremde Schützen (FX-Slot) = Roster-Eintrag "Tracer" (Match:Start)
+--    oder Armed.Tracers[slot], sonst WeaponClient.TracerOfSlot(slot) / Attribut "Tracer" am Combatant-Modell
+--    (CombatService), sonst Config.Cosmetics.Defaults.Tracer. "Team"-Leuchtspuren färben nach Config.Colors.TeamA/TeamB (FFA: weiß).
+--  Server-Abgleich eines Projektils (gleiche Id, z. B. Granaten-Abprall) aktualisiert das vorhandene statt
+--  ein zweites zu zeigen; "Boom" mit Warn = roter Warnkreis bis zur Zeit Warn (Orbital-Schlag), keine Explosion.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -54,6 +60,8 @@ local MUZZLES = 6
 local EXPLOSIONS = 4
 local SMOKES = 4
 local POPS = 4
+local WARNS = 4 -- Warnkreise (Orbital-Schlag)
+local SLOT_REFRESH = 3 -- Leuchtspur/Team eines fremden Schützen so lange merken
 local FX_RANGE = 450
 local FINISHER_RANGE = 300
 local PROJECTILE_LIFE = 6
@@ -138,6 +146,16 @@ local tracerStyles: { [string]: any } = {}
 local arenaOrigin = Vector3.zero
 local arenaMap: Instance? = nil
 local myCombatId = player.UserId
+local myTeam = 0
+local matchFfa = false
+local ownTracer: string? = nil -- Armed.Tracer (falls der Server ihn schickt)
+type SlotLook = { Tracer: string?, Team: number?, At: number }
+type RosterLook = { Id: number?, Team: number?, Tracer: string? }
+local rosterBySlot: { [number]: RosterLook } = {}
+local slotLooks: { [number]: SlotLook } = {}
+type WarnSlot = { Part: Part, Until: number, Active: boolean }
+local warns: { WarnSlot } = {}
+local warnNext = 1
 local rayParams = RaycastParams.new()
 local cosmeticModels: any = nil
 local ballistics: any = nil
@@ -541,6 +559,42 @@ local function buildPops()
 	end
 end
 
+local function buildWarns()
+	local parent = folder
+	for i = 1, WARNS do
+		local part = Instance.new("Part")
+		part.Name = "StrikeWarn_" .. i
+		part.Shape = Enum.PartType.Cylinder
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.CastShadow = false
+		part.Material = Enum.Material.Neon
+		part.Color = Color3.fromRGB(239, 68, 68) -- AKYTEX Down
+		part.Transparency = 1
+		part.Size = Vector3.new(0.2, 4, 4)
+		part.CFrame = HIDDEN_CF
+		part.Parent = parent
+		table.insert(warns, { Part = part, Until = 0, Active = false })
+	end
+end
+
+-- Roter Warnkreis am Boden bis zur Server-Zeit untilT (Orbital-Schlag: "Boom" mit Warn kommt VOR dem Einschlag)
+local function showWarn(pos: Vector3, radius: number, untilT: number)
+	if #warns == 0 or not near(pos, FX_RANGE) then
+		return
+	end
+	local slot = warns[warnNext]
+	warnNext = warnNext % #warns + 1
+	local r = math.clamp(radius, 2, 60)
+	slot.Active = true
+	slot.Until = untilT
+	slot.Part.Size = Vector3.new(0.2, r * 2, r * 2)
+	slot.Part.CFrame = CFrame.new(pos + Vector3.new(0, 0.15, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+	slot.Part.Transparency = 0.6
+end
+
 local function buildProjectiles()
 	local parent = folder
 	for i = 1, poolSizes.Projectiles do
@@ -623,24 +677,58 @@ end
 -- ---------------------------------------------------------------------
 -- ÖFFENTLICH: TRACER, TREFFER, MÜNDUNG
 -- ---------------------------------------------------------------------
-local function tracerStyle(tracerId: string?): any
+local function allowImpact(): boolean
+	local now = os.clock()
+	if now - impactWindowStart >= 1 then
+		impactWindowStart = now
+		impactWindowCount = 0
+	end
+	impactWindowCount += 1
+	return impactWindowCount <= poolSizes.Impacts
+end
+
+local function defaultTracer(): string?
+	local config = ctx and ctx.Config
+	local cosmetics = config and config.Cosmetics
+	local defaults = cosmetics and cosmetics.Defaults
+	local id = type(defaults) == "table" and defaults.Tracer or nil
+	return if type(id) == "string" and id ~= "" then id else nil
+end
+
+-- Teamfarbe für "Team"-Leuchtspuren (FFA/Range/ohne Team: nil -> weiß)
+local function teamColor(team: number?): Color3?
+	if matchFfa or type(team) ~= "number" then
+		return nil
+	end
+	local config = ctx and ctx.Config
+	local colors = config and config.Colors
+	if type(colors) ~= "table" then
+		return nil
+	end
+	local color = if team == 1 then colors.TeamA elseif team == 2 then colors.TeamB else nil
+	return if typeof(color) == "Color3" then color else nil
+end
+
+local function tracerStyle(tracerId: string?, team: number?): any
 	if type(tracerId) ~= "string" or tracerId == "" or not cosmeticModels then
 		return nil
 	end
-	local cached = tracerStyles[tracerId]
+	local tint = teamColor(team)
+	local key = tracerId .. "|" .. (if tint then tostring(team) else "-")
+	local cached = tracerStyles[key]
 	if cached ~= nil then
 		return cached or nil
 	end
-	local ok, style = pcall(cosmeticModels.TracerStyle, tracerId)
+	local ok, style = pcall(cosmeticModels.TracerStyle, tracerId, tint)
 	if ok and type(style) == "table" and typeof(style.Color) == "ColorSequence" then
-		tracerStyles[tracerId] = style
+		tracerStyles[key] = style
 		return style
 	end
-	tracerStyles[tracerId] = false
+	tracerStyles[key] = false
 	return nil
 end
 
-function CombatFX.Tracer(from: Vector3, to: Vector3, color: Color3?, tracerId: string?)
+function CombatFX.Tracer(from: Vector3, to: Vector3, color: Color3?, tracerId: string?, team: number?)
 	if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" or #tracers == 0 then
 		return
 	end
@@ -658,32 +746,37 @@ function CombatFX.Tracer(from: Vector3, to: Vector3, color: Color3?, tracerId: s
 	tracer.A0.WorldPosition = from
 	tracer.A1.WorldPosition = to
 	local beam = tracer.Beam
-	local style = tracerStyle(tracerId)
+	-- ohne Team-Angabe (eigener Schuss vom WeaponClient): eigenes Team aus "Armed"
+	local id = tracerId
+	if id == nil and team == nil then
+		id = ownTracer or defaultTracer()
+	end
+	local style = if typeof(color) == "Color3" then nil else tracerStyle(id, if team ~= nil then team else myTeam)
 	if typeof(color) == "Color3" then
 		beam.Color = ColorSequence.new(color)
 		beam.Width0, beam.Width1 = 0.12, 0.05
+		beam.Texture = TEX.Gradient
 	elseif style then
 		beam.Color = style.Color
 		beam.Width0 = tonumber(style.Width0) or 0.12
 		beam.Width1 = tonumber(style.Width1) or 0.05
 		local texture = style.Texture
-		beam.Texture = if type(texture) == "string" then texture else TEX.Gradient
+		beam.Texture = if type(texture) == "string" and texture ~= "" then texture else TEX.Gradient
 	else
 		beam.Color = ColorSequence.new(TRACER_DEFAULT)
 		beam.Width0, beam.Width1 = 0.12, 0.05
+		beam.Texture = TEX.Gradient
 	end
 	beam.Transparency = tracerSeqs[1]
 	beam.Enabled = true
-end
-
-local function allowImpact(): boolean
-	local now = os.clock()
-	if now - impactWindowStart >= 1 then
-		impactWindowStart = now
-		impactWindowCount = 0
+	-- Funkel-Leuchtspuren (z. B. "Seifenblase"): zwei kleine Sterne am Ende (aus dem Treffer-Budget)
+	if style and style.Sparkle == true and not reduced() and #impacts > 0 and near(to, 150) and allowImpact() then
+		local slot = impacts[impactNext]
+		impactNext = impactNext % #impacts + 1
+		slot.Attachment.WorldCFrame = CFrame.new(to)
+		slot.Stars.Color = style.Color
+		slot.Stars:Emit(2)
 	end
-	impactWindowCount += 1
-	return impactWindowCount <= poolSizes.Impacts
 end
 
 function CombatFX.Impact(pos: Vector3, normal: Vector3?, kind: string)
@@ -969,6 +1062,17 @@ local function onServerProjectile(data: any)
 		return
 	end
 	local serverId = "S" .. tostring(data.Id)
+	-- Server-Abgleich desselben Projektils (Granate prallt ab / bleibt liegen): vorhandenes übernehmen,
+	-- sonst läge nach jedem Abprall eine zweite Kopie in der Welt
+	local existing = projectileById[serverId]
+	if existing and existing.Active then
+		existing.Pos = data.O
+		existing.Vel = data.V
+		existing.Gravity = tonumber(data.G) or existing.Gravity
+		existing.Stopped = data.V.Magnitude < 0.05
+		existing.Part.CFrame = CFrame.new(data.O)
+		return
+	end
 	local def = weaponDefById(tonumber(data.W) or 0)
 	local key = if type(def) == "table" and type(def.Key) == "string" then def.Key else ""
 	if tonumber(data.Own) == myCombatId then
@@ -1053,6 +1157,73 @@ end
 -- ---------------------------------------------------------------------
 -- FX-BUFFER (Tracer anderer Schützen, 20 Hz pro Kontext)
 -- ---------------------------------------------------------------------
+-- Combatant-Modell eines FX-Slots: Roster-Id -> Spieler-Character / WeaponClient.ModelOf,
+-- sonst Attribut "Slot" an den bekannten Combatants (Range ohne Roster)
+local function modelForSlot(slot: number, id: number?): Model?
+	if id and id > 0 then
+		local p = Players:GetPlayerByUserId(id)
+		if p and p.Character then
+			return p.Character
+		end
+	end
+	local weapon = ctx and ctx.Modules and ctx.Modules.WeaponClient
+	if not weapon then
+		return nil
+	end
+	if id and type(weapon.ModelOf) == "function" then
+		local ok, model = pcall(weapon.ModelOf, id)
+		if ok and typeof(model) == "Instance" and model:IsA("Model") then
+			return model
+		end
+	end
+	if type(weapon.Combatants) == "function" then
+		local ok, list = pcall(weapon.Combatants)
+		if ok and type(list) == "table" then
+			for _, model in ipairs(list) do
+				if typeof(model) == "Instance" and model:IsA("Model") and model:GetAttribute("Slot") == slot then
+					return model
+				end
+			end
+		end
+	end
+	return nil
+end
+
+-- Leuchtspur-Id + Team eines fremden Schützen (Roster/Armed.Tracers, sonst Modell-Attribute); kurz gemerkt
+local function shooterLook(slot: number): (string?, number?)
+	local now = os.clock()
+	local cached = slotLooks[slot]
+	if cached and now - cached.At < SLOT_REFRESH then
+		return cached.Tracer, cached.Team
+	end
+	local entry = rosterBySlot[slot]
+	local tracer = entry and entry.Tracer
+	local team = entry and entry.Team
+	-- Vertrag mit WP3/G3: WeaponClient.TracerOfSlot(slot) liest das Attribut "Tracer" des Schützen-Modells
+	local weapon = ctx and ctx.Modules and ctx.Modules.WeaponClient
+	if tracer == nil and weapon and type(weapon.TracerOfSlot) == "function" then
+		local ok, id = pcall(weapon.TracerOfSlot, slot)
+		if ok and type(id) == "string" and id ~= "" then
+			tracer = id
+		end
+	end
+	if tracer == nil or team == nil then
+		local model = modelForSlot(slot, entry and entry.Id)
+		if model then
+			local attrTracer = model:GetAttribute("Tracer")
+			if tracer == nil and type(attrTracer) == "string" and attrTracer ~= "" then
+				tracer = attrTracer
+			end
+			local attrTeam = model:GetAttribute("Team")
+			if team == nil and type(attrTeam) == "number" then
+				team = attrTeam
+			end
+		end
+	end
+	slotLooks[slot] = { Tracer = tracer, Team = team, At = now }
+	return tracer, team
+end
+
 local function onFx(b: any)
 	if typeof(b) ~= "buffer" or not ctx then
 		return
@@ -1071,7 +1242,8 @@ local function onFx(b: any)
 		local key = if type(def) == "table" and type(def.Key) == "string" then def.Key else ""
 		local o: Vector3, e: Vector3 = entry.O, entry.E
 		if entry.Kind == 1 or entry.Kind == 2 then
-			CombatFX.Tracer(o, e)
+			local tracerId, team = shooterLook(entry.Slot)
+			CombatFX.Tracer(o, e, nil, tracerId or defaultTracer(), team or -1)
 			CombatFX.Impact(e, (o - e), if entry.Kind == 2 then "Player" else "Surface")
 			if (e - o).Magnitude > 0.5 then
 				CombatFX.Muzzle(CFrame.lookAt(o, e), key)
@@ -1133,6 +1305,18 @@ function CombatFX.Frame(dt: number)
 			end
 		end
 	end
+	for _, slot in ipairs(warns) do
+		if slot.Active then
+			local left = slot.Until - serverNow
+			if left <= 0 then
+				slot.Active = false
+				slot.Part.Transparency = 1
+				slot.Part.CFrame = HIDDEN_CF
+			else
+				slot.Part.Transparency = 0.45 + 0.3 * (0.5 + 0.5 * math.sin(now * 14)) -- pulsiert
+			end
+		end
+	end
 	stepProjectiles(dt)
 end
 
@@ -1161,6 +1345,11 @@ local function clearAll()
 		slot.Emitter.Enabled = false
 		slot.Ball.Transparency = 1
 		slot.Ball.CFrame = HIDDEN_CF
+	end
+	for _, slot in ipairs(warns) do
+		slot.Active = false
+		slot.Part.Transparency = 1
+		slot.Part.CFrame = HIDDEN_CF
 	end
 end
 
@@ -1223,21 +1412,64 @@ function CombatFX.Init(context: any)
 	buildSmokes()
 	buildLights()
 	buildPops()
+	buildWarns()
 	buildProjectiles()
 
 	local hooks = ctx.Hooks
 	hooks.On("Match:Start", function(data)
 		setArena(data.Origin, nil)
+		matchFfa = data.Mode == "FFA"
+		table.clear(rosterBySlot)
+		table.clear(slotLooks)
+		if type(data.Roster) == "table" then
+			for _, entry in ipairs(data.Roster) do
+				local slot = type(entry) == "table" and tonumber(entry.Slot) or nil
+				if slot then
+					rosterBySlot[slot] = {
+						Id = tonumber(entry.Id),
+						Team = tonumber(entry.Team),
+						Tracer = if type(entry.Tracer) == "string" and entry.Tracer ~= "" then entry.Tracer else nil,
+					}
+				end
+			end
+		end
 	end)
 	hooks.On("Combat:Armed", function(data)
 		myCombatId = tonumber(data.Id) or player.UserId
+		myTeam = tonumber(data.Team) or 0
+		ownTracer = if type(data.Tracer) == "string" and data.Tracer ~= "" then data.Tracer else nil
+		table.clear(slotLooks)
+		if data.Ctx == "Range" then
+			matchFfa = false
+		end
+		-- optional: Leuchtspuren der anderen im Kontext { [slot] = tracerId }
+		if type(data.Tracers) == "table" then
+			for slot, id in pairs(data.Tracers) do
+				local n = tonumber(slot)
+				if n and type(id) == "string" and id ~= "" then
+					local entry = rosterBySlot[n] or {}
+					entry.Tracer = id
+					rosterBySlot[n] = entry
+				end
+			end
+		end
 		setArena(data.Origin, data.Map)
+	end)
+	hooks.On("Match:Closed", function()
+		table.clear(rosterBySlot)
+		table.clear(slotLooks)
+		matchFfa = false
 	end)
 	hooks.On("Combat:Disarmed", clearAll)
 	hooks.On("Match:Closed", clearAll)
 	hooks.On("Combat:Proj", onServerProjectile)
 	hooks.On("Combat:Boom", function(data)
 		if type(data) ~= "table" then
+			return
+		end
+		if type(data.Warn) == "number" and typeof(data.P) == "Vector3" then
+			-- Vorwarnung (Orbital-Schlag): nur Warnkreis, der echte Einschlag kommt als eigenes "Boom"
+			showWarn(data.P, tonumber(data.R) or 10, data.Warn)
 			return
 		end
 		CombatFX.RemoveProjectile("S" .. tostring(data.Id))

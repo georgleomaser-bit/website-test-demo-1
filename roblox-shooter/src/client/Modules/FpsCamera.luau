@@ -292,6 +292,14 @@ local function layoutScope()
 	end
 end
 
+-- AKYTEX-Farbe aus UI.Theme (Fallback = gleiche Hex-Werte)
+local function themeColor(key: string, fallback: Color3): Color3
+	local ui = ctx and ctx.UI
+	local theme = ui and ui.Theme
+	local c = if type(theme) == "table" then theme[key] else nil
+	return if typeof(c) == "Color3" then c else fallback
+end
+
 local function buildScope()
 	local playerGui = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 10)
 	if not playerGui then
@@ -329,9 +337,9 @@ local function buildScope()
 	rimCorner.CornerRadius = UDim.new(0.5, 0)
 	rimCorner.Parent = rim
 	local rimStroke = Instance.new("UIStroke")
-	rimStroke.Color = Color3.fromRGB(28, 32, 64)
-	rimStroke.Thickness = 6
-	rimStroke.Transparency = 0.2
+	rimStroke.Color = themeColor("Border", Color3.fromRGB(31, 41, 55)) -- feiner AKYTEX-Linsenrand
+	rimStroke.Thickness = 3
+	rimStroke.Transparency = 0.15
 	rimStroke.Parent = rim
 	rim.Parent = hole
 	-- Fadenkreuz-Linien (dünn, schwarz) + roter Punkt
@@ -355,7 +363,7 @@ local function buildScope()
 	dot.Position = UDim2.fromScale(0.5, 0.5)
 	dot.Size = UDim2.fromOffset(6, 6)
 	dot.BorderSizePixel = 0
-	dot.BackgroundColor3 = Color3.fromRGB(255, 59, 59)
+	dot.BackgroundColor3 = themeColor("Down", Color3.fromRGB(239, 68, 68))
 	local dotCorner = Instance.new("UICorner")
 	dotCorner.CornerRadius = UDim.new(0.5, 0)
 	dotCorner.Parent = dot

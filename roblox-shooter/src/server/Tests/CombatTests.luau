@@ -201,6 +201,34 @@ tests.SpreadBloomChainRecoil = function()
 	near(Spread.MinScale(rifle, false, 20, true), 2.0 + 1.0 + 3, 1e-9, "MinScale bewegt + Luft")
 end
 
+-- Lernbare Rückstoß-Muster (SKILL-WUENSCHE): jede Fernkampfwaffe mit Muster folgt beim Dauerfeuer Schuss
+-- für Schuss demselben Muster – Index = Spread.Chain + 1, dieselbe Kette, die der Server für Bloom und
+-- Erster-Schuss-Genauigkeit benutzt (Client = Server). Seed spielt beim Muster keine Rolle.
+tests.RecoilPatternsLearnable = function()
+	for _, def in ipairs(Config.Weapons.List) do
+		local pattern = def.RecoilPattern
+		if type(pattern) ~= "table" or (def.Kind ~= "Hitscan" and def.Kind ~= "Projectile") then
+			continue
+		end
+		local interval = if def.FireMode == "Burst" and def.BurstInterval then def.BurstInterval else def.Interval
+		local times: { number } = {}
+		for shot = 1, #pattern + 3 do
+			local t = shot * interval
+			local index = Spread.Chain(def, times, t) + 1
+			eq(index, shot, def.Key .. ": Muster-Index beim Dauerfeuer")
+			local p1, y1 = Spread.Recoil(def, index, 1)
+			local p2, y2 = Spread.Recoil(def, index, 987654)
+			eq(p1, p2, def.Key .. ": Muster-Pitch unabhängig vom Seed")
+			eq(y1, y2, def.Key .. ": Muster-Yaw unabhängig vom Seed")
+			truthy(p1 >= 0, def.Key .. ": Pitch nie nach unten")
+			truthy(math.abs(y1) <= def.RecoilYaw * 1.5 + 1e-9, def.Key .. ": Seitenkick begrenzt")
+			table.insert(times, t)
+		end
+		-- Antippen (Pause > Interval × 1.6) beginnt das Muster neu
+		eq(Spread.Chain(def, { 0 }, def.Interval * 1.7) + 1, 1, def.Key .. ": Antippen = Muster von vorn")
+	end
+end
+
 -- ---------------------------------------------------------------------
 -- BALLISTICS
 -- ---------------------------------------------------------------------
@@ -309,8 +337,7 @@ local function withTestContext(Services: any, fn: (env: any) -> ())
 	wall.Parent = map
 	map.Parent = folder
 	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Include
-	params.IncludeInstances = { map }
+	params.IncludeInstances = { map } -- wie ArenaService.MapParams: nur IncludeInstances
 	local ctx = ("Test_%d"):format(math.floor(os.clock() * 1000) % 1000000)
 	local arena: any = {
 		Slot = 0,

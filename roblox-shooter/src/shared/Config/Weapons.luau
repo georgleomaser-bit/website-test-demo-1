@@ -22,6 +22,8 @@
 --                     Nach dem letzten Eintrag geht es ab RecoilLoopFrom weiter. Ohne Muster: zufälliger Seitenkick (B11.1).
 --    RecoilLoopFrom   Index, ab dem das Muster wiederholt wird (Standard 1)
 --    AdsSettleSpread  Streuung, solange das Zielfernrohr noch nicht voll ist (Longshot "2.0 bis Fernrohr voll").
+--    MobileSpread     true = Waffe ist fürs Springen/Rutschen gebaut (Schrot, Rakete): kein Rutsch-Aufschlag
+--                     (Config.Player.Slide.SpreadAdd) und SpreadAir 0. Alle anderen streuen in Luft/Rutschen mehr.
 --  Helfer zum Rechnen: Shared/Spread (Spread.Recoil, Spread.FirstShot).
 -- =====================================================================
 
@@ -259,6 +261,7 @@ local Scatter = weapon({
 	RecoilYaw = 0.5,
 	RecoilRecover = 0.5,
 	RecoilPattern = { { 1.0, 0.3 } }, -- immer gleich: kräftig hoch, leicht rechts
+	MobileSpread = true, -- Schrot ist für Rutschen/Springen gebaut
 	Price = 600,
 	Sound = "ShotgunShot",
 })
@@ -280,6 +283,8 @@ local Longshot = weapon({
 	Equip = 0.60,
 	SpreadHip = 7.0,
 	SpreadAds = 0,
+	SpreadMove = 1.5, -- nur über Config.Combat.MovingSpeed (ADS-Gehen 8.8 bleibt präzise)
+	SpreadAir = 4, -- Sprung-Scope ist Glück, kein Skill (SKILL-WUENSCHE: Springen = mehr Streuung)
 	AdsSettleSpread = 2.0, -- bis das Fernrohr voll ist (Quickscope möglich, aber nicht perfekt)
 	FalloffStart = 500, -- "kein" Abfall (MinMult 1.0)
 	FalloffEnd = 1500,
@@ -321,6 +326,7 @@ local PopRocket = weapon({
 	RecoilPitch = 2.5,
 	RecoilYaw = 0.2,
 	RecoilRecover = 0.5,
+	MobileSpread = true, -- Raketensprung + Schuss aus der Luft ist gewollte Technik
 	Projectile = {
 		Speed = 120,
 		Gravity = 0,
@@ -443,6 +449,7 @@ local MiniScatter = weapon({
 	RecoilYaw = 0.8,
 	RecoilRecover = 0.4,
 	RecoilPattern = { { 1.0, 0.4 }, { 1.0, -0.4 } },
+	MobileSpread = true,
 	Price = 600,
 	Sound = "ShotgunShot",
 })

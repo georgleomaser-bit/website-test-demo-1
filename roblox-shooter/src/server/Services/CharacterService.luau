@@ -51,7 +51,6 @@ type PlateInfo = {
 
 local COMBAT: any = Config.Combat
 local PLAYER: any = Config.Player
-local COLORS: any = Config.Colors
 local SLOT_NAMES: { SlotName } = { "Primary", "Secondary", "Melee", "Utility" }
 local GUN_SCALE = 0.8 -- 3rd-Person-Skala (B11.8)
 local CHAR_WAIT = 10
@@ -59,8 +58,17 @@ local PLATE_NAME = "CC_Nameplate"
 local GUNS_NAME = "CC_Guns"
 local PROP_NAME = "CC_HeadProp"
 local PLAYER_PLATE_ATTRS = { "Level", "Title", "Vip", "Supporter", "Bounty", "CrownStreak" }
-local GOLD = Color3.fromRGB(255, 200, 40)
-local BOT_GREY = Color3.fromRGB(170, 170, 170)
+local GOLD = Color3.fromRGB(255, 200, 40) -- Krone (Welt-Geometrie bleibt bunt)
+-- AKYTEX-Farben (docs/STYLE-AKYTEX.md; der Server hat kein UI.Theme -> gleiche Hex-Werte als Konstanten)
+local AKY_BG = Color3.fromRGB(11, 15, 23) -- AKYTEX-Farbe Bg #0b0f17
+local AKY_BORDER = Color3.fromRGB(31, 41, 55) -- AKYTEX-Farbe Border #1f2937
+local AKY_TEXT = Color3.fromRGB(230, 236, 245) -- AKYTEX-Farbe Text #e6ecf5
+local AKY_TEXT2 = Color3.fromRGB(170, 180, 195) -- AKYTEX-Farbe Text2 #aab4c3
+local AKY_MUTED = "#7d889a" -- AKYTEX-Farbe Muted (RichText für [BOT])
+local AKY_ACCENT = Color3.fromRGB(79, 140, 255) -- AKYTEX-Farbe Accent #4f8cff (Team 1 / eigenes Team)
+local AKY_DOWN = Color3.fromRGB(239, 68, 68) -- AKYTEX-Farbe Down #ef4444 (Team 2 / Gegner)
+local AKY_WARN = Color3.fromRGB(234, 179, 8) -- AKYTEX-Farbe Warn #eab308 (VIP-Gold)
+local PLATE_W, PLATE_H = 300, 50 -- BillboardGui (Pixel); die Glas-Tafel passt sich der Textbreite an
 
 local router: ((Player, Model) -> (Route, CFrame?))? = nil
 local inVault: { [Player]: boolean } = {}
@@ -220,22 +228,26 @@ local function titleText(title: string): (string, Color3?)
 	return string.sub(title, 1, 24), nil
 end
 
-local function makeLabel(name: string, parent: Instance, pos: UDim2, size: UDim2, font: Enum.Font): TextLabel
+-- AKYTEX-Text: BuilderSans, feste Größe (die Tafel wächst mit), feine Kontur über der 3D-Welt
+local function makeLabel(name: string, parent: Instance, order: number, height: number, font: Enum.Font): TextLabel
 	local label = Instance.new("TextLabel")
 	label.Name = name
 	label.BackgroundTransparency = 1
-	label.Position = pos
-	label.Size = size
+	label.LayoutOrder = order
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.Size = UDim2.fromOffset(0, height)
 	label.Font = font
-	label.TextScaled = true
-	label.TextColor3 = Color3.new(1, 1, 1)
-	label.TextStrokeTransparency = 0.2
+	label.TextSize = height - 3
+	label.RichText = true
+	label.TextColor3 = AKY_TEXT
+	label.TextStrokeTransparency = 0.6
 	label.TextStrokeColor3 = Color3.new(0, 0, 0)
 	label.Text = ""
 	label.Parent = parent
 	return label
 end
 
+-- Dunkle Glas-Tafel (Bg, Transparenz 0.15) mit 1-px-Rahmen in Teamfarbe, Ecke 10, Name + Level/Titel
 local function ensurePlate(model: Model): BillboardGui?
 	local host = plateHost(model)
 	if not host then
@@ -247,16 +259,57 @@ local function ensurePlate(model: Model): BillboardGui?
 	end
 	local gui = Instance.new("BillboardGui")
 	gui.Name = PLATE_NAME
-	gui.Size = UDim2.fromOffset(220, 56)
-	gui.StudsOffset = Vector3.new(0, 2.4, 0)
+	gui.Size = UDim2.fromOffset(PLATE_W, PLATE_H)
+	gui.StudsOffset = Vector3.new(0, 2.6, 0)
 	gui.AlwaysOnTop = false
 	gui.MaxDistance = 120
 	gui.LightInfluence = 0
 	gui.Adornee = host
-	makeLabel("Name", gui, UDim2.fromScale(0, 0), UDim2.fromScale(1, 0.58), Enum.Font.FredokaOne)
-	makeLabel("Sub", gui, UDim2.fromScale(0, 0.58), UDim2.fromScale(1, 0.42), Enum.Font.BuilderSansBold)
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.AnchorPoint = Vector2.new(0.5, 1)
+	panel.Position = UDim2.fromScale(0.5, 1)
+	panel.AutomaticSize = Enum.AutomaticSize.XY
+	panel.Size = UDim2.fromOffset(0, 0)
+	panel.BackgroundColor3 = AKY_BG
+	panel.BackgroundTransparency = 0.15
+	panel.BorderSizePixel = 0
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = panel
+	local edge = Instance.new("UIStroke")
+	edge.Name = "Edge"
+	edge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edge.Thickness = 1
+	edge.Color = AKY_BORDER
+	edge.Parent = panel
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 10)
+	pad.PaddingRight = UDim.new(0, 10)
+	pad.PaddingTop = UDim.new(0, 3)
+	pad.PaddingBottom = UDim.new(0, 4)
+	pad.Parent = panel
+	local list = Instance.new("UIListLayout")
+	list.FillDirection = Enum.FillDirection.Vertical
+	list.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Padding = UDim.new(0, 0)
+	list.Parent = panel
+	makeLabel("Name", panel, 1, 21, Enum.Font.BuilderSansBold)
+	makeLabel("Sub", panel, 2, 16, Enum.Font.BuilderSans)
+	panel.Parent = gui
 	gui.Parent = host
 	return gui
+end
+
+-- RichText ist an (graues [BOT]): Namen/Titel dürfen keine Tags einschleusen
+local function escapeRich(text: string): string
+	return (string.gsub(string.gsub(string.gsub(text, "&", "&amp;"), "<", "&lt;"), ">", "&gt;"))
+end
+
+-- Teil eines Namensschilds (Labels liegen in "Panel")
+local function plateChild(gui: Instance, name: string): Instance?
+	return gui:FindFirstChild(name, true)
 end
 
 local function setPlateVisible(model: Model, visible: boolean)
@@ -267,13 +320,15 @@ local function setPlateVisible(model: Model, visible: boolean)
 	end
 end
 
+-- Rahmenfarbe nach Team (wie die Score-Kästen: Team 1 Accent, Team 2 Down); der Client färbt sie lokal
+-- relativ zum Betrachter um (eigenes Team Accent, Gegner Down – Client/Modules/Replication)
 local function teamColor(team: number?): Color3
 	if team == 1 then
-		return COLORS.TeamA
+		return AKY_ACCENT
 	elseif team == 2 then
-		return COLORS.TeamB
+		return AKY_DOWN
 	end
-	return Color3.new(1, 1, 1)
+	return AKY_BORDER
 end
 
 function CharacterService.SetNameplate(model: Model, info: PlateInfo)
@@ -284,20 +339,20 @@ function CharacterService.SetNameplate(model: Model, info: PlateInfo)
 	if not gui then
 		return
 	end
-	local nameLabel = gui:FindFirstChild("Name") :: TextLabel?
-	local subLabel = gui:FindFirstChild("Sub") :: TextLabel?
-	if not nameLabel or not subLabel then
+	local nameLabel = plateChild(gui, "Name") :: TextLabel?
+	local subLabel = plateChild(gui, "Sub") :: TextLabel?
+	local edge = plateChild(gui, "Edge") :: UIStroke?
+	if not nameLabel or not subLabel or not nameLabel:IsA("TextLabel") or not subLabel:IsA("TextLabel") then
 		return
 	end
 	local crown = info.Crown == true or model:GetAttribute("HeadProp") == "Crown"
-	local prefix = (if info.IsBot then "[BOT] " else "") .. (if crown then "👑 " else "")
-	nameLabel.Text = prefix .. string.sub(tostring(info.Name or "?"), 1, 24)
-	if info.IsBot then
-		nameLabel.TextColor3 = BOT_GREY
-	elseif info.Vip then
-		nameLabel.TextColor3 = GOLD -- goldenes Namensschild (VIP, B22.1)
-	else
-		nameLabel.TextColor3 = teamColor(info.Team)
+	local prefix = (if info.IsBot then ('<font color="%s">[BOT]</font> '):format(AKY_MUTED) else "")
+		.. (if crown then "👑 " else "")
+	nameLabel.Text = prefix .. escapeRich(string.sub(tostring(info.Name or "?"), 1, 24))
+	-- Name weiß; VIP-Name in Warn-Gold (B22.1 goldenes Namensschild, dezent)
+	nameLabel.TextColor3 = if info.Vip and not info.IsBot then AKY_WARN else AKY_TEXT
+	if edge and edge:IsA("UIStroke") then
+		edge.Color = teamColor(info.Team)
 	end
 	local parts: { string } = {}
 	local level = if Util.IsFinite(info.Level) then math.max(1, math.floor(info.Level)) else 1
@@ -316,8 +371,8 @@ function CharacterService.SetNameplate(model: Model, info: PlateInfo)
 	if info.Supporter then
 		table.insert(parts, "♥")
 	end
-	subLabel.Text = table.concat(parts, " · ")
-	subLabel.TextColor3 = color or Color3.fromRGB(235, 238, 245)
+	subLabel.Text = escapeRich(table.concat(parts, " · "))
+	subLabel.TextColor3 = color or AKY_TEXT2
 end
 
 local function refreshPlayerPlate(p: Player)
@@ -361,12 +416,12 @@ local function refreshPlate(c: Combatant)
 		refreshPlayerPlate(c.Player)
 		return
 	end
-	-- Bots/Puppen: vorhandenes Schild behalten, nur Teamfarbe nachziehen
+	-- Bots/Puppen: vorhandenes Schild behalten, nur Teamfarbe (Rahmen) nachziehen
 	local host = plateHost(c.Model)
 	local gui = host and host:FindFirstChild(PLATE_NAME)
-	local nameLabel = gui and gui:FindFirstChild("Name")
-	if nameLabel and nameLabel:IsA("TextLabel") and c.Kind == "Dummy" then
-		nameLabel.TextColor3 = teamColor(c.Team)
+	local edge = gui and plateChild(gui, "Edge")
+	if edge and edge:IsA("UIStroke") and c.Kind == "Dummy" then
+		edge.Color = teamColor(c.Team)
 	end
 end
 
