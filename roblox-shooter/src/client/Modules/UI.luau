@@ -38,36 +38,72 @@ local UI = {}
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 
--- Die Roblox-Schrift (rund, dick, gut lesbar) – für ALLE normalen Texte
-UI.Font = Enum.Font.FredokaOne
--- Weitere Schriften (A4): HUD-Zahlen RobotoMono, Banner LuckiestGuy, "HEADSHOT!"/"POP!" Bangers
+-- AKYTEX-Look (docs/STYLE-AKYTEX.md): moderne, klare Schrift. Builder Sans ist Robloxs eigene
+-- UI-Schrift (lokal vorhanden, Umlaute ok); Überschriften/Logo breit und technisch (Michroma),
+-- HUD-Zahlen (Munition, Timer, Punkte) im Shooter-Stil (Titillium Web).
+UI.Font = Enum.Font.BuilderSansBold
 UI.Fonts = {
-	Main = Enum.Font.FredokaOne,
-	Number = Enum.Font.RobotoMono,
-	Banner = Enum.Font.LuckiestGuy,
-	Pop = Enum.Font.Bangers,
+	Main = Enum.Font.BuilderSansBold, -- Knöpfe, Labels
+	Body = Enum.Font.BuilderSans, -- Fließtext, Beschreibungen
+	Strong = Enum.Font.BuilderSansExtraBold, -- große Zahlen/Titel in Karten
+	Heading = Enum.Font.Michroma, -- Fenstertitel, Logo, Banner
+	Number = Enum.Font.TitilliumWeb, -- HUD-Zahlen (Munition, Timer, Score)
+	Banner = Enum.Font.Michroma, -- große Ansagen (MATCH POINT, CLUTCH!)
+	Pop = Enum.Font.BuilderSansExtraBold, -- "HEADSHOT!"/"POP!"
 }
 
--- Helle, kräftige Farben. Fensterflächen sind hellblau: weißer Text braucht darauf immer
--- eine schwarze Kontur (UI.TextStroke bzw. Outline = 2 in UI.Label).
+-- AKYTEX-Farben (wie die Trading-Seite, Dark Mode): dunkle Glas-Flächen, Blau als Akzent,
+-- Grün = Sieg/Gewinn, Rot = Niederlage/Schaden, Gelb = Warnung. Alte Schlüssel bleiben erhalten
+-- (andere Module nutzen sie) und zeigen auf die passenden AKYTEX-Farben.
+local AKY = {
+	Bg = Color3.fromRGB(11, 15, 23), -- #0b0f17
+	Bg2 = Color3.fromRGB(15, 20, 29), -- #0f141d
+	Surface = Color3.fromRGB(18, 24, 36), -- #121824 (Panel)
+	Surface2 = Color3.fromRGB(26, 33, 48), -- #1a2130 (Karte/Panel-2)
+	Hover = Color3.fromRGB(31, 40, 56), -- #1f2838
+	Border = Color3.fromRGB(31, 41, 55), -- #1f2937
+	Text = Color3.fromRGB(230, 236, 245), -- #e6ecf5
+	Text2 = Color3.fromRGB(170, 180, 195), -- #aab4c3
+	Muted = Color3.fromRGB(125, 136, 154), -- #7d889a
+	Accent = Color3.fromRGB(79, 140, 255), -- #4f8cff
+	AccentDeep = Color3.fromRGB(41, 98, 255), -- #2962ff
+	Up = Color3.fromRGB(34, 197, 94), -- #22c55e
+	Down = Color3.fromRGB(239, 68, 68), -- #ef4444
+	Warn = Color3.fromRGB(234, 179, 8), -- #eab308
+}
 UI.Theme = {
-	Panel = Color3.fromRGB(70, 170, 255),
-	PanelDark = Color3.fromRGB(35, 115, 230),
-	PanelLight = Color3.fromRGB(120, 205, 255),
-	Text = WHITE,
-	SubText = Color3.fromRGB(235, 245, 255),
+	-- AKYTEX-Schlüssel (neu)
+	Bg = AKY.Bg,
+	Bg2 = AKY.Bg2,
+	Surface = AKY.Surface,
+	Surface2 = AKY.Surface2,
+	Hover = AKY.Hover,
+	Border = AKY.Border,
+	Text2 = AKY.Text2,
+	Muted = AKY.Muted,
+	Accent = AKY.Accent,
+	AccentDeep = AKY.AccentDeep,
+	Up = AKY.Up,
+	Down = AKY.Down,
+	Warn = AKY.Warn,
+	-- bisherige Schlüssel -> AKYTEX-Farben
+	Panel = AKY.Surface,
+	PanelDark = AKY.Bg,
+	PanelLight = AKY.Surface2,
+	Text = AKY.Text,
+	SubText = AKY.Text2,
 	Black = BLACK,
-	Yellow = Color3.fromRGB(255, 220, 50),
-	Cash = Color3.fromRGB(110, 255, 100),
-	Red = Color3.fromRGB(255, 65, 75),
-	Blue = Color3.fromRGB(40, 100, 245), -- kräftiges Königsblau: hebt sich vom hellblauen Fenster ab
-	Green = Color3.fromRGB(70, 210, 80),
-	Orange = Color3.fromRGB(255, 145, 35),
-	Purple = Color3.fromRGB(175, 85, 255),
-	Pink = Color3.fromRGB(255, 85, 195),
-	Gray = Color3.fromRGB(120, 125, 145),
-	Gold = Color3.fromRGB(255, 200, 40),
-	Cyan = Color3.fromRGB(60, 220, 255),
+	Yellow = AKY.Warn,
+	Cash = AKY.Up,
+	Red = AKY.Down,
+	Blue = AKY.Accent,
+	Green = AKY.Up,
+	Orange = Color3.fromRGB(245, 158, 11), -- #f59e0b
+	Purple = Color3.fromRGB(139, 92, 246), -- #8b5cf6
+	Pink = Color3.fromRGB(236, 72, 153), -- #ec4899
+	Gray = AKY.Muted,
+	Gold = Color3.fromRGB(250, 204, 21), -- #facc15
+	Cyan = Color3.fromRGB(34, 211, 238), -- #22d3ee
 }
 
 -- Tween-Einstellungen (einmal angelegt und immer wiederverwendet)
