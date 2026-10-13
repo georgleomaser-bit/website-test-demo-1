@@ -107,3 +107,11 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
     - Preis-Anker und Pakete wie in Top-Spielen; jeder Kauf mit sofort sichtbarem, befriedigendem Effekt.
     - Grenzen (Compliance-Spec gilt): kein Glücksspiel, keine bezahlten Zufallsitems ohne PolicyService-Prüfung, keine
       Täuschung, Robux nie direkt „auf eine Aktie wetten“.
+
+## Nachtrag 9: „wie in Keyboard Escape usw.: dass man sich einen Multiplikator kaufen kann“
+16. **MULTIPLIKATOREN zum Kaufen** (bekanntes Prinzip aus Roblox-Simulatoren/Obbys):
+    - Gut sichtbarer Gesamt-Multiplikator im HUD (z. B. „x3,5“), der Tower-Einnahmen, Gehalt/Bonus-Geld und Offline-Einnahmen
+      multipliziert – NICHT Kursbewegungen oder Trade-Gewinne direkt (Trading bleibt Skill, keine Glücksspiel-Optik).
+    - Stufen mit Spielgeld kaufbar (z. B. +0,25x, immer teurer → Geldsenke) + Rebirth/„Börsengang“ gibt dauerhafte Multiplikatoren.
+    - Robux: Multiplikator-Gamepasses (x2, x3 dauerhaft, stapelbar) und Developer Products (befristete Boosts, z. B. x2 für 30 min,
+      x5 für 10 min, Server-weiter Boost für alle). Klare Anzeige von Laufzeit und Quelle jedes Multiplikators.
