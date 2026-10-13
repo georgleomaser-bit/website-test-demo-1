@@ -36,6 +36,7 @@ return {
 		["car.starterOnly"] = "Teil des Starter-Pakets",
 		["car.speedReset"] = "Zu schnell für diese Klasse – Tempo zurückgesetzt",
 		["car.flipped"] = "Auto wieder aufgerichtet",
+		["car.hyperAnnounce"] = "%s fährt jetzt einen %s!",
 
 		-- Fenster "Garage"
 		["car.title"] = "GARAGE",
@@ -125,6 +126,7 @@ return {
 		["car.starterOnly"] = "Part of the Starter Pack",
 		["car.speedReset"] = "Too fast for this class – speed reset",
 		["car.flipped"] = "Car flipped back upright",
+		["car.hyperAnnounce"] = "%s now drives a %s!",
 
 		-- Window "Garage"
 		["car.title"] = "GARAGE",

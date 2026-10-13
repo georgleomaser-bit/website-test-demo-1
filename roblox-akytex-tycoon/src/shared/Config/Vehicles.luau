@@ -38,7 +38,8 @@ Vehicles.ClassInfo = {
 	Hyper = { Accel = 72, Name = { de = "Hyper", en = "Hyper" }, Color = rgb(179, 107, 255) },
 }
 -- Bezugswert für Tuning-Preise von Autos ohne CR-Preis (Gratis, Login, Pass, Lizenz)
-Vehicles.ClassValue = { Kompakt = 25000, Limousine = 750000, Sport = 60000000, Super = 6000000000, Hyper = 600000000000 }
+Vehicles.ClassValue =
+	{ Kompakt = 25000, Limousine = 750000, Sport = 60000000, Super = 6000000000, Hyper = 600000000000 }
 
 -- ---------------------------------------------------------------------
 -- 2) DIE 16 AUTOS (§B12.1) – Recipe = Bauplan in Shared/VehicleModels.Recipes, Asset = optionales Mesh der Karosserie
@@ -92,7 +93,8 @@ Vehicles.DriftFriction = 0.3 -- Handbremse: Hinterrad-Reibung
 -- ---------------------------------------------------------------------
 -- 4) HERKUNFT – Anzeige-Texte stehen in Lang ("car.source.<Source>")
 -- ---------------------------------------------------------------------
-Vehicles.Sources = { Free = true, Shop = true, Starter = true, Login = true, Licence = true, Season = true, Pass = true }
+Vehicles.Sources =
+	{ Free = true, Shop = true, Starter = true, Login = true, Licence = true, Season = true, Pass = true }
 
 -- ---------------------------------------------------------------------
 -- 5) TUNING (CR) – Preis = max(Base, Bezugswert des Autos × Pct) (Bezugswert = CR-Preis oder ClassValue)
@@ -221,7 +223,10 @@ end
 local optionIndex: { [string]: { [string]: any } } = { Paint = {}, Rims = {}, Glow = {} }
 for kind, list in pairs({ Paint = Vehicles.Paints, Rims = Vehicles.Rims, Glow = Vehicles.Glow }) do
 	for _, entry in ipairs(list) do
-		assert(optionIndex[kind][entry.Key] == nil, "[Config.Vehicles] doppelter Tuning-Schlüssel " .. kind .. "." .. entry.Key)
+		assert(
+			optionIndex[kind][entry.Key] == nil,
+			"[Config.Vehicles] doppelter Tuning-Schlüssel " .. kind .. "." .. entry.Key
+		)
 		optionIndex[kind][entry.Key] = entry
 	end
 end
@@ -370,7 +375,8 @@ function Vehicles.Validate(_config: any): { string }
 	if lam1 and Vehicles.Cap("Lam1") > hyperBest then
 		add("Cars.Lam1: darf nie schneller sein als das beste erspielte Hyper")
 	end
-	if Vehicles.Car("LamCity") == nil or Vehicles.Car("LamCity").Source ~= "Free" then
+	local freeCar = Vehicles.Car("LamCity")
+	if freeCar == nil or freeCar.Source ~= "Free" then
 		add("Cars.LamCity: Gratis-Auto des Tutorials fehlt")
 	end
 

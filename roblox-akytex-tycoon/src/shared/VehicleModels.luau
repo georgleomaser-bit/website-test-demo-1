@@ -258,7 +258,7 @@ local function buildBody(model: Model, r: Recipe)
 		CFrame.new(0, r.Clear + bumperH / 2, frontZ + r.Nose / 2),
 		paint,
 		Enum.Material.SmoothPlastic,
-		{ Attr = "Paint" }
+		{ Collide = true, Attr = "Paint" }
 	)
 	makePart(
 		model,
@@ -278,7 +278,7 @@ local function buildBody(model: Model, r: Recipe)
 		CFrame.new(0, r.Clear + tailH / 2, rearZ - r.Tail / 2),
 		paint,
 		Enum.Material.SmoothPlastic,
-		{ Attr = "Paint" }
+		{ Collide = true, Attr = "Paint" }
 	)
 	makePart(
 		model,
@@ -619,6 +619,8 @@ function VehicleModels.Build(key: string, paint: string?, rims: string?, glow: s
 		Enum.Material.SmoothPlastic,
 		{ Transparency = 1, Shadow = false }
 	)
+	-- Drehpunkt des Modells = Bodenmitte (PrimaryPart-Pivot, sonst sinkt das Auto beim PivotTo um WheelR ein)
+	chassis.PivotOffset = CFrame.new(0, -r.WheelR, 0)
 	model.PrimaryPart = chassis
 	local seat = Instance.new("VehicleSeat")
 	seat.Name = "Seat"
@@ -698,10 +700,11 @@ function VehicleModels.ApplyTune(model: Model, key: string, tune: { [string]: an
 	if typeof(model) ~= "Instance" then
 		return
 	end
-	local t = tune or {}
+	local t: { [string]: any } = tune or {}
 	local car = carEntry(key)
 	local r = recipeOf(key)
-	local paintKey = if type(t.Paint) == "string" and option("Paint", t.Paint) then t.Paint
+	local paintKey = if type(t.Paint) == "string" and option("Paint", t.Paint)
+		then t.Paint
 		elseif car then car.Paint
 		else "Polar"
 	local color, metallic = paintColor(paintKey)
@@ -759,7 +762,13 @@ end
 -- ---------------------------------------------------------------------
 -- 5) RIG (Server): Schweißen, Federbeine (Prismatic + Spring), Servo-Lenkung, Rad-Motoren
 -- ---------------------------------------------------------------------
-local function axisAttachment(parent: BasePart, worldCf: CFrame, axis: Vector3, secondary: Vector3, name: string): Attachment
+local function axisAttachment(
+	parent: BasePart,
+	worldCf: CFrame,
+	axis: Vector3,
+	secondary: Vector3,
+	name: string
+): Attachment
 	local att = Instance.new("Attachment")
 	att.Name = name
 	att.Parent = parent -- erst einhängen, dann Welt-Lage setzen (WorldCFrame braucht den Träger)
@@ -818,7 +827,8 @@ function VehicleModels.Rig(model: Model, key: string): Rig
 	-- Masse: Chassis-Baugruppe + Räder
 	local mass = chassis:GetMass()
 	for _, wheel in pairs(wheels) do
-		wheel.CustomPhysicalProperties = physical(phys.WheelDensity or 0.9, phys.FrontFriction or 1.7, phys.FrictionWeight or 4)
+		wheel.CustomPhysicalProperties =
+			physical(phys.WheelDensity or 0.9, phys.FrontFriction or 1.7, phys.FrictionWeight or 4)
 		mass += wheel:GetMass()
 	end
 	local gravity = workspace.Gravity
@@ -862,7 +872,8 @@ function VehicleModels.Rig(model: Model, key: string): Rig
 		slider.Restitution = 0
 		slider.Parent = strut
 
-		local springA = axisAttachment(chassis, center * CFrame.new(0, springTop, 0), up, -right, "SpringA_" .. wheelKey)
+		local springA =
+			axisAttachment(chassis, center * CFrame.new(0, springTop, 0), up, -right, "SpringA_" .. wheelKey)
 		local springB = axisAttachment(strut, center, up, -right, "SpringB_" .. wheelKey)
 		local spring = Instance.new("SpringConstraint")
 		spring.Name = "Spring_" .. wheelKey
@@ -870,7 +881,7 @@ function VehicleModels.Rig(model: Model, key: string): Rig
 		spring.Attachment1 = springB
 		spring.Stiffness = stiffness
 		spring.Damping = damping
-		spring.FreeLength = springTop
+		spring.FreeLength = springTop + compression -- Vorspannung: kein Durchhängen in Ruhelage
 		spring.Visible = false
 		spring.Parent = strut
 		table.insert(springs, spring)

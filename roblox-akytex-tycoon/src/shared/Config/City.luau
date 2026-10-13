@@ -111,7 +111,12 @@ City.Look = {
 	Sky = { StarCount = 3000, SunAngularSize = 12, MoonAngularSize = 9 },
 	Shadows = { Softness = 0.15, Latitude = 41 },
 	Crash = { Tint = rgb(255, 218, 218), Saturation = -0.15, Contrast = 0.14, Atmosphere = rgb(255, 176, 168) }, -- #ffdada
-	Rally = { Tint = rgb(255, 244, 220), Saturation = 0.12, Contrast = 0.1, Aurora = { rgb(34, 197, 94), rgb(34, 211, 238) } },
+	Rally = {
+		Tint = rgb(255, 244, 220),
+		Saturation = 0.12,
+		Contrast = 0.1,
+		Aurora = { rgb(34, 197, 94), rgb(34, 211, 238) },
+	},
 	BlendSeconds = 4, -- Übergänge (Crash/Rally/Wetter) so weich
 	WindowCascade = 0.05, -- Fensterlichter: Sekunden je Etage (von unten nach oben)
 	WindowOnAt = 18.5, -- ClockTime: Fenster an (Sonnenuntergang)
