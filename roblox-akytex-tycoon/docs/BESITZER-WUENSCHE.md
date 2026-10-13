@@ -34,3 +34,8 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
      (Azubi → Trader → Fondsmanager → Börsen-Legende) mit Prüfungen/Aufgaben, Saison-Wettbewerbe (Bestenliste nach Rendite,
      nicht nur nach Geld), Hedgefonds-Gruppen mit gemeinsamen Zielen.
    - Tower-Management mit echten Entscheidungen (Abteilungen, Personal, Bots mit Strategien, Upgrades mit Abwägungen).
+
+## Nachtrag 2: „mach mehr größer, mehr High-Grafik, mehr bis aufs letzte Detail“
+7. Nach dem Bau gibt es eine eigene **Detail- & Grafik-Runde** (nur Feinschliff): jede Szene/jedes Menü wird einzeln auf
+   Details geprüft (Licht, Materialien, Animationen, Sounds, Übergänge, Leerzustände, Fehlermeldungen, Ladebildschirm,
+   Kamerafahrten, Wetter/Tageszeit, Ambient-Leben in der Stadt). Ziel: wirkt wie ein Top-Studio-Spiel.
