@@ -1,0 +1,53 @@
+---
+base: luau
+name: rbx
+globals:
+  game: {any: true}
+  workspace: {any: true}
+  script: {any: true}
+  Instance: {any: true}
+  Vector3: {any: true}
+  Vector2: {any: true}
+  CFrame: {any: true}
+  Color3: {any: true}
+  UDim: {any: true}
+  UDim2: {any: true}
+  Enum: {any: true}
+  task: {any: true}
+  Random: {any: true}
+  TweenInfo: {any: true}
+  typeof: {any: true}
+  warn: {any: true}
+  tick: {any: true}
+  ColorSequence: {any: true}
+  ColorSequenceKeypoint: {any: true}
+  NumberSequence: {any: true}
+  NumberSequenceKeypoint: {any: true}
+  NumberRange: {any: true}
+  RaycastParams: {any: true}
+  OverlapParams: {any: true}
+  DateTime: {any: true}
+  Font: {any: true}
+  PhysicalProperties: {any: true}
+  BrickColor: {any: true}
+  Rect: {any: true}
+  Region3: {any: true}
+  Ray: {any: true}
+  Axes: {any: true}
+  Faces: {any: true}
+  Vector3int16: {any: true}
+  time: {any: true}
+  math.isfinite:
+    args:
+      - type: number
+  math.isnan:
+    args:
+      - type: number
+  math.isinf:
+    args:
+      - type: number
+  debug.profilebegin:
+    args:
+      - type: string
+  debug.profileend:
+    args: []
