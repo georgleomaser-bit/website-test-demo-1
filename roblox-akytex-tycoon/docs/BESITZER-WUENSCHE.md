@@ -93,3 +93,17 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
       keine anstößigen Inhalte aus dem Film (Roblox-Regeln, Altersfreigabe).
     - Große Welt ⇒ `Workspace.StreamingEnabled = true` mit sinnvollen Streaming-Einstellungen prüfen (Speicher/Leistung am Handy),
       Code muss damit umgehen (WaitForChild mit Bedacht, ModelStreamingMode für wichtige Modelle).
+
+## Nachtrag 8: „man kann auch viel kaufen, weil ich will ja Geld machen – mach es max“
+15. **MONETARISIERUNG MAXIMAL (aber regelkonform und fair)** – möglichst viele erlaubte Einnahmequellen:
+    - Gamepasses (dauerhaft): z. B. VIP-Lounge/Börsensaal-VIP, 2x Tower-Einnahmen, Auto-Trader-Bot-Slot extra, größere Garage,
+      Profi-Chart-Paket (Komfort, kein Vorteil beim Kurs), exklusive Luxus-Autos/Uhren-Kollektion, Fliegen im Penthouse u. Ä.
+    - Developer Products (beliebig oft): Boosts (2x Einnahmen 30 min), Bau-Beschleuniger, Kosmetik-Pakete, Saison-Stufen,
+      Geschenke an Freunde, Starter-Paket (einmalig, starkes Angebot), Server-Boost für alle (Party-Effekt).
+    - **Experience Subscriptions** (monatliches Abo, z. B. „AKYTEX PRO“ mit täglichen Boni/Komfort) – wenn verfügbar.
+    - **Private/VIP-Server** (Robux pro Monat), **Premium Payouts** (Roblox zahlt für Spielzeit von Premium-Mitgliedern →
+      Langzeit-Motivation), **Rewarded Video Ads** / Immersive Ads, falls für das Spiel/Publikum erlaubt.
+    - Saison-Pass (Gratis- + Premium-Spur), zeitlich begrenzte Luxus-Items (FOMO, aber ehrlich mit Countdown).
+    - Preis-Anker und Pakete wie in Top-Spielen; jeder Kauf mit sofort sichtbarem, befriedigendem Effekt.
+    - Grenzen (Compliance-Spec gilt): kein Glücksspiel, keine bezahlten Zufallsitems ohne PolicyService-Prüfung, keine
+      Täuschung, Robux nie direkt „auf eine Aktie wetten“.
