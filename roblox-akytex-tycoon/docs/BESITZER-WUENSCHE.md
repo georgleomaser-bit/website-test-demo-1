@@ -127,3 +127,9 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
     - Datei `docs/ASSET-LISTE.md`: alle Asset-Plätze mit Name, Config-Schlüssel, empfohlener Größe/Format, kurzer Higgsfield-Prompt-
       Idee – damit der Besitzer später mit Higgsfield erzeugen, in Studio hochladen (Asset Manager → Bulk Import / 3D Importer)
       und die IDs zurückschicken kann.
+
+## Entscheidungen des Besitzers (13.10.2026, Antwort „jap alles“)
+- Veröffentlichung unter seinem Konto **RizzG315** (Gruppe später möglich – Admin-Zugang unterstützt beides).
+- **10 Spieler pro Server** und die vorgeschlagenen Pass-Preise (z. B. x2 499 R$, x3 1.199 R$, VIP 399 R$) sind ok.
+- Fester Admin-Abuse-Termin **Samstag 18:00 Uhr (Berlin)**, Wochen-Update 16:00 Uhr – ok.
+- Namen ok: Spielhelfer **„Tiko“**, Firmen **„Cognivo KI“**, **„Kernwerk Systems“**, IPO-Firma **„Neuronauten“**.
