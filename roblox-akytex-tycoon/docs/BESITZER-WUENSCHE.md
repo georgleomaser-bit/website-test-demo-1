@@ -78,3 +78,18 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
     setzen kann, sonst in der Anleitung), räumlicher Voice-Chat (Spieler in der Nähe hört man), Treffpunkte, die zum Reden
     einladen (Börsensaal, Lobby-Lounge, Tower-Besuche). In der ANLEITUNG: Game Settings → Communication → Voice/Mikrofon
     einschalten (Roblox erlaubt Voice nur für berechtigte, altersverifizierte Spieler ab 13 – das regelt Roblox automatisch).
+
+## Nachtrag 7: „Autos, bessere Autos, Uhren usw. – alles wie Open World ‚Wolf of Wall Street‘, ultra Grafik, max Roblox-Grenzen“
+14. **OPEN WORLD + LUXUS-LIFESTYLE** (Statussymbole für das verdiente Geld):
+    - Begehbare/befahrbare offene Stadt (Finanzviertel mit Wolkenkratzern, Hafen/Marina, Villenviertel/Hügel, Autobahnring,
+      Flughafen-Helipad), echte Straßen mit Kreuzungen/Ampeln, KI-Verkehr (leichtgewichtig), Tag/Nacht.
+    - **Fahrbare Autos** aus Parts (VehicleSeat/Constraints, gutes Fahrgefühl, Drift, Boost), Klassen von Kompakt bis Hypercar,
+      Autohaus mit Showroom & Probefahrt, Garage im Tower, Tuning/Lackierungen/Felgen/Unterbodenlicht (AKYTEX-Neon).
+    - **Luxus-Sammlung**: Uhren (am Handgelenk sichtbar, aus Parts), Anzüge/Outfits soweit ohne hochgeladene Assets möglich
+      (Farben/Accessoires aus Parts), Yacht, Helikopter/Privatjet als Endgame-Flex, Penthouse-Einrichtung, Kunst an den Wänden.
+    - Alles kaufbar mit verdientem Spielgeld (Haupt-Geldsenke!), einiges exklusiv über Saison/Erfolge; Robux nur für Kosmetik/
+      Komfort nach den Compliance-Regeln.
+    - **Jugendfrei**: Stil „Wolf of Wall Street“ = Reichtum, Anzüge, Börsenparkett, Luxus – aber KEIN Alkohol, keine Drogen,
+      keine anstößigen Inhalte aus dem Film (Roblox-Regeln, Altersfreigabe).
+    - Große Welt ⇒ `Workspace.StreamingEnabled = true` mit sinnvollen Streaming-Einstellungen prüfen (Speicher/Leistung am Handy),
+      Code muss damit umgehen (WaitForChild mit Bedacht, ModelStreamingMode für wichtige Modelle).
