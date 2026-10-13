@@ -72,3 +72,9 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
     Einnahmen, tägliche/wöchentliche Ziele, Login-Serie, zeitlich begrenzte Events, Saisons mit Belohnungen, Sammel-Ziele
     (Einrichtung, Autos), Statussymbole. KEINE irreführenden Kauf-Tricks, keine Glücksspiel-Mechaniken, keine Täuschung bei Preisen
     (Roblox-Regeln für Kinder einhalten) – sonst droht Moderation und Reichweitenverlust.
+
+## Nachtrag 6: „und Voicechat“
+13. **Voice-Chat**: Spiel ist voice-ready – `VoiceChatService.EnableDefaultVoice = true` im Projekt (falls Rojo die Eigenschaft
+    setzen kann, sonst in der Anleitung), räumlicher Voice-Chat (Spieler in der Nähe hört man), Treffpunkte, die zum Reden
+    einladen (Börsensaal, Lobby-Lounge, Tower-Besuche). In der ANLEITUNG: Game Settings → Communication → Voice/Mikrofon
+    einschalten (Roblox erlaubt Voice nur für berechtigte, altersverifizierte Spieler ab 13 – das regelt Roblox automatisch).
