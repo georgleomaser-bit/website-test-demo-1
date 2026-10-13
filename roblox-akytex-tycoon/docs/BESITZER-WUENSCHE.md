@@ -52,3 +52,11 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
    - Kräfte: Fliegen, Noclip, Speed, Unsichtbar, Fotomodus, Tower jedes Spielers besuchen.
    - Statistiken: Spieler online, Geldmenge im Umlauf, beliebteste Aktien, Käufe, verdächtige Spieler (Anti-Cheat).
    - Fairness: Admin-Eingriffe in den Markt zählen nicht für Saison-Wettbewerbe (Rendite-Bestenliste) bzw. werden markiert.
+
+## Nachtrag 4: „mach alles in dem smoothen Look mit Raytracing“
+10. Roblox bietet Entwicklern KEIN echtes Raytracing. Wir holen das Maximum an „Raytracing-Look“ heraus:
+    `Lighting.Technology = Future` (Echtzeit-Schatten aller Lichter), `EnvironmentSpecularScale = 1` und
+    `EnvironmentDiffuseScale = 1` (Reflexionen der Umgebung), glänzende Materialien (Glass, Metal, Marble, SmoothPlastic mit
+    Reflectance) für Spiegelungen, viele echte PointLights/SpotLights/SurfaceLights mit Schatten in der Nacht-Skyline (mit
+    Lichtbudget je Grafikstufe), Atmosphere + Bloom + ColorCorrection + DepthOfField in Menüs/Kamerafahrten. Ehrlich so
+    benennen („Future-Licht“), nicht als „Raytracing“ bewerben.
