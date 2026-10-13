@@ -133,3 +133,13 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
 - **10 Spieler pro Server** und die vorgeschlagenen Pass-Preise (z. B. x2 499 R$, x3 1.199 R$, VIP 399 R$) sind ok.
 - Fester Admin-Abuse-Termin **Samstag 18:00 Uhr (Berlin)**, Wochen-Update 16:00 Uhr – ok.
 - Namen ok: Spielhelfer **„Tiko“**, Firmen **„Cognivo KI“**, **„Kernwerk Systems“**, IPO-Firma **„Neuronauten“**.
+
+## Nachtrag 11: „kannst du auch so machen, dass ich Speed und Money geben kann“
+18. **Admin-Panel – Geben an jeden Spieler** (Ziel-Feld wie in seinen anderen Spielen: „me“, „all“, „others“, Name/Präfix/UserId):
+    - **Speed geben**: Laufgeschwindigkeit (und Sprungkraft) für sich selbst ODER beliebige Spieler/alle setzen (Slider + Zahl,
+      z. B. 16–200), zeitlich begrenzt oder bis zum Zurücksetzen; „Reset“-Knopf. Anti-Cheat muss admin-gesetzte Speeds kennen
+      (keine Fehlalarme/Kicks für beschenkte Spieler).
+    - **Money geben**: Turmgeld (CR) und Börsen-Spielgeld (AKY) an sich/Spieler/alle geben oder abziehen, mit Bestätigung bei großen
+      Beträgen; dazu „Geldregen“ für alle. Admin-Geld wird im Konto als Admin-Geschenk markiert und zählt nicht für die
+      Saison-Liga (Rendite-/Skill-Bestenliste), damit sie fair bleibt; Netto-Vermögen-Bestenliste kann es zeigen (markiert).
+    - Alles serverseitig geprüft (nur Besitzer), geloggt (letzte 100 Admin-Aktionen).
