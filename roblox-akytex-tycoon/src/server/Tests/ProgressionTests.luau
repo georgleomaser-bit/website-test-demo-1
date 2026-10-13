@@ -299,7 +299,7 @@ Tests["Börsengang: behält alles laut §B9.6, Sterne-Formel, Vorstand-Blitzstar
 	prog.Titles = { Founder = true }
 	prog.Title = "Founder"
 	c.Repair(data)
-	data.Depot = { Cash = 123456, Pos = { ["5"] = { Q = 10, Avg = 9000 } }, Bots = { { Preset = "Sparplan" } } }
+	-- Depot: Standard-Depot aus DataService.DefaultData (Spielstand-Kopie; nur OrderService schreibt echte Depots)
 	data.Garage = { Cars = { LamCity = true, VoltaHatch = true }, Active = "VoltaHatch", Tune = {} }
 	data.Life = { Watches = { WeekChrono = true }, Accessories = {}, Equipped = {} }
 	data.Season = { Id = 1, Xp = 4200, Premium = true, ClaimedFree = { ["2"] = true }, ClaimedPremium = {} }
@@ -503,6 +503,12 @@ Tests["Lizenz-Aufstieg: SetLicence je Stufe, +250 XP, +20 Ruf, Basis steigt"] = 
 	for _, task in ipairs(PCFG.ExamTasks) do
 		prog.Exams[task.Key] = true
 	end
+	local exams = 0
+	for idx = 3, #PCFG.Licences do
+		if #PCFG.Licences[idx].Exam > 0 then
+			exams += 1
+		end
+	end
 	local chain = c.Promote(prog, 20000, 2900, record)
 	eq(#chain, #PCFG.Licences - 2, "Stufen 3 … 10")
 	for i, idx in ipairs(chain) do
@@ -510,6 +516,8 @@ Tests["Lizenz-Aufstieg: SetLicence je Stufe, +250 XP, +20 Ruf, Basis steigt"] = 
 		eq(calls[i], idx, "SetLicence je Stufe")
 	end
 	eq(prog.Licence, #PCFG.Licences, "Legende")
+	-- Prüfungs-Bonus nur für Lizenzen mit Prüfung (Trader II / Fondsmanager II steigen nur über XP)
+	eq(prog.Xp, 1e7 + exams * PCFG.XpSources.Exam.Xp, "+250 XP je bestandener Prüfung")
 end
 
 Tests["Admin-Lizenz: SetLicence + TaintWeek(AdminLicence), ungültige Stufen abgelehnt"] = function(services: any)

@@ -17,6 +17,7 @@
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -32,6 +33,7 @@ local Services: any = nil
 
 type Reply = Types.Reply
 type Row = { UserId: number, Value: number }
+type Change = { Store: string, Value: number, Remove: boolean? }
 type BoardDef = { Key: string, Store: string, Weekly: boolean, Kind: string, Title: string }
 
 local PCFG: any = Config.Progression
@@ -190,8 +192,9 @@ local function noApi(err: any): boolean
 end
 
 -- ---------------------------------------------------------------------
--- 1) WERTE (§B11.1) – ganzzahlig, 0 = nicht schreiben
+-- 1) WERTE (§B11.1) – ganzzahlig, 0 = nicht schreiben, REMOVE = vorhandenen Eintrag löschen
 -- ---------------------------------------------------------------------
+local REMOVE = -1
 local function leagueStats(p: Player): any
 	local ok, stats = call("OrderService", "LeagueStats", p)
 	return if ok and type(stats) == "table" then stats else nil
@@ -205,8 +208,11 @@ local function valueOf(p: Player, data: { [string]: any }, def: BoardDef): numbe
 		value = if ok and finite(wealth) and wealth > 0 then ProgressMath.BoardLog(wealth) else 0
 	elseif key == "League" or key == "Return" then
 		local stats = leagueStats(p)
-		-- nur qualifiziert (≥ 20 zählende Trades, ≥ 6 Tage), nie getaintet (Admin-Gaben, Besitzer)
-		if stats and stats.Qualified == true and stats.Tainted ~= true then
+		-- nur qualifiziert (≥ 20 zählende Trades, ≥ 6 Tage), nie getaintet (Admin-Gaben, Besitzer): wird ein schon
+		-- eingetragener Spieler in der Woche getaintet, verschwindet sein Eintrag wieder (§B11.1)
+		if stats and stats.Tainted == true then
+			return REMOVE
+		elseif stats and stats.Qualified == true then
 			value = if key == "League"
 				then ProgressMath.BoardLeague(stats.SkillScore, stats.AvgDailyBp)
 				else ProgressMath.BoardReturn(stats.AvgDailyBp)
@@ -232,7 +238,8 @@ local function valueOf(p: Player, data: { [string]: any }, def: BoardDef): numbe
 end
 
 local function canWrite(p: Player): boolean
-	if p.UserId <= 0 then
+	-- nie in Studio (Abnahme 6), nie für Test-Spieler (UserId ≤ 0) und NoSave-Profile
+	if p.UserId <= 0 or RunService:IsStudio() then
 		return false
 	end
 	local ok, noSave = call("DataService", "IsNoSave", p)
@@ -242,40 +249,51 @@ end
 -- ---------------------------------------------------------------------
 -- 2) SCHREIBEN (nur geänderte Werte)
 -- ---------------------------------------------------------------------
-local function collect(p: Player, data: { [string]: any }): { { Store: string, Value: number } }
-	local changes = {}
+local function collect(p: Player, data: { [string]: any }): { Change }
+	local changes: { Change } = {}
 	local written = lastWritten[p] or {}
 	local values = lastValues[p] or {}
 	lastValues[p] = values
 	for _, def in ipairs(BOARDS) do
 		local name = storeName(def)
 		local value = valueOf(p, data, def)
-		if value > 0 then
-			values[name] = value
-		end
-		local final = values[name] or 0
-		if final > 0 and written[name] ~= final then
-			table.insert(changes, { Store = name, Value = final })
+		if value == REMOVE then
+			values[name] = nil
+			if written[name] ~= nil then
+				table.insert(changes, { Store = name, Value = 0, Remove = true })
+			end
+		else
+			if value > 0 then
+				values[name] = value
+			end
+			local final = values[name] or 0
+			if final > 0 and written[name] ~= final then
+				table.insert(changes, { Store = name, Value = final })
+			end
 		end
 	end
 	return changes
 end
 
--- yieldet (SetAsync); immer im eigenen Thread
-local function writeChanges(p: Player, userId: number, changes: { { Store: string, Value: number } })
+-- yieldet (SetAsync/RemoveAsync); immer im eigenen Thread
+local function writeChanges(p: Player, userId: number, changes: { Change })
 	for _, change in ipairs(changes) do
 		local store = storeFor(change.Store)
 		if store then
 			local ok, err = pcall(function()
-				store:SetAsync(tostring(userId), change.Value)
+				if change.Remove then
+					store:RemoveAsync(tostring(userId))
+				else
+					store:SetAsync(tostring(userId), change.Value)
+				end
 			end)
 			if ok then
 				local written = lastWritten[p]
 				if written then
-					written[change.Store] = change.Value
+					written[change.Store] = if change.Remove then nil else change.Value
 				end
 			else
-				logError("SetAsync " .. change.Store, err)
+				logError((if change.Remove then "RemoveAsync " else "SetAsync ") .. change.Store, err)
 			end
 		end
 	end
@@ -644,6 +662,7 @@ end
 
 local refreshHall: () -> ()
 local refreshIpoHall: () -> ()
+local buildHall: (def: BoardDef, week: number) -> ()
 
 local function readAll()
 	if readRunning then
@@ -831,8 +850,17 @@ refreshHall = function()
 		return
 	end
 	hallBusy = true
+	local ok, err = pcall(buildHall, def, week)
+	hallBusy = false
+	if not ok then
+		logError("Hall of Fame bauen", err)
+	end
+end
+
+-- yieldet (Lesen, Namen, Avatar-Modelle); läuft nur im Lese-Thread
+buildHall = function(def: BoardDef, week: number)
 	local rows = if readDisabled then {} else (readStore(storeName(def, week), BCFG.HallOfFame.Count) or {})
-	hallWeek = week
+	local complete = true -- fehlt eine Statuen-Fläche (Stadt noch im Aufbau), beim nächsten Lesen erneut versuchen
 	local okPlaque, plaque = call("CityService", "BoardPart", "HallOfFame")
 	if okPlaque and typeof(plaque) == "Instance" and plaque:IsA("BasePart") and not hallUi then
 		buildHallPlaque(plaque)
@@ -865,12 +893,16 @@ refreshHall = function()
 				end)
 				placeOn(model, top)
 				model.Parent = folder
+			else
+				complete = false
 			end
 		elseif line then
 			line.Text = ("%d. —"):format(i)
 		end
 	end
-	hallBusy = false
+	if complete and (hallUi ~= nil or #rows == 0) then
+		hallWeek = week
+	end
 end
 
 -- ---------------------------------------------------------------------
@@ -1138,7 +1170,7 @@ local function liveRow(other: Player, def: BoardDef): Row?
 	end
 	local value = valueOf(other, data, def)
 	if value <= 0 then
-		return nil
+		return nil -- 0 = kein Wert, REMOVE = getaintet
 	end
 	return { UserId = other.UserId, Value = value }
 end
@@ -1212,7 +1244,7 @@ local function handleBoards(p: Player, arg: any): Reply
 		end
 	end
 	local data = dataOf(p)
-	local mine = if data then valueOf(p, data, def) else 0
+	local mine = if data then math.max(0, valueOf(p, data, def)) else 0
 	if not myRank and arg.Scope == "Global" then
 		for i, row in ipairs(cache[def.Key] or {}) do
 			if row.UserId == p.UserId then

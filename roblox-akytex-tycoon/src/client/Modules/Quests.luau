@@ -29,6 +29,8 @@ local ui: { [string]: any } = {}
 local badge: Frame? = nil
 local busy = false
 local sigs: { [string]: string } = {}
+local swapArmed: { Id: string, At: number }? = nil -- erster Tipp auf ↻ zeigt den Ersatz, der zweite tauscht
+local SWAP_CONFIRM = 6
 
 -- ---------------------------------------------------------------------
 -- 1) HELFER
@@ -327,14 +329,41 @@ local function questCard(parent: Instance, order: number, q: { [string]: any }, 
 	local actions = UI.RowActions(card, 180)
 	local id = tostring(q.Id)
 	if allowReroll and not done and not claimed then
-		UI.Button({
+		local swapButton: any = nil
+		swapButton = UI.Button({
 			Size = UDim2.fromOffset(44, 40),
 			Text = "↻",
 			Variant = "Ghost",
 			LayoutOrder = 1,
 			Parent = actions,
 		}, function()
-			reroll(id)
+			-- offen statt Überraschung: erst den festen Ersatz zeigen, dann bestätigen
+			local armed = swapArmed
+			if armed and armed.Id == id and os.clock() - armed.At <= SWAP_CONFIRM then
+				swapArmed = nil
+				reroll(id)
+				return
+			end
+			if type(q.Swap) ~= "string" then
+				UI.Toast(T("prog.rerollNone"), "Info")
+				return
+			end
+			local mine = { Id = id, At = os.clock() }
+			swapArmed = mine
+			UI.Toast(T("prog.rerollPreview", q.Swap), "Info")
+			if swapButton then
+				swapButton.SetText("✓")
+				swapButton.SetVariant("Success")
+			end
+			task.delay(SWAP_CONFIRM, function()
+				if swapArmed == mine then
+					swapArmed = nil
+				end
+				if swapButton and swapButton.Frame.Parent and swapArmed == nil then
+					swapButton.SetText("↻")
+					swapButton.SetVariant("Ghost")
+				end
+			end)
 		end)
 	end
 	UI.Button({
@@ -360,6 +389,22 @@ local function buildDaily(page: Frame)
 	ui.DailyList = listFrame(page, 3)
 end
 
+-- Signatur einer Quest-Karte (alle Teile als Text: fehlende Felder dürfen table.concat nicht abbrechen)
+local function questSig(q: any): string
+	if type(q) ~= "table" then
+		return "?"
+	end
+	return table.concat({
+		tostring(q.Id),
+		tostring(q.P),
+		tostring(q.Done),
+		tostring(q.Claimed),
+		tostring(q.Credits),
+		tostring(q.Text),
+		tostring(q.Swap),
+	}, ":")
+end
+
 local function refreshDaily()
 	local quests = stateOf("Quests")
 	ui.DayTimer.Text = T("prog.lbl.resetIn", fmt("Duration", num(quests.DayEndsAt, 0) - now(), lang()))
@@ -367,11 +412,11 @@ local function refreshDaily()
 	local parts = { lang(), tostring(quests.Rerolled) }
 	local daily = type(quests.Daily) == "table" and quests.Daily or {}
 	for _, q in ipairs(daily) do
-		table.insert(parts, table.concat({ q.Id, q.P, tostring(q.Done), tostring(q.Claimed), q.Credits, q.Text }, ":"))
+		table.insert(parts, questSig(q))
 	end
 	local comeback = quests.Comeback
 	if type(comeback) == "table" then
-		table.insert(parts, table.concat({ "C", comeback.P, tostring(comeback.Done), comeback.Credits }, ":"))
+		table.insert(parts, "C" .. questSig(comeback))
 	end
 	local sig = table.concat(parts, "|")
 	if sigs.Daily == sig then
@@ -401,7 +446,7 @@ local function refreshWeekly()
 	local weekly = type(quests.Weekly) == "table" and quests.Weekly or {}
 	local parts = { lang() }
 	for _, q in ipairs(weekly) do
-		table.insert(parts, table.concat({ q.Id, q.P, tostring(q.Done), tostring(q.Claimed), q.Credits, q.Text }, ":"))
+		table.insert(parts, questSig(q))
 	end
 	local sig = table.concat(parts, "|")
 	if sigs.Weekly == sig then
@@ -468,7 +513,8 @@ local function buildStarter(page: Frame)
 		Variant = "Success",
 		Parent = card,
 	}, function()
-		local starter = stateOf("Quests").Starter
+		local quests = stateOf("Quests")
+		local starter = quests.Starter
 		if type(starter) == "table" and starter.Done then
 			claim(tostring(starter.Id))
 		end
@@ -483,7 +529,8 @@ local function buildStarter(page: Frame)
 end
 
 local function refreshStarter()
-	local starter = stateOf("Quests").Starter
+	local quests = stateOf("Quests")
+	local starter = quests.Starter
 	ui.StarterTitle.Text = T("prog.starterTitle")
 	if type(starter) ~= "table" then
 		ui.StarterCard.Visible = false

@@ -764,7 +764,9 @@ function Core.ExamTasks(prog: Data, idx: number): { { Key: string, Done: boolean
 	return out
 end
 
--- Lizenz-Aufstieg, Stufe für Stufe (je Stufe +250 XP Prüfung ohne Verdoppler, +20 Ruf außerhalb des Deckels).
+-- Lizenz-Aufstieg, Stufe für Stufe. Hat die neue Lizenz eine Prüfung (§B9.2), gilt sie damit als bestanden:
+-- +250 XP ohne Verdoppler und +20 Ruf außerhalb des Deckels (§B9.1/§B9.4). Lizenzen ohne Prüfung (Trader II,
+-- Fondsmanager II) steigen nur über die XP – ohne Prüfungs-Bonus.
 -- setLicence(idx) meldet jede neue Stufe an OrderService.SetLicence (dort steigt die Basis). Rückgabe: neue Stufen
 function Core.Promote(prog: Data, day: number, week: number, setLicence: (number) -> ()): { number }
 	local promoted: { number } = {}
@@ -778,8 +780,11 @@ function Core.Promote(prog: Data, day: number, week: number, setLicence: (number
 		local idx = prog.Licence + 1
 		prog.Licence = idx
 		setLicence(idx)
-		Core.AddXp(prog, PCFG.XpSources.Exam.Xp, "Exam", 1, day, week)
-		Core.AddRuf(prog, PCFG.Ruf.Exam, day, false)
+		local def = PCFG.Licences[idx]
+		if type(def.Exam) == "table" and #def.Exam > 0 then
+			Core.AddXp(prog, PCFG.XpSources.Exam.Xp, "Exam", 1, day, week)
+			Core.AddRuf(prog, PCFG.Ruf.Exam, day, false)
+		end
 		Core.Stat(prog, "Licence", idx, "max")
 		table.insert(promoted, idx)
 	end
@@ -1088,6 +1093,8 @@ local function checkLicence(p: Player, prog: Data)
 		end
 		if idx >= PCFG.LicenceLegend then
 			grantTitle(p, prog, "Legend", false)
+			-- goldenes Terminal-Theme bucht refreshMaxStats (auch nach, falls der Shop gerade fehlt); das Auto
+			-- „Singularity“ schaltet VehicleService über die Lizenz frei
 		end
 	end
 	setAttributes(p, prog)
@@ -1499,9 +1506,14 @@ local function checkLeagueExams(p: Player, prog: Data, data: Data)
 			examDone(p, prog, "Skill500")
 		end
 		tierLevel = math.max(tierLevel, TIER_LEVEL[league.LastTier] or 0)
-		-- Drawdown-Aufgabe aus der laufenden Woche (nur zählende, nicht getaintete Tage stehen in Returns)
+		-- Drawdown-Aufgabe aus der laufenden Woche: mindestens DrawdownMinDays zählende Börsentage, nicht getaintet
 		local returns = league.Returns
-		if type(returns) == "table" and #returns >= exam.DrawdownMinDays and league.Tainted ~= true then
+		if
+			type(returns) == "table"
+			and #returns >= exam.DrawdownMinDays
+			and num(league.Days, 0) >= exam.DrawdownMinDays
+			and league.Tainted ~= true
+		then
 			if
 				ProgressMath.MaxDrawdown(returns) < exam.DrawdownMax
 				and ProgressMath.AvgDaily(returns) >= exam.AvgDailyMin
@@ -1757,11 +1769,13 @@ local function computeWealth(p: Player, prog: Data, data: Data): number
 	local okCars, cars = call("VehicleService", "CollectionValue", p)
 	local okLife, life = call("LifestyleService", "CollectionValue", p)
 	local okNav, nav = call("OrderService", "Nav", p)
+	-- Vehicle-/LifestyleService liefern die Summe der Kaufpreise; zum Vermögen zählen davon 50 % (§B9.5)
+	local prices = (if okCars and finite(cars) then cars else 0) + (if okLife and finite(life) then life else 0)
 	return Core.Wealth({
 		Credits = cr,
 		TowerValue = if okTv and finite(towerValue) then towerValue else 0,
 		Firm = prog.Prestige.Firmenwert,
-		Collection = (if okCars and finite(cars) then cars else 0) + (if okLife and finite(life) then life else 0),
+		Collection = math.max(0, prices) * num(PCFG.WealthCollectionPct, 0.5),
 		NavCents = if okNav and finite(nav) then nav else 0,
 	}, licenceDefAt(prog.Licence).BauKurs)
 end
@@ -1802,6 +1816,16 @@ local function refreshMaxStats(p: Player, prog: Data, data: Data)
 	local login = data.Login
 	if type(login) == "table" then
 		Core.Stat(prog, "LoginStreak", num(login.Best, 0), "max")
+	end
+	-- Börsen-Legende: goldenes Terminal-Theme nachbuchen, falls der Shop beim Aufstieg nicht erreichbar war
+	local cosmetic = PCFG.LegendCosmetic
+	if prog.Licence >= PCFG.LicenceLegend and type(cosmetic) == "string" then
+		local purchases = data.Purchases
+		local owned = if type(purchases) == "table" then purchases.Cosmetics else nil
+		local has = type(owned) == "table" and (owned[cosmetic] == true or table.find(owned, cosmetic) ~= nil)
+		if not has then
+			call("ShopService", "Grant", p, { Cosmetics = { cosmetic } }, "Achievement")
+		end
 	end
 	-- Tutorial-Übung (ACAD) lief mit "Schutz an" -> Aufgabe "Setze ein Schutz-Paar" erfüllt (§B2 ~7:00)
 	if not prog.Exams.ProtectPair then
@@ -2168,9 +2192,17 @@ local function estimateSeconds(prog: Data): number
 		blitzFloors = blitzDef.Floors[math.min(blitz, #blitzDef.Floors)] or 0
 	end
 	local tempo = math.floor(num(prog.Prestige.Perks.Tempo, 0))
-	local speed = math.max(0.25, 1 - 0.10 * tempo)
+	local tempoDef = PCFG.PerkByKey.Tempo
+	local speed = math.max(0.25, 1 - num(tempoDef and tempoDef.Step, 0.10) * tempo)
+	-- Ziel: erste Etage der Vorschau-Stufe (Stufe 7 = Etage 18) aus Config.Tower.Stages, sonst der Config-Rückfall
+	local target = math.floor(num(PCFG.Prestige.EstimateFloors, 18))
+	local stages = (Config.Tower or {}).Stages
+	local stageDef = if type(stages) == "table" then stages[PCFG.Prestige.EstimateStage or 7] else nil
+	if type(stageDef) == "table" and isInt(stageDef.First) then
+		target = stageDef.First
+	end
 	local total = 0
-	for n = blitzFloors + 1, PCFG.Prestige.EstimateFloors do
+	for n = blitzFloors + 1, target do
 		local ok, seconds = pcall(TowerMath.BuildSeconds, n, speed)
 		if ok and finite(seconds) then
 			total += seconds

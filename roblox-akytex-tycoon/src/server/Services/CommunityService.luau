@@ -52,6 +52,7 @@ local respektActive: { [Player]: { number } } = {}
 local reactCounter: { [Player]: number } = {}
 local showCounter: { [Player]: number } = {}
 local refClaimAt: { [Player]: number } = {}
+local playBase: { [Player]: number } = {} -- Data.Playtime beim Beitritt (DataService schreibt sie erst vor dem Speichern fort)
 local lastLogAt: { [string]: number } = {}
 local refStore: DataStore? = nil
 local refStoreFailed = false
@@ -702,7 +703,10 @@ local function checkReferral(p: Player)
 	if not okFloors or not finite(floors) or floors < SOCIAL.Referral.Floor then
 		return
 	end
-	local played = num(data.Playtime, 0) + (os.clock() - (sessionStart[p] or os.clock()))
+	-- Gesamtspielzeit = Stand beim Beitritt + diese Sitzung (Data.Playtime enthält die Sitzung nach jedem Auto-Save
+	-- schon teilweise -> nicht doppelt zählen)
+	local base = playBase[p] or num(data.Playtime, 0)
+	local played = base + (os.clock() - (sessionStart[p] or os.clock()))
 	if played < SOCIAL.Referral.PlayMinutes * 60 then
 		return
 	end
@@ -848,6 +852,7 @@ local function onReady(p: Player)
 		return
 	end
 	local social = socialOf(data)
+	playBase[p] = math.max(0, num(data.Playtime, 0))
 	p:SetAttribute("Group", social.Group)
 	readReferral(p, data)
 	checkGroup(p)
@@ -864,6 +869,7 @@ local function onPlayerRemoving(p: Player)
 	reactCounter[p] = nil
 	showCounter[p] = nil
 	refClaimAt[p] = nil
+	playBase[p] = nil
 	for _, cache in pairs(friendCache) do
 		cache[p.UserId] = nil
 	end

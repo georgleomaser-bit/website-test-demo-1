@@ -44,6 +44,7 @@ Progression.Licences = {
 }
 -- stylua: ignore end
 Progression.LicenceLegend = 10 -- schaltet Auto "Singularity", goldenes Terminal-Theme, Titel "Börsen-Legende" frei
+Progression.LegendCosmetic = "ThemeGold" -- goldenes Terminal-Theme (Kosmetik in Purchases.Cosmetics; Auto über Config.Vehicles)
 
 -- ---------------------------------------------------------------------
 -- 2) PRÜFUNGS-AUFGABEN (Akademie-Aufgaben, MARKET §14.3). Texte: Lang "prog.exam.<Key>" / "prog.exam.<Key>.d".
@@ -215,6 +216,7 @@ Progression.Titles = {
 	},
 	ShowRange = 80, -- Kopftitel sichtbar bis (Studs)
 }
+Progression.WealthCollectionPct = 0.5 -- Sammlungswert im Vermögen = 50 % der Kaufpreise (Autos, Uhren, Deko)
 
 -- ---------------------------------------------------------------------
 -- 8) BÖRSENGANG & VORSTAND (§B9.6) – Sterne nur aus Lauf-Ausgaben, Perks wirken NUR auf Turm/Lifestyle.
@@ -234,8 +236,9 @@ Progression.Prestige = {
 	TickerKeep = 50, -- so viele eigene Ticker bleiben im Spielstand
 	RespecCost = 1, -- Umverteilen kostet 1 ★ …
 	RespecFreeAt = 3, -- … bei Börsengang 3 einmal gratis
-	EstimateFloors = 21, -- Vorschau: "Stufe 1–7 in ca. … wieder erreicht" (Etagen bis Stufe 7)
-	EstimateFactor = 1.8, -- grobe Zeit: (Bauzeit-Summe + Ansparzeit) × Faktor (Anzeige, ehrlich gerundet)
+	EstimateStage = 7, -- Vorschau: "Stufe 1–7 in ca. … wieder erreicht" = erste Etage dieser Stufe (Config.Tower.Stages)
+	EstimateFloors = 18, -- Rückfall, falls Config.Tower.Stages fehlt (Stufe 7 beginnt bei Etage 18, §B4.2)
+	EstimateFactor = 1.2, -- grobe Zeit: Bauzeit-Summe (TowerMath) × Faktor für das Ansparen (≈ 15 min, §B9.6)
 	Perks = {
 		{ Key = "Wachstum", Max = 10, Step = 0.10 }, -- +0,10 Perm je Stufe
 		{ Key = "Blitzstart", Max = 3, Floors = { 4, 8, 12 } }, -- Start mit fertigen Etagen

@@ -529,12 +529,6 @@ function Core.SeasonAt(now: number): Data?
 	if type(list) ~= "table" or #list == 0 then
 		return nil
 	end
-	for _, s in ipairs(list) do
-		local start, stop = isoToUnix(s.StartUtc), isoToUnix(s.EndUtc)
-		if start and stop and now >= start and now < stop then
-			return { Id = s.Id, Key = s.Key, Name = s.Name, StartsAt = start, EndsAt = stop, Def = s, Rolling = false }
-		end
-	end
 	local first = list[1]
 	local firstStart = isoToUnix(first.StartUtc)
 	if firstStart and now < firstStart then
@@ -548,8 +542,32 @@ function Core.SeasonAt(now: number): Data?
 			Rolling = false,
 		}
 	end
-	local last = list[#list]
+	-- dieselbe Regel wie Config.Shop.SeasonIdAt (WP10): laufende Saison, sonst die zuletzt begonnene
+	local lastIndex = 1
+	for i, s in ipairs(list) do
+		local start, stop = isoToUnix(s.StartUtc), isoToUnix(s.EndUtc)
+		if start and stop and now >= start and now < stop then
+			return { Id = s.Id, Key = s.Key, Name = s.Name, StartsAt = start, EndsAt = stop, Def = s, Rolling = false }
+		end
+		if start and now >= start then
+			lastIndex = i
+		end
+	end
+	local last = list[lastIndex]
 	local lastEnd = isoToUnix(last.EndUtc)
+	if lastIndex < #list then
+		-- Lücke bis zur nächsten festen Saison: die vorige gilt weiter, ehrliches Ende = Start der nächsten
+		local nextStart = isoToUnix(list[lastIndex + 1].StartUtc)
+		return {
+			Id = last.Id,
+			Key = last.Key,
+			Name = last.Name,
+			StartsAt = isoToUnix(last.StartUtc) or now,
+			EndsAt = nextStart or lastEnd or now,
+			Def = last,
+			Rolling = false,
+		}
+	end
 	local rolling = SCFG.Rolling
 	if not lastEnd or type(rolling) ~= "table" or rolling.Enabled ~= true then
 		return nil
@@ -557,9 +575,10 @@ function Core.SeasonAt(now: number): Data?
 	local length = math.max(1, num(rolling.LengthDays, 28)) * DAY_SECONDS
 	local k = math.clamp(math.floor((now - lastEnd) / length), 0, SCFG.MaxSeasons)
 	local start = lastEnd + k * length
+	local id = math.min(last.Id + 1 + k, math.max(last.Id, num(SCFG.MaxSeasons, 999)))
 	return {
-		Id = last.Id + 1 + k,
-		Key = "S" .. tostring(last.Id + 1 + k),
+		Id = id,
+		Key = "S" .. tostring(id),
 		Name = nil,
 		StartsAt = start,
 		EndsAt = start + length,
@@ -819,7 +838,12 @@ function RewardService.GrantSeasonXp(p: Player, amount: number, reason: string)
 		counts[reason] = num(counts[reason], 0) + 1
 	end
 	local maxXp = current.Def.Tiers * current.Def.TierXp
+	local before = season.Xp
 	season.Xp = math.min(maxXp, season.Xp + math.floor(math.min(amount, SCFG.MaxGrant)))
+	-- Saison-XP aus einem Robux-Kauf (ShopService-Grund "Robux…") zählt wie gekaufte Stufen: nur Kosmetik (REUSE §7 #8)
+	if string.sub(reason, 1, 5) == "Robux" then
+		season.BoughtXp = math.min(season.Xp, num(season.BoughtXp, 0) + (season.Xp - before))
+	end
 	markDirty(p, "Season")
 end
 
@@ -1156,7 +1180,7 @@ local function handleSeason(p: Player, arg: any): Reply
 end
 
 local function handleCode(p: Player, arg: any): Reply
-	if not exactKeys(arg, { "Code" }) or type(arg.Code) ~= "string" then
+	if not exactKeys(arg, { "Code" }) or type(arg.Code) ~= "string" or #arg.Code > RCFG.CodeMaxLength * 3 then
 		return fail(p, "core.invalid")
 	end
 	local raw = string.gsub(arg.Code, "%s+", "")
@@ -1212,12 +1236,25 @@ local function handleCode(p: Player, arg: any): Reply
 	if not applyGrant(p, grant, "Code") then
 		return fail(p, "prog.grantFailed")
 	end
+	-- Liste begrenzt: nur Einträge entfernen, die nie wieder einlösbar sind (Code gestrichen oder abgelaufen) –
+	-- ein noch gültiger Code bleibt immer vermerkt (kein zweites Einlösen)
 	local count = 0
 	for _ in pairs(used) do
 		count += 1
 	end
 	if count >= RCFG.CodesKeep then
-		table.clear(used) -- Liste begrenzt (abgelaufene Codes sind ohnehin gesperrt)
+		local now = os.time()
+		local stale: { string } = {}
+		for key in pairs(used) do
+			local known = type(key) == "string" and (RCFG.Codes or {})[key] or nil
+			local expires = if type(known) == "table" then isoToUnix(known.Expires) else nil
+			if type(known) ~= "table" or (expires ~= nil and now >= expires) then
+				table.insert(stale, key)
+			end
+		end
+		for _, key in ipairs(stale) do
+			used[key] = nil
+		end
 	end
 	used[code] = true
 	call("MetricsService", "Custom", p, "CodeRedeemed", 1, { Code = code })
@@ -1251,22 +1288,25 @@ local function handleTutorial(p: Player, arg: any): Reply
 			end
 		end
 	end
+	local before = math.floor(num(flags.TutStep, 0))
 	if step == cfg.SkipStep then
-		-- "Tutorial überspringen" gibt dieselben Belohnungen
+		-- "Tutorial überspringen" gibt dieselben Belohnungen: alle Schritt-XP und die Mini-Prüfung
+		-- „Setze ein Schutz-Paar“, die sonst die Übungs-Order mit „Schutz an“ erfüllt (§B2 ~7:00)
 		for s = 1, cfg.Steps do
 			claim(s)
 		end
-		flags.TutStep = cfg.Steps
+		flags.TutStep = math.max(before, cfg.Steps)
+		call("ProgressionService", "ExamDone", p, "ProtectPair")
 	else
-		flags.TutStep = math.max(math.floor(num(flags.TutStep, 0)), step)
+		flags.TutStep = math.max(before, step)
 		for s = 1, step do
 			claim(s)
 		end
-		if step >= cfg.Steps then
+		if step >= cfg.Steps and before < cfg.Steps then
 			funnel(p, 17)
 		end
 	end
-	markDirty(p, "Flags")
+	markDirty(p, "Flags", "Social") -- Social.CanPromptNotify hängt am Tutorial-Fortschritt
 	if gained > 0 then
 		return { Ok = true, Message = Lang.T(langOf(p), "tut.reward", gained), Xp = gained }
 	end
@@ -1543,7 +1583,16 @@ local function questsState(p: Player): { [string]: any }
 		local def = PCFG.QuestById[q.Id]
 		if def then
 			local xp = if isTradeKind(def.Kind) then PCFG.XpSources.DailyQuest.Xp else 0
-			table.insert(daily, questView(p, q, def, dailyCredits(p, def), QCFG.DailySeasonXp, xp))
+			local view = questView(p, q, def, dailyCredits(p, def), QCFG.DailySeasonXp, xp)
+			-- Neu wählen offen: der Ersatz steht vorher fest und wird angezeigt (kein Zufall, kein Kauf, §B9.7)
+			if quests.Rerolled ~= true and not q.Done and not q.Claimed then
+				local swapId = Core.RerollPick(p.UserId, quests.Day, quests.Daily, q.Id)
+				local swapDef = swapId and PCFG.QuestById[swapId]
+				view.Swap = if swapDef then questText(p, swapDef) else false
+			else
+				view.Swap = false
+			end
+			table.insert(daily, view)
 		end
 	end
 	local weekCredits = weeklyCredits(p)
@@ -1624,6 +1673,7 @@ local function seasonState(p: Player): { [string]: any }
 		return { Id = 0, Xp = 0, Tier = 0, Premium = false, Ended = true }
 	end
 	local def = current.Def
+	local index = table.find(SCFG.Seasons, def) or #SCFG.Seasons
 	return {
 		Id = current.Id,
 		Key = current.Key,
@@ -1640,7 +1690,7 @@ local function seasonState(p: Player): { [string]: any }
 		ClaimedFree = season.ClaimedFree,
 		ClaimedPremium = season.ClaimedPremium,
 		PlayToday = num(season.PlayToday, 0),
-		SeasonIndex = def.Id, -- Index in Config.Season.Seasons (Rolling nutzt die Spuren der letzten Saison)
+		SeasonIndex = index, -- Index in Config.Season.Seasons (Rolling nutzt die Spuren der letzten Saison)
 	}
 end
 

@@ -412,6 +412,13 @@ function Season.Init(context: any)
 end
 
 function Season.Start()
+	-- Einstieg über die rechte HUD-Leiste (der Skyline-Pass hat keinen Standard-Knopf im HUD)
+	local okButton = call("Hud", "AddRightButton", "🌆", "prog.btn.pass", Theme.Purple, 75, function()
+		ctx.Windows.Toggle("Season")
+	end)
+	if not okButton then
+		warn("[Season] Hud.AddRightButton nicht verfügbar – Skyline-Pass nur über die Boutique erreichbar")
+	end
 	ctx.Hooks.On("State", function(_state: any, changed: any)
 		if type(changed) == "table" and changed.Season then
 			Season.Refresh()

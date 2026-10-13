@@ -57,6 +57,7 @@ local RENDER_DELAY = 0.25 -- State-Änderungen bündeln
 local MAX_GIFT_TARGETS = 9
 local MARKET_EVENT_HOLD = 300 -- nach Warnung/Lauf eines Markt-Events so lange kein Angebot
 local MARKET_EVENT_TAIL = 60 -- nach dem Ende eines Markt-Events noch so lange ruhig bleiben
+local QUOTE_RETRY_GAP = 1.1 -- ShopQuote ist auf 1/s begrenzt (§C9)
 
 local TABS = { "Start", "Passes", "Boosts", "Credits", "Season", "Club" }
 local TAB_LANG: { [string]: string } = {
@@ -609,6 +610,15 @@ local function requestQuote(key: string)
 		end)
 		quoteLoading = false
 		if detailKey ~= key then
+			-- inzwischen ein anderer Gutschein offen: nach der Anfrage-Grenze (1/s) dessen Angebot holen
+			local current = detailKey
+			if current ~= nil then
+				task.delay(QUOTE_RETRY_GAP, function()
+					if detailKey == current and quote == nil and not quoteLoading and quoteFailed ~= current then
+						renderDetail()
+					end
+				end)
+			end
 			return
 		end
 		if

@@ -97,6 +97,7 @@ return {
 		["shop.seasonRepeat"] = "Premium war schon aktiv – stattdessen Bau-Gutschein L (+%s CR).",
 		["shop.seasonOffline"] = "Der Skyline-Pass startet gerade – versuch es gleich nochmal.",
 		["shop.tiersFull"] = "Du bist schon auf der letzten Pass-Stufe.",
+		["shop.tiersTooMany"] = "Nur noch %d Pass-Stufen frei – nimm lieber das kleinere Paket.",
 		-- Geschenk-Boost (nur wo erlaubt)
 		["shop.gift.pick"] = "Empfänger wählen",
 		["shop.gift.none"] = "Kein anderer Spieler im Server",
@@ -146,7 +147,7 @@ return {
 	en = {
 		-- Window & banner
 		["shop.title"] = "Shop",
-		["shop.banner"] = "Prices can't be bought – it's all play money",
+		["shop.banner"] = "Market prices can't be bought – it's all play money",
 		["shop.bannerSub"] = "Robux only give tower perks and cosmetics. Never AKY, shares, orders, licences, XP or market info.",
 		["shop.tab.start"] = "Start",
 		["shop.tab.passes"] = "Passes",
@@ -231,6 +232,7 @@ return {
 		["shop.seasonRepeat"] = "Premium was already active – Build Voucher L instead (+%s CR).",
 		["shop.seasonOffline"] = "The Skyline Pass is starting – please try again shortly.",
 		["shop.tiersFull"] = "You are already on the last pass tier.",
+		["shop.tiersTooMany"] = "Only %d pass tiers left – better take the smaller pack.",
 		-- Gift boost (only where allowed)
 		["shop.gift.pick"] = "Choose a recipient",
 		["shop.gift.none"] = "No other player in the server",

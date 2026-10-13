@@ -88,7 +88,8 @@ check("Lizenz-Ermittlung", function()
 	eq(PM.LicenceFor(300, {}, L), 1, "Prüfung fehlt")
 	eq(PM.LicenceFor(300, { ProtectPair = true }, L), 2, "Azubi II")
 	eq(PM.LicenceFor(5000, { ProtectPair = true }, L), 2, "Azubi III braucht Sectors3 + ProtectedProfit")
-	local upTo5 = { ProtectPair = true, Sectors3 = true, ProtectedProfit = true, AsExpected = true, BuyAfterGood = true }
+	local upTo5 =
+		{ ProtectPair = true, Sectors3 = true, ProtectedProfit = true, AsExpected = true, BuyAfterGood = true }
 	eq(PM.LicenceFor(7000, upTo5, L), 5, "Trader II ohne eigene Prüfung")
 	eq(PM.LicenceFor(13999, upTo5, L), 5, "Trader III: XP fehlt")
 	eq(PM.LicenceFor(14000, upTo5, L), 5, "Trader III: CrashSurvive fehlt")

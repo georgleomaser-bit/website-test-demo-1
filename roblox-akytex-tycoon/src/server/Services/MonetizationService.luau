@@ -1291,6 +1291,13 @@ function MonetizationService.Precheck(p: Player, key: string, userId: number?): 
 		if tier >= tiers then
 			return fail(p, "shop.tiersFull")
 		end
+		-- nie Stufen verkaufen, die es nicht mehr gibt (ehrlich: lieber das kleinere Paket empfehlen)
+		local wanted = if type(item.Grant) == "table" and isInteger(item.Grant.SeasonTiers)
+			then item.Grant.SeasonTiers
+			else 1
+		if tier + wanted > tiers then
+			return fail(p, "shop.tiersTooMany", tiers - tier)
+		end
 	elseif productKind == "Express" then
 		if not expressRoom(data) then
 			return fail(p, "shop.expressFull")
