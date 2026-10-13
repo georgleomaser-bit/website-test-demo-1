@@ -21,3 +21,16 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
    AKYTEX-Website), weiche Kamera-Fahrten (z. B. beim Etagen-Kauf, beim Betreten des Towers), kein Ruckeln durch Server-Last.
 5. **NEU**: eigenständiges, frisches Spielgefühl – nicht nur „Tycoon mit Knöpfen“: Trading als Skill (News lesen, Trends
    erkennen), Tower als Statussymbol, soziale Flex-Momente (Bestenliste live im Börsensaal, Tower-Besuche).
+
+## Nachtrag (13.10.2026): „mach auch ultra anspruchsvoll also bigger das komplette max“
+6. **ULTRA ANSPRUCHSVOLL (hohe Skill-Decke)** – leicht anzufangen, aber echte Tiefe für Profis:
+   - Chart-Werkzeuge wie auf der AKYTEX-Website: Zeiteinheiten, Kerzen/Linie, Indikatoren (SMA/EMA, Bollinger, RSI, MACD, Volumen),
+     Zeichenlinien/Alarme, Orderbuch/Markttiefe, Umsätze.
+   - Fundamentaldaten je Firma (Umsatz, Gewinn, KGV, Dividende, Sektor), Quartalszahlen-Termine, Analysten-Berichte im Spiel,
+     News mit Vorlaufzeit (wer liest und versteht, gewinnt).
+   - Profi-Orders: Limit, Stop, Stop-Loss/Take-Profit (OCO), Leerverkauf (Short) erst ab höherer Lizenz – alles mit Spielgeld,
+     ohne Glücksspiel-Mechanik (kein Hebel-Casino, keine Zufallsauszahlung, keine Wetten), Compliance-Regeln aus der Spec gelten.
+   - Portfolio-Analyse (Rendite, Drawdown, Trefferquote, Sharpe-ähnlicher „Skill-Score“), Lizenz-/Rang-System
+     (Azubi → Trader → Fondsmanager → Börsen-Legende) mit Prüfungen/Aufgaben, Saison-Wettbewerbe (Bestenliste nach Rendite,
+     nicht nur nach Geld), Hedgefonds-Gruppen mit gemeinsamen Zielen.
+   - Tower-Management mit echten Entscheidungen (Abteilungen, Personal, Bots mit Strategien, Upgrades mit Abwägungen).
