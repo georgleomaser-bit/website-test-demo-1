@@ -153,7 +153,17 @@ export type CalendarItem = {
 }
 export type MarketEvent = {
 	Id: string,
-	Kind: "Crash" | "Rally" | "Pump" | "Dump" | "Halt" | "Resume" | "Ipo" | "News" | "Vol" | "Normalize" | "CancelAutoShow",
+	Kind: "Crash"
+		| "Rally"
+		| "Pump"
+		| "Dump"
+		| "Halt"
+		| "Resume"
+		| "Ipo"
+		| "News"
+		| "Vol"
+		| "Normalize"
+		| "CancelAutoShow",
 	Scope: "All" | "Sector" | "Inst",
 	Target: (number | string)?,
 	Strength: number,
