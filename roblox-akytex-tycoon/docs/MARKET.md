@@ -9,6 +9,24 @@ Preis-Modells + Strategie-Backtest; jede Zahl in §4 und §6 stammt aus diesem S
 > **liest, bevor** der Kurs reagiert. Wer liest und versteht, gewinnt; wer wild klickt, verliert Gebühren. Es gibt **keine Wetten,
 > keinen Hebel, keine Zufallskisten**, und Robux kaufen **nie** Spielgeld fürs Depot. So bleibt es Börse und kein Glücksspiel.
 
+
+> **Verbindliche Änderungen durch `docs/DESIGN.md` §C19 (Stand 13.10.2026) – bei Widerspruch gilt DESIGN.md:**
+> 1. Firmen-IDs 1/2/23 umbenannt: **CGVO „Cognivo KI“** (statt NOVA), **KRWK „Kernwerk Systems“** (statt AKYTEX Holding),
+>    **PFFR „Pfotenfreund“** (statt Pfotenglück). Keine handelbare AKYTEX- oder NOVA-Firma.
+> 2. „NOVA-Ampel“/NOVA-Tipps heißen **Tiko-Ampel**/Tiko (geskripteter Roboter; „Aky“ und „NOVA“ sind echte KI-Produkte).
+> 3. §15: Geld fließt **nur Depot (AKY) → Turm (CR)** über den Gewinn-Transfer (Basis-Hochwassermarke, Schwelle 2 %, max. 6 % der
+>    Basis, 1× je Börsentag, Bau-Kurs nur nach Lizenz). Research-Vorlauf über Lizenz + Know-how, nie über Tower-Fortschritt.
+> 4. §14.4: statt „Gehalt aus dem Tower“ ins Depot gibt es den **Rettungsschirm** (auf 50 % der Basis, 1×/UTC-Tag, nie abhebbar).
+> 5. §1.4: Watchlists, Alarm-Plätze, Multi-Chart nur über Know-how; Robux kauft nur Terminal-Themes/Skins.
+> 6. §12.6: Liga-Rang nach **Skill-Score** (Tie-Break Ø-Tagesrendite), absolute Stufen Bronze 300 / Silber 500 / Gold 700 / Diamant 850.
+> 7. §16: Tower-AG entfällt; v2 **Trader-AG** mit Kurs aus dem TWR-Index der Handelsrendite.
+> 8. §10.1/§11: Remote `Market` (Arten News/Event/Halt/Bell/Ipo/Calendar/DayClose) statt `MarketNews`; Request-Aktionen ohne Punkt
+>    (`TradePlace`, `TradeCancel`, `TradeModify`, `MktCandles`, `MktProfile`, `MktCalendar`, `MktNews` …, DESIGN §C9).
+> 9. §5.6/§8.2: Speicher `AT_Market_v1`, MemoryStore `AT_Bus_W<w>`, Messaging-Thema `AT_EV`.
+> 10. §6.5/§12.4: v1 IPO-**Erstnotiz ohne Zeichnung**; Zeichnung pro rata und Leerverkauf erst v1.1 (IDs/Felder reserviert).
+> 11. §12.1: `Pos`/`Short` mit String-Schlüsseln `tostring(instId)`. §11/§14.1: Betrags-Chips **10 % · 25 % · Max**; News-Karte mit
+>     Balken „Händler lesen …“ statt Countdown, ohne Kauf-Knopf, gedrosselt (DESIGN §B7.4).
+
 ---
 
 ## Inhalt
@@ -174,8 +192,8 @@ Immobilien / Finance & Real Estate. Startkurs in AKY, Dividende in % je Ausschü
 
 | ID | Kürzel | Name | S | Klasse | Start | Div. | Kurz-Story (DE) |
 |---|---|---|---|---|---|---|---|
-| 1 | NOVA | NOVA Intelligence | T | Normal | 240 | – | KI-Assistent zum Sprechen & Schreiben (Marke des Besitzers, fiktiv im Spiel) |
-| 2 | AKYX | AKYTEX Holding | T | Stabil | 180 | 0,4 | betreibt die Börse und das Terminal (Heimat-Marke) |
+| 1 | CGVO | Cognivo KI | T | Normal | 240 | – | Lern-Roboter mit KI (umbenannt, DESIGN §C19) |
+| 2 | KRWK | Kernwerk Systems | T | Stabil | 180 | 0,4 | Fabrik-Software (umbenannt, DESIGN §C19) |
 | 3 | QTRX | Quantorix Quantum | T | Wild | 42 | – | Quantencomputer, schreibt noch Verluste |
 | 4 | LMRA | Lumora Chips | T | Normal | 115 | 0,2 | Chips für KI-Rechenzentren |
 | 5 | NMBY | Nimbusly Cloud | T | Stabil | 88 | 0,3 | Cloud-Speicher |
@@ -196,7 +214,7 @@ Immobilien / Finance & Real Estate. Startkurs in AKY, Dividende in % je Ausschü
 | 20 | BLBR | Blubbro | K | Stabil | 41 | 0,9 | Limonaden |
 | 21 | SNKA | Sneakora | K | Normal | 132 | 0,3 | Sneaker |
 | 22 | BGPT | Burgerplanet | K | Stabil | 77 | 0,7 | Burger-Kette |
-| 23 | PFTG | Pfotenglück | K | Normal | 29 | 0,2 | Tierbedarf |
+| 23 | PFFR | Pfotenfreund | K | Normal | 29 | 0,2 | Tierbedarf (umbenannt, DESIGN §C19) |
 | 24 | SPWK | Spielwerk Toys | K | Normal | 45 | 0,4 | Spielzeug |
 | 25 | ARCN | Arcadeon Games | G | Normal | 96 | 0,1 | Videospiele |
 | 26 | STMR | Streamora | G | Normal | 143 | – | Streaming |
@@ -213,7 +231,7 @@ Immobilien / Finance & Real Estate. Startkurs in AKY, Dividende in % je Ausschü
 
 ETFs: **40 AKX36** („AKYTEX 36“, alle gleichgewichtet – die Einsteiger-Empfehlung), **41–46** Sektor-ETFs AKXT, AKXE, AKXM,
 AKXK, AKXG, AKXF. ETF-Kurs `= 100 · exp(mittel_i(ln P_i(t) − ln P_i(t_Woche)))` – deterministisch, kein eigenes Rauschen.
-IPO-Pipeline (Beispiele, je Saison 4–8): Synaptiq (T), Flora Energy (E), Hyperloop Ost (M), Mondwerk (M), Robochef (K), Aquafarm (K).
+IPO-Pipeline (Beispiele, je Saison 4–8): Neuronauten (T), Flora Energy (E), Hyperloop Ost (M), Mondwerk (M), Robochef (K), Aquafarm (K).
 
 Namensregeln: erfundene Komposita, keine Ähnlichkeit mit echten Marken. **Vor Release** jedes Kürzel/jeden Namen einmal
 suchen (keine bekannte echte Firma, kein Kürzel eines großen echten Börsenwerts). Logos = UI-Formen (Buchstabe + Verlauf +
