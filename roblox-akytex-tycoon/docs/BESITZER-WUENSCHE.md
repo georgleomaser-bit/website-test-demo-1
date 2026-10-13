@@ -60,3 +60,15 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
     Reflectance) für Spiegelungen, viele echte PointLights/SpotLights/SurfaceLights mit Schatten in der Nacht-Skyline (mit
     Lichtbudget je Grafikstufe), Atmosphere + Bloom + ColorCorrection + DepthOfField in Menüs/Kamerafahrten. Ehrlich so
     benennen („Future-Licht“), nicht als „Raytracing“ bewerben.
+
+## Nachtrag 5: „mach insgesamt alles bis an die Roblox-Grenzen: Suchtfaktor, Reichweite usw.“
+11. **Reichweite (Wachstum) mit allen erlaubten Roblox-Funktionen**: Freunde einladen (SocialService:PromptGameInvite) mit
+    Belohnung für beide, Freunde-im-Server-Bonus, Experience Notifications (Opt-in-Benachrichtigungen, z. B. „Dein Tower hat
+    Gewinn gemacht“, „Markt-Crash-Event startet“), Favoriten-Abfrage (AvatarEditorService:PromptSetFavorite) im richtigen Moment,
+    Badges für Meilensteine, Community-/Gruppen-Beitritts-Bonus, Teilen-Links mit Launch-Daten (Tower-Besuch), geplante
+    Live-Events (Saison-Start, Crash-Freitag) für wiederkehrende Peaks, Bestenlisten zum Angeben, spektakuläre „Clip-Momente“
+    (riesiger Gewinn, Tower-Fertigstellung) für TikTok/Shorts, Thumbnails/Trailer (mit Higgsfield, sobald freigeschaltet).
+12. **Suchtfaktor fair und erlaubt**: starke Kern-Schleife (handeln → verdienen → Tower ausbauen → neue Möglichkeiten), Offline-
+    Einnahmen, tägliche/wöchentliche Ziele, Login-Serie, zeitlich begrenzte Events, Saisons mit Belohnungen, Sammel-Ziele
+    (Einrichtung, Autos), Statussymbole. KEINE irreführenden Kauf-Tricks, keine Glücksspiel-Mechaniken, keine Täuschung bei Preisen
+    (Roblox-Regeln für Kinder einhalten) – sonst droht Moderation und Reichweitenverlust.
