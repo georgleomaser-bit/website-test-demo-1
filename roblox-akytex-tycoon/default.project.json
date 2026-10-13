@@ -1,0 +1,37 @@
+{
+  "name": "AkytexTycoon",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedFirst": { "$path": "src/first" },
+    "ReplicatedStorage": { "Shared": { "$path": "src/shared" } },
+    "ServerScriptService": { "Server": { "$path": "src/server" } },
+    "StarterPlayer": {
+      "$properties": { "CameraMaxZoomDistance": 60, "CharacterWalkSpeed": 16, "EnableMouseLockOption": true },
+      "StarterPlayerScripts": { "Client": { "$path": "src/client" } }
+    },
+    "Players": { "$properties": { "BanningEnabled": true, "CharacterAutoLoads": true, "RespawnTime": 3 } },
+    "Lighting": {
+      "$properties": {
+        "Technology": "Future",
+        "EnvironmentSpecularScale": 1,
+        "EnvironmentDiffuseScale": 1,
+        "GlobalShadows": true,
+        "Brightness": 2,
+        "ClockTime": 9
+      }
+    },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": true,
+        "StreamingMinRadius": 192,
+        "StreamingTargetRadius": 768,
+        "StreamOutBehavior": "Opportunistic",
+        "RejectCharacterDeletions": "Enabled",
+        "ReplicateInstanceDestroySetting": "Enabled"
+      }
+    },
+    "TextChatService": { "$properties": { "ChatVersion": "TextChatService" } },
+    "VoiceChatService": { "$properties": { "EnableDefaultVoice": true } },
+    "StarterGui": { "$properties": { "ResetPlayerGuiOnSpawn": false } }
+  }
+}
