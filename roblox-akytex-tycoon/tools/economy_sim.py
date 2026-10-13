@@ -1,25 +1,35 @@
 #!/usr/bin/env python3
 # =====================================================================
-#  AKYTEX TYCOON – Tower-Ökonomie-Simulation (Startwerte für docs/DESIGN.md §B9)
-#  Aufruf: python3 tools/economy_sim.py [--quick | --table]   (≈ 40 s / 8 s, nur Standardbibliothek)
-#  Besitzer-Paket: WP5 (Tower-Ökonomie). Startwerte hier == Config/Tower.luau + Config/Progression.luau (DESIGN §B5/§B9).
+#  AKYTEX TYCOON – Tower-Ökonomie-Simulation + Release-Gates G1–G4 (DESIGN.md §B5, §B9.10)
+#  Besitzer-Paket: WP6 (Turm-Ökonomie). Startwerte hier == src/shared/Config/Tower.luau == Shared/TowerMath
+#  (tests/towermath.test.luau vergleicht alle 50 Etagen mit dieser Datei; --quick prüft den Gleichstand mit Config).
+#  Aufruf (im Projektordner):
+#    python3 tools/economy_sim.py --quick    ≈ 10 s: Config-Abgleich + G1 (muss "OK" melden) + G2–G4 ohne Pass-Vergleich
+#    python3 tools/economy_sim.py            ≈ 45 s: Voll-Lauf, alle Gates G1–G4 (inkl. Pässe höchstens 15 % schneller)
+#    python3 tools/economy_sim.py --table    volle Kosten-/Einkommens-/Bauzeit-Tabelle der 50 Etagen (§B5.1)
+#  Exit-Code 1, wenn ein geprüftes Gate oder der Config-Abgleich scheitert (scripts/check.sh nutzt --quick).
+#  Nur Python-Standardbibliothek.
 #
-#  Modell (vereinfacht, aber mit denselben Formeln wie Config/Tower.luau + Shared/TowerMath.luau):
-#   Einkommen/s = Basis × Perm × TraderFaktor × Pässe × Timed
-#     Basis        = Gehalt + Σ Etage(n): I(n) × Raum × Stufe(L) × (1 + Σ Personal)
-#     Perm         = 1 + 0,1·Effizienz + 0,25·Börsengänge + 0,1·Perk"Wachstum"   (additiv)
-#     TraderFaktor = (1 + Lizenz-Bonus) × (1 + 0,05·Ruf)                        (nur Skill, nie Robux)
-#     Pässe        = 1 + x2 + 2·x3  (x2 → ×2, x3 → ×3, beide → ×4) × VIP 1,10
-#   Handel direkt: CR/s = r × Basis(Lizenz) × Bau-Kurs(Lizenz) / 1200  (nur aktiv, nie multipliziert)
-#   Greedy-Käufer: kleinste Amortisationszeit (Kosten / Einkommensplus) unter Etage, Raum-Stufe, Personal, Effizienz.
-#  Ziele (Release-Blocker, DESIGN.md §B9.9; gemessen mit Spieler "Gratis, guter Trader", r = 2,5 %/Börsentag):
-#   G1 teuerster Einzelpreis < 1e14 und nie ein Kontostand ≥ 9e15
-#   G2 Handels-Anteil in aktiven Sitzungen (direkt + Trader-Faktor): ≥ 15 % in Stufe 4–6, 25–45 % ab Stufe 7
-#   G3 Direkt-Anteil (Gewinn-Transfer) in aktiven Sitzungen ≥ 10 % in Stufe 1–7
-#   G4 Pacing: Etage 4 ≤ 5 min, Etage 10 ≤ 25 min, Etage 25 (1. Börsengang) Tag 2–5, Etage 50 Tag 28–56;
-#      Robux-Pässe (x2+x3+VIP) dürfen Etage 50 höchstens 15 % früher erreichen (Lizenz-Tore!)
+#  Modell (vereinfacht, mit denselben Formeln wie Config/Tower.luau + Shared/TowerMath.luau):
+#   Einkommen/s = Basis × Perm × TraderFaktor × Pässe
+#     Basis        = Gehalt + Σ Etage(n): I(n) × Raum (Ø 1,15) × Stufe(L) × (1 + Σ Personal)
+#     Perm         = 1 + 0,1·Effizienz + 0,25·Börsengänge + 0,1·Vorstand "Wachstum"   (additiv)
+#     TraderFaktor = (1 + Lizenz-Bonus) × (1 + 0,03·Ruf)                              (nur Skill, nie Robux)
+#     Pässe        = (1 + x2 + 2·x3) × VIP 1,10   (x2 -> ×2, x3 -> ×3, beide -> ×4)
+#   Handel direkt (Gewinn-Transfer): CR/s = r × Basis(Lizenz) × Bau-Kurs(Lizenz) / 1200  (nur aktiv, nie multipliziert)
+#   Offline: 50 % des Einkommens bis 8 h, dann nichts. Greedy-Käufer: kleinste Amortisationszeit unter Etage,
+#   Raum-Stufe, Personal, Effizienz. Stufen-Tore = Lizenz (Trader-XP) + Börsengang.
+#  Gates (Spieler „gratis, guter Trader“: 1,5 h aktiv/Tag, r = 2,5 %/Börsentag, 700 Trader-XP/h):
+#   G1 teuerster Einzelpreis < 1e14, kein Kontostand ≥ 9e15, alle Config-Preise ganzzahlig
+#   G2 Handels-Anteil aktiv (Gewinn-Transfer + Trader-Faktor): ≥ 15 % in Stufen 4–6, 25–45 % ab Stufe 7
+#   G3 Gewinn-Transfer-Anteil aktiv ≥ 10 % in Stufen 1–7
+#   G4 Etage 4 ≤ 5 min · Etage 10 ≤ 25 min · Etage 25 Tag 2–5 · Etage 50 Tag 28–56 ·
+#      Pässe (x2+x3+VIP) höchstens 15 % schneller zu Etage 50 (Lizenz-Tore bremsen)
+#   Anteile je Stufe aus dem ersten Lauf, in dem die Stufe erreicht wird, auf ganze Prozent gerundet (wie §B5.4/§B9.10).
 # =====================================================================
 import math
+import os
+import re
 import sys
 
 CAP = 9e15
@@ -274,20 +284,33 @@ def show(title, res, t0=0.0):
 
 
 def campaign(p, runs=8, verbose=True):
+	"""Läufe bis Etage 50 (Börsengang ab Etage 25). Gibt eine Auswertung für die Gates zurück."""
 	t, xp, ipo, perks = 0.0, 0.0, 0, {}
 	stars = 0
+	out = {"t25": None, "t50": None, "stages": {}, "max": 0.0, "t4": None, "t10": None}
 	for k in range(runs):
 		target = 50 if ipo >= 1 else 25
+		t_start = t
 		res = run(p, xp0=xp, t0=t, ipo=ipo, perks=perks, stop_floor=target)
 		if verbose:
 			show(f"{p.name} Lauf {k + 1} (IPO {ipo}, Perks {perks})", res, t)
+		out["max"] = max(out["max"], res["max"])
+		for s, h in res["hits"].items():
+			# je Stufe zählt der erste Lauf, in dem sie erreicht wurde (spätere Läufe starten mit Blitzstart)
+			if s not in out["stages"] and len(h) > 5:
+				out["stages"][s] = {"t": h[0] - t_start, "abs": h[0], "direct": h[7], "trade": h[8], "run": k + 1}
 		t, xp = res["t"], res["xp"]
+		if k == 0 and res["floors"] >= 25:
+			out["t25"] = t
 		if res["floors"] >= 50:
-			print(f"  → Etage 50 erreicht an Tag {t / DAY:.1f}")
-			return t
+			out["t50"] = t
+			if verbose:
+				print(f"  → Etage 50 erreicht an Tag {t / DAY:.1f}")
+			break
 		if res["floors"] < 25:
-			print("  → Etage 25 nicht erreicht (Zeitlimit)")
-			return t
+			if verbose:
+				print("  → Etage 25 nicht erreicht (Zeitlimit)")
+			break
 		stars += stars_for(res["spend"])
 		ipo += 1
 		left = stars
@@ -296,10 +319,229 @@ def campaign(p, runs=8, verbose=True):
 			lv = min(cap, left)
 			perks[name] = lv
 			left -= lv
-	return t
+	if 2 in out["stages"]:
+		out["t4"] = out["stages"][2]["abs"]  # Stufe 3 = Etage 4 (erster Lauf)
+	if 4 in out["stages"]:
+		out["t10"] = out["stages"][4]["abs"]  # Stufe 5 = Etage 10
+	return out
+
+
+# ---------------------------------------------------------------- Config-Abgleich (Config/Tower.luau, Config/Trading.luau)
+def _read(path):
+	try:
+		with open(path, encoding="utf-8") as f:
+			return f.read()
+	except OSError:
+		return None
+
+
+def _strip_comments(text):
+	return re.sub(r"--[^\n]*", "", text)
+
+
+def _block(text, name):
+	"""Inhalt des Tabellen-Konstruktors nach `name = {` (geschweifte Klammern gezählt)."""
+	m = re.search(re.escape(name) + r"\s*=\s*\{", text)
+	if not m:
+		return None
+	depth, i = 0, m.end() - 1
+	start = m.end()
+	while i < len(text):
+		if text[i] == "{":
+			depth += 1
+		elif text[i] == "}":
+			depth -= 1
+			if depth == 0:
+				return text[start:i]
+		i += 1
+	return None
+
+
+def _num(text, key):
+	m = re.search(r"\b" + re.escape(key) + r"\s*=\s*(-?[0-9][0-9_.eE+-]*)", text or "")
+	return float(m.group(1).replace("_", "")) if m else None
+
+
+def _numbers(text):
+	return [float(x) for x in re.findall(r"-?[0-9]+(?:\.[0-9]+)?(?:e[0-9]+)?", text or "")]
+
+
+def _entries(block):
+	"""Einträge mit Key = "…" einer Liste (für Stages/Staff/Rooms)."""
+	out = {}
+	if not block:
+		return out
+	pieces = re.split(r'(?=\bKey\s*=\s*")', block)
+	for piece in pieces:
+		m = re.match(r'Key\s*=\s*"([A-Za-z0-9_]+)"', piece)
+		if m:
+			out[m.group(1)] = piece
+	return out
+
+
+def config_sync(root):
+	"""Prüft, dass die Startwerte dieser Simulation exakt in Config/Tower.luau stehen. Gibt (Fehler, Hinweise) zurück."""
+	errors, notes = [], []
+	tower = _read(os.path.join(root, "src", "shared", "Config", "Tower.luau"))
+	if tower is None:
+		return ["src/shared/Config/Tower.luau fehlt"], notes
+	t = _strip_comments(tower)
+
+	def same(label, cfg, sim):
+		if cfg is None:
+			errors.append(f"{label}: nicht in Config.Tower gefunden")
+		elif abs(cfg - sim) > 1e-9 * max(1.0, abs(sim)):
+			errors.append(f"{label}: Config {cfg:g} ≠ Simulation {sim:g}")
+
+	same("I0", _num(t, "Tower.I0"), I0)
+	same("IR", _num(t, "Tower.IR"), IR)
+	same("C2", _num(t, "Tower.C2"), C2)
+	same("Salary", _num(t, "Tower.Salary"), SALARY)
+	same("Floors", _num(t, "Tower.Floors"), FLOORS)
+	same("UpgradeMin", _num(t, "Tower.UpgradeMin"), 500.0)
+	bands = _numbers(_block(t, "Tower.Bands"))
+	if [tuple(bands[i:i + 3]) for i in range(0, len(bands), 3)] != [tuple(map(float, b)) for b in BANDS]:
+		errors.append(f"Bands: Config {bands} ≠ Simulation {BANDS}")
+	if _numbers(_block(t, "Tower.LevelFactor")) != list(LEVEL_F):
+		errors.append("LevelFactor: Config ≠ Simulation")
+	if _numbers(_block(t, "Tower.LevelCost")) != list(LEVEL_C):
+		errors.append("LevelCost: Config ≠ Simulation")
+	eff = _block(t, "Tower.Efficiency")
+	same("Efficiency.Step", _num(eff, "Step"), EFF_STEP)
+	same("Efficiency.Base", _num(eff, "Base"), EFF_BASE)
+	same("Efficiency.Ratio", _num(eff, "Ratio"), EFF_R)
+	same("Efficiency.Max", _num(eff, "Max"), EFF_MAX)
+	build = _block(t, "Tower.Build")
+	same("Build.Instant", _num(build, "Instant"), 9)
+	same("Build.BaseSeconds", _num(build, "BaseSeconds"), 20)
+	same("Build.Ratio", _num(build, "Ratio"), 1.33)
+	same("Build.Cap", _num(build, "Cap"), 5400)
+	stages = _entries(_block(t, "Tower.Stages"))
+	order = ["Garage", "Kiosk", "Loft", "Office", "Glass", "Business", "HighRise", "Skyscraper", "Skyline", "Mega",
+		"Hyper", "Orbit"]
+	for i, key in enumerate(order):
+		piece = stages.get(key)
+		if piece is None:
+			errors.append(f"Stages.{key}: fehlt")
+			continue
+		first, lic, need = STAGES[i]
+		same(f"Stages.{key}.First", _num(piece, "First"), first)
+		same(f"Stages.{key}.Licence", _num(piece, "Licence"), lic + 1)
+		same(f"Stages.{key}.Ipo", _num(piece, "Ipo"), need)
+	staff = _entries(_block(t, "Tower.Staff"))
+	for i, key in enumerate(["Intern", "Analyst", "Senior", "Quant"]):
+		piece = staff.get(key)
+		if piece is None:
+			errors.append(f"Staff.{key}: fehlt")
+			continue
+		bonus, cost, stage0 = STAFF[i]
+		same(f"Staff.{key}.Bonus", _num(piece, "Bonus"), bonus)
+		same(f"Staff.{key}.CostMult", _num(piece, "CostMult"), cost)
+		same(f"Staff.{key}.MinStage", _num(piece, "MinStage"), stage0 + 1)
+	# G1: alle Preise/Geldwerte in Config.Tower ganzzahlig
+	for key in ("Price", "Credits", "C2", "UpgradeMin", "VaultPrefill"):
+		for m in re.finditer(r"\b" + key + r"\s*=\s*(-?[0-9][0-9_.eE+-]*)", t):
+			v = float(m.group(1).replace("_", ""))
+			if v != int(v) or v < 0 or v >= 1e14:
+				errors.append(f"{key} = {m.group(1)}: ganze Zahl 0 … 1e14 erwartet (G1)")
+	# Lizenz-Tabelle (Bau-Kurs, Basis): Config.Progression (WP9), sonst Config.Trading.LicenceFallback (WP4)
+	prog = _read(os.path.join(root, "src", "shared", "Config", "Progression.luau"))
+	source, rows = None, []
+	if prog is not None:
+		block = _block(_strip_comments(prog), "Progression.Licences")
+		if block:
+			rows = [(_num(r, "Basis"), _num(r, "BauKurs")) for r in re.findall(r"\{[^{}]*BauKurs[^{}]*\}", block)]
+			source = "Config.Progression.Licences"
+	if not rows:
+		trading = _read(os.path.join(root, "src", "shared", "Config", "Trading.luau"))
+		if trading is not None:
+			block = _block(_strip_comments(trading), "Trading.LicenceFallback")
+			if block:
+				rows = [(_num(r, "Basis"), _num(r, "BauKurs")) for r in re.findall(r"\{[^{}]*BauKurs[^{}]*\}", block)]
+				source = "Config.Trading.LicenceFallback"
+	if len(rows) == len(LIC):
+		for i, (basis, kurs) in enumerate(rows):
+			name, _, aky, rate, _ = LIC[i]
+			if kurs is None or kurs != rate:
+				errors.append(f"{source}[{i + 1}] Bau-Kurs {kurs} ≠ Simulation {rate} ({name})")
+			# Basis steht dort in Cent (Trading) oder AKY (Progression) – beides akzeptieren
+			if basis is not None and basis not in (aky, aky * 100):
+				errors.append(f"{source}[{i + 1}] Basis {basis:g} ≠ Simulation {aky} AKY ({name})")
+		notes.append(f"Lizenz-Tabelle geprüft: {source}")
+	else:
+		notes.append("Lizenz-Tabelle nicht gefunden – Abgleich übersprungen")
+	return errors, notes
+
+
+# ---------------------------------------------------------------- Gates
+def pct(x):
+	return round(x * 100)
+
+
+def gates(free, passes=None):
+	"""Wertet G2–G4 aus. Gibt Liste (Gate, ok, Text) zurück; ok = None bedeutet „nicht geprüft“."""
+	res = []
+	st = free["stages"]
+	# G2: Handels-Anteil aktiv
+	bad, vals = [], []
+	for s in range(3, 12):
+		if s not in st:
+			continue
+		v = pct(st[s]["trade"])
+		vals.append(f"S{s + 1} {v} %")
+		if s <= 5 and v < 15:
+			bad.append(f"Stufe {s + 1}: {v} % < 15 %")
+		if s >= 6 and not (25 <= v <= 45):
+			bad.append(f"Stufe {s + 1}: {v} % nicht in 25–45 %")
+	if len([s for s in range(3, 12) if s in st]) < 9:
+		bad.append("nicht alle Stufen 4–12 erreicht")
+	res.append(("G2", not bad, (", ".join(bad) if bad else "OK") + " · " + ", ".join(vals)))
+	# G3: Gewinn-Transfer-Anteil aktiv in Stufen 1–7
+	bad, vals = [], []
+	for s in range(0, 7):
+		if s not in st:
+			bad.append(f"Stufe {s + 1} nicht erreicht")
+			continue
+		v = pct(st[s]["direct"])
+		vals.append(f"S{s + 1} {v} %")
+		if v < 10:
+			bad.append(f"Stufe {s + 1}: {v} % < 10 %")
+	res.append(("G3", not bad, (", ".join(bad) if bad else "OK") + " · " + ", ".join(vals)))
+	# G4: Pacing
+	bad, vals = [], []
+	t4, t10, t25, t50 = free["t4"], free["t10"], free["t25"], free["t50"]
+	if t4 is None or t4 > 5 * 60:
+		bad.append("Etage 4 > 5 min")
+	if t10 is None or t10 > 25 * 60:
+		bad.append("Etage 10 > 25 min")
+	if t25 is None or not (2 * DAY <= t25 <= 5 * DAY):
+		bad.append("Etage 25 nicht an Tag 2–5")
+	if t50 is None or not (28 * DAY <= t50 <= 56 * DAY):
+		bad.append("Etage 50 nicht an Tag 28–56")
+	vals.append(f"Etage 4 {fmt_t(t4) if t4 is not None else '–'}")
+	vals.append(f"Etage 10 {fmt_t(t10) if t10 is not None else '–'}")
+	vals.append(f"Etage 25 Tag {t25 / DAY:.1f}" if t25 is not None else "Etage 25 –")
+	vals.append(f"Etage 50 Tag {t50 / DAY:.1f}" if t50 is not None else "Etage 50 –")
+	ok = not bad
+	if passes is not None:
+		tp = passes["t50"]
+		if tp is None or t50 is None:
+			bad.append("Pässe: Etage 50 nicht erreicht")
+		else:
+			gain = 1 - tp / t50
+			vals.append(f"Pässe Tag {tp / DAY:.1f} ({gain * 100:+.0f} % schneller)")
+			if gain > 0.15:
+				bad.append(f"Pässe {gain * 100:.0f} % schneller (> 15 %)")
+		ok = not bad
+		res.append(("G4", ok, (", ".join(bad) if bad else "OK") + " · " + ", ".join(vals)))
+	else:
+		res.append(("G4", ok, (", ".join(bad) if bad else "OK") + " · " + ", ".join(vals)
+			+ " · Pass-Vergleich nur im Voll-Lauf"))
+	return res
 
 
 if __name__ == "__main__":
+	root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 	print("Etagen-Kosten:", ", ".join(f"{n}:{floor_cost(n):.3g}" for n in (2, 5, 9, 12, 16, 20, 25, 30, 36, 40, 44, 50)))
 	print("Summe bis 50:", f"{sum(floor_cost(n) for n in range(1, 51)):.3g}",
 		" max. Raum-Stufe 50:", f"{upbase(50) * LEVEL_C[-1]:.3g}", " max. Personal 50:", f"{upbase(50) * STAFF[3][1]:.3g}",
@@ -309,11 +551,36 @@ if __name__ == "__main__":
 		for n in range(1, 51):
 			print(f"| {n} | {floor_cost(n):,.0f} | {floor_income(n):,.1f} | {build_time(n):,.0f} s |")
 		sys.exit(0)
-	worst = max(upbase(50) * LEVEL_C[-1], upbase(50) * STAFF[3][1], EFF_BASE * EFF_R ** (EFF_MAX - 1), floor_cost(50))
-	print("G1 teuerster Einzelpreis:", f"{worst:.3g}", "OK" if worst < 1e14 else "FEHLER (≥ 1e14)")
+	failed = False
+	sync_errors, sync_notes = config_sync(root)
+	for note in sync_notes:
+		print("  (Hinweis)", note)
+	if sync_errors:
+		failed = True
+		print("Config-Abgleich: FEHLER")
+		for e in sync_errors:
+			print("  -", e)
+	else:
+		print("Config-Abgleich: OK (Config/Tower.luau == Simulation)")
 	quick = "--quick" in sys.argv
-	campaign(Player("Gratis, guter Trader"), runs=2 if quick else 8)
+	free = campaign(Player("Gratis, guter Trader"), runs=2 if quick else 8)
+	results = [free]
+	passes = None
 	if not quick:
-		campaign(Player("Gratis, Nicht-Trader (nur Akademie/Quests)", trades=False, xp_hour=300), runs=2)
-		campaign(Player("x2+x3+VIP, guter Trader", passes=4.0, vip=1.1), runs=8)
-		campaign(Player("Gratis, starker Trader (r 4 %)", r=0.04), runs=2)
+		results.append(campaign(Player("Gratis, Nicht-Trader (nur Akademie/Quests)", trades=False, xp_hour=300), runs=2))
+		passes = campaign(Player("x2+x3+VIP, guter Trader", passes=4.0, vip=1.1), runs=8)
+		results.append(passes)
+		results.append(campaign(Player("Gratis, starker Trader (r 4 %)", r=0.04), runs=2))
+	prices = [upbase(50) * LEVEL_C[-1], upbase(50) * STAFF[3][1], EFF_BASE * EFF_R ** (EFF_MAX - 1), floor_cost(50)]
+	worst = max(prices)
+	highest = max(r["max"] for r in results)
+	integral = all(float(floor_cost(n)).is_integer() for n in range(1, 51))
+	g1 = worst < 1e14 and highest < CAP and integral and not any("G1" in e for e in sync_errors)
+	print(f"G1 teuerster Einzelpreis {worst:.3g}, höchster Kontostand {highest:.3g}, Preise ganzzahlig: "
+		+ ("OK" if g1 else "FEHLER"))
+	failed = failed or not g1
+	for name, ok, text in gates(free, passes):
+		print(f"{name} {'OK' if ok else 'FEHLER'}: {text}")
+		if not ok and not quick:
+			failed = True
+	sys.exit(1 if failed else 0)
