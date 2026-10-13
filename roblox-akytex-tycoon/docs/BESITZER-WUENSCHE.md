@@ -115,3 +115,15 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
     - Stufen mit Spielgeld kaufbar (z. B. +0,25x, immer teurer → Geldsenke) + Rebirth/„Börsengang“ gibt dauerhafte Multiplikatoren.
     - Robux: Multiplikator-Gamepasses (x2, x3 dauerhaft, stapelbar) und Developer Products (befristete Boosts, z. B. x2 für 30 min,
       x5 für 10 min, Server-weiter Boost für alle). Klare Anzeige von Laufzeit und Quelle jedes Multiplikators.
+
+## Nachtrag 10: „ok mach beides max“ (Code-Welt + echte Assets)
+17. **HYBRID-ASSET-ARCHITEKTUR (Pflicht für alle Pakete):**
+    - Alles funktioniert und sieht gut aus OHNE hochgeladene Assets (Code-gebaut aus Parts, wie bisher).
+    - Jedes sichtbare Objekt mit Upgrade-Potenzial (Autos, Uhren, Möbel, Kunst, Tower-Fassaden/Lobby-Deko, Yacht/Heli/Jet,
+      Charakter-Accessoires, UI-Icons, Sounds/Musik, Ladebildschirm) bekommt in `Config` einen optionalen Asset-Eintrag, z. B.
+      `Asset = { MeshId = 0, TextureId = 0, Scale = 1, Offset = CFrame }` bzw. `ImageId = 0` / `SoundId = 0`.
+      0 = Code-Rezept (Fallback), sonst wird das echte MeshPart/Bild/Sound benutzt – ohne Code-Änderung.
+    - Lade-Robustheit: fehlt ein Asset oder lädt es nicht (ContentProvider), fällt das Spiel automatisch auf das Code-Rezept zurück.
+    - Datei `docs/ASSET-LISTE.md`: alle Asset-Plätze mit Name, Config-Schlüssel, empfohlener Größe/Format, kurzer Higgsfield-Prompt-
+      Idee – damit der Besitzer später mit Higgsfield erzeugen, in Studio hochladen (Asset Manager → Bulk Import / 3D Importer)
+      und die IDs zurückschicken kann.

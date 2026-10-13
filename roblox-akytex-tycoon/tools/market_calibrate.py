@@ -13,7 +13,8 @@
 #  informierte Spieler deutlich positiv mit hoher Quote positiver Tage  ->  Skill statt Glück.
 #
 #  Die Hash-/Noise-Funktionen sind 1:1 so gebaut, wie sie in Luau umgesetzt werden
-#  (32-Bit-Hash "lowbias32", Value-Noise mit linearer Interpolation, Oktaven 4 s … 4,5 h).
+#  (32-Bit-Hash "lowbias32", Value-Noise mit linearer Interpolation, Oktaven 2 s … 4,5 h;
+#  Oktaven-Index im Hash 0-basiert – in Luau also k - 1 bei 1-basierten Schleifen).
 # =====================================================================
 import argparse
 import math
