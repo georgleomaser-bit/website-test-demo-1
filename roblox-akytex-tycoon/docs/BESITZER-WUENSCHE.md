@@ -39,3 +39,16 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
 7. Nach dem Bau gibt es eine eigene **Detail- & Grafik-Runde** (nur Feinschliff): jede Szene/jedes Menü wird einzeln auf
    Details geprüft (Licht, Materialien, Animationen, Sounds, Übergänge, Leerzustände, Fehlermeldungen, Ladebildschirm,
    Kamerafahrten, Wetter/Tageszeit, Ambient-Leben in der Stadt). Ziel: wirkt wie ein Top-Studio-Spiel.
+
+## Nachtrag 3: „und natürlich Admin-Panel, aber mach das Game Flagship“
+8. **FLAGSHIP**: AKYTEX TYCOON ist das Vorzeige-Spiel des Besitzers – höchste Qualität in allem (Grafik, Smoothness, Tiefe,
+   Fehlerfreiheit, Texte, Anleitung). Im Zweifel die hochwertigere Lösung wählen.
+9. **ADMIN-PANEL (nur Besitzer, wie in seinen anderen Spielen, aber mächtiger)**, AKYTEX-Dashboard-Look:
+   - Markt-Kontrolle: Crash/Rally auslösen, Firma pushen/abstürzen lassen, Insider-News veröffentlichen, Markt pausieren,
+     IPO starten, Volatilität einstellen – alles als „Admin-Abuse-Event“ mit globaler Ansage (Avatar + blauer Haken, ohne Kasten),
+     auch serverübergreifend.
+   - Geld & Items: Geld/Items/Etagen/Lizenzen geben, Geldregen für alle, Boost-Events (2x Einnahmen) für X Minuten.
+   - Spieler: Kick, Ban (mit Grund/Dauer), Unban, Ban-Liste, Einfrieren, Bring/Goto, Zuschauen, Spielerdaten ansehen.
+   - Kräfte: Fliegen, Noclip, Speed, Unsichtbar, Fotomodus, Tower jedes Spielers besuchen.
+   - Statistiken: Spieler online, Geldmenge im Umlauf, beliebteste Aktien, Käufe, verdächtige Spieler (Anti-Cheat).
+   - Fairness: Admin-Eingriffe in den Markt zählen nicht für Saison-Wettbewerbe (Rendite-Bestenliste) bzw. werden markiert.
