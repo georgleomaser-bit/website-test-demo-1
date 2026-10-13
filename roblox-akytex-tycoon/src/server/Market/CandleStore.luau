@@ -139,9 +139,15 @@ function CandleStore.SeedPartial(
 	candleAt: (number, number) -> (number, number, number, number, number)
 )
 	local r = self:Ensure(i)
+	if r.S1.Head >= 0 and liveStart - 1 > r.S1.Head then
+		zeroBuckets(r.S1, r.S1.Head + 1, liveStart - 1) -- Stillstand: alte Ring-Inhalte nicht als neue Kerzen zeigen
+	end
 	for _, ring in ipairs({ r.S5, r.M1 }) do
 		local liveBucket = liveStart // ring.Tf
 		local bucketStart = liveBucket * ring.Tf
+		if ring.Head >= 0 and liveBucket - 1 > ring.Head then
+			zeroBuckets(ring, ring.Head + 1, liveBucket - 1)
+		end
 		ring.P = nil
 		if bucketStart < liveStart then
 			local p: Partial? = nil
@@ -310,18 +316,19 @@ local function newTask(i: number, from: number, to: number, exact: boolean, live
 	return { I = i, From = from, To = to, Exact = exact, T = from, Cursor = nil, Agg5 = nil, AggM = nil, Live = live }
 end
 
--- Aufteilung: zuerst die letzten 30 min exakt (Charts sofort brauchbar), dann bis 6 h exakt, dann 6–24 h Stichproben
+-- Aufteilung: zuerst die letzten 30 min exakt (Charts sofort brauchbar), dann bis 6 h exakt, dann 6–24 h Stichproben.
+-- Der exakte Teil reicht bis liveStart − 1 (1s-Ring); die laufenden 5s-/1m-Buckets gehören SeedPartial/Live.
 function CandleStore.Plan(self: any, cursorFn: (number, number) -> any, ids: { number }, liveStart: number)
 	self.CursorFn = cursorFn
 	local cfg = self.Cfg.Backfill
-	local liveMinute = (liveStart // TF_M1) * TF_M1 -- ab hier füllt SeedPartial/Live
+	local liveMinute = (liveStart // TF_M1) * TF_M1
 	local exactFrom = liveMinute - math.floor(cfg.ExactHours * 3600 / TF_M1) * TF_M1
 	local sampleFrom = liveMinute - math.floor(cfg.SampleHours * 3600 / TF_M1) * TF_M1
 	local quick = math.max(exactFrom, liveMinute - 1800)
 	for _, i in ipairs(ids) do
 		self:Ensure(i)
-		if liveMinute - 1 >= quick then
-			addTask(self, newTask(i, quick, liveMinute - 1, true, liveStart), false)
+		if liveStart - 1 >= quick then
+			addTask(self, newTask(i, quick, liveStart - 1, true, liveStart), false)
 		end
 	end
 	for _, i in ipairs(ids) do
@@ -345,7 +352,7 @@ function CandleStore.Rebuild(self: any, ids: { number }, from: number, to: numbe
 	local liveMinute = (live // TF_M1) * TF_M1
 	local ringStart = liveMinute - (self.Cfg.Rings.M1 - 1) * TF_M1
 	local a = math.max((from // TF_M1) * TF_M1, ringStart)
-	local b = math.min(to, liveMinute - 1)
+	local b = math.min(to, live - 1) -- laufende 5s-/1m-Buckets überspringt stepTask (SeedPartial/Live)
 	if b < a then
 		return
 	end
@@ -398,8 +405,13 @@ local function stepTask(self: any, task: Task, deadline: number): boolean
 		task.Cursor = cursorFn(task.I, task.T)
 	end
 	local cursor = task.Cursor
-	local s1From = task.Live - r.S1.Cap
-	local s5From = task.Live - r.S5.Cap * TF_S5
+	-- Schreibgrenzen: nie über neuere Live-Kerzen (Ring läuft weiter, während der Auftrag über Frames verteilt läuft),
+	-- nie in die laufenden 5s-/1m-Buckets (die gehören SeedPartial und dem Live-Takt)
+	local s1From = math.max(task.Live, r.S1.Head + 1) - r.S1.Cap
+	local s5From = math.max(task.Live // TF_S5, r.S5.Head + 1) - r.S5.Cap
+	local mFrom = math.max(task.Live // TF_M1, r.M1.Head + 1) - r.M1.Cap
+	local s5Live = task.Live // TF_S5
+	local mLive = task.Live // TF_M1
 	local count = 0
 	if task.Exact then
 		while task.T <= task.To do
@@ -418,8 +430,8 @@ local function stepTask(self: any, task: Task, deadline: number): boolean
 					r.S1.Head = t
 				end
 			end
-			if t >= s5From then
-				local b5 = t // TF_S5
+			local b5 = t // TF_S5
+			if b5 >= s5From and b5 < s5Live then
 				local prev5 = task.Agg5
 				if prev5 and prev5.B ~= b5 then
 					finishBucket(r.S5, prev5)
@@ -427,11 +439,13 @@ local function stepTask(self: any, task: Task, deadline: number): boolean
 				task.Agg5 = aggregate(task.Agg5, b5, o, h, l, c, v)
 			end
 			local bm = t // TF_M1
-			local prevM = task.AggM
-			if prevM and prevM.B ~= bm then
-				finishBucket(r.M1, prevM)
+			if bm >= mFrom and bm < mLive then
+				local prevM = task.AggM
+				if prevM and prevM.B ~= bm then
+					finishBucket(r.M1, prevM)
+				end
+				task.AggM = aggregate(task.AggM, bm, o, h, l, c, v)
 			end
-			task.AggM = aggregate(task.AggM, bm, o, h, l, c, v)
 			task.T = t + 1
 			count += 1
 			if count % 32 == 0 and os.clock() >= deadline then
@@ -472,7 +486,9 @@ local function stepTask(self: any, task: Task, deadline: number): boolean
 			p.V += v * step
 			s += step
 		end
-		finishBucket(r.M1, p)
+		if minuteIndex >= math.max(mLive, r.M1.Head + 1) - r.M1.Cap and minuteIndex < mLive then
+			finishBucket(r.M1, p)
+		end
 		task.T = minuteStart + TF_M1
 		count += 1
 		if count % 4 == 0 and os.clock() >= deadline then

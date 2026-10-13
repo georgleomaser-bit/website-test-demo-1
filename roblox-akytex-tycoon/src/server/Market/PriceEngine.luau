@@ -18,6 +18,7 @@
 --    e:Quote(i): (bid?, ask?, mid?)     e:Candle(i): (O, H, L, C, V, hiOff, loOff)?   e:HalfSpread(i): number
 --    e:Regime(): number                 e:LiveTick(): number             e:NewsActive(i): boolean
 --    e:MidAt(i, t, divFrom?): number    e:CandleAt(i, t): (O, H, L, C, V, hiOff, loOff)   e:RegimeAt(t): number
+--    e:QuoteAt(i, t): (bid, ask, mid)   Quote zu einem beliebigen Tick (IPO-Klasse/Übergang wie live; Fill-Audit)
 --    e:NewCursor(i, t0): Cursor         Cursor:Candle(t) -> (O, H, L, C) · Cursor:Seek(t)
 --    e:AddInstrument(spec) · e:Has(i) · e:IsActive(i, t) · e:Ids(): { number }
 -- =====================================================================
@@ -469,6 +470,21 @@ function PriceEngine.MidAt(self: any, i: number, t: number, divFrom: number?): n
 	end
 	local lm = self:LogAt(i, t, divFrom)
 	return toCents(self, lm)
+end
+
+function PriceEngine.QuoteAt(self: any, i: number, t: number): (number, number, number)
+	local inst: Inst? = self.Insts[i]
+	if inst == nil then
+		return 0, 0, 0
+	end
+	if inst.T == t and self.LiveT == t then
+		return inst.Bid, inst.Ask, inst.Mid
+	end
+	local spec = inst.Spec
+	local mid = self:MidAt(i, t)
+	local _, _, spreadBps = classAt(spec, t)
+	local bid, ask = QuoteCodec.Spread(mid, if spec.Etf then spec.SpreadBps else spreadBps, self:RegimeAt(t))
+	return bid, ask, mid
 end
 
 function PriceEngine.CandleAt(self: any, i: number, t: number): (number, number, number, number, number, number, number)

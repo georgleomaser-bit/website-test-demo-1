@@ -5,9 +5,10 @@
 --  Alle Tests bauen EIGENE, isolierte Wochen-Kontexte mit Test-Seeds (MarketService.TestContext) – der Live-Markt
 --  wird nicht verändert. Lange Tests yielden zwischendurch (task.wait), damit der Server flüssig bleibt.
 --  Abgedeckt: Noise-Vektoren §19.2 · Determinismus (zwei Instanzen, 10.000 Ticks, Random-Access == sequentiell,
---  Cursor == Random-Access) · Kerzen-Aggregation 1m aus 1s == Ring · Frame ≤ 900 B (43 = 439 B) · QuoteCodec-
---  Rundreise/falsche Länge · Dividenden-Ex-Tick · Gerüchte-Bestätigung · News nie vor t_a · Wochenwechsel stetig ·
---  Berlin-Termine auf Tick genau · CancelAutoShow · Admin-Event (Rampe, Abklingen, Pause) · Config/Lang · Live-Markt.
+--  Cursor == Random-Access) · Kerzen-Aggregation 1m aus 1s == Ring · Backfill/Stillstand-Ringe == live ·
+--  Frame ≤ 900 B (43 = 439 B) · QuoteCodec-Rundreise/falsche Länge · Dividenden-Ex-Tick · Gerüchte-Bestätigung ·
+--  News nie vor t_a · Wochenwechsel stetig · Berlin-Termine auf Tick genau · CancelAutoShow · Admin-Event (Rampe,
+--  Abklingen, Pause) · Config/Lang · Live-Markt.
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -174,6 +175,98 @@ Tests["Markt: Kerzen-Aggregation 1m aus 1s == Ring, Frame 439 B"] = function(ser
 	local short = buffer.create(438)
 	buffer.copy(short, 0, frame, 0, 438)
 	eq(QuoteCodec.DecodeFrame(short), nil, "falsche Länge -> nil")
+end
+
+Tests["Markt: Backfill/Stillstand-Ringe == durchgehend live (1s, 5s, 1m)"] = function(services)
+	local ctx = context(services)
+	local i = 9
+	local live = MarketClock.WeekStart(TEST_WEEK) + 6 * MarketClock.DAY + 37 -- nicht 5s-/minuten-ausgerichtet
+	build(ctx, MarketClock.DayIndex(live) + 1)
+	local function candleAt(id: number, t: number)
+		local o, h, l, c, v = ctx.Engine:CandleAt(id, t)
+		return o, h, l, c, v
+	end
+	local cursorFn = function(id: number, t0: number)
+		return ctx.Engine:NewCursor(id, t0)
+	end
+	-- Referenz: 40 min durchgehend live geschoben
+	local ref = CandleStore.new(Config.Market)
+	local refCursor = ctx.Engine:NewCursor(i, live - 2400)
+	for t = live - 2400, live + 10 do
+		local o, h, l, c, v = refCursor:Full(t)
+		ref:Push(i, t, o, h, l, c, v)
+		if t % 600 == 0 then
+			task.wait()
+		end
+	end
+	local function same(a: any, b: any, tf: number, label: string)
+		local _, _, _, ca = QuoteCodec.DecodeCandles(a:Get(i, tf) :: buffer)
+		local _, _, _, cb = QuoteCodec.DecodeCandles(b:Get(i, tf) :: buffer)
+		assert(ca and cb, label .. ": dekodierbar")
+		local byT: { [number]: any } = {}
+		for _, c in ipairs(ca :: any) do
+			byT[c.T] = c
+		end
+		local compared = 0
+		for _, c in ipairs(cb :: any) do
+			local r = byT[c.T]
+			if r and c.T >= live - 2400 + 60 then
+				compared += 1
+				assert(c.C > 0, ("%s tf=%d: Lücke bei %d"):format(label, tf, c.T - live))
+				assert(
+					r.O == c.O and r.H == c.H and r.L == c.L and r.C == c.C and r.V == c.V,
+					("%s tf=%d: Kerze bei %d weicht ab"):format(label, tf, c.T - live)
+				)
+			end
+		end
+		assert(compared >= 30, ("%s tf=%d: zu wenig verglichen (%d)"):format(label, tf, compared))
+	end
+	-- Boot: laufende Buckets vorbelegen, Backfill einplanen, Live läuft parallel
+	local boot = CandleStore.new(Config.Market)
+	boot:SeedPartial(i, live, candleAt)
+	boot:Plan(cursorFn, { i }, live)
+	for t = live, live + 10 do
+		ctx.Engine:Step(t)
+		local o, h, l, c, v = ctx.Engine:Candle(i)
+		boot:Push(i, t, o :: number, h :: number, l :: number, c :: number, v :: number)
+		boot:Work(2)
+	end
+	local guard = 0
+	while not boot:Work(4) and guard < 5000 do
+		guard += 1
+		if guard % 20 == 0 then
+			task.wait()
+		end
+	end
+	for _, tf in ipairs({ 1, 5, 60 }) do
+		same(ref, boot, tf, "Boot")
+	end
+	-- Stillstand: live bis live−400, Sprung auf live−23 (Rebuild + SeedPartial wie MarketService)
+	local stall = CandleStore.new(Config.Market)
+	stall:Plan(cursorFn, {}, live) -- nur Cursor-Quelle setzen (keine Aufträge)
+	local stallCursor = ctx.Engine:NewCursor(i, live - 2400)
+	for t = live - 2400, live - 400 do
+		local o, h, l, c, v = stallCursor:Full(t)
+		stall:Push(i, t, o, h, l, c, v)
+	end
+	local target = live - 23
+	stall:Rebuild({ i }, live - 399, target - 1, target)
+	stall:SeedPartial(i, target, candleAt)
+	for t = target, live + 10 do
+		local o, h, l, c, v = ctx.Engine:CandleAt(i, t)
+		stall:Push(i, t, o, h, l, c, v)
+		stall:Work(2)
+	end
+	guard = 0
+	while not stall:Work(4) and guard < 5000 do
+		guard += 1
+		if guard % 20 == 0 then
+			task.wait()
+		end
+	end
+	for _, tf in ipairs({ 1, 5, 60 }) do
+		same(ref, stall, tf, "Stillstand")
+	end
 end
 
 Tests["Markt: Dividenden-Ex-Tick senkt den Kurs um den Betrag"] = function(services)

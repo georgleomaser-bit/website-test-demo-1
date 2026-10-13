@@ -65,14 +65,14 @@ function MarketAudit.VerifyFill(fill: Plain, ctx: Plain): boolean
 		local expected = if side == "B" then ask else bid
 		if px ~= expected then
 			ok = false
-			reason = ("MKT %s erwartet %d, bekommen %d"):format(side, expected :: number, px)
+			reason = ("MKT %s erwartet %s, bekommen %s"):format(side, tostring(expected), tostring(px))
 		end
 	else
 		local lo = (l :: number) - hs - 1
 		local hi = (h :: number) + hs + 1
 		if px < lo or px > hi then
 			ok = false
-			reason = ("Px %d außerhalb [%d, %d]"):format(px, lo, hi)
+			reason = ("Px %s außerhalb [%s, %s]"):format(tostring(px), tostring(lo), tostring(hi))
 		end
 	end
 	if not ok then

@@ -550,6 +550,22 @@ local function allIds(): { number }
 	return if cur then cur.Engine:Ids() else {}
 end
 
+-- laufende 5s-/1m-Buckets ab liveStart exakt neu vorbelegen (nach verspätetem Event oder Stillstand-Sprung)
+local function seedLive(ids: { number }, liveStart: number)
+	local candleAt = function(id: number, t: number)
+		local c = contextFor(t)
+		if c then
+			ensureBuilt(c, t)
+			local o, h, l, cl, v = c.Engine:CandleAt(id, t)
+			return o, h, l, cl, v
+		end
+		return 0, 0, 0, 0, 0
+	end
+	for _, i in ipairs(ids) do
+		store:SeedPartial(i, liveStart, candleAt)
+	end
+end
+
 local function onBusEvent(ev: Plain, late: boolean)
 	if busEvents[ev.Id] then
 		return
@@ -617,19 +633,7 @@ local function onBusEvent(ev: Plain, late: boolean)
 		end
 		if #ids > 0 then
 			store:Rebuild(ids, ev.StartTick, now, now + 1)
-			local engineCtx = cur
-			if engineCtx then
-				for _, i in ipairs(ids) do
-					store:SeedPartial(i, now + 1, function(id: number, t: number)
-						local c = contextFor(t)
-						if c then
-							local o, h, l, cl, v = c.Engine:CandleAt(id, t)
-							return o, h, l, cl, v
-						end
-						return 0, 0, 0, 0, 0
-					end)
-				end
-			end
+			seedLive(ids, now + 1)
 		end
 	elseif ev.Kind ~= "Halt" and ev.Kind ~= "Resume" then
 		-- Ankündigung (10 s Vorlauf): Countdown für alle
@@ -1343,6 +1347,7 @@ local function marketJob()
 			ensureBuilt(cur, target - 1)
 			lastTick = target - 1
 			store:Rebuild(allIds(), from, target - 1, target)
+			seedLive(allIds(), target)
 			for day = math.max(firstDay, lastDay - MAX_SKIPPED_DAYS + 1), lastDay do
 				fire(dayCallbacks, day - 1, day * DAY)
 			end
@@ -1639,14 +1644,13 @@ function MarketService.Start()
 				return o, h, l, c
 			end,
 			Quote = function(i: number, t: number)
-				local ctx = contextFor(clampTick(t))
-				if ctx == nil then
+				local tick = clampTick(t)
+				local ctx = contextFor(tick)
+				if ctx == nil or not ctx.Engine:IsActive(i, tick) then
 					return nil, nil
 				end
-				local mid = ctx.Engine:MidAt(i, clampTick(t))
-				local entry = inst(i)
-				local cls = entry and (cfg.Classes[entry.Class] or cfg.Classes.Normal) or cfg.Classes.Normal
-				return QuoteCodec.Spread(mid, cls.SpreadBps, ctx.Engine:RegimeAt(clampTick(t)))
+				local bid, ask = ctx.Engine:QuoteAt(i, tick)
+				return bid, ask
 			end,
 		})
 		local _ = p

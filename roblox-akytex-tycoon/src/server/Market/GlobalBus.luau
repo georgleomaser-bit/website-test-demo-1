@@ -5,8 +5,8 @@
 --  Wahrheit:   MemoryStore SortedMap "AT_Bus_W<w>" (Config.Tech.BusMapPrefix), Schlüssel "%012d_<guid>" (Aktivierungs-
 --              Tick), Ablauf 26 h. Ein Event gilt nur, wenn es dort steht (Schreiben scheitert -> Event abgebrochen).
 --  Schnellweg: MessagingService-Thema Config.Tech.BusTopic ("AT_EV"), Nachricht = nur der Schlüssel.
---  Poll:       jeder Server liest alle 5 s GetRangeAsync(aufsteigend, 50, letzter Schlüssel) – verlorene
---              Nachrichten werden so nachgeholt. Vorlauf 10 s -> alle Server wenden das Event im SELBEN Tick an.
+--  Poll:       jeder Server liest alle 5 s GetRangeAsync(aufsteigend, 50, ab min(letzter Schlüssel, jetzt − 30 s)) –
+--              verlorene Nachrichten werden so nachgeholt. Vorlauf 10 s -> alle Server wenden das Event im SELBEN Tick an.
 --  Audit:      DataStore Config.Tech.GlobalStore ("AT_Global"), Schlüssel AdminLog_W<w> (letzte 200 Einträge).
 --  Jedes Feld wird validiert und geklemmt (auch Werte aus dem Speicher), obere Zeitgrenze, Dedupe per Id (200).
 --  Studio ohne API / lokaler Testmarkt: Publish wendet lokal an (Bus nur lokal, §C17).
@@ -254,8 +254,12 @@ local function readRange(week: number, fromKey: string?): (boolean, { any })
 	return true, result
 end
 
-local function pollWeek(week: number, startKey: string?)
-	local key = lastKeys[week] or startKey
+-- Start: beim ersten Poll ab Horizont (26 h), danach ab min(letzter Schlüssel, jetzt − PollLookback). So werden auch
+-- Events gefunden, deren Schlüssel kleiner ist als der zuletzt gesehene (zwei Server veröffentlichen fast gleichzeitig,
+-- der frühere Start-Tick wird später geschrieben); Doppelte fängt die Id-Dedupe ab.
+local function pollWeek(week: number, startKey: string, trailKey: string)
+	local last = lastKeys[week]
+	local key = if last == nil then startKey elseif last < trailKey then last else trailKey
 	local pages = 0
 	local allOk = true
 	while pages < (cfg().MaxPages or 20) do
@@ -290,10 +294,17 @@ function GlobalBus.Poll()
 	local week = MarketClock.WeekIndex(now)
 	local horizon = now - (cfg().ExpirySeconds or 93600)
 	local startKey = string.format("%012d", math.max(0, horizon))
-	if MarketClock.WeekIndex(horizon) < week then
-		pollWeek(week - 1, startKey)
+	local trailKey = string.format("%012d", math.max(0, now - (cfg().PollLookback or 30)))
+	local ok, err = pcall(function()
+		if MarketClock.WeekIndex(horizon) < week then
+			pollWeek(week - 1, startKey, trailKey)
+		end
+		pollWeek(week, startKey, trailKey)
+	end)
+	if not ok then
+		busOk = false
+		warn("[GlobalBus] Poll-Fehler: " .. tostring(err))
 	end
-	pollWeek(week, startKey)
 	polling = false
 end
 

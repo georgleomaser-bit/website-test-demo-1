@@ -241,6 +241,7 @@ Market.Bus = {
 	MaxEvents = 200, -- so viele Bus-Events hält ein Server höchstens
 	LogMax = 200, -- Einträge im Admin-Log AdminLog_W<w>
 	MaxFuture = 60, -- StartTick höchstens so weit in der Zukunft (Vorlauf + Puffer)
+	PollLookback = 30, -- jeder Poll liest die letzten 30 s erneut (Events, die ein anderer Server spät geschrieben hat)
 }
 
 -- ---------------------------------------------------------------------

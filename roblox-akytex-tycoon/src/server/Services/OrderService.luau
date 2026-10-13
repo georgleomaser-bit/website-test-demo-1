@@ -12,7 +12,8 @@
 --    * Beitritt: Depot reparieren (Portfolio.Sanitize) -> Lizenz-Basis abgleichen -> Offline-Abgleich im Hintergrund
 --      (CatchUp, Orders 24 h, Bots 12 h, Dividenden, Auto-Transfers) -> "live". Während des Abgleichs sind
 --      Handels-Anfragen gesperrt (trade.syncing), danach laufen alle Ticks über OrderEngine.Step (wie offline).
---    * Live: MarketService.OnTick -> je bereitem Spieler alle Ticks bis (Markt-Tick − 1) (Kerze sicher im Ring).
+--    * Live: MarketService.OnTick(t) -> je bereitem Spieler Step(t) direkt nach PriceEngine.Step (Dividenden des
+--      Ex-Ticks vor jeder Anfrage zum neuen Quote; Sofort-Orders laufen zum Quote des verarbeiteten Ticks).
 --    * Glocke (t % 1200 == 0, in Step): Tagesrendite, Liga, Bot-Lohn, Auto-Transfer in Depot.Pending, dann OnBell(p)
 --      -> der Turm holt Pending über Withdraw(p, "Bell") ab.
 --
