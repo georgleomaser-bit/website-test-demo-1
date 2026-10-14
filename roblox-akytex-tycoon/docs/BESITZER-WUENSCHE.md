@@ -168,3 +168,7 @@ Fahrstühle, und die Welt wirkt verbuggt. Klau einfach alles von AKYTEX.“
 25. **„Fixe alle Bugs, plus es ist nicht alles flüssig“:** Performance-Runde – durchgehend flüssig (60 FPS am PC, stabil am
     Handy), kein Stocken beim Beitreten, Fenster-Öffnen, Fahren, Tower-Betreten und bei Events; kein Server-Lag bei 10 Spielern;
     kleine Netzwerk-Pakete; null Laufzeitfehler.
+26. **„Plus dass man Leute entbannen kann“:** Tab „Banns“ im Admin-Panel (alle aktiven Banns mit Grund, von wem, bis wann,
+    Restzeit; Suche; Knopf „Entbannen“ mit Bestätigung; Feld „Name oder UserId entbannen“) und Chat-Command `/unban <Name|UserId>`
+    – funktioniert auch, wenn der Spieler offline ist, und gilt für alle Server. Admin/Owner dürfen entbannen, Moderatoren nur
+    ihre eigenen Zeit-Banns. Jede Entbannung wird geloggt.
