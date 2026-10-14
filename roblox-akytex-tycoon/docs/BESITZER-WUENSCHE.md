@@ -143,3 +143,22 @@ details“, „mach es so neu und ultra high grafiks im akytex look“, „alles
       Beträgen; dazu „Geldregen“ für alle. Admin-Geld wird im Konto als Admin-Geschenk markiert und zählt nicht für die
       Saison-Liga (Rendite-/Skill-Bestenliste), damit sie fair bleibt; Netto-Vermögen-Bestenliste kann es zeigen (markiert).
     - Alles serverseitig geprüft (nur Besitzer), geloggt (letzte 100 Admin-Aktionen).
+
+## Nachtrag 12 (14.10.2026, nach der Veröffentlichung): „Es hat geklappt, aber es gibt viele Bugs …“
+Originalton: „Admin-Rechte bzw. Moderation hinzufügen für andere plus Commands, fixe alle Bugs, … das Trading gibt es nicht, plus
+Fahrstühle, und die Welt wirkt verbuggt. Klau einfach alles von AKYTEX.“
+19. **Team-Rollen & Moderation für andere + Chat-Commands:** Rollen Owner > Admin > Moderator (Owner fest, nie kaufbar). Owner
+    vergibt Admin/Moderator, Admin vergibt Moderator. Rechte je Rolle in einer Config-Tabelle (Moderator: kick, mute, warn,
+    Bann bis 24 h, tp/bring, freeze, spectate, Meldungen; Admin: zusätzlich Bann/Entbannen, fly/noclip, Speed/Jump geben, CR
+    geben mit Deckel, Ansagen, Spaß-Events, Moderatoren verwalten; Owner: alles inkl. Markt-Events, AKY, Server sperren).
+    Niemand handelt gegen gleichen/höheren Rang. Chat-Commands mit „/“ (Autovervollständigung) und „;“ (z. B. /kick, /ban 1d,
+    /mute, /tp, /bring, /speed, /money, /admin, /mod, /unrank, /staff, /cmds, /report für alle). Panel-Tabs nach Rechten,
+    neuer Tab „Team“ und „Meldungen“. Chat-Tags [OWNER]/[ADMIN]/[MOD]. Alles geloggt, serverseitig geprüft.
+20. **Trading muss es sichtbar geben – wie auf der AKYTEX-Website:** sofort auffindbar und überall nutzbar; Terminal mit allen
+    Trading-Funktionen, Bedienung und Optik der AKYTEX-Website (Spielgeld, fiktive Firmen, Compliance bleibt).
+21. **Fahrstühle:** sichtbare, benutzbare Aufzüge mit Türen, Ruf-Knopf/Prompt und Etagen-Anzeige in jedem Spieler-Tower und
+    in den großen Stadt-Gebäuden (z. B. Wahrzeichen mit Aussichtsdeck, Börsensaal).
+22. **Welt ohne Bugs:** nichts schwebt, flimmert, überlappt oder fehlt; alle Laufzeitfehler weg. Dafür gibt es ab jetzt einen
+    Headless-Test (`tools/headless/`), der Server + Client ohne Studio ausführt, die UI durchklickt und die Welt rendert.
+23. **Higgsfield für besseres Design:** gewünscht (Bilder, Icons, Texturen, Sounds, Trailer). Die Higgsfield-Server sind in der
+    Cloud-Umgebung noch gesperrt; der Besitzer muss sie in den Netzwerk-Einstellungen freigeben.
