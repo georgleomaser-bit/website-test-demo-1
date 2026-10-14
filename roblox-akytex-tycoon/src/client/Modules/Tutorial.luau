@@ -934,6 +934,11 @@ local function viewOf(n: number): View
 		if phase == 2 then
 			return { Lines = { "tut.s.licenceDone" }, Button = "tut.next" }
 		end
+		local exams = stateOf("Prog").Exams
+		if type(exams) ~= "table" or not exams.ProtectPair then
+			-- Übung und Live-Trade übersprungen: Prüfungs-Aufgabe „Schutz-Paar“ fehlt noch -> Weg zum Terminal zeigen
+			return { Lines = { "tut.s.licencePair" }, Button = "tut.btn.terminal" }
+		end
 		return { Lines = { "tut.s.licence" } }
 	elseif n == 15 then
 		return { Lines = { "tut.s.eff" }, Button = "tut.btn.eff" }
@@ -1144,6 +1149,11 @@ function Tutorial._Action()
 	elseif n == 14 then
 		if phase == 2 then
 			advance()
+		else
+			local ok = call("Terminal", "OpenAt", math.floor(num(cfg().SuggestInst, 40)))
+			if not ok then
+				ctx.Windows.Open("Terminal")
+			end
 		end
 	elseif n == 15 then
 		request("TowerEfficiency", {})

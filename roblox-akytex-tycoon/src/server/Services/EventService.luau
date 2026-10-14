@@ -1296,9 +1296,12 @@ local function buildBoss(ev: Ev, userId: number)
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 		humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
 	end
+	-- Nur die Wurzel verankern: die Glieder hängen über Motor6D daran, damit die Winke-Pose (EffectsEvent setzt
+	-- RightShoulder.C0 lokal) sie bewegen kann – zwischen zwei verankerten Teilen bewegt ein Gelenk nichts.
+	local rootPart = template:FindFirstChild("HumanoidRootPart") or template.PrimaryPart
 	for _, d in ipairs(template:GetDescendants()) do
 		if d:IsA("BasePart") then
-			d.Anchored = true
+			d.Anchored = rootPart == nil or d == rootPart
 			d.CanCollide = false
 			d.CanQuery = false
 			d.CanTouch = false
@@ -1978,6 +1981,52 @@ local function weeklyFire(entry: Plain, t: number)
 	end
 end
 
+-- Letzter Termin (Berlin) bis einschließlich t – für Server, die mitten in einem Termin starten
+local function previousBerlin(entry: Plain, t: number): number?
+	local prev = Clock.NextBerlin(entry.Dow, entry.HH, entry.MM, t - 8 * 86400)
+	if prev > t then
+		return nil
+	end
+	for _ = 1, 9 do -- täglich: höchstens 8 Schritte, wöchentlich: höchstens 2
+		local nextAt = Clock.NextBerlin(entry.Dow, entry.HH, entry.MM, prev)
+		if nextAt > t then
+			break
+		end
+		prev = nextAt
+	end
+	return prev
+end
+
+-- Nachholen beim Server-Start: ein neuer Server (Andrang zur Samstags-Show!) zeigt die Automatik-Show noch,
+-- wenn sie erst vor Kurzem begonnen hat (Sekunden je Kind)
+local WEEKLY_CATCHUP: { [string]: number } = { AutoShow = 150 }
+local catchupAt: { [string]: number } = {}
+
+-- Absage-Liste (GlobalBus) erst nach dem Markt-Start verlässlich – vorher nichts nachholen
+local function marketReady(): boolean
+	if not service("MarketService") then
+		return true
+	end
+	local ok, info = call("MarketService", "Stats")
+	return ok and type(info) == "table" and info.Ready == true
+end
+
+local function weeklyCatchup(entry: Plain, key: string, t: number)
+	local since = catchupAt[key]
+	if since == nil then
+		return
+	end
+	if t - since > (WEEKLY_CATCHUP[tostring(entry.Kind)] or 0) then
+		catchupAt[key] = nil
+	elseif marketReady() then
+		catchupAt[key] = nil
+		local ok, err = pcall(weeklyFire, entry, t)
+		if not ok then
+			logError("Weekly " .. key, err)
+		end
+	end
+end
+
 local function weeklyTick(t: number)
 	for _, entry in ipairs(EV.Weekly) do
 		local key = entry.Key
@@ -1985,8 +2034,14 @@ local function weeklyTick(t: number)
 			local at = weeklyNext[key]
 			if at == nil then
 				weeklyNext[key] = Clock.NextBerlin(entry.Dow, entry.HH, entry.MM, t)
+				local catchup = WEEKLY_CATCHUP[tostring(entry.Kind)]
+				local okPrev, prev = pcall(previousBerlin, entry, t)
+				if catchup and okPrev and type(prev) == "number" and t - prev <= catchup then
+					catchupAt[key] = prev
+				end
 			elseif t >= at then
 				weeklyNext[key] = Clock.NextBerlin(entry.Dow, entry.HH, entry.MM, at)
+				catchupAt[key] = nil -- regulärer Termin feuert selbst
 				if t - at <= 60 then
 					local ok, err = pcall(weeklyFire, entry, t)
 					if not ok then
@@ -1994,6 +2049,7 @@ local function weeklyTick(t: number)
 					end
 				end
 			end
+			weeklyCatchup(entry, key, t)
 		end
 	end
 end

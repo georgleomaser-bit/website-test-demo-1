@@ -46,6 +46,7 @@ local Lang = require(Shared:WaitForChild("Lang"))
 local Types = require(Shared:WaitForChild("Types"))
 local Util = require(Shared:WaitForChild("Util"))
 local Clock = require(Shared:WaitForChild("Clock"))
+local Format = require(Shared:WaitForChild("Format"))
 local Remotes = require(script.Parent:WaitForChild("Remotes"))
 local Scheduler = require(script.Parent.Parent:WaitForChild("Lib"):WaitForChild("Scheduler"))
 
@@ -108,7 +109,6 @@ local QUIET: { [string]: boolean } = {
 	AdminLog = true,
 	LiveGet = true,
 	MarketLog = true,
-	SetPower = true,
 }
 
 -- Katalog-Schlüssel -> MarketService.Admin-Aktion (Types.MarketEvent.Kind)
@@ -913,15 +913,17 @@ local function handleGlobal(message: any)
 	end
 end
 
--- Global senden; Fehler -> wenigstens auf diesem Server
+-- Global senden; Fehler -> wenigstens auf diesem Server. Auch bei Erfolg sofort lokal ausführen: MessagingService
+-- liefert nur "best effort" (das Echo an den Sender kann fehlen, im Studio scheitert oft schon SubscribeAsync) –
+-- das Dedupe per Id verwirft das spätere Echo, nichts läuft doppelt.
 local function publishGlobal(message: Plain): boolean
 	local ok, err = pcall(function()
 		MessagingService:PublishAsync(Config.Tech.MessagingTopic, message)
 	end)
 	if not ok then
 		warn("[Admin] Global senden fehlgeschlagen (nur dieser Server): " .. tostring(err))
-		handleGlobal(message)
 	end
+	handleGlobal(message)
 	return ok
 end
 
@@ -1116,7 +1118,33 @@ local function freeze(p: Player, on: boolean)
 	end
 end
 
+-- Erst aussteigen lassen: wer im Auto sitzt, würde sonst samt Auto versetzt (Sitz-Schweißung). VehicleService merkt
+-- das Aussteigen über den Sitz selbst (Erlaubnis zurück, Ausroll-Gnade). Yieldet höchstens ~0,5 s (Admin-Aktion).
+local function unseat(p: Player): boolean
+	local character = p.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local seat = humanoid and humanoid.SeatPart
+	if not humanoid or not seat then
+		return true
+	end
+	local weld = seat:FindFirstChild("SeatWeld")
+	if weld then
+		weld:Destroy()
+	end
+	humanoid.Sit = false
+	for _ = 1, 10 do
+		if humanoid.SeatPart == nil then
+			break
+		end
+		task.wait(0.05)
+	end
+	return humanoid.SeatPart == nil
+end
+
 local function teleport(p: Player, cf: CFrame): boolean
+	if not unseat(p) then
+		return false
+	end
 	local ok, moved = call("PlotService", "Teleport", p, cf)
 	if ok and moved == true then
 		return true
@@ -2100,6 +2128,7 @@ Actions.Give = function(admin, args)
 		end
 		local want = math.floor(math.min(-raw.Credits, MAX_GIVE_CREDITS))
 		local taken: { Player } = {}
+		local total = 0 -- tatsächlich abgezogen (höchstens das jeweilige Guthaben)
 		for _, p in ipairs(resolveTargets(admin, args.Target)) do
 			local okBal, balance = call("ShopService", "Balance", p)
 			local amount = math.min(want, if okBal and Util.IsFinite(balance) then math.floor(balance) else 0)
@@ -2107,13 +2136,14 @@ Actions.Give = function(admin, args)
 				local okDebit, debited = call("ShopService", "Debit", p, amount, "Admin")
 				if okDebit and debited == true then
 					table.insert(taken, p)
+					total += amount
 				end
 			end
 		end
 		if #taken == 0 then
 			return false, L(admin, "admin.giveFailed")
 		end
-		return true, L(admin, "admin.taken", want, names(taken))
+		return true, L(admin, "admin.taken", total, names(taken))
 	end
 	local grant = sanitizeGrant(args.Grant)
 	if not grant then
@@ -2172,14 +2202,34 @@ Actions.GiveAky = function(admin, args)
 	-- negativ = abziehen (Besitzer-Wunsch "geben oder abziehen"; OrderService.AdminCredit zieht höchstens freies AKY ab)
 	local cents = math.sign(aky) * math.floor(math.min(math.abs(aky), MAX_GIVE_AKY)) * 100
 	local done: { Player } = {}
-	for _, p in ipairs(resolveTargets(admin, args.Target)) do
+	local targets = resolveTargets(admin, args.Target)
+	local taken = 0 -- beim Abziehen tatsächlich gebucht (Cent; höchstens das jeweils freie AKY)
+	for _, p in ipairs(targets) do
+		local okDepot, depot = call("OrderService", "Depot", p)
+		local before = if okDepot and type(depot) == "table" and Util.IsFinite(depot.Cash) then depot.Cash else nil
 		local ok, result = call("OrderService", "AdminCredit", p, cents)
 		if ok and result == true then
 			table.insert(done, p)
+			if before and Util.IsFinite(depot.Cash) then
+				taken += math.max(0, before - depot.Cash)
+			end
+			-- Wunsch 18: Admin-AKY im Konto markiert (Netto-Vermögen-Bestenliste zeigt die Marke, wie bei Admin-CR)
+			local okData, data = call("DataService", "Get", p)
+			local stats = if cents > 0 and okData and type(data) == "table" then data.Stats else nil
+			if type(stats) == "table" then
+				local gifted = stats.AdminAky
+				stats.AdminAky = math.min(9e15, (if Util.IsFinite(gifted) then gifted else 0) + cents)
+			end
 		end
 	end
 	if #done == 0 then
-		return false, L(admin, "admin.noTarget")
+		if #targets == 0 then
+			return false, L(admin, "admin.noTarget")
+		end
+		return false, L(admin, if cents < 0 then "admin.akyNoneFree" else "admin.giveFailed")
+	end
+	if cents < 0 then
+		return true, L(admin, "admin.akyTaken", Format.Aky(taken, langOf(admin)), names(done))
 	end
 	return true, L(admin, "admin.akyGiven", math.floor(cents / 100), names(done))
 end
@@ -2663,8 +2713,10 @@ Actions.Reports = function(admin, _args)
 end
 
 Actions.AdminLog = function(admin, _args)
+	-- Panel zeigt die letzten 100 Admin-Aktionen (Wunsch 18); gespeichert bleiben bis zu AdminLogMax
 	local list = readLog()
-	return true, L(admin, "admin.logLoaded", #list), list
+	local shown: { Plain } = table.move(list, 1, math.min(#list, MAX_LIST), 1, {})
+	return true, L(admin, "admin.logLoaded", #shown), shown
 end
 
 -- =====================================================================
@@ -2842,6 +2894,16 @@ function AdminService.Start()
 			conn:Disconnect()
 		end
 		invisConn[p] = nil
+		-- Zuschauer, deren Replikation um diesen Spieler lief, wieder um die eigene Figur streamen
+		local character = p.Character
+		if character then
+			for _, other in ipairs(Players:GetPlayers()) do
+				local focus = other.ReplicationFocus
+				if other ~= p and focus and focus:IsDescendantOf(character) then
+					other.ReplicationFocus = nil
+				end
+			end
+		end
 	end)
 
 	Remotes.Admin.OnServerInvoke = dispatch

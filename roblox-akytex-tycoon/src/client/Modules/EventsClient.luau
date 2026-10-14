@@ -1682,6 +1682,10 @@ local function updateBellZone(t: number)
 		end
 	end
 	local show = center ~= nil and (bellWindowOpen(t) or momentLive)
+	local glow = bellRing and bellRing:FindFirstChild("AT_EventLight")
+	if glow and glow:IsA("Light") and glow.Enabled ~= show then
+		glow.Enabled = show -- goldener Bodenschein nur, solange die Zone offen ist
+	end
 	if not show then
 		if bellRing then
 			bellRing.Transparency = 1
@@ -1700,6 +1704,7 @@ local function updateBellZone(t: number)
 			Material = Enum.Material.Neon,
 			Transparency = 0.6,
 		})
+		addLight(ring, "PointLight", 16, { Range = math.min(radius + 6, 60), Brightness = 1.1, Color = GOLD })
 		ring.Parent = folder
 		bellRing = ring
 		local billboard = Instance.new("BillboardGui")

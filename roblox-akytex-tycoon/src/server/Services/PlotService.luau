@@ -17,7 +17,7 @@
 --    PlotService.PlotCFrame(plot): CFrame      Plot-Mitte am Boden (CityService.PlotSite, sonst Ring-Formel §A5)
 --    PlotService.LobbyCFrame(plot): CFrame     Fußpunkt vor der Aufzugstür im Erdgeschoss
 --    PlotService.IsOnOwnPlot(p): boolean       waagerecht ≤ Config.Tower.CollectRange (70) zur Plot-Mitte
---    PlotService.Teleport(p, cf): boolean      + AntiCheatService.NoteTeleport
+--    PlotService.Teleport(p, cf, sync?): boolean   + AntiCheatService.NoteTeleport (sync = erst nach dem Versetzen zurück)
 --  Ergänzungen: PlotService.FloorCFrame(plot, floor): CFrame · PlotService.TowerAt(position): number?
 --    PlotService.VisitingOf(p): number?   (UserId des besuchten Towers)
 --  Request-Handler: TowerVisit {UserId} (1/2 s), TowerHome {} (1/2 s), TowerElevator {Floor} (2/s)
@@ -269,7 +269,9 @@ local function rootOffset(humanoid: Humanoid, root: BasePart): number
 	return humanoid.HipHeight + root.Size.Y * 0.5
 end
 
-function PlotService.Teleport(p: Player, cf: CFrame): boolean
+-- sync = true: erst nach dem Versetzen zurückkehren (yieldet bis Visit.StreamTimeout; nur aus Anfragen/Threads) –
+-- z. B. der Aufzug: seine Antwort heißt "angekommen", die Kinoszene gibt die Kamera erst danach zurück
+function PlotService.Teleport(p: Player, cf: CFrame, sync: boolean?): boolean
 	if typeof(p) ~= "Instance" or not p:IsA("Player") or p.Parent ~= Players or typeof(cf) ~= "CFrame" then
 		return false
 	end
@@ -286,7 +288,7 @@ function PlotService.Teleport(p: Player, cf: CFrame): boolean
 		return false -- erst aussteigen (Sitz-Schweißung würde das Auto mitziehen)
 	end
 	local target = cf + Vector3.new(0, rootOffset(humanoid, root), 0)
-	task.spawn(function()
+	local function move(): boolean
 		local timeout = num(VISIT.StreamTimeout, 2)
 		if timeout > 0 then
 			pcall(function()
@@ -294,7 +296,7 @@ function PlotService.Teleport(p: Player, cf: CFrame): boolean
 			end)
 		end
 		if p.Parent ~= Players or p.Character ~= character or humanoid.Health <= 0 or humanoid.SeatPart ~= nil then
-			return
+			return false
 		end
 		call("AntiCheatService", "NoteTeleport", p, target)
 		local ok, err = pcall(function()
@@ -305,7 +307,12 @@ function PlotService.Teleport(p: Player, cf: CFrame): boolean
 		if not ok then
 			logError("Teleport", err)
 		end
-	end)
+		return ok
+	end
+	if sync == true then
+		return move()
+	end
+	task.spawn(move)
 	return true
 end
 
@@ -556,13 +563,13 @@ local function exact(arg: any, spec: { [string]: string }): boolean
 	return true
 end
 
-local function teleportReply(p: Player, cf: CFrame, key: string?, args: { any }?): Reply
+local function teleportReply(p: Player, cf: CFrame, key: string?, args: { any }?, sync: boolean?): Reply
 	local character = p.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid and humanoid.SeatPart ~= nil then
 		return fail(p, "tower.inCar")
 	end
-	if not PlotService.Teleport(p, cf) then
+	if not PlotService.Teleport(p, cf, sync) then
 		return fail(p, "tower.noCharacter")
 	end
 	return okReply(p, key, args)
@@ -640,7 +647,8 @@ local function handleElevator(p: Player, arg: any): Reply
 	if owner ~= p and type(tower.Private) == "table" and table.find(tower.Private, floor) and not isAdmin(p) then
 		return fail(p, "tower.privateFloor")
 	end
-	return teleportReply(p, PlotService.FloorCFrame(plot, floor), nil, nil)
+	-- erst nach dem Versetzen antworten: die Aufzug-Kinoszene wertet Ok als "angekommen" (fremde Tower streamen erst)
+	return teleportReply(p, PlotService.FloorCFrame(plot, floor), nil, nil, true)
 end
 
 -- ---------------------------------------------------------------------

@@ -12,7 +12,8 @@
 --  Teilen-Links (Wunsch 11): „Freunde einladen“ hängt LaunchData "visit:<UserId>" an (ExperienceInviteOptions) – der
 --  Eingeladene landet nach dem Tutorial direkt am Tower des Einladers (State Social.LaunchVisit/LaunchVisitHere).
 --  Anfragen: SocialRespekt { UserId }, SocialReact { Kind }, SocialShow {}, SocialInvited {}, NotifyOptIn { Result },
---  TowerVisit { UserId }.  State: "Social".  Spieler-Attribute (vom Server): Title, Licence, Group, React, ShowCard.
+--  TowerVisit { UserId }, Report { UserId, Reason } (§C9, AntiCheatService: 3 je 10 min, Liste im Admin-Panel).
+--  State: "Social".  Spieler-Attribute (vom Server): Title, Licence, Group, React, ShowCard.
 --  NotifyOptIn.Result = „Abfrage wurde gezeigt“ (Roblox verrät nicht, ob zugestimmt wurde).
 -- =====================================================================
 
@@ -41,6 +42,7 @@ local POP_INFO = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection
 local FADE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 local MAX_TRACKED = 60 -- Schutz: so viele Spieler bekommen Namensschilder (Server-Größe ist kleiner)
 local EMOTE_ICONS: { [string]: string } = { wave = "👋", cheer = "🙌", point = "👉", dance = "🕺" }
+local REPORT_REASONS = { "Speed", "Fly", "Exploit", "Toxic", "Other" } -- = AntiCheatService REPORT_REASONS
 
 type Watch = {
 	Conns: { RBXScriptConnection },
@@ -70,6 +72,8 @@ local billboardFolder: Folder? = nil
 local launchHandled = false -- Tower-Besuch aus den Launch-Daten schon erledigt (diese Sitzung)
 local launchToldLater = false
 local favoriteAsked = false
+local reportFor: number? = nil -- Spieler, dessen Zeile gerade die Melde-Gründe zeigt
+local reportBusy = false
 
 -- ---------------------------------------------------------------------
 -- 1) HELFER
@@ -871,7 +875,7 @@ local function refreshPeople()
 	table.sort(others, function(a, b)
 		return a.DisplayName < b.DisplayName
 	end)
-	local parts = { lang(), tostring(s.SocialReady) }
+	local parts = { lang(), tostring(s.SocialReady), tostring(reportFor) }
 	for _, p in ipairs(others) do
 		table.insert(
 			parts,
@@ -900,7 +904,8 @@ local function refreshPeople()
 		return
 	end
 	for i, p in ipairs(others) do
-		local card = UI.RowCard(ui.People, i, 60)
+		local reporting = reportFor == p.UserId
+		local card = UI.RowCard(ui.People, i, if reporting then 104 else 60)
 		local avatar = UI.Create("ImageLabel", {
 			Position = UDim2.fromOffset(10, 8),
 			Size = UDim2.fromOffset(44, 44),
@@ -911,7 +916,7 @@ local function refreshPeople()
 		avatar.ScaleType = Enum.ScaleType.Crop
 		UI.Label({
 			Position = UDim2.fromOffset(64, 8),
-			Size = UDim2.new(1, -300, 0, 24),
+			Size = UDim2.new(1, -350, 0, 24),
 			Text = p.DisplayName,
 			Face = "BodyBold",
 			TextXAlignment = Enum.TextXAlignment.Left,
@@ -922,14 +927,16 @@ local function refreshPeople()
 		local licence = licenceName(p:GetAttribute("Licence"))
 		UI.Label({
 			Position = UDim2.fromOffset(64, 32),
-			Size = UDim2.new(1, -300, 0, 20),
+			Size = UDim2.new(1, -350, 0, 20),
 			Text = if sub ~= "" and licence ~= "" then sub .. "  ·  " .. licence else sub .. licence,
 			TextColor3 = Theme.Gold,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			MaxText = 13,
 			Parent = card,
 		})
-		local actions = UI.RowActions(card, 230)
+		local actions = UI.RowActions(card, 276)
+		actions.Position = UDim2.new(1, -8, 0, 30) -- obere Zeile (auch wenn darunter die Melde-Gründe stehen)
+		actions.Size = UDim2.new(0, 276, 0, 48)
 		local userId = p.UserId
 		local done = given[tostring(userId)] == true
 		UI.Button({
@@ -958,6 +965,62 @@ local function refreshPeople()
 			ctx.Windows.Close("Social")
 			ctx.Request("TowerVisit", { UserId = userId })
 		end)
+		-- Melden (Speed/Fly/Exploit/Toxic/Other): Gründe klappen in der Zeile auf, der Server hängt einen Schnappschuss an
+		UI.Button({
+			Size = UDim2.fromOffset(40, 40),
+			Text = "⚑",
+			Variant = if reporting then "Secondary" else "Ghost",
+			LayoutOrder = 3,
+			Parent = actions,
+		}, function()
+			reportFor = if reportFor == userId then nil else userId
+			peopleSig = ""
+			refreshPeople()
+		end)
+		if reporting then
+			local strip = UI.Create("Frame", {
+				Position = UDim2.fromOffset(64, 62),
+				Size = UDim2.new(1, -72, 0, 34),
+				BackgroundTransparency = 1,
+				Parent = card,
+			}, {
+				UI.Create("UIListLayout", {
+					FillDirection = Enum.FillDirection.Horizontal,
+					VerticalAlignment = Enum.VerticalAlignment.Center,
+					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, 6),
+				}),
+			})
+			text(strip, {
+				Size = UDim2.fromOffset(96, 30),
+				LayoutOrder = 0,
+				Text = T("soc.report.title"),
+				MaxText = 12,
+				TextColor3 = Theme.Muted,
+			})
+			for order, reason in ipairs(REPORT_REASONS) do
+				UI.Button({
+					Size = UDim2.fromOffset(78, 30),
+					Text = T("soc.report." .. reason),
+					Variant = "Secondary",
+					MaxText = 12,
+					LayoutOrder = order,
+					Parent = strip,
+				}, function()
+					if reportBusy then
+						return
+					end
+					reportBusy = true
+					reportFor = nil
+					peopleSig = ""
+					refreshPeople()
+					task.spawn(function()
+						ctx.RequestFull("Report", { UserId = userId, Reason = reason }) -- Antwort kommt als Toast
+						reportBusy = false
+					end)
+				end)
+			end
+		end
 	end
 end
 
@@ -1166,7 +1229,9 @@ function Social.Start()
 		if changed.Social then
 			Social.Refresh()
 		end
-		if changed.Social or changed.Flags then
+		-- bis der Besuch erledigt ist, bei jedem State-Wechsel prüfen: das Tutorial entscheidet evtl. erst später
+		-- (Tick, Plot-Wartezeit) – ein reiner Social/Flags-Filter verpasste den Besuch für Wiederkehrer
+		if not launchHandled then
 			checkLaunchVisit()
 		end
 	end)

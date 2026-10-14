@@ -655,7 +655,7 @@ local function buildFloorDetail(parent: Frame, list: { any }, i: number)
 		local hint = row(detail, 9, 38)
 		text(hint, T("tui.staffPlus"), 1, { Size = UDim2.new(1, -150, 1, 0), MaxText = 14 })
 		button(hint, T("tui.view"), "Premium", 2, function()
-			call("Shop", "Open", "Passes")
+			call("Shop", "Open", tostring(towerCfg().StaffPass or "StaffPlus")) -- direkt die Pass-Details
 		end, 130)
 	end
 	-- Deko-Plätze
@@ -900,7 +900,7 @@ local function buildStaff(parent: Frame)
 		local hint = row(summary, 21, 38)
 		text(hint, T("tui.staffPlus"), 1, { Size = UDim2.new(1, -150, 1, 0), MaxText = 14 })
 		button(hint, T("tui.view"), "Premium", 2, function()
-			call("Shop", "Open", "Passes")
+			call("Shop", "Open", tostring(towerCfg().StaffPass or "StaffPlus")) -- direkt die Pass-Details
 		end, 130)
 	end
 end
@@ -934,7 +934,7 @@ local function buildFacade(parent: Frame)
 				return
 			end
 			if skin.Unlock == "Pass" and not hasPass(tostring(skin.Pass)) then
-				call("Shop", "Open", "Passes")
+				call("Shop", "Open", if type(skin.Pass) == "string" then skin.Pass else "Passes")
 				return
 			end
 			Request("TowerSkin", { Skin = skin.Key })

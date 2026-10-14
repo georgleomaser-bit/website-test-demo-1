@@ -164,8 +164,8 @@ Shop.GamePasses = {
 		ImageId = 0,
 		Name = { de = "ΛKYTEX Λ-1 Hypercar", en = "ΛKYTEX Λ-1 Hypercar" },
 		Desc = {
-			de = "Exklusives Hypercar mit Neon-Spur und eigener Form (Tempo wie die besten erspielten Hypercars). Fährt sofort aus deiner Garage.",
-			en = "Exclusive hypercar with a neon trail and its own shape (top speed like the best earned hypercars). Drives right out of your garage.",
+			de = "Exklusives Hypercar mit Neon-Spur, eigener Form und eigenem Motor-Klang (Tempo wie die besten erspielten Hypercars). Fährt sofort aus deiner Garage.",
+			en = "Exclusive hypercar with a neon trail, its own shape and its own engine sound (top speed like the best earned hypercars). Drives right out of your garage.",
 		},
 	},
 	{

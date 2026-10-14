@@ -513,6 +513,7 @@ local function build()
 			setStatus(T("core.noAnswer"), Theme.Down)
 			return nil
 		end
+		setStatus(T("admin.working"), Theme.Text2) -- sofortiges Feedback (Bann, Statistik, Shards lesen dauern)
 		local ok, result = pcall(function()
 			return remote:InvokeServer(action, args or {})
 		end)
@@ -1532,7 +1533,24 @@ local function build()
 			math.floor(jumpRange.Min),
 			function() end
 		)
-		local giftRow = UI.Row(page, 10, 40)
+		-- exakte Zahl statt Ziehen (Handy, genaue Werte): Eingabe setzt den Regler, der Regler zeigt den Wert
+		local exactRow = UI.Row(page, 10, 36)
+		local function exactBox(slider: any, key: string, lo: number, hi: number)
+			local box = textBox(exactRow, T(key, lo, hi), part(0.5))
+			box.FocusLost:Connect(function()
+				local n = tonumber(box.Text)
+				if n and n == n then
+					slider.Set(n)
+					box.Text = tostring(slider.Get())
+				elseif box.Text ~= "" then
+					box.Text = ""
+					setStatus(T("core.invalid"), Theme.Down)
+				end
+			end)
+		end
+		exactBox(giftSpeed, "admin.giftSpeedExact", math.floor(speedRange.Min), math.floor(speedRange.Max))
+		exactBox(giftJump, "admin.giftJumpExact", math.floor(jumpRange.Min), math.floor(jumpRange.Max))
+		local giftRow = UI.Row(page, 11, 40)
 		local durationMinutes: { [string]: number } =
 			{ ["5 min"] = 5, ["15 min"] = 15, ["30 min"] = 30, ["60 min"] = 60 }
 		local durationCycler = UI.Cycler(
@@ -1558,8 +1576,8 @@ local function build()
 			admin("GiveSpeed", { Target = target(), Reset = true })
 		end)
 
-		UI.Section(page, T("admin.secProgress"), 11)
-		local licRow = UI.Row(page, 12, 40)
+		UI.Section(page, T("admin.secProgress"), 12)
+		local licRow = UI.Row(page, 13, 40)
 		local licences: { string } = {}
 		local licenceList = Config.Progression and Config.Progression.Licences or {}
 		for i, def in ipairs(licenceList) do
@@ -1574,7 +1592,7 @@ local function build()
 			end
 			admin("SetLicence", { Target = target(), Licence = idx })
 		end)
-		local floorRow = UI.Row(page, 13, 40)
+		local floorRow = UI.Row(page, 14, 40)
 		local floorBox = textBox(floorRow, T("admin.floorsHint"), part(0.5))
 		button(floorRow, T("admin.setFloors"), "Primary", part(0.5), function()
 			if needsConfirm("Floors" .. target(), T("admin.setFloors")) then
@@ -1582,8 +1600,8 @@ local function build()
 			end
 			admin("SetFloors", { Target = target(), Floors = tonumber(floorBox.Text) })
 		end)
-		UI.Section(page, T("admin.secItems"), 14)
-		local itemRow = UI.Row(page, 15, 40)
+		UI.Section(page, T("admin.secItems"), 15)
+		local itemRow = UI.Row(page, 16, 40)
 		local kindCycler = UI.Cycler(
 			itemRow,
 			T("admin.itemKind"),
@@ -1602,7 +1620,7 @@ local function build()
 			end
 			admin("Give", { Target = target(), Grant = grant })
 		end)
-		local allGrid = UI.Grid(page, 16, 122, 40)
+		local allGrid = UI.Grid(page, 17, 122, 40)
 		for _, kind in ipairs({ "Cars", "Watches", "Accessories", "Decor" }) do
 			button(allGrid, T("admin.giveAll" .. kind), "Secondary", UDim2.fromScale(1, 1), function()
 				if needsConfirm("GiveAll" .. kind .. target(), T("admin.giveAll" .. kind)) then
@@ -1611,8 +1629,8 @@ local function build()
 				admin("GiveAllItems", { Target = target(), Kind = kind })
 			end)
 		end
-		UI.Section(page, T("admin.secTokens"), 17)
-		local tokenRow = UI.Row(page, 18, 40)
+		UI.Section(page, T("admin.secTokens"), 18)
+		local tokenRow = UI.Row(page, 19, 40)
 		local tokenKind = UI.Cycler(
 			tokenRow,
 			T("admin.tokenKind"),
@@ -1786,12 +1804,14 @@ local function build()
 				T("admin.liveInfo", num(d.Version, 0), fmtTime(d.At), if d.Local then T("admin.liveLocalOnly") else "")
 			clearChildren(list)
 			local current = if type(d.Current) == "table" then d.Current else {}
+			local cards = 0
 			for i, spec in ipairs(if type(d.Specs) == "table" then d.Specs else {}) do
 				if
 					type(spec) == "table"
 					and type(spec.Path) == "string"
 					and not string.find(spec.Path, "*", 1, true)
 				then
+					cards += 1
 					local card = UI.RowCard(list, i, 46)
 					local value = current[spec.Path]
 					local shown = if value == nil
@@ -1873,6 +1893,9 @@ local function build()
 						task.delay(0.3, load)
 					end)
 				end
+			end
+			if cards == 0 then
+				textLine(list, T("admin.nothing"), 1, Theme.Muted) -- Leerzustand statt leerer Fläche
 			end
 		end
 		local loadBtn = button(headRow, T("admin.refresh"), "Secondary", part(0.3), load)
@@ -2045,7 +2068,7 @@ local function build()
 				textLine(list, T("admin.nothing"), 1, Theme.Muted)
 			end
 			for i, e in ipairs(result.Data) do
-				if i > 80 then
+				if i > 100 then -- letzte 100 Admin-Aktionen (Wunsch 18)
 					break
 				end
 				if type(e) ~= "table" then

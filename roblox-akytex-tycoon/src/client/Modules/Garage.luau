@@ -409,7 +409,7 @@ local function buildActions(car: any)
 			Parent = row,
 		}, function()
 			ctx.Windows.Close("Garage")
-			call("Shop", "Open", "Passes")
+			call("Shop", "Open", if type(car.Pass) == "string" then car.Pass else "Passes") -- direkt die Pass-Details
 		end)
 	else
 		UI.Button({

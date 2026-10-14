@@ -98,6 +98,11 @@ local ipoUi: any = nil
 local hallUi: any = nil
 local globalStore: DataStore? = nil
 local globalFailed = false
+-- Wunsch 18: Netto-Vermögen zeigt Admin-Geld markiert – auch für Spieler in anderen Servern (Liste im GlobalStore)
+local ADMIN_MARK_KEY = "AdminMarks_v1"
+local ADMIN_MARK_MAX = 500
+local adminMarks: { [number]: boolean } = {} -- gelesen (alle Server) + selbst gemeldet
+local adminMarkSent: { [number]: boolean } = {} -- in diesem Server schon gemeldet (bei PlayerRemoving geleert)
 
 -- ---------------------------------------------------------------------
 -- 0) HELFER
@@ -339,6 +344,8 @@ local function writeChanges(p: Player, userId: number, changes: { Change })
 	end
 end
 
+local markAdmin: (p: Player, data: { [string]: any }) -> ()
+
 local function writePlayer(p: Player, force: boolean)
 	if writing[p] or not canWrite(p) then
 		return
@@ -351,6 +358,7 @@ local function writePlayer(p: Player, force: boolean)
 	if not data then
 		return
 	end
+	markAdmin(p, data)
 	lastWritten[p] = lastWritten[p] or {}
 	local changes = collect(p, data)
 	pending[p] = nil
@@ -702,6 +710,7 @@ end
 
 local refreshHall: () -> ()
 local refreshIpoHall: () -> ()
+local refreshAdminMarks: () -> ()
 local buildHall: (def: BoardDef, week: number) -> ()
 
 local function readAll()
@@ -737,6 +746,10 @@ local function readAll()
 		local okIpo, errIpo = pcall(refreshIpoHall)
 		if not okIpo then
 			logError("IPO-Wand", errIpo)
+		end
+		local okMarks, errMarks = pcall(refreshAdminMarks)
+		if not okMarks then
+			logError("Admin-Marken", errMarks)
 		end
 		readRunning = false
 	end)
@@ -1165,6 +1178,81 @@ function LeaderboardService.AddIpo(p: Player, ticker: string)
 	end)
 end
 
+-- Admin-Marken (Wunsch 18): UserIds mit Admin-Geschenken, neueste zuerst, höchstens ADMIN_MARK_MAX
+local function cleanMarks(list: any): { number }
+	local out: { number } = {}
+	if type(list) ~= "table" then
+		return out
+	end
+	for _, id in ipairs(list) do
+		if finite(id) and id > 0 and id % 1 == 0 and #out < ADMIN_MARK_MAX then
+			table.insert(out, id)
+		end
+	end
+	return out
+end
+
+refreshAdminMarks = function()
+	local ds = gStore()
+	if not ds or readDisabled then
+		return
+	end
+	local ok, result = pcall(function()
+		return ds:GetAsync(ADMIN_MARK_KEY)
+	end)
+	if ok then
+		local fresh: { [number]: boolean } = {}
+		for _, id in ipairs(cleanMarks(result)) do
+			fresh[id] = true
+		end
+		for id in pairs(adminMarkSent) do
+			fresh[id] = true
+		end
+		adminMarks = fresh
+	elseif noApi(result) then
+		readDisabled = true
+	else
+		logError("GetAsync AdminMarks", result)
+	end
+end
+
+-- einmal je Sitzung melden, sobald das Konto Admin-CR enthält (nur schreibberechtigte Spieler, eigener Thread)
+markAdmin = function(p: Player, data: { [string]: any })
+	local userId = p.UserId
+	local stats = data.Stats
+	if userId <= 0 or adminMarkSent[userId] or type(stats) ~= "table" then
+		return
+	end
+	if num(stats.AdminCredits, 0) <= 0 and num(stats.AdminAky, 0) <= 0 then
+		return
+	end
+	adminMarkSent[userId] = true
+	adminMarks[userId] = true
+	local ds = gStore()
+	if not ds then
+		return
+	end
+	task.spawn(function()
+		local ok, err = pcall(function()
+			ds:UpdateAsync(ADMIN_MARK_KEY, function(old: any)
+				local list = cleanMarks(old)
+				if table.find(list, userId) then
+					return nil -- schon markiert: nichts schreiben
+				end
+				table.insert(list, 1, userId)
+				while #list > ADMIN_MARK_MAX do
+					table.remove(list)
+				end
+				return list
+			end)
+		end)
+		if not ok then
+			adminMarkSent[userId] = nil -- beim nächsten Schreib-Takt erneut versuchen
+			logError("UpdateAsync AdminMarks", err)
+		end
+	end)
+end
+
 -- ---------------------------------------------------------------------
 -- 9) BoardsGet (§C9: aus Cache; "Freunde" = Freunde im Top-100-Cache + Freunde im Server)
 -- ---------------------------------------------------------------------
@@ -1216,15 +1304,18 @@ local function liveRow(other: Player, def: BoardDef): Row?
 	return { UserId = other.UserId, Value = value }
 end
 
--- Wunsch 18: Admin-Geld zählt im Vermögen mit, wird aber markiert (nur für Spieler in diesem Server bekannt)
+-- Wunsch 18: Admin-Geld zählt im Vermögen mit, wird aber markiert (Spieler hier: Konto; sonst Admin-Marken aller Server)
 local function adminGifted(def: BoardDef, userId: number): boolean
 	if def.Key ~= "Wealth" then
 		return false
 	end
+	if adminMarks[userId] then
+		return true
+	end
 	local other = Players:GetPlayerByUserId(userId)
 	local data = if other then dataOf(other) else nil
 	local stats = data and data.Stats
-	return type(stats) == "table" and num(stats.AdminCredits, 0) > 0
+	return type(stats) == "table" and (num(stats.AdminCredits, 0) > 0 or num(stats.AdminAky, 0) > 0)
 end
 
 local function handleBoards(p: Player, arg: any): Reply
@@ -1366,6 +1457,7 @@ end
 
 local function onPlayerRemoving(p: Player)
 	pending[p] = nil
+	adminMarkSent[p.UserId] = nil
 	lastWriteAt[p] = nil
 	friendsOf[p] = nil
 	-- lastWritten/lastValues/writing bleiben, bis ein laufender Schreib-Thread fertig ist

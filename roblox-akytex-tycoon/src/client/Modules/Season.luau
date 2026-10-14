@@ -9,6 +9,8 @@
 --  Premium-Kauf läuft nur über den Shop (Shop.Open("Season")); dieser Knopf ist im Tutorial ausgeblendet.
 -- =====================================================================
 
+local TweenService = game:GetService("TweenService")
+
 local UI = require(script.Parent:WaitForChild("UI"))
 
 local Season = {}
@@ -17,6 +19,7 @@ local Theme = UI.Theme
 
 local WINDOW_W, WINDOW_H = 700, 620
 local ROW_H = 64
+local POP_INFO = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local ctx: any = nil
 local window: any = nil
@@ -139,8 +142,19 @@ local function claim(tier: number, track: string)
 	end
 	busy = true
 	task.spawn(function()
-		ctx.RequestFull("RewardSeason", { Tier = tier, Track = track })
+		local reply = ctx.RequestFull("RewardSeason", { Tier = tier, Track = track })
 		busy = false
+		if type(reply) == "table" and reply.Ok then
+			-- Belohnung sofort spürbar: Klang + kleines Konfetti (Stufe 50 groß), Zeile federt kurz
+			call("Sfx", "Play", if tier >= 50 then "Achievement" else "Profit")
+			call("Effects", "Confetti", if tier >= 50 then 1 else 0.35)
+			local row = rows[tier]
+			local scale = row and row.Scale
+			if scale then
+				scale.Scale = 0.96
+				TweenService:Create(scale, POP_INFO, { Scale = 1 }):Play()
+			end
+		end
 	end)
 end
 
@@ -218,6 +232,8 @@ local function buildRows()
 		})
 		rows[tier] = {
 			Frame = frame,
+			Scale = UI.Create("UIScale", { Scale = 1, Parent = frame }),
+			Stroke = frame:FindFirstChildOfClass("UIStroke"),
 			Number = number,
 			Free = trackCell(frame, "Free", tier, rewardAt(def, "Free", tier)),
 			Premium = trackCell(frame, "Premium", tier, rewardAt(def, "Premium", tier)),
@@ -303,7 +319,11 @@ local function refreshCell(cell: any, tier: number, reached: number, earned: num
 	if isClaimed then
 		cell.Button.SetText(T("prog.btn.claimed"))
 		cell.Button.SetVariant("Muted")
-	elseif locked or not reachedTier or boughtOnly then
+	elseif boughtOnly and not locked then
+		-- nur gekauft: zahlt CR/Boosts erst mit verdienter Saison-XP (ehrlich benennen statt „Gesperrt“)
+		cell.Button.SetText(T("prog.btn.earn"))
+		cell.Button.SetVariant("Muted")
+	elseif locked or not reachedTier then
 		cell.Button.SetText(T("prog.btn.locked"))
 		cell.Button.SetVariant("Muted")
 	else
@@ -334,7 +354,7 @@ function Season.Refresh()
 	buildRows()
 	local name = if type(s.Name) == "table" then ctx.Lang.Pick(lang(), s.Name) else nil
 	ui.Name.Text = name or T("prog.season.rolling", math.floor(num(s.Id, 1)))
-	ui.Ends.Text = T("prog.season.endsIn", fmt("Duration", num(s.EndsAt, 0) - now(), lang()))
+	ui.Ends.Text = T("prog.season.endsIn", fmt("Duration", math.max(0, num(s.EndsAt, 0) - now()), lang()))
 	local tiers = math.floor(num(s.Tiers, num(def.Tiers, 50)))
 	local tierXp = math.max(1, num(s.TierXp, num(def.TierXp, 1000)))
 	local tier = math.floor(num(s.Tier, 0))
@@ -361,6 +381,12 @@ function Season.Refresh()
 	ui.PremiumButton.Frame.Visible = not premium and not tutorialActive()
 	for t, row in pairs(rows) do
 		row.Number.TextColor3 = if t <= tier then Theme.Purple else Theme.Muted
+		-- nächste Stufe (an der gerade gearbeitet wird) mit Saison-Lila umrandet
+		local stroke = row.Stroke
+		if stroke then
+			local current = t == math.min(tier + 1, tiers)
+			stroke.Color = if current then Theme.Purple else Theme.Border
+		end
 		refreshCell(row.Free, t, tier, earned, s.ClaimedFree, false)
 		refreshCell(row.Premium, t, tier, earned, s.ClaimedPremium, not premium)
 	end
@@ -401,7 +427,7 @@ function Season.Tick()
 	if window and window.IsOpen then
 		local s = season()
 		if num(s.EndsAt, 0) > 0 then
-			ui.Ends.Text = T("prog.season.endsIn", fmt("Duration", num(s.EndsAt, 0) - now(), lang()))
+			ui.Ends.Text = T("prog.season.endsIn", fmt("Duration", math.max(0, num(s.EndsAt, 0) - now()), lang()))
 		end
 	end
 end

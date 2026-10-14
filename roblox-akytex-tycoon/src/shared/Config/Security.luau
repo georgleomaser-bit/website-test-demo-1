@@ -42,7 +42,9 @@ local Security = {
 	-- -----------------------------------------------------------------
 	Allowances = {
 		CarSlack = 1.2, -- im Auto: erlaubt = Klassen-Deckel (Config.Vehicles.Classes) × Boost × 1,2
-		JetpackSpeedMult = 1.5, -- Jetpack aktiv: SetAllowance{ SpeedMult = 1,5, VerticalMult = 17 } (≈ 120 Studs Höhe)
+		-- Jetpack aktiv: Untergrenzen – LifestyleService setzt je max(Config.Lifestyle.Jetpack, diesen Wert, MaxHeight-Bedarf
+		-- (MaxHeight + 8) / 7,2), aktuell also SetAllowance{ SpeedMult = 1,6, VerticalMult ≈ 17,8 } (≈ 120 Studs Höhe)
+		JetpackSpeedMult = 1.5,
 		JetpackVerticalMult = 17,
 		ElevatorGrace = 1.0, -- Aufzug-Fahrt = Server-Teleport -> NoteTeleport + so viel Gnade
 	},

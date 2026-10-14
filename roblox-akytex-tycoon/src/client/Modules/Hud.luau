@@ -1240,6 +1240,43 @@ local function buildMultSheet()
 			end
 		end
 	end
+	-- pausierte persönliche Boosts: zählt nur der stärkste, die anderen laufen danach weiter (TowerService)
+	local running: { [string]: boolean } = {}
+	for _, part in ipairs(parts) do
+		if type(part) == "table" and part.Group == "Timed" then
+			running[tostring(part.Key)] = true
+		end
+	end
+	local boosts = ctx.State and ctx.State.Boosts
+	if type(boosts) == "table" then
+		for _, kind in ipairs({ "X5", "X2", "Bull" }) do
+			local seconds = boosts[kind]
+			if not running[kind] and type(seconds) == "number" and seconds == seconds and seconds >= 1 then
+				any = true
+				local card = UI.RowCard(content, nextOrder(), 40)
+				UI.Label({
+					Position = UDim2.fromOffset(14, 0),
+					Size = UDim2.new(0.45, -14, 1, 0),
+					Text = partName(kind),
+					TextColor3 = Theme.Text2,
+					TextXAlignment = Enum.TextXAlignment.Left,
+					MaxText = 15,
+					Parent = card,
+				})
+				UI.Label({
+					AnchorPoint = Vector2.new(1, 0),
+					Position = UDim2.new(1, -14, 0, 0),
+					Size = UDim2.new(0.55, 0, 1, 0),
+					Text = T("ui.mult.paused", formatDuration(seconds)),
+					Face = "Mono",
+					TextColor3 = Theme.Muted,
+					TextXAlignment = Enum.TextXAlignment.Right,
+					MaxText = 12,
+					Parent = card,
+				})
+			end
+		end
+	end
 	if not any then
 		UI.Label({
 			Size = UDim2.new(1, 0, 0, 40),
@@ -1282,7 +1319,25 @@ local function incomeKey(): string
 			end
 		end
 	end
-	return tostring(income.Mult) .. "|" .. tostring(income.PerSec) .. "|" .. table.concat(parts, ",") .. "|" .. lang()
+	-- welche persönlichen Boosts liegen bereit (pausierte Zeilen im Sheet; nur Vorhandensein, keine Sekunden)
+	local boosts = ctx.State and ctx.State.Boosts
+	local held = ""
+	if type(boosts) == "table" then
+		for _, kind in ipairs({ "X5", "X2", "Bull" }) do
+			if type(boosts[kind]) == "number" and boosts[kind] >= 1 then
+				held ..= kind
+			end
+		end
+	end
+	return tostring(income.Mult)
+		.. "|"
+		.. tostring(income.PerSec)
+		.. "|"
+		.. table.concat(parts, ",")
+		.. "|"
+		.. held
+		.. "|"
+		.. lang()
 end
 
 local function openMultSheet()

@@ -76,6 +76,8 @@ Mehr Wörter: **ANLEITUNG.md, Kapitel 25** (Wörterliste A–Z).
       Gratis-Auto **Λ City** fährt aus der Garage, Wegpunkt-Beam zum Börsensaal.
 - [ ] **A19** Börsensaal: Akademie-Kapsel **Lektion 1** (30 s + 2 Fragen, +100 XP).
 - [ ] **A20** Bei 300 XP: **Azubi II**-Zeremonie (Stempel, kleines Konfetti, Basis 25.000 → 50.000 AKY).
+      Gegenprobe (zweites Konto): Übungsaktie **und** Live-Trade mit „Überspringen“ auslassen → Tiko sagt bei Schritt 14
+      „Für Azubi II fehlt noch: ein Kauf mit Schutz an“ und zeigt **TERMINAL ÖFFNEN**; nach einem Kauf mit „Schutz an“ kommt die Zeremonie.
 - [ ] **A21** Erste **Effizienz-Stufe** (10.000 CR) → HUD-Chip „x1,10“ ploppt. Tippen öffnet die Aufschlüsselung (Quelle, Wert,
       Herkunft „verdient / Skill / gekauft / Event“, Restzeit).
 - [ ] **A22** „Zukunfts-Ich“-Teaser („Dein Tower verdient auch offline – bis zu 8 h.“). **Kein Robux-Angebot in der ganzen ersten Sitzung.**
@@ -102,12 +104,19 @@ Mehr Wörter: **ANLEITUNG.md, Kapitel 25** (Wörterliste A–Z).
 - [ ] **A36** Auto fahren: **W A S D**, **Shift** = Boost (3 s, 8 s Abklingzeit), **Leertaste** = Handbremse/Drift. Auto verschwindet 60 s
       nach dem Aussteigen.
 - [ ] **A37** Garage, Λ Motors (Autohaus West), Chronohaus (Uhren) öffnen; Uhr kaufen → sichtbar am linken Handgelenk.
+- [ ] **A37b** Probefahrt: bei **Λ Motors** in der Autoliste **„Probefahrt“** drücken → das Auto steht am Autohaus, 90 s fahren, danach
+      „Probefahrt vorbei“. Gleich nochmal → „Nächste Probefahrt in … s“ (120 s Pause). Weit weg vom Autohaus → Hinweis „Λ Motors (Westen)“.
+- [ ] **A37c** Neon-Jetpack (Pass, Admin: Pass geben): springen, **in der Luft nochmal springen** = zünden, Sprung **halten** = steigen,
+      loslassen = gleiten; Tank-Balken unten (8 s, lädt in 12 s). Kein Anti-Cheat-Alarm bis ca. 120 Studs Höhe. In fremden Towern aus.
 - [ ] **A38** Tag/Nacht: alle 20 min ein voller Zyklus; abends gehen die Fenster von unten nach oben an.
 - [ ] **A39** Akademie: Lizenzprüfung „Setze ein Schutz-Paar“ erkennt den Trade.
 - [ ] **A40** Aufgaben (**J**): Tagesquests, Woche, Starter, Login. Reiter **Login** → Code `LAUNCH` einlösen → +5.000 CR.
       Nochmal einlösen → „Diesen Code hast du schon eingelöst.“
 - [ ] **A41** Skyline-Pass: Gratis- und Premium-Spur sichtbar, ehrlicher Countdown bis zum Saison-Ende. Jede Belohnung hat einen
       lesbaren Namen (Premium Stufe 10 und 40 = Kopftitel „Skyline-Stammgast S1“ / „Skyline-Magnat S1“) – nirgends ein roher Schlüssel.
+      Abholen: Klang + kleines Konfetti, die Zeile federt; die nächste Stufe ist lila umrandet. Nur gekaufte Stufen mit CR/Boost/Token
+      zeigen **„Erspielen“** (zahlen erst mit verdienter Saison-XP) – nie „Gesperrt“. Wer +10 Stufen gekauft hat und weiterspielt,
+      kann am Ende trotzdem alle 50 Stufen voll abholen (verdiente XP ersetzt gekaufte, sobald der Pass voll ist).
 - [ ] **A41b** Bestenlisten-Tafeln vor dem Börsensaal: nach ca. 15 s steht **dein eigener Eintrag** darauf (live, auch in Studio ohne
       DataStore). Fenster **Bestenlisten** (Knopf 🏆): eigene Zeile blau hervorgehoben (bleibt beim Darüberfahren), Plätze 1–3 mit
       Gold/Silber/Bronze-Streifen. Ø-Tagesrendite: negative Werte anderer Spieler erscheinen nie (kein öffentliches Verlust-Zeigen).

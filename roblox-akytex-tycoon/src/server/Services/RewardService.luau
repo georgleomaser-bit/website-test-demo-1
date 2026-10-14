@@ -839,10 +839,15 @@ function RewardService.GrantSeasonXp(p: Player, amount: number, reason: string)
 	end
 	local maxXp = current.Def.Tiers * current.Def.TierXp
 	local before = season.Xp
-	season.Xp = math.min(maxXp, season.Xp + math.floor(math.min(amount, SCFG.MaxGrant)))
+	local add = math.floor(math.min(amount, SCFG.MaxGrant))
+	season.Xp = math.min(maxXp, season.Xp + add)
 	-- Saison-XP aus einem Robux-Kauf (ShopService-Grund "Robux…") zählt wie gekaufte Stufen: nur Kosmetik (REUSE §7 #8)
 	if string.sub(reason, 1, 5) == "Robux" then
 		season.BoughtXp = math.min(season.Xp, num(season.BoughtXp, 0) + (season.Xp - before))
+	elseif before + add > maxXp and num(season.BoughtXp, 0) > 0 then
+		-- Pass voll, aber weiter verdient: verdiente XP ersetzt gekaufte (sonst blieben Stufen 41–50 nach +10 gekauften
+		-- Stufen für immer „nur gekauft“ und zahlten nie CR/Boost/Token – Käufer dürfen nicht schlechter stehen)
+		season.BoughtXp = math.max(0, num(season.BoughtXp, 0) - (before + add - maxXp))
 	end
 	markDirty(p, "Season")
 end

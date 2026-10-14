@@ -78,7 +78,7 @@ Ein Wort verstehst du nicht? Ganz unten in **Kapitel 25** steht die **Wörterlis
 | **Markt** | 36 erfundene Firmen in 6 Sektoren + 7 ETFs (AKX36 und 6 Sektor-ETFs) + 6 Themen-Körbe + IPOs jede Saison. Eilmeldungen mit Lesefenster, Gerüchte, Quartalszahlen, 8 Analysten, Dividenden, Crash/Rally. **Alle Server sehen dieselben Kurse** |
 | **Terminal** | 3 Schichten (Einfach · Trader · Profi), 7 Zeitrahmen, Kerzen/Linie/Heikin-Ashi, 9 Indikatoren, Alarm-Linien, Markttiefe (simuliert), Kalender, Heatmap. Charts mit 60 FPS |
 | **Tower** | 50 Etagen in **12 Stufen** (jede mit eigener Silhouette), 11 Abteilungen, 4 Personal-Roboter + Hausmeister + Sicherheit, Raum-Stufen, Effizienz-Stufen, Tresor, Offline-Einnahmen, Aufzug, 68 Deko-Teile, 7 Fassaden, Kronen |
-| **Lifestyle** | 16 befahrbare Autos (Drift, Boost, Tuning), 15 Uhren am Handgelenk, 8 Accessoires, Neon-Jetpack (Pass) |
+| **Lifestyle** | 16 befahrbare Autos (Drift, Boost, Tuning, **Probefahrt** bei Λ Motors: 90 s, danach 120 s Pause), 15 Uhren am Handgelenk, 8 Accessoires, Neon-Jetpack (Pass: in der Luft nochmal springen, halten = steigen) |
 | **Fortschritt** | Trader-Level, **10 Lizenzen** mit Prüfungen (Azubi I … Börsen-Legende), Know-how, Ruf, Titel, **Börsengang** (Prestige) mit Vorstand-Baum, Akademie (16 Lektionen), Tages-/Wochen-/Starter-Quests, 60 Erfolge, **15 Badges**, Firmen-Album, Login-Kalender, **Skyline-Pass** (50 Stufen je Saison) |
 | **Sozial** | 6 Bestenlisten, Wochen-Liga nach **Skill** (Bronze/Silber/Gold/Diamant), Hall of Fame, Tower-Besuche, Respekt, Bau-Hilfe, Reaktionen ohne Chat, Freunde-Bonus, Einladen, **Voice-Chat** |
 | **Events** | Welt-Event alle 20 min, Glocken-Moment und Sky-Show stündlich, Power-Hour täglich, Rally-Mittwoch, Crash-Freitag, IPO-Samstag, Admin-Abuse-Samstag (sonst automatische Samstags-Show), Bilanz-Sonntag |
@@ -130,6 +130,7 @@ Geld fließt nur **AKY → CR**, nie zurück. Darum kann niemand mit Robux Aktie
 | Zeitrahmen im Chart | **1–7** | **LB / RB** | Segment über dem Chart |
 | Chart-Typ | **C** | **View** (Select) | Knopf über dem Chart |
 | Auto: Boost / Handbremse | **Shift** / **Leertaste** | **R1** / **B** | **BOOST** / **HANDBREMSE** |
+| Neon-Jetpack (Pass): zünden / steigen | in der Luft nochmal **Leertaste** / **halten** | in der Luft nochmal **A** / **halten** | in der Luft nochmal **Springen** / **halten** |
 | Admin-Panel (nur du) | **P** | – | Knopf **Admin** (ganz unten rechts) |
 | Fliegen (nur du) | **G** | – | – |
 | Zuschauen beenden (nur du) | **X** | – | – |

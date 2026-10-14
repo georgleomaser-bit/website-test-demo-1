@@ -511,6 +511,21 @@ local function burst(show: Show)
 	spark:Emit(math.floor(60 * factor) + 10)
 	bits:Emit(math.floor(40 * factor) + 6)
 	glow:Emit(1)
+	-- echter Lichtblitz (Future-Licht färbt Glasfassaden/Dächer in der Burst-Farbe), nur im Licht-Budget hoher Stufen
+	local okBudget, lights = tryModule("Quality", "Budget", "Lights")
+	if okBudget and type(lights) == "number" and lights >= 32 and not reducedFx() then
+		local flashLight = Instance.new("PointLight")
+		flashLight.Color = c1
+		flashLight.Range = 60
+		flashLight.Brightness = 5
+		flashLight.Shadows = false
+		flashLight.Parent = holder
+		TweenService:Create(
+			flashLight,
+			TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Brightness = 0, Range = 24 }
+		):Play()
+	end
 	if math.random() < 0.5 then
 		sfx("Whoosh", pos, { Volume = 0.35, Speed = 1.4 + math.random() * 0.4 })
 	end

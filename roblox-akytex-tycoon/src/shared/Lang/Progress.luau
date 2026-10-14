@@ -40,6 +40,8 @@ return {
 		["prog.btn.claim"] = "Abholen",
 		["prog.btn.claimed"] = "Abgeholt",
 		["prog.btn.locked"] = "Gesperrt",
+		["prog.btn.earn"] = "Erspielen", -- Pass-Stufe nur gekauft: zahlt CR/Boosts erst mit verdienter Saison-XP
+		["prog.lbl.checking"] = "Wird geprüft …",
 		["prog.btn.reroll"] = "Neu wählen",
 		["prog.btn.start"] = "Starten",
 		["prog.btn.next"] = "Weiter",
@@ -726,6 +728,8 @@ return {
 		["prog.btn.claim"] = "Claim",
 		["prog.btn.claimed"] = "Claimed",
 		["prog.btn.locked"] = "Locked",
+		["prog.btn.earn"] = "Earn it",
+		["prog.lbl.checking"] = "Checking …",
 		["prog.btn.reroll"] = "Swap",
 		["prog.btn.start"] = "Start",
 		["prog.btn.next"] = "Next",

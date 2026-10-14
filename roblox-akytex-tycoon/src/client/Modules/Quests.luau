@@ -252,14 +252,23 @@ function Quests.Claimable(): number
 	return count
 end
 
+-- Belohnung sofort spürbar (Toast allein ist stumm): Klang + kleines Konfetti, Wochen-/Starter-Abschluss etwas größer
+local function rewardFx(big: boolean)
+	call("Sfx", "Play", if big then "Achievement" else "Profit")
+	call("Effects", "Confetti", if big then 0.8 else 0.3)
+end
+
 local function claim(id: string)
 	if busy then
 		return
 	end
 	busy = true
 	task.spawn(function()
-		ctx.RequestFull("RewardQuest", { Id = id })
+		local reply = ctx.RequestFull("RewardQuest", { Id = id })
 		busy = false
+		if reply.Ok then
+			rewardFx(string.sub(id, 1, 1) ~= "D")
+		end
 	end)
 end
 
@@ -621,8 +630,11 @@ local function buildLogin(page: Frame)
 		end
 		busy = true
 		task.spawn(function()
-			ctx.RequestFull("RewardLogin", {})
+			local reply = ctx.RequestFull("RewardLogin", {})
 			busy = false
+			if reply.Ok then
+				rewardFx(math.floor(num(reply.Day, 1)) >= 7)
+			end
 		end)
 	end)
 	ui.LoginNext = text(row, { Size = UDim2.new(1, -240, 1, 0), Face = "Mono", MaxText = 14, TextColor3 = Theme.Text2 })
@@ -657,6 +669,7 @@ local function buildLogin(page: Frame)
 			busy = false
 			if reply.Ok then
 				ui.Code.Text = ""
+				rewardFx(false)
 			end
 		end)
 	end)

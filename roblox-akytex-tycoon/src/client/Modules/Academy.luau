@@ -21,6 +21,7 @@ local Theme = UI.Theme
 local WINDOW_W, WINDOW_H = 680, 620
 local PLAYER_H = 380
 local FADE_IN = TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local BODY_IN = TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local HALF_STAR = NumberSequence.new({
 	NumberSequenceKeypoint.new(0, 0),
 	NumberSequenceKeypoint.new(0.5, 0),
@@ -37,6 +38,7 @@ local ui: { [string]: any } = {}
 local lesson: { [string]: any }? = nil
 local busy = false
 local pendingLesson: string? = nil
+local bodySig = "" -- letzte gezeigte Karte/Frage (Einblenden nur beim Wechsel, nicht bei jedem Neuzeichnen)
 
 -- ---------------------------------------------------------------------
 -- 1) HELFER
@@ -462,6 +464,18 @@ renderPlayer = function()
 	local def = current.Def
 	local id = current.Id
 	ui.PTitle.Text = T("prog.les." .. id .. ".t")
+	-- Karten-/Fragenwechsel: Text gleitet weich ein (iOS-artig), Neuzeichnen ohne Wechsel bleibt ruhig
+	local sig = table.concat({ id, current.Mode == "sending" and "quiz" or current.Mode, current.Card, current.Q }, ":")
+	local okFx, settings = call("Settings", "Get")
+	local reduced = okFx and type(settings) == "table" and settings.ReducedFx == true
+	if sig ~= bodySig and reduced then
+		bodySig = sig
+	elseif sig ~= bodySig then
+		bodySig = sig
+		ui.PBody.TextTransparency = 0.7
+		ui.PBody.Position = UDim2.fromOffset(30, 70)
+		TweenService:Create(ui.PBody, BODY_IN, { TextTransparency = 0, Position = UDim2.fromOffset(18, 70) }):Play()
+	end
 	local totalSteps = def.Cards + #def.Quiz
 	local minSeconds = num(pcfg().Academy and pcfg().Academy.MinCardSeconds, 2)
 	for _, button in ipairs(ui.POptionButtons) do
@@ -480,7 +494,9 @@ renderPlayer = function()
 		ui.PBack.Frame.Visible = true
 	elseif current.Mode == "quiz" or current.Mode == "sending" then
 		local q = current.Q
-		ui.PStep.Text = T("prog.lbl.question", q, #def.Quiz)
+		ui.PStep.Text = if current.Mode == "sending"
+			then T("prog.lbl.checking")
+			else T("prog.lbl.question", q, #def.Quiz)
 		ui.PBody.Text = T("prog.les." .. id .. ".q" .. q)
 		ui.PBody.TextColor3 = Theme.Text
 		UI.SetBar(ui.PBar, (def.Cards + q - 1) / totalSteps)

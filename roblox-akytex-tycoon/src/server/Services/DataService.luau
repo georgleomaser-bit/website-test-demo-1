@@ -195,7 +195,7 @@ local DEFAULT_DATA: PlayerData = {
 		ClubClaimDay = 0,
 		Gifts = 0,
 	}, -- WP10
-	Stats = { -- AdminCredits = Admin-Geschenke in CR (Wunsch 18, ShopService markiert sie; zählen nie für die Liga)
+	Stats = { -- AdminCredits/AdminAky = Admin-Geschenke in CR / AKY-Cent (Wunsch 18; zählen nie für die Liga)
 		LifetimeCredits = 0,
 		Collected = 0,
 		FloorsBuilt = 0,
@@ -203,6 +203,7 @@ local DEFAULT_DATA: PlayerData = {
 		Drive = 0,
 		Pickups = 0,
 		AdminCredits = 0,
+		AdminAky = 0,
 	},
 	Settings = {}, -- WP1 (Schema Config.Client.SettingsSchema, Standardwerte beim Laden ergänzt)
 	Flags = {}, -- WP1 (TutorialFlag) + Besitzer-WPs (z. B. Flags.TutorialTrade WP4)

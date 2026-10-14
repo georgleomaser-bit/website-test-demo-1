@@ -409,7 +409,7 @@ end
 local function openSourcePage(entry: any)
 	local source = tostring(entry.Source or "")
 	if source == "Pass" then
-		call("Shop", "Open", "Passes")
+		call("Shop", "Open", if type(entry.Pass) == "string" then entry.Pass else "Passes") -- direkt die Pass-Details
 	elseif source == "Starter" then
 		call("Shop", "Open", "Starter")
 	elseif source == "Season" then

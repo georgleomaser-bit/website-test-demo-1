@@ -22,6 +22,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local UI = require(script.Parent:WaitForChild("UI"))
 local VehicleModels = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("VehicleModels")) :: any
+local AssetSlot = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("AssetSlot"))
 
 local Vehicles = {}
 
@@ -44,6 +45,7 @@ type Drive = {
 	BaseTorque: number,
 	FlipTime: number,
 	Engine: any?,
+	Pitch: number, -- Motor-Rezept: Tonhöhen-Faktor (Config SoundId = eigener Klang -> 1)
 	Tails: { BasePart },
 	Smoke: { ParticleEmitter },
 	Flames: { ParticleEmitter },
@@ -60,6 +62,12 @@ local cooldownUntil = 0
 local handbrake = false
 local rearFriction = 1.5
 local baseFov: number? = nil
+
+-- Eigene Motor-Rezepte (§B14.1 Λ-1 „eigenes Motor-Rezept“): gleiche Schleife, eigene Tonhöhe/Klangfarbe.
+-- Ein eingetragenes Config.Vehicles.Cars[].SoundId ersetzt die Schleife ganz (ASSET-LISTE 5.1).
+local ENGINE_RECIPES: { [string]: { Pitch: number, EqLow: number, EqMid: number, EqHigh: number, Vol: number } } = {
+	Lam1 = { Pitch = 1.3, EqLow = 6, EqMid = -2, EqHigh = 5, Vol = 1.25 }, -- hoher Turbinen-Ton mit Bass-Fundament
+}
 
 -- Tacho
 local hud: Frame? = nil
@@ -388,6 +396,7 @@ local function startDrive(model: Model, seat: VehicleSeat)
 		BaseTorque = if type(torque) == "number" then torque else 20000,
 		FlipTime = 0,
 		Engine = nil,
+		Pitch = 1,
 		Tails = {},
 		Smoke = {},
 		Flames = {},
@@ -397,7 +406,32 @@ local function startDrive(model: Model, seat: VehicleSeat)
 	buildDriveFx(drive :: Drive)
 	local ok, handle = call("Sfx", "Loop", "Engine", chassis)
 	if ok and handle then
-		(drive :: Drive).Engine = handle
+		local d = drive :: Drive
+		d.Engine = handle
+		local sound = if type(handle) == "table" then handle.Sound else nil
+		local custom = car and AssetSlot.SoundId(car.SoundId) or nil
+		local recipe = car and ENGINE_RECIPES[car.Recipe or key] or nil
+		if typeof(sound) == "Instance" and sound:IsA("Sound") then
+			if custom then
+				-- eigener Motor-Klang aus der Config (nahtlose Schleife) in Originaltonhöhe: SetSpeed rechnet mit der
+				-- Grundtonhöhe der Rezept-Schleife – die hier herausrechnen
+				d.Pitch = 1 / math.max(0.1, sound.PlaybackSpeed)
+				sound.SoundId = custom
+				sound:Play() -- neue Quelle sicher starten (die Schleife lief schon mit dem Rezept-Klang)
+				local eq = sound:FindFirstChildOfClass("EqualizerSoundEffect")
+				if eq then
+					eq:Destroy() -- eigener Klang bleibt unverfärbt
+				end
+			elseif recipe then
+				d.Pitch = recipe.Pitch
+				local eq = sound:FindFirstChildOfClass("EqualizerSoundEffect") or Instance.new("EqualizerSoundEffect")
+				eq.LowGain = recipe.EqLow
+				eq.MidGain = recipe.EqMid
+				eq.HighGain = recipe.EqHigh
+				eq.Parent = sound
+				pcall(handle.SetVolume, recipe.Vol)
+			end
+		end
 	end
 	local camera = workspace.CurrentCamera
 	if camera then
@@ -579,7 +613,7 @@ local function updateDrive(d: Drive, dt: number)
 	stepDriveFx(d, speed, braking, boosting)
 	-- Ton, Kamera, Tacho
 	if d.Engine then
-		pcall(d.Engine.SetSpeed, 0.7 + 0.9 * math.clamp(speed / d.Cap, 0, 1.3))
+		pcall(d.Engine.SetSpeed, d.Pitch * (0.7 + 0.9 * math.clamp(speed / d.Cap, 0, 1.3)))
 	end
 	local camera = workspace.CurrentCamera
 	if camera and baseFov and not reducedFx() then

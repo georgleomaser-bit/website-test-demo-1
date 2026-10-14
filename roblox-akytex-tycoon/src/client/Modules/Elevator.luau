@@ -25,7 +25,7 @@ local player = Players.LocalPlayer
 
 local DOOR_SECONDS = 0.3
 local RIDE_SECONDS = 0.9
-local REPLY_WAIT = 2.5 -- Sekunden: länger wartet die Kabine nicht auf die Server-Antwort
+local REPLY_WAIT = 3.5 -- Sekunden: länger wartet die Kabine nicht (Server antwortet erst nach dem Versetzen, ≤ 2 s Streaming)
 local PANEL_RANGE = 16 -- Studs: weiter weg -> Panel schließt
 local CORE = 10
 local CABIN = 8.6
