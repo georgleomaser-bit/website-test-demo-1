@@ -57,7 +57,11 @@ return function(R)
 		local t = rawtype(v)
 		if t == "userdata" then
 			local mt = getmt(v)
-			if rawtype(mt) == "table" and rawget(mt, "__type") == "Vector3" and Util.hostIndex[rawget(mt, "__index")] then
+			if
+				rawtype(mt) == "table"
+				and rawget(mt, "__type") == "Vector3"
+				and Util.hostIndex[rawget(mt, "__index")]
+			then
 				return "vector"
 			end
 		end
@@ -109,7 +113,11 @@ return function(R)
 	end
 
 	--- error() mit Position der aufrufenden Spiel-Code-Zeile (wie Roblox' Reflection-Fehler).
+	-- Letzte bewusst (Roblox-artig) geworfene Nachricht – Report unterscheidet so API-Fehler von Harness-Abstürzen.
+	Util.lastRaised = nil
+
 	function Util.raise(msg)
+		Util.lastRaised = msg
 		local level = 2
 		while true do
 			local s = dinfo(level, "s")

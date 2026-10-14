@@ -68,22 +68,56 @@ return function(R)
 	end
 
 	-- Reihenfolge wichtig: CFrame braucht Vector, Gui braucht Color usw.
-	require("./Vector")(R, DT)
-	require("./CFrame")(R, DT)
-	require("./Color")(R, DT)
-	require("./Gui")(R, DT)
-	require("./Misc")(R, DT)
-	require("./Time")(R, DT)
-	require("./Json")(R, DT)
+	require("@self/Vector")(R, DT)
+	require("@self/CFrame")(R, DT)
+	require("@self/Color")(R, DT)
+	require("@self/Gui")(R, DT)
+	require("@self/Misc")(R, DT)
+	require("@self/Time")(R, DT)
+	require("@self/Json")(R, DT)
 
 	--- Liste der globalen Datentyp-Namen für Script-Umgebungen
 	DT.globalNames = {
-		"Vector3", "Vector2", "Vector3int16", "Vector2int16", "CFrame", "Color3", "BrickColor", "ColorSequence",
-		"ColorSequenceKeypoint", "UDim", "UDim2", "Rect", "Font", "Content", "NumberRange", "NumberSequence",
-		"NumberSequenceKeypoint", "TweenInfo", "Ray", "Region3", "Region3int16", "PhysicalProperties", "Axes", "Faces",
-		"PathWaypoint", "RaycastParams", "OverlapParams", "CatalogSearchParams", "SharedTable", "DateTime", "Random",
-		"FloatCurveKey", "RotationCurveKey", "ValueCurveKey", "Path2DControlPoint", "SecurityCapabilities", "User",
-		"InstanceHandle", "Secret", "DockWidgetPluginGuiInfo",
+		"Vector3",
+		"Vector2",
+		"Vector3int16",
+		"Vector2int16",
+		"CFrame",
+		"Color3",
+		"BrickColor",
+		"ColorSequence",
+		"ColorSequenceKeypoint",
+		"UDim",
+		"UDim2",
+		"Rect",
+		"Font",
+		"Content",
+		"NumberRange",
+		"NumberSequence",
+		"NumberSequenceKeypoint",
+		"TweenInfo",
+		"Ray",
+		"Region3",
+		"Region3int16",
+		"PhysicalProperties",
+		"Axes",
+		"Faces",
+		"PathWaypoint",
+		"RaycastParams",
+		"OverlapParams",
+		"CatalogSearchParams",
+		"SharedTable",
+		"DateTime",
+		"Random",
+		"FloatCurveKey",
+		"RotationCurveKey",
+		"ValueCurveKey",
+		"Path2DControlPoint",
+		"SecurityCapabilities",
+		"User",
+		"InstanceHandle",
+		"Secret",
+		"DockWidgetPluginGuiInfo",
 	}
 
 	return DT

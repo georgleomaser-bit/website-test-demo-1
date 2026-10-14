@@ -186,11 +186,13 @@ return function(R, DT)
 	end
 
 	function V3.new(x, y, z)
-		return newV3vec(vcreate(
-			x == nil and 0 or checkNumber(x, 1, "new"),
-			y == nil and 0 or checkNumber(y, 2, "new"),
-			z == nil and 0 or checkNumber(z, 3, "new")
-		))
+		return newV3vec(
+			vcreate(
+				x == nil and 0 or checkNumber(x, 1, "new"),
+				y == nil and 0 or checkNumber(y, 2, "new"),
+				z == nil and 0 or checkNumber(z, 3, "new")
+			)
+		)
 	end
 	V3.zero = newV3(0, 0, 0)
 	V3.one = newV3(1, 1, 1)

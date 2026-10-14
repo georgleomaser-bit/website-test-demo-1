@@ -208,10 +208,20 @@ return function(R, DT)
 		)
 	end
 	function U2.fromScale(xs, ys)
-		return newU2(xs == nil and 0 or checkNumber(xs, 1, "fromScale"), 0, ys == nil and 0 or checkNumber(ys, 2, "fromScale"), 0)
+		return newU2(
+			xs == nil and 0 or checkNumber(xs, 1, "fromScale"),
+			0,
+			ys == nil and 0 or checkNumber(ys, 2, "fromScale"),
+			0
+		)
 	end
 	function U2.fromOffset(xo, yo)
-		return newU2(0, xo == nil and 0 or checkNumber(xo, 1, "fromOffset"), 0, yo == nil and 0 or checkNumber(yo, 2, "fromOffset"))
+		return newU2(
+			0,
+			xo == nil and 0 or checkNumber(xo, 1, "fromOffset"),
+			0,
+			yo == nil and 0 or checkNumber(yo, 2, "fromOffset")
+		)
 	end
 	function methods.Lerp(self, goal, alpha)
 		if not isU2(self) then
@@ -236,16 +246,17 @@ return function(R, DT)
 	local RC = {}
 	DT.Rect = RC
 	local RCindex, RCeq
+	local function RCtostring(self)
+		local m = getmt(self)
+		return fmtFloat(m.x0) .. ", " .. fmtFloat(m.y0) .. ", " .. fmtFloat(m.x1) .. ", " .. fmtFloat(m.y1)
+	end
 	local function newRC(x0, y0, x1, y1)
 		local u = newproxy(true)
 		local mt = getmt(u)
 		mt.__index = RCindex
 		mt.__newindex = DT.readonlyNewindex
 		mt.__eq = RCeq
-		mt.__tostring = function(self)
-			local m = getmt(self)
-			return fmtFloat(m.x0) .. ", " .. fmtFloat(m.y0) .. ", " .. fmtFloat(m.x1) .. ", " .. fmtFloat(m.y1)
-		end
+		mt.__tostring = RCtostring
 		mt.__concat = DT.concatError
 		mt.__type = "Rect"
 		mt.x0, mt.y0, mt.x1, mt.y1 = f32(x0), f32(y0), f32(x1), f32(y1)
@@ -290,7 +301,12 @@ return function(R, DT)
 			local p, q = getmt(a), getmt(b)
 			return newRC(p.x, p.y, q.x, q.y)
 		end
-		return newRC(checkNumber(a, 1, "new"), checkNumber(b, 2, "new"), checkNumber(c, 3, "new"), checkNumber(d, 4, "new"))
+		return newRC(
+			checkNumber(a, 1, "new"),
+			checkNumber(b, 2, "new"),
+			checkNumber(c, 3, "new"),
+			checkNumber(d, 4, "new")
+		)
 	end
 
 	-- =================================================================================================
@@ -299,6 +315,10 @@ return function(R, DT)
 	local FT = {}
 	DT.Font = FT
 	local FTindex, FTnewindex, FTeq
+	local function FTtostring(self)
+		local m = getmt(self)
+		return fmt("Font { Family = %s, Weight = %s, Style = %s }", m.family, m.weight.Name, m.style.Name)
+	end
 	local function enumItem(v, enumName)
 		return R.Enum.coerce(v, enumName)
 	end
@@ -308,10 +328,7 @@ return function(R, DT)
 		mt.__index = FTindex
 		mt.__newindex = FTnewindex
 		mt.__eq = FTeq
-		mt.__tostring = function(self)
-			local m = getmt(self)
-			return fmt("Font { Family = %s, Weight = %s, Style = %s }", m.family, m.weight.Name, m.style.Name)
-		end
+		mt.__tostring = FTtostring
 		mt.__concat = DT.concatError
 		mt.__type = "Font"
 		mt.family = family
@@ -325,7 +342,11 @@ return function(R, DT)
 	end
 	DT.is.Font = isFT
 	function DT.make.FT(family, weightName, styleName)
-		return newFT(family, R.Enum.item("FontWeight", weightName or "Regular"), R.Enum.item("FontStyle", styleName or "Normal"))
+		return newFT(
+			family,
+			R.Enum.item("FontWeight", weightName or "Regular"),
+			R.Enum.item("FontStyle", styleName or "Normal")
+		)
 	end
 	function DT.copyFont(f)
 		local m = getmt(f)
@@ -456,14 +477,21 @@ return function(R, DT)
 	local CT = {}
 	DT.Content = CT
 	local CTindex
+	local function CTtostring(self)
+		local m = getmt(self)
+		return m.uri or (m.object and tostring(m.object)) or ""
+	end
+	local function CTeq(a, b)
+		local x, y = Util.hostMeta(a), Util.hostMeta(b)
+		return x ~= nil
+			and y ~= nil
+			and x.__index == CTindex
+			and y.__index == CTindex
+			and x.uri == y.uri
+			and rawequal(x.object, y.object)
+	end
 	local function newCT(sourceType, uri, object)
-		local u, mt = DT.newHost(CTindex, "Content", function(self)
-			local m = getmt(self)
-			return m.uri or (m.object and tostring(m.object)) or ""
-		end, function(a, b)
-			local x, y = Util.hostMeta(a), Util.hostMeta(b)
-			return x ~= nil and y ~= nil and x.__index == CTindex and y.__index == CTindex and x.uri == y.uri and rawequal(x.object, y.object)
-		end)
+		local u, mt = DT.newHost(CTindex, "Content", CTtostring, CTeq)
 		mt.sourceType = sourceType
 		mt.uri = uri
 		mt.object = object

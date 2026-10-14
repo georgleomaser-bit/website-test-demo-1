@@ -18,7 +18,8 @@ return function(R, DT)
 	local newV3vec = DT.make.V3vec
 	local isV3 = DT.is.Vector3
 	local checkV3 = DT.checkV3
-	local sqrt, sin, cos, abs, asin, acos, atan2 = math.sqrt, math.sin, math.cos, math.abs, math.asin, math.acos, math.atan2
+	local sqrt, sin, cos, abs, asin, acos, atan2 =
+		math.sqrt, math.sin, math.cos, math.abs, math.asin, math.acos, math.atan2
 	local fmt = string.format
 	local HALF_PI = math.pi / 2
 
@@ -116,9 +117,15 @@ return function(R, DT)
 			-(a00 * x + a10 * y + a20 * z),
 			-(a01 * x + a11 * y + a21 * z),
 			-(a02 * x + a12 * y + a22 * z),
-			a00, a10, a20,
-			a01, a11, a21,
-			a02, a12, a22
+			a00,
+			a10,
+			a20,
+			a01,
+			a11,
+			a21,
+			a02,
+			a12,
+			a22
 		)
 	end
 
@@ -191,9 +198,15 @@ return function(R, DT)
 		local xx, yy, zz = qx * qx, qy * qy, qz * qz
 		local xy, xz, yz = qx * qy, qx * qz, qy * qz
 		local wx, wy, wz = qw * qx, qw * qy, qw * qz
-		return 1 - 2 * (yy + zz), 2 * (xy - wz), 2 * (xz + wy),
-			2 * (xy + wz), 1 - 2 * (xx + zz), 2 * (yz - wx),
-			2 * (xz - wy), 2 * (yz + wx), 1 - 2 * (xx + yy)
+		return 1 - 2 * (yy + zz),
+			2 * (xy - wz),
+			2 * (xz + wy),
+			2 * (xy + wz),
+			1 - 2 * (xx + zz),
+			2 * (yz - wx),
+			2 * (xz - wy),
+			2 * (yz + wx),
+			1 - 2 * (xx + yy)
 	end
 	DT.quatToRot = quatToRot
 
@@ -210,16 +223,22 @@ return function(R, DT)
 		return c, -s, 0, s, c, 0, 0, 0, 1
 	end
 	local function mul3(a00, a01, a02, a10, a11, a12, a20, a21, a22, b00, b01, b02, b10, b11, b12, b20, b21, b22)
-		return a00 * b00 + a01 * b10 + a02 * b20, a00 * b01 + a01 * b11 + a02 * b21, a00 * b02 + a01 * b12 + a02 * b22,
-			a10 * b00 + a11 * b10 + a12 * b20, a10 * b01 + a11 * b11 + a12 * b21, a10 * b02 + a11 * b12 + a12 * b22,
-			a20 * b00 + a21 * b10 + a22 * b20, a20 * b01 + a21 * b11 + a22 * b21, a20 * b02 + a21 * b12 + a22 * b22
+		return a00 * b00 + a01 * b10 + a02 * b20,
+			a00 * b01 + a01 * b11 + a02 * b21,
+			a00 * b02 + a01 * b12 + a02 * b22,
+			a10 * b00 + a11 * b10 + a12 * b20,
+			a10 * b01 + a11 * b11 + a12 * b21,
+			a10 * b02 + a11 * b12 + a12 * b22,
+			a20 * b00 + a21 * b10 + a22 * b20,
+			a20 * b01 + a21 * b11 + a22 * b21,
+			a20 * b02 + a21 * b12 + a22 * b22
 	end
 	-- Rotation aus Euler-Winkeln: order = Zeichenkette wie "XYZ" -> R = R_X * R_Y * R_Z
 	local rotFns = { X = rotX, Y = rotY, Z = rotZ }
 	local function eulerRot(rx, ry, rz, order)
 		local angles = { X = rx, Y = ry, Z = rz }
 		local a1, a2, a3 = string.sub(order, 1, 1), string.sub(order, 2, 2), string.sub(order, 3, 3)
-		local m = { mul3(rotFns[a1](angles[a1])) }
+		local m = { rotFns[a1](angles[a1]) }
 		m = { mul3(m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], rotFns[a2](angles[a2])) }
 		return mul3(m[1], m[2], m[3], m[4], m[5], m[6], m[7], m[8], m[9], rotFns[a3](angles[a3]))
 	end
@@ -329,9 +348,15 @@ return function(R, DT)
 		ax, ay, az = ax / l, ay / l, az / l
 		local c, s = cos(angle), sin(angle)
 		local t = 1 - c
-		return t * ax * ax + c, t * ax * ay - s * az, t * ax * az + s * ay,
-			t * ax * ay + s * az, t * ay * ay + c, t * ay * az - s * ax,
-			t * ax * az - s * ay, t * ay * az + s * ax, t * az * az + c
+		return t * ax * ax + c,
+			t * ax * ay - s * az,
+			t * ax * az + s * ay,
+			t * ax * ay + s * az,
+			t * ay * ay + c,
+			t * ay * az - s * ax,
+			t * ax * az - s * ay,
+			t * ay * az + s * ax,
+			t * az * az + c
 	end
 
 	-- G3D CoordinateFrame::lookAt
@@ -473,12 +498,29 @@ return function(R, DT)
 		end
 		if n == 3 then
 			local x, y, z = ...
-			return newCF(checkNumber(x, 1, "new"), checkNumber(y, 2, "new"), checkNumber(z, 3, "new"), 1, 0, 0, 0, 1, 0, 0, 0, 1)
+			return newCF(
+				checkNumber(x, 1, "new"),
+				checkNumber(y, 2, "new"),
+				checkNumber(z, 3, "new"),
+				1,
+				0,
+				0,
+				0,
+				1,
+				0,
+				0,
+				0,
+				1
+			)
 		end
 		if n == 7 then
 			local x, y, z, qx, qy, qz, qw = ...
 			x, y, z = checkNumber(x, 1, "new"), checkNumber(y, 2, "new"), checkNumber(z, 3, "new")
-			qx, qy, qz, qw = checkNumber(qx, 4, "new"), checkNumber(qy, 5, "new"), checkNumber(qz, 6, "new"), checkNumber(qw, 7, "new")
+			qx, qy, qz, qw =
+				checkNumber(qx, 4, "new"),
+				checkNumber(qy, 5, "new"),
+				checkNumber(qz, 6, "new"),
+				checkNumber(qw, 7, "new")
 			return newCF(x, y, z, quatToRot(qx, qy, qz, qw))
 		end
 		if n == 12 then
@@ -606,7 +648,12 @@ return function(R, DT)
 			local wa, wb = sin((1 - t) * theta) / s, sin(t * theta) / s
 			qx, qy, qz, qw = ax * wa + bx * wb, ay * wa + by * wb, az * wa + bz * wb, aw * wa + bw * wb
 		end
-		return newCF(a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t, a[3] + (b[3] - a[3]) * t, quatToRot(qx, qy, qz, qw))
+		return newCF(
+			a[1] + (b[1] - a[1]) * t,
+			a[2] + (b[2] - a[2]) * t,
+			a[3] + (b[3] - a[3]) * t,
+			quatToRot(qx, qy, qz, qw)
+		)
 	end
 	DT.cfSlerp = function(a, b, t)
 		return slerpData(getmt(a).d, getmt(b).d, t)

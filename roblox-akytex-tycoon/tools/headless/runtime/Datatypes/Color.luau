@@ -166,7 +166,9 @@ return function(R, DT)
 		hex = Util.checkString(hex, 1, "fromHex")
 		local s = string.gsub(hex, "^#", "")
 		if #s == 3 and not string.find(s, "[^%x]") then
-			s = string.rep(string.sub(s, 1, 1), 2) .. string.rep(string.sub(s, 2, 2), 2) .. string.rep(string.sub(s, 3, 3), 2)
+			s = string.rep(string.sub(s, 1, 1), 2)
+				.. string.rep(string.sub(s, 2, 2), 2)
+				.. string.rep(string.sub(s, 3, 3), 2)
 		end
 		if #s ~= 6 or string.find(s, "[^%x]") then
 			raise("Unable to convert characters to hex value")
@@ -212,7 +214,8 @@ return function(R, DT)
 	DT.BrickColor = BC
 	local byNumber, byName, palette, ordered = {}, {}, {}, {}
 	for _, row in R.api.brickColors do
-		local e = { number = row[1], name = row[2], r = row[3] / 255, g = row[4] / 255, b = row[5] / 255, palette = row[6] }
+		local e =
+			{ number = row[1], name = row[2], r = row[3] / 255, g = row[4] / 255, b = row[5] / 255, palette = row[6] }
 		byNumber[e.number] = e
 		if byName[e.name] == nil then
 			byName[e.name] = e
@@ -223,7 +226,8 @@ return function(R, DT)
 		ordered[#ordered + 1] = e
 	end
 	if byNumber[194] == nil then
-		byNumber[194] = { number = 194, name = "Medium stone grey", r = 163 / 255, g = 162 / 255, b = 165 / 255, palette = -1 }
+		byNumber[194] =
+			{ number = 194, name = "Medium stone grey", r = 163 / 255, g = 162 / 255, b = 165 / 255, palette = -1 }
 		ordered[#ordered + 1] = byNumber[194]
 		byName["Medium stone grey"] = byNumber[194]
 	end
@@ -359,16 +363,17 @@ return function(R, DT)
 	local CSK = {}
 	DT.ColorSequenceKeypoint = CSK
 	local CSKindex, CSKeq
+	local function CSKtostring(self)
+		local m = getmt(self)
+		return fmtFloat(m.t) .. " " .. tostring(m.c) .. " "
+	end
 	local function newCSK(t, c3)
 		local u = newproxy(true)
 		local mt = getmt(u)
 		mt.__index = CSKindex
 		mt.__newindex = DT.readonlyNewindex
 		mt.__eq = CSKeq
-		mt.__tostring = function(self)
-			local m = getmt(self)
-			return fmtFloat(m.t) .. " " .. tostring(m.c) .. " "
-		end
+		mt.__tostring = CSKtostring
 		mt.__concat = DT.concatError
 		mt.__type = "ColorSequenceKeypoint"
 		mt.t = Util.f32(t)
@@ -410,19 +415,20 @@ return function(R, DT)
 	local CS = {}
 	DT.ColorSequence = CS
 	local CSindex, CSeq
+	local function CStostring(self)
+		local parts = {}
+		for _, kp in getmt(self).k do
+			parts[#parts + 1] = tostring(kp)
+		end
+		return table.concat(parts, "")
+	end
 	local function newCS(kps)
 		local u = newproxy(true)
 		local mt = getmt(u)
 		mt.__index = CSindex
 		mt.__newindex = DT.readonlyNewindex
 		mt.__eq = CSeq
-		mt.__tostring = function(self)
-			local parts = {}
-			for _, kp in getmt(self).k do
-				parts[#parts + 1] = tostring(kp)
-			end
-			return table.concat(parts, "")
-		end
+		mt.__tostring = CStostring
 		mt.__concat = DT.concatError
 		mt.__type = "ColorSequence"
 		mt.k = kps
