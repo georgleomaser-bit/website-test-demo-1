@@ -16,6 +16,10 @@
 --    R.Enum     Enum-System (Enum.global, Enum.item/coerce/fromValue)
 --    R.Inst     Instanz-System + Klassenverhalten (Inst.define, Inst.registerService, Inst.newDataModel, …)
 --    R.Globals  Script-Umgebungen + require (Globals.makeEnv/startScript/require, Globals.moduleProvider)
+--    R.Svc      Services mit Verhalten (Services/*.luau: RunService, Players, Welt, Tween, Eingabe, Daten, Plattform,
+--               Text/Chat, Sonstiges) + gemeinsame Helfer (Svc.ctxOf, Svc.latency, Svc.games …)
+--    R.Net      Replikator Server -> Clients (getrenntes DataModel je Kontext), Remotes, Argument-Kopie
+--    R.Game     Spiel aus dem Bundle booten, Spieler/Clients hinzufügen, Shutdown (BindToClose)
 --
 --  ── Kontexte (Server/Client in einer VM) ─────────────────────────────────────────────────────────
 --  Ein Kontext ist eine Tabelle { kind = "server"|"client"|"harness", name, isServer, isClient, player, game,
@@ -64,6 +68,7 @@ R.defaults = {
 	infiniteYieldAfter = 5, -- Sekunden bis zur "Infinite yield possible"-Warnung
 	echo = false, -- Fehler/Warnungen sofort auf stdout ausgeben
 	echoOutput = false, -- print/warn des Spiels sofort ausgeben
+	studio = false, -- RunService:IsStudio() (Szenario-Option --studio / --live)
 }
 
 local function harnessRootFromChunk()
@@ -101,6 +106,9 @@ function R.boot(config)
 	R.Globals = require("@self/Globals")(R)
 	math.randomseed(cfg.seed)
 	R.rng = R.DT.Random.new(cfg.seed)
+	R.Svc = require("@self/Services")(R)
+	R.Net = require("@self/Net")(R)
+	R.Game = require("@self/Game")(R)
 	return R
 end
 

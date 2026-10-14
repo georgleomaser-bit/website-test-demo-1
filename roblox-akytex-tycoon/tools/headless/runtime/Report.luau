@@ -141,6 +141,120 @@ return function(R)
 		return e
 	end
 
+	-- ---------------------------------------------------------------------------------------------
+	--  Abgefangene Fehler (pcall/xpcall im Spiel-Code)
+	--  Art: "api" (Roblox-API-Fehler per Util.raise), "runtime" (Luau-Laufzeitfehler: attempt to …, invalid
+	--  argument …), "thrown" (vom Spiel selbst mit error() geworfen – nur Information), "harness" (oberster Frame
+	--  im Harness, nicht bewusst geworfen -> Kategorie B).
+	-- ---------------------------------------------------------------------------------------------
+	Report.caughtList = {}
+	Report.caughtByKey = {}
+	Report.totalCaught = 0
+	local runtimePatterns = {
+		"attempt to ",
+		"invalid argument #",
+		"bad argument #",
+		"missing argument #",
+		"Argument %d+ missing or nil",
+		"is not a valid member of",
+		"stack overflow",
+		"Unable to ",
+		"cannot resume",
+		"table index is nil",
+		"table index is NaN",
+		"string expected",
+		"number expected",
+		"invalid value",
+		"Requested module was required recursively",
+		"Module code did not return exactly one value",
+		"Expected ':' not '.'",
+		"is not a valid Service name",
+		"The Parent property of",
+		"cannot be assigned to",
+		"lacking capability",
+	}
+	function Report.caught(e, level)
+		Report.totalCaught += 1
+		local msg = Util.errToString(e)
+		if type(e) == "string" and string.find(msg, "Requested module experienced an error while loading", 1, true) then
+			return -- Originalfehler wurde schon beim Laden gemeldet
+		end
+		-- Ort: erster Spiel-Frame ab dem Fehlerort (der pcall-Wrapper in Globals.luau ist transparent)
+		local loc = nil
+		local lvl = (level or 2) + 1
+		local topSrc = nil
+		local errSrc = debug.info(lvl, "s")
+		local callerSrc = debug.info(lvl + 1, "s")
+		local callerFn = debug.info(lvl + 1, "n")
+		while true do
+			local src, line = debug.info(lvl, "sl")
+			if src == nil then
+				break
+			end
+			if topSrc == nil and src ~= "[C]" and not string.find(src, "runtime/Globals.luau", 1, true) then
+				topSrc = src
+			end
+			if not Util.isHarnessSource(src) then
+				loc = src .. ":" .. tostring(line)
+				break
+			end
+			lvl += 1
+		end
+		-- eingebaute Funktion direkt per pcall aufgerufen (pcall(string.format, …), pcall(require, …)): der
+		-- Spiel-Code rechnet mit dem Fehlschlag -> nur Information
+		local directBuiltin = errSrc == "[C]" and callerSrc == "[C]" and callerFn == "xpcall"
+		local key = msg .. "@" .. tostring(loc)
+		local c = Report.caughtByKey[key]
+		if c then
+			c.count += 1
+			local trig = Report.trigger
+			if trig and #c.triggers < 10 and not table.find(c.triggers, trig) then
+				c.triggers[#c.triggers + 1] = trig
+			end
+			return
+		end
+		local kind = "thrown"
+		local deliberate = Util.lastRaised ~= nil and type(e) == "string" and string.sub(msg, -#Util.lastRaised) == Util.lastRaised
+		if deliberate then
+			kind = "api"
+		elseif type(e) == "string" then
+			for _, pat in runtimePatterns do
+				if string.find(msg, pat) then
+					kind = "runtime"
+					break
+				end
+			end
+		end
+		if kind ~= "api" and topSrc and Util.isHarnessSource(topSrc) and type(e) == "string" then
+			kind = "harness"
+		end
+		if directBuiltin and kind ~= "api" then
+			kind = "thrown"
+		end
+		local tb = debug.traceback(msg, (level or 2) + 1)
+		local co = coroutine.running()
+		c = {
+			message = msg,
+			location = loc or Util.firstGameFrame(msg) or "?",
+			traceback = Report.cleanTraceback(tb),
+			rawTraceback = tb,
+			ctx = ctxName(R.Sched and R.Sched.ctx() or nil),
+			kind = kind,
+			count = 1,
+			firstTime = R.Sched and R.Sched.now or 0,
+			triggers = Report.trigger and { Report.trigger } or {},
+			scenario = Report.scenario,
+		}
+		if co and Report.lastUnmocked[co] and string.find(msg, "nil", 1, true) then
+			c.hint = "nach unmocked API-Aufruf " .. Report.lastUnmocked[co] .. " (möglicherweise Folgefehler des Stubs)"
+		end
+		Report.caughtByKey[key] = c
+		Report.caughtList[#Report.caughtList + 1] = c
+		if R.config.echo and kind ~= "thrown" then
+			print(string.format("[ABGEFANGEN %s/%s] %s\n%s", c.ctx, kind, msg, c.traceback))
+		end
+	end
+
 	function Report.warn(msg, ctx, traceback, kind)
 		msg = Util.errToString(msg)
 		local loc = Util.firstGameFrame(traceback) or "?"

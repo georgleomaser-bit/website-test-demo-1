@@ -35,6 +35,11 @@ return function(R)
 	S.dt = 1 / (R.config.frameRate or 30)
 	S.startUnix = R.config.startUnix or os.time()
 
+	-- Echtzeit-Anteil innerhalb eines Frames (für os.clock/tick-Zeitbudgets im Spiel-Code)
+	local realClock = os.clock
+	S.realClock = realClock
+	S.resumeReal = realClock()
+
 	S.threadCtx = setmetatable({}, { __mode = "k" })
 	S.threadLabel = setmetatable({}, { __mode = "k" })
 	S.noYield = setmetatable({}, { __mode = "k" })
@@ -129,8 +134,16 @@ return function(R)
 		if costatus(co) ~= "suspended" then
 			return false
 		end
+		-- Threads geschlossener Kontexte (Client hat das Spiel verlassen) laufen nicht weiter
+		local tctx = S.threadCtx[co]
+		if tctx and tctx.closed then
+			return false
+		end
 		depth += 1
+		local prevStart = S.resumeReal
+		S.resumeReal = realClock()
 		local ok, err = coresume(co, ...)
+		S.resumeReal = prevStart
 		depth -= 1
 		if not ok then
 			Report.error({
@@ -580,6 +593,19 @@ return function(R)
 	-- ---------------------------------------------------------------------------------------------
 	function S.unix()
 		return S.startUnix + S.now
+	end
+
+	--- Hochauflösende Uhr für os.clock()/tick(): simulierte Zeit + Echtzeit, die der laufende Thread seit seiner
+	--- letzten Fortsetzung rechnet. So enden Zeitbudget-Schleifen im Spiel-Code ("arbeite bis os.clock() >=
+	--- deadline") wie in Roblox, ohne dass die Uhr über viele Frames der simulierten Zeit davonläuft.
+	--- Grenze: zwischen verschiedenen Threads desselben Frames kann die Uhr um Millisekunden zurückspringen.
+	S.longestResume = 0
+	function S.fineTime()
+		local within = realClock() - S.resumeReal
+		if within > S.longestResume then
+			S.longestResume = within
+		end
+		return S.now + within
 	end
 	function S.unixMillis()
 		return math.floor((S.startUnix + S.now) * 1000)

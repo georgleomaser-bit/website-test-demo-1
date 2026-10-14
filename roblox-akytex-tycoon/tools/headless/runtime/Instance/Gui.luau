@@ -66,29 +66,53 @@ return function(R, Inst)
 		return DT.u2Parts(v)
 	end
 
-	-- Inhaltsfläche eines Containers (berücksichtigt UIPadding und ScrollingFrame-Canvas)
+	-- UIScale-Faktor eines Objekts (erstes UIScale-Kind)
+	local function uiScaleOf(M)
+		for _, c in M.children do
+			local CM = getmt(c)
+			if CM.cls.name == "UIScale" then
+				local k = CM.props.Scale
+				if k == nil then
+					return 1
+				end
+				return k
+			end
+		end
+		return 1
+	end
+	G.uiScaleOf = function(u)
+		return uiScaleOf(getmt(u))
+	end
+
+	-- Inhaltsfläche eines Containers (berücksichtigt UIPadding, ScrollingFrame-Canvas und UIScale).
+	-- Rückgabe x, y, w, h, cs (cs = Faktor für Offsets der Kinder = Produkt aller UIScale darüber)
 	local function contentRect(p, PM)
-		local x, y, w, h = compute(p, PM)
+		local x, y, w, h, _, cs = compute(p, PM)
+		cs = cs or 1
+		if PM.cls.isA.LayerCollector then
+			-- UIScale an einer ScreenGui/SurfaceGui skaliert den ganzen Inhalt um die linke obere Ecke
+			w, h = w * cs, h * cs
+		end
 		if PM.cls.isA.ScrollingFrame then
-			local cs = prop(p, PM, "CanvasSize")
-			local xs, xo, ys, yo = udim2(cs)
-			local cw, ch = math.max(w, xs * w + xo), math.max(h, ys * h + yo)
+			local cvs = prop(p, PM, "CanvasSize")
+			local xs, xo, ys, yo = udim2(cvs)
+			local cw, ch = math.max(w, xs * w + xo * cs), math.max(h, ys * h + yo * cs)
 			local cp = prop(p, PM, "CanvasPosition")
-			x, y, w, h = x - cp.X, y - cp.Y, cw, ch
+			x, y, w, h = x - cp.X * cs, y - cp.Y * cs, cw, ch
 		end
 		for _, c in PM.children do
 			local CM = getmt(c)
 			if CM.cls.name == "UIPadding" then
 				local function u(name, base)
-					local s, o = DT.udParts(prop(c, CM, name))
-					return s * base + o
+					local sc, o = DT.udParts(prop(c, CM, name))
+					return sc * base + o * cs
 				end
 				local l, r, t, b = u("PaddingLeft", w), u("PaddingRight", w), u("PaddingTop", h), u("PaddingBottom", h)
 				x, y, w, h = x + l, y + t, math.max(0, w - l - r), math.max(0, h - t - b)
 				break
 			end
 		end
-		return x, y, w, h
+		return x, y, w, h, cs
 	end
 
 	local function constrain(u, M, w, h)
@@ -122,7 +146,9 @@ return function(R, Inst)
 		return w, h
 	end
 
-	local function ownSize(u, M, pw, ph)
+	-- Größe vor der eigenen UIScale (pcs = Offset-Faktor des Elternteils)
+	local function baseSize(u, M, pw, ph, pcs)
+		pcs = pcs or 1
 		local xs, xo, ys, yo = udim2(prop(u, M, "Size"))
 		local sc = prop(u, M, "SizeConstraint").Name
 		local bw, bh = pw, ph
@@ -131,8 +157,14 @@ return function(R, Inst)
 		elseif sc == "RelativeYY" then
 			bw = ph
 		end
-		local w, h = bw * xs + xo, bh * ys + yo
+		local w, h = bw * xs + xo * pcs, bh * ys + yo * pcs
 		return constrain(u, M, w, h)
+	end
+	-- Größe inklusive eigener UIScale (für Layouts)
+	local function ownSize(u, M, pw, ph, pcs)
+		local w, h = baseSize(u, M, pw, ph, pcs)
+		local k = uiScaleOf(M)
+		return w * k, h * k
 	end
 
 	local function isVisibleGui(c, CM)
@@ -144,7 +176,8 @@ return function(R, Inst)
 	end
 
 	-- Position eines Kindes in einem UIListLayout/UIGridLayout (nil, wenn keins vorhanden)
-	local function layoutPosition(u, M, p, PM, px, py, pw, ph, w, h)
+	local function layoutPosition(u, M, p, PM, px, py, pw, ph, w, h, pcs)
+		pcs = pcs or 1
 		local layout
 		for _, c in PM.children do
 			local cn = getmt(c).cls.name
@@ -181,7 +214,7 @@ return function(R, Inst)
 		local fill = prop(layout, LM, "FillDirection").Name
 		if LM.cls.name == "UIListLayout" then
 			local ps, po = DT.udParts(prop(layout, LM, "Padding"))
-			local pad = (fill == "Vertical" and ph or pw) * ps + po
+			local pad = (fill == "Vertical" and ph or pw) * ps + po * pcs
 			local cursor = 0
 			local total = 0
 			local mine = nil
@@ -190,7 +223,7 @@ return function(R, Inst)
 				if s[1] == u then
 					sw, sh = w, h
 				else
-					sw, sh = ownSize(s[1], s[2], pw, ph)
+					sw, sh = ownSize(s[1], s[2], pw, ph, pcs)
 				end
 				if s[1] == u then
 					mine = cursor
@@ -237,8 +270,8 @@ return function(R, Inst)
 			-- UIGridLayout: Zellen zeilenweise (Horizontal) bzw. spaltenweise (Vertical)
 			local cxs, cxo, cys, cyo = udim2(prop(layout, LM, "CellSize"))
 			local pxs, pxo, pys, pyo = udim2(prop(layout, LM, "CellPadding"))
-			local cw, ch = pw * cxs + cxo, ph * cys + cyo
-			local padx, pady = pw * pxs + pxo, ph * pys + pyo
+			local cw, ch = pw * cxs + cxo * pcs, ph * cys + cyo * pcs
+			local padx, pady = pw * pxs + pxo * pcs, ph * pys + pyo * pcs
 			local maxCells = prop(layout, LM, "FillDirectionMaxCells")
 			local perLine
 			if fill == "Horizontal" then
@@ -264,12 +297,13 @@ return function(R, Inst)
 		end
 	end
 
-	local function gridCellSize(u, M, PM, pw, ph)
+	local function gridCellSize(u, M, PM, pw, ph, pcs)
+		pcs = pcs or 1
 		for _, c in PM.children do
 			local CM = getmt(c)
 			if CM.cls.name == "UIGridLayout" then
 				local cxs, cxo, cys, cyo = udim2(prop(c, CM, "CellSize"))
-				return pw * cxs + cxo, ph * cys + cyo
+				return pw * cxs + cxo * pcs, ph * cys + cyo * pcs
 			end
 		end
 		return nil
@@ -278,9 +312,10 @@ return function(R, Inst)
 	function compute(u, M)
 		local cache = M.guiCache
 		if cache and cache.v == version then
-			return cache.x, cache.y, cache.w, cache.h, cache.r
+			return cache.x, cache.y, cache.w, cache.h, cache.r, cache.cs
 		end
 		local x, y, w, h, r = 0, 0, 0, 0, 0
+		local cs = 1
 		local cls = M.cls
 		if cls.isA.ScreenGui then
 			local vw, vh, inset = cfg()
@@ -291,6 +326,7 @@ return function(R, Inst)
 			else
 				x, y, w, h = 0, inset, vw, vh - inset
 			end
+			cs = uiScaleOf(M)
 		elseif cls.isA.SurfaceGui then
 			local mode = prop(u, M, "SizingMode").Name
 			if mode == "PixelsPerStud" then
@@ -311,49 +347,58 @@ return function(R, Inst)
 					w, h = 800, 600
 				end
 			else
-				local cs = prop(u, M, "CanvasSize")
-				w, h = cs.X, cs.Y
+				local cvs = prop(u, M, "CanvasSize")
+				w, h = cvs.X, cvs.Y
 			end
+			cs = uiScaleOf(M)
 		elseif cls.isA.BillboardGui then
 			local xs, xo, ys, yo = udim2(prop(u, M, "Size"))
 			w, h = xo + xs * 50, yo + ys * 50
+			cs = uiScaleOf(M)
 		elseif cls.isA.GuiObject then
 			local p, PM = guiParent(M)
-			local px, py, pw, ph, pr = 0, 0, 0, 0, 0
+			local px, py, pw, ph, pr, pcs = 0, 0, 0, 0, 0, 1
 			if p then
-				px, py, pw, ph = contentRect(p, PM)
+				px, py, pw, ph, pcs = contentRect(p, PM)
 				local _, _, _, _, prr = compute(p, PM)
 				pr = prr or 0
 			end
+			local k = uiScaleOf(M)
 			local gw, gh = nil, nil
 			if p then
-				gw, gh = gridCellSize(u, M, PM, pw, ph)
+				gw, gh = gridCellSize(u, M, PM, pw, ph, pcs)
 			end
+			local bw, bh
 			if gw then
-				w, h = gw, gh
+				bw, bh = gw, gh
 			else
-				w, h = ownSize(u, M, pw, ph)
+				bw, bh = baseSize(u, M, pw, ph, pcs)
 			end
+			w, h = bw * k, bh * k
 			local lx, ly = nil, nil
 			if p then
-				lx, ly = layoutPosition(u, M, p, PM, px, py, pw, ph, w, h)
+				lx, ly = layoutPosition(u, M, p, PM, px, py, pw, ph, w, h, pcs)
 			end
 			if lx then
 				x, y = lx, ly
 			else
 				local xs, xo, ys, yo = udim2(prop(u, M, "Position"))
 				local ap = prop(u, M, "AnchorPoint")
-				x = px + pw * xs + xo - ap.X * w
-				y = py + ph * ys + yo - ap.Y * h
+				-- Ankerpunkt ohne eigene Skalierung, dann um ihn herum skalieren (wie Roblox' UIScale)
+				local ax = px + pw * xs + xo * pcs
+				local ay = py + ph * ys + yo * pcs
+				x = ax - ap.X * w
+				y = ay - ap.Y * h
 			end
 			r = pr + (prop(u, M, "Rotation") or 0)
+			cs = pcs * k
 		else
 			-- andere GuiBase2d (z. B. LayerCollector-Varianten): wie Viewport
 			local vw, vh = cfg()
 			w, h = vw, vh
 		end
-		M.guiCache = { v = version, x = x, y = y, w = w, h = h, r = r }
-		return x, y, w, h, r
+		M.guiCache = { v = version, x = x, y = y, w = w, h = h, r = r, cs = cs }
+		return x, y, w, h, r, cs
 	end
 
 	function G.abs(u)
@@ -372,8 +417,8 @@ return function(R, Inst)
 	end
 	local function textBounds(u, M)
 		local text = plainText(u, M)
-		local _, _, w, h = compute(u, M)
-		local size = prop(u, M, "TextSize")
+		local _, _, w, h, _, tcs = compute(u, M)
+		local size = prop(u, M, "TextSize") * (tcs or 1)
 		local lineH = prop(u, M, "LineHeight") or 1
 		local n = utf8.len(text) or #text
 		local charW = 0.5
@@ -508,6 +553,7 @@ return function(R, Inst)
 		Face = true,
 		AutomaticSize = true,
 		RichText = true,
+		Scale = true,
 	}
 	local function geomChanged(u, M, propName)
 		if geometryProps[propName] then
@@ -616,17 +662,17 @@ return function(R, Inst)
 		if PM == nil or not PM.cls.isA.GuiBase2d then
 			return 0, 0
 		end
-		local _, _, pw, ph = contentRect(p, PM)
+		local _, _, pw, ph, pcs = contentRect(p, PM)
 		local fill = prop(u, M, "FillDirection").Name
 		local total, maxOther = 0, 0
 		local count = 0
 		if M.cls.name == "UIListLayout" then
 			local ps, po = DT.udParts(prop(u, M, "Padding"))
-			local pad = (fill == "Vertical" and ph or pw) * ps + po
+			local pad = (fill == "Vertical" and ph or pw) * ps + po * pcs
 			for _, c in PM.children do
 				local CM = getmt(c)
 				if isVisibleGui(c, CM) then
-					local w, h = ownSize(c, CM, pw, ph)
+					local w, h = ownSize(c, CM, pw, ph, pcs)
 					count += 1
 					if fill == "Vertical" then
 						total += h
@@ -648,8 +694,8 @@ return function(R, Inst)
 		-- UIGridLayout
 		local cxs, cxo, cys, cyo = udim2(prop(u, M, "CellSize"))
 		local pxs, pxo, pys, pyo = udim2(prop(u, M, "CellPadding"))
-		local cw, ch = pw * cxs + cxo, ph * cys + cyo
-		local padx, pady = pw * pxs + pxo, ph * pys + pyo
+		local cw, ch = pw * cxs + cxo * pcs, ph * cys + cyo * pcs
+		local padx, pady = pw * pxs + pxo * pcs, ph * pys + pyo * pcs
 		for _, c in PM.children do
 			if isVisibleGui(c, getmt(c)) then
 				count += 1

@@ -168,7 +168,7 @@ return function(R)
 		time = simTime,
 		date = simDate,
 		clock = function()
-			return Sched.now
+			return Sched.fineTime()
 		end,
 		difftime = os.difftime,
 	}
@@ -246,6 +246,30 @@ return function(R)
 		"vector",
 	}
 
+	-- ---------------------------------------------------------------------------------------------
+	--  pcall/xpcall des Spiels: Fehler werden trotzdem erfasst (Report.caught, mit Traceback am Fehlerort)
+	--  – das Spiel fängt viele Fehler ab und warnt nur; ohne das würden echte Bugs übersehen.
+	-- ---------------------------------------------------------------------------------------------
+	local rawxpcall = xpcall
+	local function captureHandler(e)
+		Report.caught(e, 2)
+		return e
+	end
+	local function gamePcall(f, ...)
+		return rawxpcall(f, captureHandler, ...)
+	end
+	local function gameXpcall(f, handler, ...)
+		if type(handler) ~= "function" then
+			-- Roblox/Luau: xpcall ohne gültigen Handler -> Fehler beim Fehlerfall; hier wie pcall + Handler-Fehler
+			return rawxpcall(f, handler, ...)
+		end
+		return rawxpcall(f, function(e)
+			Report.caught(e, 2)
+			return handler(e)
+		end, ...)
+	end
+	G.gamePcall = gamePcall
+
 	function G.base(ctx)
 		local b = ctx.data.base
 		if b then
@@ -256,7 +280,9 @@ return function(R)
 			b[k] = _G[k]
 		end
 		b._VERSION = "Luau"
-		b.ypcall = pcall
+		b.pcall = gamePcall
+		b.xpcall = gameXpcall
+		b.ypcall = gamePcall
 		b.typeof = Util.typeof
 		b.type = Util.type
 		b.getmetatable = Util.getmetatable
@@ -290,7 +316,7 @@ return function(R)
 		end
 		b.Delay = b.delay
 		b.tick = function()
-			return Sched.unix()
+			return Sched.startUnix + Sched.fineTime()
 		end
 		b.time = function()
 			return Sched.now
