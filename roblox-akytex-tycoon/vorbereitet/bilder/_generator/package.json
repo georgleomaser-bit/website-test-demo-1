@@ -1,0 +1,6 @@
+{
+  "name": "akytex-tycoon-bilder",
+  "private": true,
+  "type": "commonjs",
+  "description": "Erzeugt Thumbnail und Spiel-Icon fuer AKYTEX TYCOON (node generate.js)"
+}

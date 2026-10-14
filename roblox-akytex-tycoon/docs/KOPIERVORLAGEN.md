@@ -151,6 +151,10 @@ kein „Raytracing“ (höchstens „Future-Licht“). Text im Bild kurz und gro
 | **Thumbnail 4** | Börsengang: Spieler läutet die goldene Glocke, Konfetti-Beams | `grand stock exchange hall with a golden bell on a podium, confetti light beams, marble floor, celebration` |
 | **Thumbnail 5** | Samstag: goldene Bullen-Parade um die Plaza | `parade of friendly golden bull statues around a neon plaza at night, fireworks beams in the sky` + Text „SA 18:00 ADMIN-ABUSE“ |
 
+**Fertige Bilder (schon gezeichnet):** `vorbereitet/bilder/thumbnail-1-de.png` und `thumbnail-1-en.png` (1920 × 1080, Motiv
+Thumbnail 1 bei Nacht) und `vorbereitet/bilder/spiel-icon.png` (512 × 512). Neu erzeugen mit
+`node vorbereitet/bilder/_generator/generate.js` (siehe README dort).
+
 **Wo hochladen?** Studio: **Home → Game Settings → Basic Info → Game Icon** bzw. **Thumbnails**.
 Für saubere Fotos aus dem Spiel: Taste **F7** (Fotomodus, versteckt die Knöpfe), dann am Mac **Cmd + Shift + 4**.
 
