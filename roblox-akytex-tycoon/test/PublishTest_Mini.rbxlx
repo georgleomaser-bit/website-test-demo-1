@@ -1,0 +1,15 @@
+<roblox version="4">
+  <Item class="ServerScriptService" referent="0">
+    <Properties>
+      <string name="Name">ServerScriptService</string>
+    </Properties>
+    <Item class="Script" referent="1">
+      <Properties>
+        <string name="Name">Hallo</string>
+        <token name="RunContext">0</token>
+        <string name="Source"><![CDATA[print("Publish-Test OK")
+]]></string>
+      </Properties>
+    </Item>
+  </Item>
+</roblox>
