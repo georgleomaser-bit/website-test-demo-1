@@ -1741,4 +1741,8 @@ if (require.main === module) {
   });
 }
 
-module.exports = { JOBS };
+module.exports = {
+  JOBS,
+  // Bausteine fuer release.js (Banner, neue Vorschaubilder) – gleicher Stil wie die Thumbnails
+  helpers: { n1, uid, rng, esc, commonDefs, sparkle, starField, meteor, txt, emo, burst, glowSpot, alienEgg, avatar, skyDefs, nebula, ribbon, pill, pageHTML, fitText, textBounds, loadPlaywright, FILL, EGG, PAL },
+};
