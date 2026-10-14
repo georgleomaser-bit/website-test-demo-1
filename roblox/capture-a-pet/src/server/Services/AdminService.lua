@@ -102,8 +102,8 @@ actions.GiveAnimal = function(_admin, userId, species, mutation, aura)
 	end
 	local record = S.PlayerService.giveAnimal(p, {
 		Species = species,
-		Mutation = num(mutation, 1, #Game.Mutations) and math.floor(mutation) or 1,
-		Aura = num(aura, 1, #Game.Auras) and math.floor(aura) or 1,
+		Mutation = math.floor(num(mutation, 1, #Game.Mutations) or 1),
+		Aura = math.floor(num(aura, 1, #Game.Auras) or 1),
 	})
 	return record ~= nil, record and ("Gave " .. species .. " to " .. p.Name) or "Storage full"
 end

@@ -92,9 +92,21 @@ function Preview.clear(viewport: ViewportFrame)
 	clear(viewport)
 end
 
+-- only turn previews that are actually on screen (all ancestors visible)
+local function onScreen(gui: Instance): boolean
+	local node = gui
+	while node and not node:IsA("LayerCollector") do
+		if node:IsA("GuiObject") and not node.Visible then
+			return false
+		end
+		node = node.Parent
+	end
+	return node ~= nil
+end
+
 RunService.RenderStepped:Connect(function(dt)
 	for viewport, entry in pairs(spinning) do
-		if viewport.Visible and viewport.Parent then
+		if viewport.Parent and onScreen(viewport) then
 			entry.Angle += dt * 0.6
 			entry.Place()
 		end

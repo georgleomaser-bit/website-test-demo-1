@@ -30,11 +30,19 @@ function Windows.screen(): ScreenGui
 		local size = camera and camera.ViewportSize or Vector2.new(1280, 720)
 		scale.Scale = math.clamp(math.min(size.X / 1280, size.Y / 760), 0.55, 1.25)
 	end
-	rescale()
-	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(rescale)
-	if Workspace.CurrentCamera then
-		Workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
+	local viewportConnection
+	local function watchCamera()
+		if viewportConnection then
+			viewportConnection:Disconnect()
+		end
+		local camera = Workspace.CurrentCamera
+		if camera then
+			viewportConnection = camera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
+		end
+		rescale()
 	end
+	watchCamera()
+	Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(watchCamera)
 	return screen
 end
 
@@ -128,6 +136,13 @@ function Windows.open(name: string)
 	Kit.tween(api._pop, 0.22, { Scale = 1 }, Enum.EasingStyle.Back)
 	if api.OnOpen then
 		api.OnOpen()
+	end
+end
+
+-- Opens a window without toggling it closed when it is already open.
+function Windows.show(name: string)
+	if not Windows.isOpen(name) then
+		Windows.open(name)
 	end
 end
 

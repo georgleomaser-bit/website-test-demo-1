@@ -19,6 +19,7 @@ local SESSION_ID = game.JobId ~= "" and game.JobId or ("studio-" .. HttpService:
 local store = nil
 local storeAvailable = false
 local profiles = {} -- [player] = { Data = table, Dirty = bool, Saving = bool }
+local releasing = {} -- [userId] = true while a leaving player's final save is running
 local loadedCallbacks = {}
 local releasingCallbacks = {}
 
@@ -96,6 +97,12 @@ local function loadData(player: Player)
 	if not storeAvailable then
 		return reconcile(defaultData(), defaultData())
 	end
+	-- rejoining the same server: wait for the previous session's final save first
+	local waited = 0
+	while releasing[player.UserId] and waited < 30 do
+		task.wait(0.2)
+		waited += 0.2
+	end
 	local key = keyFor(player.UserId)
 	for attempt = 1, 6 do
 		local lockedElsewhere = false
@@ -138,15 +145,22 @@ local function saveData(player: Player, release: boolean): boolean
 	while profile.Saving do
 		task.wait(0.1)
 	end
+	if not release and (profile.Released or profiles[player] ~= profile) then
+		-- the final save already ran (or is about to); never re-take the lock after it
+		return false
+	end
 	profile.Saving = true
 	profile.Data.LastOnline = os.time()
 	local snapshot = profile.Data
+	local wrote = false
 	local ok, err = retry(function()
 		return store:UpdateAsync(keyFor(player.UserId), function(old)
 			old = old or {}
 			if old.Lock and old.Lock.Session ~= SESSION_ID and os.time() - (old.Lock.Time or 0) < LOCK_EXPIRE_SECONDS then
+				wrote = false
 				return nil -- someone else owns the session now; never overwrite their data
 			end
+			wrote = true
 			old.Data = snapshot
 			old.Lock = (not release) and { Session = SESSION_ID, Time = os.time() } or nil
 			return old
@@ -155,8 +169,10 @@ local function saveData(player: Player, release: boolean): boolean
 	profile.Saving = false
 	if not ok then
 		warn("[DataService] Save failed for", player.Name, err)
+	elseif not wrote then
+		warn("[DataService] Save skipped for", player.Name, "- another server holds the session lock")
 	end
-	return ok
+	return ok and wrote
 end
 
 function DataService.Init(_services)
@@ -209,8 +225,11 @@ function DataService.Start()
 				warn("[DataService] release callback error", err)
 			end
 		end
+		profile.Released = true
+		releasing[player.UserId] = true
 		saveData(player, true)
 		profiles[player] = nil
+		releasing[player.UserId] = nil
 	end)
 
 	task.spawn(function()
@@ -232,6 +251,10 @@ function DataService.Start()
 			task.spawn(function()
 				for _, callback in ipairs(releasingCallbacks) do
 					pcall(callback, player, profiles[player] and profiles[player].Data)
+				end
+				local profile = profiles[player]
+				if profile then
+					profile.Released = true
 				end
 				saveData(player, true)
 				pending -= 1

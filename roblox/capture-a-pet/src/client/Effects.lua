@@ -175,7 +175,8 @@ local function incomePopups()
 	for _, plot in ipairs(plots:GetChildren()) do
 		local pen = plot:FindFirstChild("PenAnimals")
 		local mine = plot.Name == ("Plot" .. tostring(plotIndex))
-		if pen and (mine or (hrp and (plot:GetPivot().Position - hrp.Position).Magnitude < 160)) then
+		-- your own base always, other bases only while you stand in them
+		if pen and (mine or (hrp and (plot:GetPivot().Position - hrp.Position).Magnitude < 100)) then
 			for _, model in ipairs(pen:GetChildren()) do
 				local income = model:GetAttribute("Income")
 				local root = model.PrimaryPart
@@ -197,8 +198,8 @@ local function filterPrompts()
 	local plotIndex = player:GetAttribute("Plot")
 	local map = Workspace:FindFirstChild("Map")
 	local plots = map and map:FindFirstChild("Plots")
-	if not plots then
-		return
+	if not plots or not plotIndex then
+		return -- no base yet: don't touch anything, or our own prompts would be switched off
 	end
 	for _, plot in ipairs(plots:GetChildren()) do
 		local mine = plot.Name == ("Plot" .. tostring(plotIndex))
@@ -209,7 +210,10 @@ local function filterPrompts()
 					if model and model:GetAttribute("OwnerUserId") == myId then
 						prompt.Enabled = false
 					end
-				elseif prompt.Name == "BuyPrompt" or prompt.Name == "LockPrompt" or prompt.Name == "HatchPrompt" then
+				elseif prompt.Name == "LockPrompt" then
+					-- the server never changes this one, so set it both ways
+					prompt.Enabled = mine
+				elseif prompt.Name == "BuyPrompt" or prompt.Name == "HatchPrompt" then
 					if not mine then
 						prompt.Enabled = false
 					end

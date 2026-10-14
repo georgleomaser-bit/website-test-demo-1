@@ -235,8 +235,9 @@ local function respawnNestEgg(nest)
 		end
 		local spawner = #list > 0 and list[rng:NextInteger(1, #list)] or nil
 		local luck = 1
-		if spawner then
-			luck = Formulas.luckMult(S.PlayerService.ctx(spawner))
+		local ctx = spawner and S.PlayerService.ctx(spawner)
+		if ctx then
+			luck = Formulas.luckMult(ctx)
 		end
 		local rarity = Animals.rollEggRarity(Animals.EggWeight, luck, rng)
 		local def = Animals.pickSpecies(nest.Zone, rarity, rng)
@@ -399,7 +400,7 @@ end
 
 function NestService.throwBait(player: Player, target): (boolean, string?)
 	local data = S.DataService.get(player)
-	if typeof(target) ~= "Vector3" or target.X ~= target.X then
+	if typeof(target) ~= "Vector3" or target.Magnitude ~= target.Magnitude or target.Magnitude == math.huge then
 		return false, "Bad target"
 	end
 	if data.Bait <= 0 then
@@ -489,7 +490,10 @@ function NestService.Start()
 					if not (item and item.Egg == nest.Egg) then
 						nest.Taken = false
 						nest.Carrier = nil
-						respawnNestEgg(nest)
+						local ok, err = pcall(respawnNestEgg, nest)
+						if not ok then
+							warn("[NestService] egg respawn failed", err)
+						end
 					end
 				end
 			end

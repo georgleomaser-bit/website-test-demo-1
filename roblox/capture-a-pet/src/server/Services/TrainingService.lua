@@ -62,7 +62,9 @@ function TrainingService.Start()
 					local tier = treadmillUnder(player, hrp :: BasePart)
 					if tier then
 						local ctx = S.PlayerService.ctx(player)
-						S.PlayerService.addSpeed(player, Formulas.treadmillGain(ctx, tier) * dt)
+						if ctx then
+							S.PlayerService.addSpeed(player, Formulas.treadmillGain(ctx, tier) * dt)
+						end
 						if player:GetAttribute("Treadmill") ~= tier then
 							player:SetAttribute("Treadmill", tier)
 						end

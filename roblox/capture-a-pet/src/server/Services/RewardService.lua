@@ -48,7 +48,7 @@ end
 local function checkDay(player: Player)
 	local data = S.DataService.get(player)
 	local rt = S.PlayerService.get(player)
-	if not data then
+	if not data or not rt then
 		return
 	end
 	if data.Tasks.Day ~= today() then
@@ -241,7 +241,10 @@ function RewardService.Start()
 			task.wait(60)
 			for _, player in ipairs(game:GetService("Players"):GetPlayers()) do
 				if S.DataService.isLoaded(player) then
-					checkDay(player)
+					local ok, err = pcall(checkDay, player)
+					if not ok then
+						warn("[RewardService] day check failed", err)
+					end
 				end
 			end
 		end

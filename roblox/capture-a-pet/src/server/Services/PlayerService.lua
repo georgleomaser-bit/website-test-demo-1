@@ -104,7 +104,7 @@ function PlayerService.buildState(player: Player)
 	local rt = runtime[player]
 	local data = ctx.Data
 	local passes = table.clone(rt.Passes)
-	local carry = rt.Carry
+	local carry = S.CarryService.get(player)
 	return {
 		Data = data,
 		Derived = {
@@ -202,7 +202,13 @@ function PlayerService.addBait(player: Player, amount: number)
 	if not data or not ctx then
 		return
 	end
-	data.Bait = math.clamp(data.Bait + amount, 0, Formulas.maxBait(ctx))
+	local max = Formulas.maxBait(ctx)
+	if amount >= 0 then
+		-- never cut back bait above the cap (bought bait may go past it)
+		data.Bait = math.max(data.Bait, math.min(data.Bait + amount, max))
+	else
+		data.Bait = math.max(data.Bait + amount, 0)
+	end
 	PlayerService.markState(player)
 end
 
@@ -293,8 +299,12 @@ function PlayerService.giveAnimal(player: Player, fields)
 	if not record.InPen then
 		PlayerService.notify(player, def.Id .. " went to storage (pen full)", "info")
 	end
-	S.PlotService.refresh(player)
 	PlayerService.markState(player)
+	-- the animal is already granted; a display error must never make a caller retry the grant
+	local ok, err = pcall(S.PlotService.refresh, player)
+	if not ok then
+		warn("[PlayerService] plot refresh failed", err)
+	end
 	return record
 end
 
@@ -420,9 +430,17 @@ function PlayerService.Start()
 			LockCooldownUntil = 0,
 			StateDirty = true,
 			StatsDirty = true,
-			IsAdmin = isAdmin(player),
+			IsAdmin = false,
 		}
 		runtime[player] = rt
+		-- may yield (group rank lookup), so it runs after the runtime exists
+		task.spawn(function()
+			local admin = isAdmin(player)
+			if runtime[player] == rt and admin ~= rt.IsAdmin then
+				rt.IsAdmin = admin
+				PlayerService.markState(player)
+			end
+		end)
 
 		local stats = Instance.new("Folder")
 		stats.Name = "leaderstats"
@@ -438,6 +456,10 @@ function PlayerService.Start()
 		local services = S
 		task.defer(function()
 			services.MonetizationService.loadPasses(player)
+			-- loadPasses can yield; the player may have left meanwhile
+			if not player.Parent or runtime[player] ~= rt then
+				return
+			end
 			services.PlotService.assign(player)
 			services.RewardService.onJoin(player)
 			if data.LastOnline > 0 then

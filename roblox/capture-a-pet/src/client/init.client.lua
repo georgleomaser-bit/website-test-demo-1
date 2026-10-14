@@ -24,9 +24,14 @@ local player = Players.LocalPlayer
 if not State.ready() then
 	Feed.notify("Loading your animals...", "info")
 end
-State.Changed:Once(function()
+local function welcome()
 	Feed.notify("Welcome to Capture a Pet, " .. player.DisplayName .. "!", "reward")
-end)
+end
+if State.ready() then
+	welcome()
+else
+	State.Changed:Once(welcome)
+end
 if State.ready() then
 	HUD.refresh()
 end

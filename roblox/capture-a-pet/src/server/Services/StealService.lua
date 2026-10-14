@@ -119,6 +119,14 @@ function StealService.tryStart(thief: Player, owner: Player, uid: string)
 			end
 			S.DataService.get(p).Stats.Stolen += 1
 			S.ShopService.fillPen(t.Owner)
+			-- save the owner's loss first, then the thief's gain, so a crash can't duplicate the animal
+			local victim = t.Owner
+			task.spawn(function()
+				S.DataService.saveNow(victim)
+				if p.Parent then
+					S.DataService.saveNow(p)
+				end
+			end)
 			S.PlayerService.notify(p, "You stole " .. t.Owner.DisplayName .. "'s " .. def.Id .. "!", "rare")
 			S.PlayerService.notify(t.Owner, p.DisplayName .. " stole your " .. def.Id .. "! Lock your base next time.", "error")
 			Remotes.Alarm:FireClient(t.Owner, { Kind = "Lost", Thief = p.DisplayName, Species = def.Id })

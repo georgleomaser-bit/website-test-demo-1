@@ -149,7 +149,7 @@ end
 function MountService.Start()
 	S.DataService.onLoaded(function(player)
 		player.CharacterAdded:Connect(function(character)
-			mounts[player] = nil
+			detach(player)
 			character:WaitForChild("HumanoidRootPart", 10)
 			character:WaitForChild("Humanoid", 10)
 			task.wait(0.5)

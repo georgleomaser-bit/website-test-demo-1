@@ -202,13 +202,17 @@ function HUD.init()
 		Parent = right,
 	})
 	iconButton(right, 1, "🥚", "Nests", Kit.Colors.Yellow, function()
-		Windows.open("Pets")
+		Windows.show("Pets")
+		local pets = Windows.get("Pets")
+		if pets and pets.showTab then
+			pets.showTab("Nests")
+		end
 	end)
 	iconButton(right, 2, "📋", "Tasks", Kit.Colors.Purple, function()
 		Windows.open("Tasks")
 	end)
 	refs.RebirthButton = iconButton(right, 3, "🔁", "Rebirth", Kit.Colors.Pink, function()
-		Windows.open("Shop")
+		Windows.show("Shop")
 		local shop = Windows.get("Shop")
 		if shop and shop.showTab then
 			shop.showTab("Rebirth")
@@ -218,7 +222,7 @@ function HUD.init()
 		Windows.open("Gifts")
 	end)
 	iconButton(right, 5, "💎", "Robux", Kit.Colors.Blue, function()
-		Windows.open("Shop")
+		Windows.show("Shop")
 		local shop = Windows.get("Shop")
 		if shop and shop.showTab then
 			shop.showTab("Robux")

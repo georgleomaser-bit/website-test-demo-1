@@ -69,12 +69,53 @@ local function showDetail()
 	detail.Sell.setText("Sell $" .. Format.number(incomeOf(a) * Game.SellFraction))
 end
 
+local tileStrokes = {} -- uid -> UIStroke of its grid tile
+local animalsKey = nil
+local nestRows = {} -- slot -> { Label, Button }
+local nestsKey = nil
+
+local function paintSelection()
+	for uid, stroke in pairs(tileStrokes) do
+		stroke.Thickness = uid == selectedUid and 4 or 2.5
+		stroke.Color = uid == selectedUid and Kit.Colors.Yellow or Kit.Colors.Outline
+	end
+end
+
+local function updateHeader()
+	local d = State.Derived
+	local inPen = 0
+	for _, a in ipairs(State.Data.Animals) do
+		if a.InPen then
+			inPen += 1
+		end
+	end
+	header.Text = string.format("Pen %d/%d · Animals %d/%d · Income <font color=\"#7CFF6B\">$%s/s</font>", inPen, d.PenSlots, #State.Data.Animals, Game.MaxStorage + 36, Format.number(d.Income))
+end
+
+-- Everything a tile shows; the grid is rebuilt only when this changes.
+local function currentAnimalsKey(): string
+	local parts = { tostring(State.Data.Mount), Format.number(State.Derived.CashMult) }
+	for _, a in ipairs(State.Data.Animals) do
+		table.insert(parts, string.format("%s:%s:%s:%s:%s", a.Uid, a.Species, tostring(a.Mutation), tostring(a.Weight), a.InPen and "1" or "0"))
+	end
+	return table.concat(parts, "|")
+end
+
 local function buildAnimals()
+	updateHeader()
+	local key = currentAnimalsKey()
+	if key == animalsKey then
+		paintSelection()
+		showDetail()
+		return
+	end
+	animalsKey = key
 	for _, child in ipairs(grid:GetChildren()) do
 		if child:IsA("GuiObject") then
 			child:Destroy()
 		end
 	end
+	table.clear(tileStrokes)
 	local list = table.clone(State.Data.Animals)
 	table.sort(list, function(x, y)
 		return Formulas.animalBaseIncome(x) > Formulas.animalBaseIncome(y)
@@ -91,7 +132,7 @@ local function buildAnimals()
 				Parent = grid,
 			})
 			Kit.corner(tile, 10)
-			Kit.stroke(tile, a.Uid == selectedUid and 4 or 2.5, a.Uid == selectedUid and Kit.Colors.Yellow or nil, Enum.ApplyStrokeMode.Border)
+			tileStrokes[a.Uid] = Kit.stroke(tile, 2.5, nil, Enum.ApplyStrokeMode.Border)
 			Kit.gradient(tile, Color3.new(1, 1, 1), Color3.fromRGB(160, 160, 160))
 			if order <= MAX_PREVIEW_TILES then
 				local vp = Preview.new(tile, UDim2.new(1, -8, 1, -32), UDim2.fromOffset(4, 4), 23)
@@ -106,56 +147,68 @@ local function buildAnimals()
 			if State.Data.Mount == a.Uid then
 				Kit.label({ Text = "🐎", Size = UDim2.fromOffset(22, 22), Position = UDim2.new(1, -24, 0, 2), Stroke = false, Z = 25, Parent = tile })
 			end
+			local uid = a.Uid
 			tile.Activated:Connect(function()
 				Kit.playClick()
-				selectedUid = a.Uid
-				buildAnimals()
+				selectedUid = uid
+				paintSelection()
 				showDetail()
 			end)
 		end
 	end
-	local d = State.Derived
-	local inPen = 0
-	for _, a in ipairs(State.Data.Animals) do
-		if a.InPen then
-			inPen += 1
-		end
-	end
-	header.Text = string.format("Pen %d/%d · Animals %d/%d · Income <font color=\"#7CFF6B\">$%s/s</font>", inPen, d.PenSlots, #State.Data.Animals, Game.MaxStorage + 36, Format.number(d.Income))
+	paintSelection()
 	showDetail()
 end
 
+local function currentNestsKey(): string
+	local parts = { tostring(State.Derived.Incubators) }
+	for i = 1, State.Derived.Incubators do
+		local egg = State.Data.Eggs[i]
+		table.insert(parts, type(egg) == "table" and string.format("%s:%s:%s", egg.Species, tostring(egg.Rarity), tostring(egg.Aura)) or "-")
+	end
+	return table.concat(parts, "|")
+end
+
+-- Rows are built once per nest layout; the countdown text updates in place every second.
 local function buildNests()
-	for _, child in ipairs(nestList:GetChildren()) do
-		if child:IsA("GuiObject") then
-			child:Destroy()
+	local key = currentNestsKey()
+	if key ~= nestsKey then
+		nestsKey = key
+		for _, child in ipairs(nestList:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+		table.clear(nestRows)
+		for i = 1, State.Derived.Incubators do
+			local egg = State.Data.Eggs[i]
+			local row = Kit.panel({ Size = UDim2.new(1, -12, 0, 90), Color = Kit.Colors.PanelLight, Order = i, Parent = nestList })
+			local vp = Preview.new(row, UDim2.fromOffset(80, 80), UDim2.fromOffset(6, 5))
+			if type(egg) == "table" then
+				Preview.showEgg(vp, egg.Species, egg.Rarity)
+				nestRows[i] = {
+					Label = Kit.label({ Text = "", Size = UDim2.new(1, -260, 1, -10), Position = UDim2.fromOffset(96, 5), XAlign = Enum.TextXAlignment.Left, Parent = row }),
+					Button = Kit.button({ Text = "Wait", Size = UDim2.fromOffset(140, 54), Position = UDim2.new(1, -12, 0.5, 0), Anchor = Vector2.new(1, 0.5), Color = Kit.Colors.Gray, Parent = row }, function()
+						act("Hatch", i)
+					end),
+				}
+			else
+				Kit.label({ Text = "Empty nest — steal an egg from a guarded nest on the lane!", Size = UDim2.new(1, -110, 1, -10), Position = UDim2.fromOffset(96, 5), XAlign = Enum.TextXAlignment.Left, Color = Color3.fromRGB(190, 195, 220), Parent = row })
+			end
 		end
 	end
-	local slots = State.Derived.Incubators
 	local now = State.now()
-	for i = 1, slots do
+	for i, refs in pairs(nestRows) do
 		local egg = State.Data.Eggs[i]
-		local row = Kit.panel({ Size = UDim2.new(1, -12, 0, 90), Color = Kit.Colors.PanelLight, Order = i, Parent = nestList })
-		local vp = Preview.new(row, UDim2.fromOffset(80, 80), UDim2.fromOffset(6, 5))
 		if type(egg) == "table" then
-			Preview.showEgg(vp, egg.Species, egg.Rarity)
 			local aura = Game.Auras[egg.Aura or 1]
 			local left = egg.ReadyAt - now
-			Kit.label({
-				Text = string.format('<font color="%s">%s</font>%s\n%s',
-					egg.Rarity == 7 and "#FFFFFF" or Kit.hex(Game.Rarities[egg.Rarity].Color), EggModel.displayName(egg.Species, egg.Rarity),
-					(egg.Aura or 1) > 1 and string.format(' <font color="%s">[%s]</font>', Kit.hex(aura.Color), aura.Name) or "",
-					left > 0 and ("Hatches in " .. Format.time(left)) or '<font color="#7CFF6B">Ready!</font>'),
-				Size = UDim2.new(1, -260, 1, -10),
-				Position = UDim2.fromOffset(96, 5),
-				XAlign = Enum.TextXAlignment.Left,
-				Parent = row,
-			})
-			Kit.button({ Text = left > 0 and "Wait" or "HATCH!", Size = UDim2.fromOffset(140, 54), Position = UDim2.new(1, -12, 0.5, 0), Anchor = Vector2.new(1, 0.5), Color = left > 0 and Kit.Colors.Gray or Kit.Colors.Yellow, Parent = row }, function()
-				act("Hatch", i)
-			end)
-		else
-			Kit.label({ Text = "Empty nest — steal an egg from a guarded nest on the lane!", Size = UDim2.new(1, -110, 1, -10), Position = UDim2.fromOffset(96, 5), XAlign = Enum.TextXAlignment.Left, Color = Color3.fromRGB(190, 195, 220), Parent = row })
+			refs.Label.Text = string.format('<font color="%s">%s</font>%s\n%s',
+				egg.Rarity == 7 and "#FFFFFF" or Kit.hex(Game.Rarities[egg.Rarity].Color), EggModel.displayName(egg.Species, egg.Rarity),
+				(egg.Aura or 1) > 1 and string.format(' <font color="%s">[%s]</font>', Kit.hex(aura.Color), aura.Name) or "",
+				left > 0 and ("Hatches in " .. Format.time(left)) or '<font color="#7CFF6B">Ready!</font>')
+			refs.Button.setText(left > 0 and "Wait" or "HATCH!")
+			refs.Button.setColor(left > 0 and Kit.Colors.Gray or Kit.Colors.Yellow)
 		end
 	end
 end
@@ -177,7 +230,7 @@ local function showTab(name: string)
 end
 
 function PetsWindow.init()
-	window = Windows.create("Pets", "My Animals", Vector2.new(820, 500), Kit.Colors.Orange)
+	window = Windows.create("Pets", "My Animals", Vector2.new(820, 540), Kit.Colors.Orange)
 	local content = window.Content
 	local tabs = Kit.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 50), Parent = content })
 	Kit.list(tabs, 8, true)
@@ -229,6 +282,7 @@ function PetsWindow.init()
 	nestList = Windows.scroll(pages.Nests, UDim2.fromScale(1, 1), UDim2.new())
 	Kit.list(nestList, 8)
 
+	window.showTab = showTab
 	window.OnOpen = function()
 		showTab(tab)
 	end

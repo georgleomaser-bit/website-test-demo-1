@@ -92,8 +92,8 @@ local function animalLabel(model: Model, record, ownerName: string?)
 	stroke.Parent = label
 	label.Parent = gui
 	gui.Parent = root
-	local mutation = Game.Mutations[record.Mutation or 1]
-	local aura = Game.Auras[record.Aura or 1]
+	local mutation = Game.Mutations[record.Mutation or 1] or Game.Mutations[1]
+	local aura = Game.Auras[record.Aura or 1] or Game.Auras[1]
 	local prefix = ""
 	if (record.Mutation or 1) > 1 then
 		prefix = mutation.Name .. " "
@@ -512,7 +512,7 @@ local function placeCharacter(player: Player, character: Model)
 end
 
 function PlotService.assign(player: Player)
-	if plotOf[player] then
+	if plotOf[player] or not player.Parent then
 		return
 	end
 	for index = 1, #World.Plots do
