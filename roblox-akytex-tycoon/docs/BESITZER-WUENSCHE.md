@@ -165,3 +165,6 @@ Fahrstühle, und die Welt wirkt verbuggt. Klau einfach alles von AKYTEX.“
 24. **„Mache alles 100 mal besser“:** Flagship-Runde über alles – Welt/Licht/Materialien/Stadtleben/Interiors, jede Oberfläche
     auf AKYTEX-Website-Niveau (Glas, Typo, Bewegung, Leer-/Lade-/Fehlerzustände, Sounds, Handy), Spielgefühl (Feedback,
     Belohnungen, erste 10 Minuten, Ziele, Events), 60 FPS, null Laufzeitfehler. Compliance und Sicherheit bleiben streng.
+25. **„Fixe alle Bugs, plus es ist nicht alles flüssig“:** Performance-Runde – durchgehend flüssig (60 FPS am PC, stabil am
+    Handy), kein Stocken beim Beitreten, Fenster-Öffnen, Fahren, Tower-Betreten und bei Events; kein Server-Lag bei 10 Spielern;
+    kleine Netzwerk-Pakete; null Laufzeitfehler.
