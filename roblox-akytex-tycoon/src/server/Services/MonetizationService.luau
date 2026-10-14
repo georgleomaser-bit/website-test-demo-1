@@ -82,6 +82,7 @@ local PROFILE_POLL = 0.25
 local PROCESSING_WAIT = 60 -- Sekunden auf einen parallel laufenden gleichen Kauf warten
 local PROCESSING_POLL = 0.2
 local POLICY_WAIT = 10 -- prepare: so lange höchstens auf eine Policy-Antwort warten (danach: eingeschränkt)
+local READY_WAIT = 20 -- prepare (Bau-Gutschein): so lange höchstens auf Pässe + Turm-Einkommen nach dem Beitritt warten
 local POLICY_ATTEMPTS = 2
 local POLICY_RETRY = 2
 local PASS_ATTEMPTS = 3
@@ -119,6 +120,7 @@ end
 -- ---------------------------------------------------------------------
 local owned: { [Player]: { [string]: boolean } } = {} -- Marktplatz-Besitz (geladen)
 local loading: { [Player]: boolean } = {}
+local passesLoaded: { [Player]: boolean } = {} -- Marktplatz-Besitz einmal vollständig geladen
 local sessionPasses: { [Player]: { [string]: boolean } } = {} -- Admin-Simulation, nicht gespeichert
 local club: { [Player]: boolean } = {} -- Abo-Status vom Marktplatz
 local sessionClub: { [Player]: boolean } = {} -- Admin-Simulation
@@ -310,9 +312,10 @@ function Core.HasReceipt(data: any, purchaseId: string): boolean
 	return false
 end
 
-function Core.AddReceipt(data: any, purchaseId: string, now: number)
+-- key (optional) = Produkt-Schlüssel -> Admin-Tab "Belege" zeigt, WAS gekauft wurde
+function Core.AddReceipt(data: any, purchaseId: string, now: number, key: string?)
 	local receipts = purchasesOf(data).Receipts
-	table.insert(receipts, { Id = purchaseId, T = now })
+	table.insert(receipts, { Id = purchaseId, T = now, Key = if type(key) == "string" then key else nil })
 	while #receipts > RECEIPT_KEEP do
 		table.remove(receipts, 1)
 	end
@@ -543,7 +546,7 @@ function Core.ProcessReceiptWith(receipt: any, env: any): Enum.ProductPurchaseDe
 			warn("[MonetizationService] Gutschrift fehlgeschlagen: " .. tostring(result))
 		end
 		if granted then
-			Core.AddReceipt(data, purchaseId, os.time())
+			Core.AddReceipt(data, purchaseId, os.time(), if type(product) == "table" then product.Key else nil)
 			local purchases = purchasesOf(data)
 			local spent = tonumber(receipt.CurrencySpent)
 			if spent and Util.IsFinite(spent) and spent > 0 then
@@ -608,6 +611,7 @@ local function refresh(p: Player)
 		return
 	end
 	call("ShopService", "RefreshPlayer", p) -- Attribute Vip/Club + MarkDirty
+	call("TowerService", "Refresh", p) -- Multiplikator-Chip sofort neu (§0.8 Punkt 3: sofort sichtbare Wirkung)
 	markDirty(p, "Passes", "Club", "Offers", "Starter")
 end
 
@@ -630,7 +634,7 @@ local function fetchClub(p: Player): boolean
 end
 
 function MonetizationService.LoadPasses(p: Player)
-	if owned[p] then
+	if passesLoaded[p] then
 		return
 	end
 	if loading[p] then
@@ -665,7 +669,17 @@ function MonetizationService.LoadPasses(p: Player)
 	if p.Parent ~= Players then
 		return
 	end
+	-- während des Ladens gekaufte Pässe (PromptGamePassPurchaseFinished) nie wieder verlieren
+	local early = owned[p]
+	if early then
+		for key, value in pairs(early) do
+			if value == true then
+				result[key] = true
+			end
+		end
+	end
 	owned[p] = result
+	passesLoaded[p] = true
 	club[p] = member
 	refresh(p)
 end
@@ -843,10 +857,35 @@ end
 -- =====================================================================
 -- 7) PRODUKTE GUTSCHREIBEN (alles Yieldende in prepare, Gutschrift ohne Yield)
 -- =====================================================================
+-- Bau-Gutscheine rechnen mit dem Dauer-Einkommen: kommt der Beleg direkt beim Beitritt (offener Kauf aus der
+-- letzten Sitzung), erst Pässe/Turm-Einkommen abwarten (höchstens READY_WAIT s) – sonst gäbe es nur den Mindestwert.
+local function waitSteady(p: Player): number
+	local steady = steadyOf(p)
+	for _ = 1, math.ceil(READY_WAIT / 0.25) do
+		if p.Parent ~= Players then
+			break
+		end
+		local okReady, ready = call("PlayerStateService", "IsReady", p)
+		if steady > 0 and (not okReady or ready == true) then
+			break
+		end
+		task.wait(0.25)
+		steady = steadyOf(p)
+	end
+	return steady
+end
+
+local function usesVouchers(product: any): boolean
+	local again = product.Repeat
+	return product.Kind == "Voucher"
+		or type(product.Vouchers) == "table"
+		or (type(again) == "table" and type(again.Vouchers) == "table")
+end
+
 local function prepare(p: Player, product: any): { [string]: any }
 	local prepared: { [string]: any } = {
 		SeasonId = currentSeasonId(),
-		Steady = steadyOf(p),
+		Steady = if usesVouchers(product) then waitSteady(p) else steadyOf(p),
 		Premium = if product.Kind == "Season" then seasonPremiumOf(p) else false,
 		RandomAllowed = nil,
 		Gift = nil,
@@ -1541,6 +1580,7 @@ end
 local function onPlayerRemoving(p: Player)
 	owned[p] = nil
 	loading[p] = nil
+	passesLoaded[p] = nil
 	sessionPasses[p] = nil
 	club[p] = nil
 	sessionClub[p] = nil

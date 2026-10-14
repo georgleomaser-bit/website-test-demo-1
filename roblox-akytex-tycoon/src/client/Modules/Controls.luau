@@ -293,12 +293,17 @@ local function typingInTextBox(): boolean
 end
 
 local function handle(action: string, inputState: Enum.UserInputState, input: InputObject): Enum.ContextActionResult
+	local source = sourceOf(input)
+	local ending = inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel
 	if typingInTextBox() then
+		-- beim Tippen keine Aktionen auslösen – aber Loslassen trotzdem zählen (sonst klebt z. B. Sprint, wenn man
+		-- Shift hält, ins Chat-/Betragsfeld klickt und dort loslässt)
+		if ending then
+			setHeld(action, source, false, input)
+		end
 		return Enum.ContextActionResult.Pass
 	end
 	local context = Controls.Context()
-	local source = sourceOf(input)
-	local ending = inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel
 	-- In Fenstern navigiert das Steuerkreuz die Oberfläche (GuiService) – dort keine Fenster-Kürzel vom D-Pad
 	local dpadInMenu = context == "Menu" and string.sub(input.KeyCode.Name, 1, 4) == "DPad"
 	if dpadInMenu or not allowed(action, context) then

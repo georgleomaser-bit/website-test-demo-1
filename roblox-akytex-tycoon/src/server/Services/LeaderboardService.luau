@@ -54,6 +54,8 @@ local FRIENDS_TTL = 600
 local FRIENDS_MAX = 200
 local IPO_WALL_ROWS = 6
 local IPO_HALL_ROWS = 12
+local LIVE_EVERY = 15 -- Welt-Tafeln: Werte der Spieler in diesem Server alle 15 s live einmischen (ohne DataStore)
+local RETURN_ZERO = 1000000 -- ProgressMath.BoardReturn: 0 bp Ø-Tagesrendite
 local NO_API_HINTS = { "studio", "publish", "api services", "403" }
 
 -- AKYTEX-Farben (Server hat kein UI.Theme -> Config.Colors, Spiegel von UI.Theme)
@@ -244,6 +246,44 @@ local function canWrite(p: Player): boolean
 	end
 	local ok, noSave = call("DataService", "IsNoSave", p)
 	return not (ok and noSave == true)
+end
+
+-- Kein öffentliches Verlust-Zeigen (§B11.5/§B11.8): negative Ø-Tagesrenditen anderer Spieler nie anzeigen
+-- (der eigene Wert bleibt für den Spieler selbst sichtbar)
+local function hiddenLoss(def: BoardDef, row: Row, viewerId: number?): boolean
+	return def.Kind == "Return" and row.Value < RETURN_ZERO and row.UserId ~= viewerId
+end
+
+-- Gelesene Top-Liste + Live-Werte der Spieler in DIESEM Server (frischer als der 300-s-Cache; in Studio ohne
+-- DataStore die einzige Quelle) -> sortiert. Getaintete/leere Live-Werte verdrängen den alten Cache-Eintrag.
+local function mergeLive(def: BoardDef, rows: { Row }?, viewerId: number?): { Row }
+	local live: { [number]: number } = {}
+	for _, other in ipairs(Players:GetPlayers()) do
+		local data = dataOf(other)
+		if data then
+			local value = valueOf(other, data, def)
+			live[other.UserId] = if value > 0 then value else 0
+		end
+	end
+	local merged: { Row } = {}
+	for _, row in ipairs(rows or {}) do
+		if live[row.UserId] == nil and not hiddenLoss(def, row, viewerId) then
+			table.insert(merged, row)
+		end
+	end
+	for userId, value in pairs(live) do
+		local row = { UserId = userId, Value = value }
+		if value > 0 and not hiddenLoss(def, row, viewerId) then
+			table.insert(merged, row)
+		end
+	end
+	table.sort(merged, function(a, b)
+		if a.Value ~= b.Value then
+			return a.Value > b.Value
+		end
+		return a.UserId < b.UserId
+	end)
+	return merged
 end
 
 -- ---------------------------------------------------------------------
@@ -679,8 +719,9 @@ local function readAll()
 						fetchName(rows[i].UserId)
 					end
 					local ok, err = pcall(function()
-						showBoard(def, rows)
-						announceTop(def, rows)
+						local merged = mergeLive(def, rows, nil)
+						showBoard(def, merged)
+						announceTop(def, merged)
 					end)
 					if not ok then
 						logError("Tafel " .. def.Key, err)
@@ -1175,6 +1216,17 @@ local function liveRow(other: Player, def: BoardDef): Row?
 	return { UserId = other.UserId, Value = value }
 end
 
+-- Wunsch 18: Admin-Geld zählt im Vermögen mit, wird aber markiert (nur für Spieler in diesem Server bekannt)
+local function adminGifted(def: BoardDef, userId: number): boolean
+	if def.Key ~= "Wealth" then
+		return false
+	end
+	local other = Players:GetPlayerByUserId(userId)
+	local data = if other then dataOf(other) else nil
+	local stats = data and data.Stats
+	return type(stats) == "table" and num(stats.AdminCredits, 0) > 0
+end
+
 local function handleBoards(p: Player, arg: any): Reply
 	if type(arg) ~= "table" or type(arg.Board) ~= "string" or type(arg.Scope) ~= "string" then
 		return fail(p, "core.invalid")
@@ -1191,8 +1243,8 @@ local function handleBoards(p: Player, arg: any): Reply
 	local rows: { Row } = {}
 	local names: { [number]: string } = {}
 	if arg.Scope == "Global" then
-		for i, row in ipairs(cache[def.Key] or {}) do
-			if i > ROWS then
+		for _, row in ipairs(mergeLive(def, cache[def.Key], p.UserId)) do
+			if #rows >= CACHE_TOP then
 				break
 			end
 			table.insert(rows, row)
@@ -1226,6 +1278,11 @@ local function handleBoards(p: Player, arg: any): Reply
 	table.sort(rows, function(a, b)
 		return a.Value > b.Value
 	end)
+	for i = #rows, 1, -1 do
+		if hiddenLoss(def, rows[i], p.UserId) then
+			table.remove(rows, i)
+		end
+	end
 	local lang = langOf(p)
 	local out = {}
 	local myRank: number? = nil
@@ -1240,16 +1297,21 @@ local function handleBoards(p: Player, arg: any): Reply
 				Name = names[row.UserId] or cachedName(row.UserId) or ("#" .. tostring(row.UserId)),
 				Value = row.Value,
 				Text = display(def, row.Value, lang),
+				AdminGift = adminGifted(def, row.UserId),
 			})
 		end
 	end
 	local data = dataOf(p)
 	local mine = if data then math.max(0, valueOf(p, data, def)) else 0
 	if not myRank and arg.Scope == "Global" then
-		for i, row in ipairs(cache[def.Key] or {}) do
-			if row.UserId == p.UserId then
-				myRank = i
-				break
+		local rank = 0
+		for _, row in ipairs(cache[def.Key] or {}) do
+			if not hiddenLoss(def, row, p.UserId) then
+				rank += 1
+				if row.UserId == p.UserId then
+					myRank = rank
+					break
+				end
 			end
 		end
 	end
@@ -1335,6 +1397,20 @@ function LeaderboardService.Start()
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
 	Scheduler.Every("LeaderboardWrite", 0.2, writeTick)
 	Scheduler.Every("LeaderboardRead", 1 / READ_EVERY, readAll)
+	-- Welt-Tafeln live: Cache + Werte der Spieler hier (kein DataStore-Aufruf, kein Yield; showBoard zeichnet nur
+	-- bei Änderung neu). Damit zeigt der Börsensaal auch in Studio-Solo sofort echte Zeilen.
+	Scheduler.Every("LeaderboardLive", 1 / LIVE_EVERY, function()
+		for _, def in ipairs(BOARDS) do
+			if boardUis[def.Key] then
+				local ok, err = pcall(function()
+					showBoard(def, mergeLive(def, cache[def.Key], nil))
+				end)
+				if not ok then
+					logError("Live-Tafel " .. def.Key, err)
+				end
+			end
+		end
+	end)
 	-- Tafeln bauen, sobald die Stadt die Board-Flächen hat (Priority-Teile; begrenzte Wiederholungen über den Scheduler)
 	local attempts = 0
 	local stopBuild: (() -> ())? = nil

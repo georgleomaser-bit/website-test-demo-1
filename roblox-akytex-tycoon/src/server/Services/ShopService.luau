@@ -24,7 +24,7 @@
 --                        SourceOf, IsRobux, RewardToGrant }   (rein, ohne Spieler -> EconomyTests)
 --  Zusätzlich: ShopService.MissingFor(grant): string?        fehlender Besitzer-Dienst für eine Gewährung (Vorprüfung)
 --  Request-Handler: ShopQuote {Key} (1/s) · ShopPrecheck {Key, UserId?} (2/s) · ShopClubClaim {} (1/s)
---  State-Schlüssel: Credits. Player-Attribute: Vip, Club.
+--  State-Schlüssel: Credits. Player-Attribute: Vip, Club, Founder (Namensrahmen „Gründer“).
 --  Braucht (zur Laufzeit, optional per pcall): DataService, PlayerStateService, MonetizationService, MetricsService,
 --    TowerService (AddBoost, ApplyExpress, AddExpressToken, AddInstantToken, Income), VehicleService (GrantCar),
 --    LifestyleService (GrantWatch, GrantAccessory, GrantDecor), RewardService (GrantSeasonPremium, AddSeasonTiers,
@@ -64,6 +64,7 @@ local WARN_REASONS_MAX = 64
 local TITLE_MAX = 200 -- Titel-Liste im Spielstand begrenzt
 local COSMETICS_MAX = 512 -- Kosmetik-Besitz begrenzt
 local SEASON_TIER_XP = 1000 -- Rückfall, falls Config.Season fehlt
+local FOUNDER_COSMETIC = "FounderFrame" -- Namensrahmen „Gründer“ (Starter-Paket) -> Player-Attribut "Founder"
 
 local SOURCE_SET: { [string]: boolean } = {}
 for _, name in ipairs(SHOP.Sources or {}) do
@@ -244,6 +245,11 @@ function Core.Credit(data: any, amount: number, source: string): (boolean, numbe
 	data.Credits = after
 	local added = after - before
 	data.Stats.LifetimeCredits = math.min(MAX_MONEY, data.Stats.LifetimeCredits + added)
+	if source == "Admin" and added > 0 then
+		-- Wunsch 18: Admin-Geld im Konto als Admin-Geschenk markiert (Bestenlisten/Admin-Tab können es ausweisen)
+		local gifted = data.Stats.AdminCredits
+		data.Stats.AdminCredits = math.min(MAX_MONEY, (if Util.IsFinite(gifted) then gifted else 0) + added)
+	end
 	return true, added
 end
 
@@ -838,6 +844,9 @@ function ShopService.Grant(p: Player, grant: Types.Grant, reason: string): boole
 			addToCollection(data.Purchases.Cosmetics, key, COSMETICS_MAX)
 		end
 		markDirty(p, "Tower", "Garage", "Life") -- Fassaden/Neon/Lacke werden sofort wählbar
+		if table.find(clean.Cosmetics, FOUNDER_COSMETIC) then
+			ShopService.RefreshPlayer(p) -- Namensrahmen „Gründer“ sofort am Namensschild
+		end
 	end
 	if type(clean.Titles) == "table" and #clean.Titles > 0 then
 		local prog = ensureTable(data, "Prog")
@@ -850,7 +859,18 @@ function ShopService.Grant(p: Player, grant: Types.Grant, reason: string): boole
 	return true
 end
 
--- Attribute Vip/Club (Namensschild, Chat-Tag, Lack, Balkon, Dachterrasse – Besitzer-Pakete lesen sie) + State
+-- Kosmetik im Besitz? (Liste oder Menge in Purchases.Cosmetics)
+local function ownsCosmetic(data: any, key: string): boolean
+	local purchases = if type(data) == "table" then data.Purchases else nil
+	local list = if type(purchases) == "table" then purchases.Cosmetics else nil
+	if type(list) ~= "table" then
+		return false
+	end
+	return list[key] == true or table.find(list, key) ~= nil
+end
+
+-- Attribute Vip/Club/Founder (Namensschild, Chat-Tag, Lack, Balkon, Dachterrasse, Namensrahmen – Besitzer-Pakete
+-- lesen sie) + State
 function ShopService.RefreshPlayer(p: Player)
 	if not present(p) then
 		return
@@ -862,6 +882,10 @@ function ShopService.RefreshPlayer(p: Player)
 	local member = isClub(p)
 	if p:GetAttribute("Club") ~= member then
 		p:SetAttribute("Club", member)
+	end
+	local founder = ownsCosmetic(dataOf(p), FOUNDER_COSMETIC)
+	if p:GetAttribute("Founder") ~= founder then
+		p:SetAttribute("Founder", founder)
 	end
 	markDirty(p, "Passes", "Club", "Credits")
 end

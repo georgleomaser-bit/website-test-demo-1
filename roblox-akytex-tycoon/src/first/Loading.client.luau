@@ -176,6 +176,7 @@ local RING_R = 228
 local lang = if string.sub(string.lower(player.LocaleId or ""), 1, 2) == "de" then "de" else "en"
 local texts: { [string]: string } = {}
 local textsLoaded = false
+local splashImageId = 0 -- Hybrid-Platz Config.Client.Splash.ImageId (0 = reine Code-Grafik)
 
 local function tryLoadTexts(): boolean
 	local shared = ReplicatedStorage:FindFirstChild("Shared")
@@ -220,6 +221,10 @@ local function tryLoadTexts(): boolean
 				if type(value) == "number" and value == value and timing[key] ~= nil then
 					timing[key] = value
 				end
+			end
+			local imageId = splash.ImageId
+			if type(imageId) == "number" and imageId > 0 and imageId % 1 == 0 and imageId < 2 ^ 53 then
+				splashImageId = imageId
 			end
 		end
 	end
@@ -282,6 +287,43 @@ for i, step in ipairs(GLOW_STEPS) do
 		Parent = background,
 	}, { create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	table.insert(glowCircles, circle)
+end
+
+-- Hybrid-Hintergrundbild (Config.Client.Splash.ImageId): erst sichtbar, wenn es wirklich geladen ist
+local backdrop: ImageLabel = create("ImageLabel", {
+	Name = "Backdrop",
+	Size = UDim2.fromScale(1, 1),
+	BackgroundTransparency = 1,
+	Image = "",
+	ImageTransparency = 1,
+	ScaleType = Enum.ScaleType.Crop,
+	Visible = false,
+	ZIndex = 0,
+	Parent = background,
+})
+local backdropTried = false
+local function tryBackdrop()
+	if backdropTried or splashImageId <= 0 then
+		return
+	end
+	backdropTried = true
+	backdrop.Image = "rbxassetid://" .. string.format("%.0f", splashImageId)
+	task.spawn(function()
+		local okLoad = false
+		pcall(function()
+			ContentProvider:PreloadAsync({ backdrop }, function(_id: string, status: Enum.AssetFetchStatus)
+				okLoad = status == Enum.AssetFetchStatus.Success
+			end)
+		end)
+		if okLoad and backdrop.Parent then
+			backdrop.Visible = true
+			-- dezent hinter dem Logo (die Code-Grafik bleibt lesbar)
+			TweenService:Create(backdrop, TweenInfo.new(0.6, Enum.EasingStyle.Quint), { ImageTransparency = 0.45 })
+				:Play()
+		else
+			backdrop.Image = "" -- Ladefehler -> automatisch reine Code-Grafik
+		end
+	end)
 end
 
 -- Inhalt (beim Ausblenden wandert er in eine CanvasGroup – vorher nicht, sonst malt sie jeden Frame neu)
@@ -687,6 +729,9 @@ local function finish()
 	for _, circle in ipairs(glowCircles) do
 		TweenService:Create(circle, info2, { BackgroundTransparency = 1 }):Play()
 	end
+	if backdrop.Visible then
+		TweenService:Create(backdrop, info2, { ImageTransparency = 1 }):Play()
+	end
 	bgFade.Completed:Once(function()
 		gui:Destroy()
 		player:SetAttribute("SplashDone", true)
@@ -702,6 +747,7 @@ local function step()
 		if tryLoadTexts() then
 			textsLoaded = true
 			applyTexts()
+			tryBackdrop()
 		end
 	end
 	-- Ring: zeichnet sich 0,1 s … 1,4 s (ease-ios ≈ Quint Out)

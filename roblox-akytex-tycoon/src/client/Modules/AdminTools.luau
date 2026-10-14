@@ -260,7 +260,9 @@ local function preSimulation()
 		speedOverridden = true
 	elseif speedOverridden then
 		speedOverridden = false
-		humanoid.WalkSpeed = DEFAULT_WALK
+		-- zurück auf ein laufendes Speed-Geschenk ("me"), sonst Standard
+		local gift = player:GetAttribute("GiftSpeed")
+		humanoid.WalkSpeed = if type(gift) == "number" then gift else DEFAULT_WALK
 	end
 	local jump = power("AdminJump")
 	if type(jump) == "number" then
@@ -271,7 +273,8 @@ local function preSimulation()
 		jumpOverridden = true
 	elseif jumpOverridden then
 		jumpOverridden = false
-		humanoid.JumpHeight = DEFAULT_JUMP
+		local gift = player:GetAttribute("GiftJump")
+		humanoid.JumpHeight = if type(gift) == "number" then gift else DEFAULT_JUMP
 	end
 end
 

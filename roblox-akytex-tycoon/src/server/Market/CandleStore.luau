@@ -18,6 +18,7 @@
 --    s:Rebuild(ids, from, to, liveStart?)        Fenster neu rechnen (vorne in die Warteschlange)
 --    s:Work(budgetMs): boolean                   Aufträge abarbeiten; true = nichts mehr zu tun
 --    s:Pending(): number · s:WeekHigh(i): number · s:Range(i): (lo, hi) · s:Clear()
+--    s:Missing(i, from): boolean (Historie ab from noch unvollständig) · s:Prioritize(i) (Aufträge von i zuerst)
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -299,6 +300,33 @@ end
 -- ---------------------------------------------------------------------
 function CandleStore.Pending(self: any): number
 	return #self.Tasks
+end
+
+-- Fehlt für Instrument i noch Historie ab Tick "from"? (ein offener Auftrag reicht bis in dieses Fenster – ein Auftrag
+-- läuft von alt nach neu, sein Rest ist [T, To]). Dann wäre eine Antwort lückenhaft.
+function CandleStore.Missing(self: any, i: number, from: number): boolean
+	for _, task in ipairs(self.Tasks) do
+		if task.I == i and task.To >= from then
+			return true
+		end
+	end
+	return false
+end
+
+-- Aufträge eines Instruments nach vorne ziehen (jemand öffnet gerade diesen Chart); Reihenfolge bleibt erhalten
+function CandleStore.Prioritize(self: any, i: number)
+	local mine: { Task } = {}
+	local rest: { Task } = {}
+	for _, task in ipairs(self.Tasks) do
+		table.insert(if task.I == i then mine else rest, task)
+	end
+	if #mine == 0 or self.Tasks[1].I == i and #mine == 1 then
+		return
+	end
+	for _, task in ipairs(rest) do
+		table.insert(mine, task)
+	end
+	self.Tasks = mine
 end
 
 local function addTask(self: any, task: Task, front: boolean)

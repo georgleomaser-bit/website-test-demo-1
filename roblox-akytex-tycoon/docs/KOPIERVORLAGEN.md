@@ -153,11 +153,11 @@ Exchange VIP
 ```
 Beschreibung (Englisch, für Roblox):
 ```
-VIP balcony in the exchange hall, golden Λ nameplate + chat tag, VIP parking, "Platinum" paint and tower income ×1.10. Tower income only – never affects stock money (AKY), trades, licences or the league.
+VIP balcony in the exchange hall, golden Λ nameplate + chat tag, "Platinum" car paint and tower income ×1.10. Tower income only – never affects stock money (AKY), trades, licences or the league.
 ```
 Beschreibung (Deutsch):
 ```
-VIP-Balkon im Börsensaal, goldenes Λ-Namensschild + Chat-Tag, VIP-Parkplatz, Lack „Platin“, Turm-Einkommen ×1,10. Nur Turm-Einkommen – nie Börsengeld (AKY), Trades, Lizenzen oder Liga.
+VIP-Balkon im Börsensaal, goldenes Λ-Namensschild + Chat-Tag, Auto-Lack „Platin“, Turm-Einkommen ×1,10. Nur Turm-Einkommen – nie Börsengeld (AKY), Trades, Lizenzen oder Liga.
 ```
 - Preis: **399 Robux** · Config-Key: `VIP`
 - Icon-Idee: `golden Λ nameplate on dark glass, balcony railing with blue neon, VIP feeling, no text except "VIP"`
@@ -272,6 +272,7 @@ Beschreibung (Deutsch):
 6 Terminal-Themes (Space, Gold, Arctic, Mono, Midnight, Aurora), Kerzen-/Ticker-Skins, UI-Sound-Paket. Nur Optik – keine Alarme, Layouts oder Indikatoren.
 ```
 - Preis: **249 Robux** · Config-Key: `TerminalDesigner`
+- **Noch NICHT anlegen/verkaufen:** Die Terminal-Themes sind noch nicht im Spiel. Der Pass steht in `Config.Shop.Disabled` auf gesperrt – erst freischalten, wenn die Themes wählbar sind (nie einen Pass ohne Wirkung verkaufen).
 - Icon-Idee: `six small trading screen color swatches fanned out (space, gold, arctic, mono, midnight, aurora), glass UI`
 
 ### MegaGarage – Mega-Garage
@@ -281,11 +282,11 @@ Mega Garage
 ```
 Beschreibung (Englisch):
 ```
-+12 car slots and a showroom floor with a turntable.
++12 car slots in your garage – room for your whole collection.
 ```
 Beschreibung (Deutsch):
 ```
-+12 Auto-Plätze und eine Showroom-Etage mit Drehteller.
++12 Auto-Plätze in deiner Garage – Platz für die ganze Sammlung.
 ```
 - Preis: **199 Robux** · Config-Key: `MegaGarage`
 - Icon-Idee: `glass showroom with a car on a glowing turntable, several parking bays, dark marble floor`
@@ -315,11 +316,11 @@ Name:
 
 Beschreibung (Englisch):
 ```
-Exclusive hypercar with a neon trail and its own engine sound. Drives right out of your garage. Same top speed as the best earned hypercar – never faster.
+Exclusive hypercar with a neon trail and its own shape. Drives right out of your garage. Same top speed as the best earned hypercar – never faster.
 ```
 Beschreibung (Deutsch):
 ```
-Exklusives Hypercar mit Neon-Spur und eigenem Motor-Klang. Fährt sofort aus deiner Garage. Gleiches Höchsttempo wie das beste erspielte Hypercar – nie schneller.
+Exklusives Hypercar mit Neon-Spur und eigener Form. Fährt sofort aus deiner Garage. Gleiches Höchsttempo wie das beste erspielte Hypercar – nie schneller.
 ```
 - Preis: **799 Robux** · Config-Key: `Lam1`
 - Icon-Idee: `arctic white futuristic hypercar with a blue Λ-shaped light signature, low angle, neon road`
@@ -539,11 +540,11 @@ Executive Club
 ```
 Beschreibung (Englisch):
 ```
-A Build Voucher S to claim every day, tower income ×1.15, +4 h offline cap, an exclusive paint every month, rooftop terrace in the exchange hall, +1 streak shield per week and the "Club" tag. Tower and cosmetics only – never stock money (AKY), trades or licences.
+A Build Voucher S to claim every day, tower income ×1.15, +4 h offline cap, exclusive "Club Noir" car paint, rooftop terrace in the exchange hall, +1 streak shield per week and the "Club" tag. Tower and cosmetics only – never stock money (AKY), trades or licences.
 ```
 Beschreibung (Deutsch):
 ```
-Täglich ein Bau-Gutschein S zum Abholen, Turm-Einkommen ×1,15, +4 h Offline-Deckel, monatlich ein exklusiver Lack, Dachterrasse im Börsensaal, +1 Serien-Schutz je Woche, Tag „Club“. Nur Turm und Kosmetik – nie Börsengeld (AKY), Trades oder Lizenzen.
+Täglich ein Bau-Gutschein S zum Abholen, Turm-Einkommen ×1,15, +4 h Offline-Deckel, exklusiver Auto-Lack „Club Noir“, Dachterrasse im Börsensaal, +1 Serien-Schutz je Woche, Tag „Club“. Nur Turm und Kosmetik – nie Börsengeld (AKY), Trades oder Lizenzen.
 ```
 - Preis: **4,99 $ in Landeswährung**, wenn dein Konto ID-verifiziert ist – sonst **449 Robux pro Monat** · Config-Key: `Club`
 - Icon-Idee: `elegant crown symbol on a dark glass rooftop terrace at night, gold and blue, no text`
@@ -590,7 +591,7 @@ Unsere Social-Links findest du auf der Spielseite
 🐻 Heute 19:00 Crash-Freitag in AKYTEX TYCOON. Setz deine Verlust-Stopps und beruhige den Bären! (Spielgeld · erfundene Firmen)
 ```
 ```
-📈 Neuer Code: LAUNCH = 5.000 CR für deinen Tower (gültig bis 31.01.2027). Einlösen im Spiel: Knopf Aufgaben → Reiter Login → Code eintippen → Einlösen.
+📈 Neuer Code: LAUNCH = 5.000 CR für deinen Tower (läuft am 31.01.2027 ab). Einlösen im Spiel: Knopf Aufgaben → Reiter Login → Code eintippen → Einlösen.
 ```
 
 > ⚠️ **Keine Belohnungen für Likes, Favoriten oder Abos** versprechen (Roblox-Regel). Keine „Nur heute!“-Druck-Sprüche für
@@ -647,7 +648,7 @@ Generative KI → **Nein**. Ergebnis: **Minimal**. **Vor dem Ausfüllen den Live
 | Pass | Offline Vault 24 h | 349 | `OfflineVault` |
 | Pass | Staff+ | 299 | `StaffPlus` |
 | Pass | Build Crew Pro | 399 | `BuildCrew` |
-| Pass | Terminal Designer | 249 | `TerminalDesigner` |
+| Pass | Terminal Designer ⏸ (noch nicht anlegen) | 249 | `TerminalDesigner` |
 | Pass | Mega Garage | 199 | `MegaGarage` |
 | Pass | Neon Jetpack | 449 | `Jetpack` |
 | Pass | ΛKYTEX Λ-1 Hypercar | 799 | `Lam1` |
@@ -673,7 +674,7 @@ Generative KI → **Nein**. Ergebnis: **Minimal**. **Vor dem Ausfüllen den Live
 | Produkt | Gift Boost | 59 | `GiftBoost` |
 | Abo | Executive Club | 4,99 $ bzw. 449 R$/Monat | `Club` |
 
-Zusammen: **14 Gamepässe**, **17 Developer Products**, **1 Abo**, dazu **15 Badges**. Robux-Preise änderst du im Creator Dashboard;
+Zusammen: **14 Gamepässe** (davon 13 sofort, Terminal Designer erst später), **17 Developer Products**, **1 Abo**, dazu **15 Badges**. Robux-Preise änderst du im Creator Dashboard;
 der Shop zeigt immer den **Live-Preis** von Roblox. Trag einen neuen Preis zusätzlich in `Config → Shop` bei `Price` ein
 (nur Planwert für Prüfungen).
 
@@ -721,6 +722,9 @@ GiftBoost =
 
 -- Abo (beginnt mit EXP-)
 Club = 
+
+-- Gruppe "AKYTEX Games" (Zahl aus roblox.com/communities/<ID>/…, ANLEITUNG Kapitel 13 Punkt 9)
+GroupId = 
 
 -- Badges
 Welcome = 

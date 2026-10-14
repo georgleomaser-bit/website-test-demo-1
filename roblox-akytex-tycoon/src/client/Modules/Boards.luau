@@ -10,6 +10,8 @@
 --  Avatare über rbxthumb:// (keine Web-Anfrage vom Client nötig).
 -- =====================================================================
 
+local TweenService = game:GetService("TweenService")
+
 local UI = require(script.Parent:WaitForChild("UI"))
 
 local Boards = {}
@@ -21,6 +23,7 @@ local CACHE_SECONDS = 30 -- gleiche Liste/Ansicht höchstens so oft neu anfragen
 local REQUEST_GAP = 1.05 -- Server-Rate 1/s
 local SCOPES = { "Global", "Friends", "Server" }
 local MEDALS = { Theme.Gold, Color3.fromRGB(192, 199, 212), Color3.fromRGB(205, 127, 50) }
+local ROW_IN = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local ctx: any = nil
 local window: any = nil
@@ -88,16 +91,41 @@ end
 -- ---------------------------------------------------------------------
 local function row(parent: Instance, order: number, entry: { [string]: any }, mine: boolean)
 	local card = UI.RowCard(parent, order, 52)
-	if mine then
-		card.BackgroundColor3 = Theme.AccentDeep
-	end
 	local rank = math.floor(num(entry.Rank, order))
+	local medal = MEDALS[rank]
+	if mine then
+		-- eigene Zeile: Akzent-Tönung als eigene Ebene (RowCard setzt die Hintergrundfarbe beim Hover zurück)
+		UI.Create("Frame", {
+			Name = "MineTint",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundColor3 = Theme.AccentDeep,
+			BackgroundTransparency = 0.35,
+			BorderSizePixel = 0,
+			ZIndex = card.ZIndex,
+			Parent = card,
+		}, { UI.Corner(10) })
+		local stroke = card:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = Theme.Accent
+			stroke.Transparency = 0
+		end
+	end
+	if medal or mine then
+		UI.Create("Frame", {
+			Name = "Stripe",
+			Position = UDim2.new(0, 0, 0.2, 0),
+			Size = UDim2.new(0, 3, 0.6, 0),
+			BackgroundColor3 = if mine then Theme.Accent else medal,
+			BorderSizePixel = 0,
+			Parent = card,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	end
 	UI.Label({
 		Position = UDim2.fromOffset(8, 0),
 		Size = UDim2.fromOffset(44, 52),
 		Text = "#" .. tostring(rank),
 		Face = "MonoBold",
-		TextColor3 = MEDALS[rank] or Theme.Text2,
+		TextColor3 = medal or Theme.Text2,
 		MaxText = 18,
 		Parent = card,
 	})
@@ -108,18 +136,31 @@ local function row(parent: Instance, order: number, entry: { [string]: any }, mi
 		BackgroundColor3 = Theme.Bg2,
 		Image = if userId > 0 then string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=48&h=48", userId) else "",
 		Parent = card,
-	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), UI.Stroke(MEDALS[rank] or Theme.Border, 1) })
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }), UI.Stroke(medal or Theme.Border, 1) })
 	avatar.ScaleType = Enum.ScaleType.Crop
+	local gifted = entry.AdminGift == true
 	UI.Label({
-		Position = UDim2.fromOffset(106, 0),
-		Size = UDim2.new(1, -290, 1, 0),
+		Position = UDim2.fromOffset(106, if gifted then 4 else 0),
+		Size = UDim2.new(1, -290, 0, if gifted then 28 else 52),
 		Text = tostring(entry.Name or ""),
 		Face = "BodyBold",
 		TextXAlignment = Enum.TextXAlignment.Left,
-		TextColor3 = if mine then Theme.Text else Theme.Text,
+		TextColor3 = Theme.Text,
 		MaxText = 17,
 		Parent = card,
 	})
+	if gifted then
+		-- Admin-Geschenk im Vermögen (Wunsch 18: darf zählen, wird aber markiert)
+		UI.Label({
+			Position = UDim2.fromOffset(106, 32),
+			Size = UDim2.new(1, -290, 0, 16),
+			Text = T("soc.board.adminGift"),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextColor3 = Theme.Muted,
+			MaxText = 12,
+			Parent = card,
+		})
+	end
 	UI.Label({
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, 0),
@@ -127,10 +168,17 @@ local function row(parent: Instance, order: number, entry: { [string]: any }, mi
 		Text = tostring(entry.Text or ""),
 		Face = "Mono",
 		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = Theme.Gold,
+		TextColor3 = if mine then Theme.Text else Theme.Gold,
 		MaxText = 16,
 		Parent = card,
 	})
+	-- sanftes, gestaffeltes Einblenden (Feder-Gefühl wie in den anderen Fenstern)
+	local scale = UI.Create("UIScale", { Scale = 0.94, Parent = card })
+	task.delay(math.min(order, 10) * 0.025, function()
+		if scale.Parent then
+			TweenService:Create(scale, ROW_IN, { Scale = 1 }):Play()
+		end
+	end)
 end
 
 local function renderReply(reply: any)
@@ -207,6 +255,9 @@ local function load(force: boolean?)
 		end
 		if mine == token and board .. "|" .. scope == key then
 			renderReply(if reply.Ok then reply else hit and hit.Reply or {})
+			if not reply.Ok and not hit then
+				ui.Me.Text = T("soc.board.error") -- Fehlerzustand statt stiller Leere
+			end
 		end
 	end)
 end

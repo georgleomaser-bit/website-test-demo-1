@@ -128,6 +128,7 @@ local detailAccent: Frame? = nil
 local detailList: ScrollingFrame? = nil
 local detailButtons: Frame? = nil
 local detailKey: string? = nil
+local detailScale: UIScale? = nil -- federndes Aufklappen der Details (iOS-artig)
 local giftChoice: number? = nil
 local quote: QuoteInfo? = nil
 local quoteLoading = false
@@ -138,6 +139,11 @@ local offerCard: Frame? = nil
 local offerToken = 0
 local lastOfferId = 0
 local marketBusyUntil = 0
+
+-- Neuaufbau nur bei echter Layout-Änderung (der volle State alle 20 s baut sonst jedes Mal alles neu: Flackern)
+local renderedSig = ""
+-- Zeitpunkt des letzten Boosts-States (die Restzeit zählt ab hier herunter, nicht ab irgendeinem State)
+local boostsAt = 0
 
 -- =====================================================================
 -- 1) HELFER
@@ -375,7 +381,8 @@ local function boostInfo(): (string?, number, number)
 	if type(boosts) ~= "table" then
 		return nil, 0, 0
 	end
-	local elapsed = math.max(0, os.clock() - num(ctx and ctx.StateTime, os.clock()))
+	local since = if boostsAt > 0 then boostsAt else num(ctx and ctx.StateTime, os.clock())
+	local elapsed = math.max(0, os.clock() - since)
 	local x5 = math.max(0, num(boosts.X5, 0) - elapsed)
 	local x2 = num(boosts.X2, 0)
 	if x5 > 0 then
@@ -399,11 +406,18 @@ local function seasonEnd(): number?
 	if type(list) ~= "table" or #list == 0 then
 		return nil
 	end
-	local id = SHOP.SeasonIdAt(season, clockNow())
+	local t = clockNow()
+	local id = SHOP.SeasonIdAt(season, t)
 	local last = list[#list]
-	for _, entry in ipairs(list) do
+	for index, entry in ipairs(list) do
 		if type(entry) == "table" and entry.Id == id then
-			return SHOP.ParseUtc(entry.EndUtc)
+			local ends = SHOP.ParseUtc(entry.EndUtc)
+			local following = list[index + 1]
+			if ends and ends <= t and type(following) == "table" then
+				-- Lücke bis zur nächsten festen Saison: die vorige gilt weiter, ehrliches Ende = Start der nächsten
+				return SHOP.ParseUtc(following.StartUtc) or ends
+			end
+			return ends
 		end
 	end
 	local lastEnd = SHOP.ParseUtc(last.EndUtc)
@@ -585,6 +599,7 @@ local function purchase(key: string, userId: number?)
 			return
 		end
 		if not reply.Ok then
+			sfx("UIError")
 			toast(
 				if type(reply.Message) == "string" and reply.Message ~= "" then reply.Message else T("core.error"),
 				"Error"
@@ -658,7 +673,10 @@ local function claimClub()
 			toast(reply.Message, if reply.Ok then "Success" else "Error")
 		end
 		if reply.Ok then
+			sfx("CashRegister")
 			callModule("Hud", "PulseCredits", reply.Credits)
+		else
+			sfx("UIError")
 		end
 	end)
 end
@@ -894,6 +912,14 @@ local Builders: { [string]: (root: Frame) -> () } = {}
 
 local function activeLines(): { string }
 	local lines: { string } = {}
+	-- Gesamt-Multiplikator wie im HUD-Chip (Turm-Einkommen; Aufschlüsselung mit Quelle + Restzeit im HUD)
+	local income = state().Income
+	local total = if type(income) == "table" then num(income.Mult, 1) else 1
+	local base = 0
+	if total > 1.0001 then
+		table.insert(lines, T("shop.active.total", mult(total)))
+		base = 1
+	end
 	local factor = passFactor()
 	if factor > 1 then
 		table.insert(lines, T("shop.active.passFactor", mult(factor)))
@@ -912,8 +938,8 @@ local function activeLines(): { string }
 	if paradeLeft() > 0 then
 		table.insert(lines, T("shop.parade.active", duration(paradeLeft())))
 	end
-	if #lines == 0 then
-		table.insert(lines, T("shop.active.none"))
+	if #lines == base then
+		table.insert(lines, T("shop.active.none")) -- noch keine gekauften/Server-Vorteile
 	end
 	return lines
 end
@@ -1136,13 +1162,19 @@ Builders.Club = function(root: Frame)
 			return T("shop.club.claimReady", credits(num(value, 0)))
 		end)
 		local row = UI.Row(root, 4, 44)
+		local o = offers()
+		local claimed = num(o.ClubClaimDay, 0) == num(o.Today, -1)
 		UI.Button({
 			Size = UDim2.fromOffset(240, 40),
 			Text = T("shop.club.claim"),
-			Variant = "Success",
+			Variant = if claimed then "Muted" else "Success",
 			MaxText = 16,
 			Parent = row,
-		}, claimClub)
+		}, function()
+			if not claimed then
+				claimClub()
+			end
+		end)
 		note(root, T("shop.club.member"), 5, Theme.Muted)
 	elseif offers().ClubEligible == true then
 		local cards = grid(root, 3)
@@ -1152,11 +1184,42 @@ Builders.Club = function(root: Frame)
 	end
 end
 
+-- alles, was den AUFBAU eines Reiters ändert (Besitz, Abo, Starter, Saison, Policy, Notschalter, Sprache);
+-- Zahlen wie Boost-Restzeit, Baustelle oder Angebote laufen über die 1-s-Aktualisierung
+local function layoutSig(): string
+	local s = state()
+	local o = offers()
+	local parts: { string } = { lang() }
+	local passes = s.Passes
+	for _, pass in ipairs(SHOP.GamePasses) do
+		if type(passes) == "table" and passes[pass.Key] == true then
+			table.insert(parts, pass.Key)
+		end
+	end
+	local starter = s.Starter
+	table.insert(parts, tostring(s.Club == true))
+	table.insert(parts, tostring(type(starter) == "table" and starter.Bought == true))
+	table.insert(parts, tostring(o.SeasonPremium == true))
+	table.insert(parts, tostring(o.ClubEligible == true))
+	table.insert(parts, tostring(s.TradingAllowed == true))
+	table.insert(parts, tostring(s.RandomAllowed == true))
+	table.insert(parts, tostring(num(o.ClubClaimDay, 0) == num(o.Today, -1)))
+	for _, list in ipairs({ SHOP.GamePasses, SHOP.Products }) do
+		for _, entry in ipairs(list) do
+			if isDisabled(entry.Key) then
+				table.insert(parts, "-" .. entry.Key)
+			end
+		end
+	end
+	return table.concat(parts, "|")
+end
+
 local function render()
 	local root = body
 	if not root or not window or not window.IsOpen then
 		return
 	end
+	renderedSig = layoutSig()
 	table.clear(dynamics)
 	clearChildren(root)
 	local builder = Builders[currentTab] or Builders.Start
@@ -1511,8 +1574,17 @@ openDetail = function(key: string)
 		quoteFailed = nil
 		giftChoice = nil
 	end
-	detailKey = key;
-	(detailFrame :: Frame).Visible = true
+	detailKey = key
+	local frame = detailFrame :: Frame
+	local scale = detailScale
+	if scale and not frame.Visible then
+		-- federnd aufklappen (leichtes Überschwingen wie auf der AKYTEX-Website)
+		scale.Scale = 0.94
+		TweenService:Create(scale, TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Scale = 1,
+		}):Play()
+	end
+	frame.Visible = true
 	renderDetail()
 end
 
@@ -1589,6 +1661,7 @@ local function buildDetail(panel: Frame)
 			Padding = UDim.new(0, 10),
 		}),
 	})
+	detailScale = UI.Create("UIScale", { Scale = 1, Parent = frame })
 	detailFrame = frame
 end
 
@@ -1656,6 +1729,7 @@ local function destroyWindow()
 	detailButtons = nil
 	detailTitle = nil
 	detailAccent = nil
+	detailScale = nil
 	table.clear(dynamics)
 	table.clear(detailDynamics)
 end
@@ -2029,13 +2103,19 @@ function Shop.Init(context: any)
 		if type(changed) ~= "table" then
 			return
 		end
+		if changed.Boosts then
+			boostsAt = os.clock()
+		end
 		if changed.Offers then
 			maybeOffer()
 		end
 		if window and window.IsOpen then
 			for _, key in ipairs(RELEVANT) do
 				if changed[key] then
-					queueRender()
+					-- nur neu aufbauen, wenn sich wirklich etwas am Aufbau geändert hat (kein Flackern alle 20 s)
+					if layoutSig() ~= renderedSig then
+						queueRender()
+					end
 					break
 				end
 			end
@@ -2079,13 +2159,34 @@ function Shop.Start()
 		function(userId: number, _productId: number, purchased: boolean)
 			if purchased and userId == player.UserId then
 				closeDetail()
+				sfx("Achievement") -- sofort spürbar; Gutschrift + Meldung kommen vom Server
 			end
 		end
 	)
 	MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(who: Player, _passId: number, purchased: boolean)
 		if purchased and who == player then
 			closeDetail()
+			sfx("Achievement")
 		end
+	end)
+	MarketplaceService.PromptSubscriptionPurchaseFinished:Connect(
+		function(who: Player, _subscriptionId: string, didTryPurchasing: boolean)
+			if didTryPurchasing and who == player then
+				closeDetail()
+			end
+		end
+	)
+	-- Geschenk-Empfänger kommen und gehen: offene Geschenk-Details aktualisieren
+	local function refreshGiftPicker()
+		local key = detailKey
+		local entry = if key then SHOP.ProductsByKey[key] else nil
+		if entry and entry.Kind == "Gift" then
+			renderDetail()
+		end
+	end
+	Players.PlayerAdded:Connect(refreshGiftPicker)
+	Players.PlayerRemoving:Connect(function()
+		task.defer(refreshGiftPicker)
 	end)
 	local ok, err = pcall(installChatTags)
 	if not ok then

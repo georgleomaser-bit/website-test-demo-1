@@ -47,7 +47,7 @@ local function context(
 	seed: number?,
 	week: number?,
 	bases: { [number]: number }?,
-	cancelled: boolean?
+	cancelled: (boolean | number)?
 ): Plain
 	return market(services).TestContext(seed or TEST_SEED, week or TEST_WEEK, bases, cancelled)
 end
@@ -225,6 +225,8 @@ Tests["Markt: Backfill/Stillstand-Ringe == durchgehend live (1s, 5s, 1m)"] = fun
 	local boot = CandleStore.new(Config.Market)
 	boot:SeedPartial(i, live, candleAt)
 	boot:Plan(cursorFn, { i }, live)
+	assert(boot:Missing(i, live - 120), "Backfill offen -> Historie gilt als unvollständig")
+	boot:Prioritize(i)
 	for t = live, live + 10 do
 		ctx.Engine:Step(t)
 		local o, h, l, c, v = ctx.Engine:Candle(i)
@@ -238,6 +240,7 @@ Tests["Markt: Backfill/Stillstand-Ringe == durchgehend live (1s, 5s, 1m)"] = fun
 			task.wait()
 		end
 	end
+	assert(not boot:Missing(i, live - 24 * 3600), "nach dem Backfill vollständig")
 	for _, tf in ipairs({ 1, 5, 60 }) do
 		same(ref, boot, tf, "Boot")
 	end
@@ -407,6 +410,23 @@ Tests["Markt: CancelAutoShow sagt die Samstags-Rallye ab"] = function(services)
 		end
 	end
 	assert(not showNews, "abgesagte Show schickt keine Schlagzeile")
+	-- Absage mitten in der Warnphase: gilt erst ab ihrem Start-Tick (vorher wie geplant, danach wie abgesagt)
+	local warnAt = show + 30 - Config.Market.CrashRally.WarnSeconds
+	local cutAt = warnAt + 60
+	local mid = context(services, TEST_SEED, TEST_WEEK, nil, cutAt)
+	build(mid, MarketClock.DayIndex(show) + 1)
+	eq(mid.Engine:MidAt(target, cutAt - 1), on.Engine:MidAt(target, cutAt - 1), "vor dem Absage-Tick wie geplant")
+	eq(mid.Engine:MidAt(target, t), off.Engine:MidAt(target, t), "nach dem Ausblenden wie abgesagt")
+	local worst = 0
+	for k = cutAt - 5, cutAt + 70 do
+		local a, b = mid.Engine:MidAt(target, k - 1), mid.Engine:MidAt(target, k)
+		worst = math.max(worst, math.abs(math.log(b / a)))
+	end
+	assert(worst < 0.01, ("kein Kurssprung beim Ausblenden (größter 1s-Schritt %.4f)"):format(worst))
+	local crash, rally = mid.Director:CrashRally(cutAt - 1)
+	assert(rally and not crash, "Warnphase vor der Absage zeigt die Rallye")
+	local _, rallyAfter = mid.Director:CrashRally(cutAt)
+	assert(not rallyAfter, "nach der Absage keine Rallye-Flagge")
 end
 
 Tests["Markt: Admin-Crash (Rampe, Abklingen, 10-s-Pause, Admin-Fenster), Normalisieren"] = function(services)
@@ -520,6 +540,45 @@ Tests["Markt: Live-Markt läuft (Frame, Quote, Kalender, Request-Form)"] = funct
 	assert(type(stats.TickMs) == "number" and type(stats.BusOk) == "boolean", "Stats-Form")
 	assert(svc.Instrument(250) and svc.Instrument(250).Set == "Tutorial", "ACAD bekannt")
 	assert(not table.find(ids, 250), "ACAD nie im Frame")
+	-- Service-Cursor hat die Form, die CandleStore (Backfill/Rebuild) und CatchUp brauchen: Full + LastMid + Candle
+	local tc = svc.Tick() - 120
+	local cursor = svc.NewCursor(1, tc)
+	assert(type(cursor.Full) == "function" and type(cursor.LastMid) == "number", "NewCursor: Full + LastMid")
+	local o, h, l, c, v = cursor:Full(tc)
+	assert(type(v) == "number" and c > 0 and l <= math.min(o, c) and h >= math.max(o, c), "NewCursor:Full plausibel")
+	eq(cursor.LastMid, c, "LastMid = Schluss des letzten Ticks")
+	local ro, rh, rl, rc = svc.Candle1s(1, tc + 1)
+	local co, ch, cl, cc = cursor:Candle(tc + 1)
+	assert(ro == co and rh == ch and rl == cl and rc == cc, "Cursor-Kerze == Candle1s (Random-Access)")
+end
+
+Tests["Markt: OnTick(t) sieht Tick t (Kerze, Dividenden, Pause)"] = function(services)
+	local svc = market(services)
+	local waited = 0
+	while not svc.IsReady() and waited < 20 do
+		task.wait(0.5)
+		waited += 0.5
+	end
+	assert(svc.IsReady(), "Markt nach 20 s nicht bereit")
+	local result: Plain? = nil
+	svc.OnTick(function(t: number)
+		if result ~= nil then
+			return -- Callback bleibt registriert; nur der erste Tick wird geprüft
+		end
+		local _, _, _, close = svc.Candle1s(1, t)
+		local _, _, mid = svc.Quote(1)
+		result = { Tick = svc.Tick(), T = t, Close = close, Mid = mid, Halted = svc.IsHalted(1, t) }
+	end)
+	local guard = 0
+	while result == nil and guard < 40 do
+		task.wait(0.1)
+		guard += 1
+	end
+	local r = result :: Plain
+	assert(r ~= nil, "OnTick feuert")
+	eq(r.Tick, r.T, "Tick() == t im Callback")
+	assert(r.Close ~= nil and r.Close == r.Mid, "Candle1s(i, t) im Callback = Kerze von t (Schluss == Quote-mid)")
+	assert(type(r.Halted) == "boolean", "IsHalted(i, t)")
 end
 
 return Tests

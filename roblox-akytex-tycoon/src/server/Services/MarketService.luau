@@ -14,12 +14,12 @@
 --  "IsAdmin" (setzt AdminService, WP11) – AdminService selbst ist für Markt-Code tabu (nur OwnerTradeBlocked).
 --
 --  Öffentliche API (§C5.3)
---    Tick() · Quote(i) · Candle1s(i, t) · PriceAt(i, t) · NewCursor(i, t0) · Instrument(i) · ActiveIds() · IsHalted(i)
+--    Tick() · Quote(i) · Candle1s(i, t) · PriceAt(i, t) · NewCursor(i, t0) · Instrument(i) · ActiveIds() · IsHalted(i, t?)
 --    Regime() · DayIndex() · HalfSpread(i) · Dividends(t0, t1) · Calendar(days) · RecentNews(n) · FactNewsFor(i, t, w)
 --    AdminWindowActive(t?) · AdminWindowsBetween(t0, t1) · AutoShowCancelled(week) · IsLocalMarket()
 --    OnTick(cb) · OnNews(cb) · OnDayClose(cb) · Admin(action, args, by) · Stats()
 --    zusätzlich: IsReady(): boolean (Seed geladen, Plan gebaut) · AuditStats() (Admin-Statistik Fill-Audit) ·
---    TestContext(seed, week, bases?, cancelled?) (nur SelfTests: isolierter Wochen-Kontext)
+--    TestContext(seed, week, bases?, cancelled?) (nur SelfTests: isolierter Wochen-Kontext; cancelled = true | Tick)
 --  Hinweise für WP4: vor IsReady() liefern Quote/Candle1s nil und PriceAt den Startkurs – den Offline-Abgleich erst
 --  starten, wenn IsReady() true ist. Zeitpunkte > Tick() werden auf Tick() begrenzt (nie Zukunft). Nach einem
 --  Server-Stillstand > 60 s springt der Markt auf jetzt (OnTick feuert für die übersprungenen Ticks NICHT, nur die
@@ -94,7 +94,7 @@ local dayCallbacks: { (number, number) -> () } = {}
 local busEvents: { [string]: Plain } = {}
 local busOrder: { string } = {}
 local windows: { { number } } = {}
-local cancelledWeeks: { [number]: boolean } = {}
+local cancelledWeeks: { [number]: number } = {} -- Woche -> Start-Tick des CancelAutoShow (ab dann gilt die Absage)
 local adminCooldown: { [number]: number } = {}
 local pendingDay: { Day: number, Deadline: number, Sent: { [Player]: boolean } }? = nil
 local tickMs = 0
@@ -298,7 +298,7 @@ local function specFor(ctx: Ctx, slot: Plain, base: number, origin: number, wild
 end
 
 local function autoShowCancelled(week: number): boolean
-	return cancelledWeeks[week] == true
+	return cancelledWeeks[week] ~= nil
 end
 
 -- Baut einen Wochen-Kontext (Plan noch NICHT gebaut – siehe buildDays)
@@ -372,6 +372,9 @@ local function newContext(
 		NewsMeanGap = tune,
 		Listings = {},
 		IsCancelled = autoShowCancelled,
+		CancelAt = function(w: number): number?
+			return cancelledWeeks[w]
+		end,
 	})
 	local ctx: Ctx = { Week = week, Seed = seed, Director = director, Engine = nil :: any, Bases = bases }
 	local specs: { Plain } = {}
@@ -530,6 +533,15 @@ local function autoShowTick(week: number): number?
 	return nil
 end
 
+local function autoShowIndex(): number
+	for index, entry in ipairs(cfg.Weekly) do
+		if entry.Key == "AutoShow" then
+			return index
+		end
+	end
+	return 1
+end
+
 local function cancelLead(): number
 	for _, entry in ipairs(cfg.Weekly) do
 		if entry.Key == "AutoShow" then
@@ -582,9 +594,32 @@ local function onBusEvent(ev: Plain, late: boolean)
 	if ev.Kind == "CancelAutoShow" then
 		local week = tonumber(ev.Target) or MarketClock.WeekIndex(ev.StartTick)
 		local show = autoShowTick(week)
-		if show and ev.StartTick <= show - cancelLead() then
-			cancelledWeeks[week] = true
+		local existing = cancelledWeeks[week]
+		if show and ev.StartTick <= show - cancelLead() and (existing == nil or ev.StartTick < existing) then
+			-- gilt ab dem Start-Tick (alle Server gleich); die Warn-Volatilität blendet der EventDirector aus
+			cancelledWeeks[week] = ev.StartTick
 			markAllDirty()
+			local now = lastTick
+			local warnAt = show + (cfg.Weekly[autoShowIndex()].Offset or 0) - cfg.CrashRally.WarnSeconds
+			if ready and now >= warnAt then
+				-- die Show-Warnung lief schon: Clients beenden Rallye-Wetter/Banner
+				local sectors = companies.Sectors
+				Remotes.Market:FireAllClients("Event", {
+					Kind = "Rally",
+					Phase = "End",
+					StartTick = warnAt,
+					Until = ev.StartTick,
+					Scope = "Sector",
+					Target = sectors[(week % #sectors) + 1].Key,
+					Cancelled = true,
+				})
+			end
+			if ready and late and ev.StartTick <= now then
+				-- verspätet angekommen: Kerzen ab der Absage neu rechnen (Kurse folgen ab jetzt der Absage)
+				local ids = allIds()
+				store:Rebuild(ids, ev.StartTick, now, now + 1)
+				seedLive(ids, now + 1)
+			end
 		end
 		return
 	end
@@ -703,8 +738,11 @@ function MarketService.PriceAt(i: number, t: number): number
 	return ctx.Engine:MidAt(i, tick)
 end
 
+-- Wochenübergreifender Cursor (Offline-Abgleich WP4, Kerzen-Backfill/Rebuild). Gleiche Form wie der Engine-Cursor:
+-- Seek(t) · Candle(t) -> (O, H, L, C) · Full(t) -> (O, H, L, C, V, hiOff, loOff) · LastMid (Schluss vor dem nächsten Tick).
+-- Innerhalb einer Woche bleibt der Engine-Cursor (eigene Felder) erhalten – Seek setzt ihn nur neu auf.
 function MarketService.NewCursor(i: number, t0: number)
-	local cursor = { Week = -1, Inner = nil :: any }
+	local cursor = { Week = -1, Inner = nil :: any, LastMid = 0 }
 	function cursor.Seek(self: any, t: number)
 		local tick = clampTick(t)
 		local ctx = contextFor(tick)
@@ -713,25 +751,40 @@ function MarketService.NewCursor(i: number, t0: number)
 		end
 		if ctx then
 			ensureBuilt(ctx, tick)
-			self.Inner = ctx.Engine:NewCursor(i, tick)
-			self.Week = ctx.Week
+			if self.Inner ~= nil and self.Week == ctx.Week then
+				self.Inner:Seek(tick)
+			else
+				self.Inner = ctx.Engine:NewCursor(i, tick)
+				self.Week = ctx.Week
+			end
+			self.LastMid = self.Inner.LastMid
 		end
 	end
-	function cursor.Candle(self: any, t: number): (number, number, number, number)
+	local function prepare(self: any, t: number): (number, any)
 		local tick = clampTick(t)
 		if self.Inner == nil or MarketClock.WeekIndex(tick) ~= self.Week then
 			self:Seek(tick)
-		end
-		local inner = self.Inner
-		if inner == nil then
-			local p = MarketService.PriceAt(i, tick)
-			return p, p, p, p
 		end
 		local ctx = contextFor(tick)
 		if ctx then
 			ensureBuilt(ctx, tick)
 		end
-		return inner:Candle(tick)
+		return tick, self.Inner
+	end
+	function cursor.Full(self: any, t: number): (number, number, number, number, number, number, number)
+		local tick, inner = prepare(self, t)
+		if inner == nil then
+			local p = MarketService.PriceAt(i, tick)
+			self.LastMid = p
+			return p, p, p, p, 0, 0, 0
+		end
+		local o, h, l, c, v, hiOff, loOff = inner:Full(tick)
+		self.LastMid = inner.LastMid
+		return o, h, l, c, v, hiOff, loOff
+	end
+	function cursor.Candle(self: any, t: number): (number, number, number, number)
+		local o, h, l, c = self:Full(t)
+		return o, h, l, c
 	end
 	cursor:Seek(t0)
 	return cursor
@@ -757,10 +810,20 @@ function MarketService.ActiveIds(): { number }
 	return out
 end
 
-function MarketService.IsHalted(i: number): boolean
+-- t (optional): Pause zu genau diesem Tick (Offline-Abgleich WP4); ohne t = jetzt
+function MarketService.IsHalted(i: number, t: number?): boolean
 	local cur = ctxCur
 	if cur == nil then
 		return true
+	end
+	if t ~= nil and Util.IsFinite(t) then
+		local tick = clampTick(t)
+		local ctx = contextFor(tick)
+		if ctx == nil then
+			return false -- älter als die Vorwoche: keine Pausen bekannt
+		end
+		local haltedAt = ctx.Director:Halted(i, tick)
+		return haltedAt
 	end
 	local halted = cur.Director:Halted(i, lastTick)
 	return halted
@@ -933,11 +996,20 @@ function MarketService.AuditStats(): Plain
 end
 
 -- nur SelfTests/Debug: eigener, isolierter Wochen-Kontext (eigener Seed, keine globalen Nebenwirkungen)
-function MarketService.TestContext(seed: number, week: number, bases: { [number]: number }?, cancelled: boolean?): Plain
+-- cancelled: true = Samstags-Show immer abgesagt, Zahl = abgesagt ab diesem Tick, false/nil = findet statt
+function MarketService.TestContext(
+	seed: number,
+	week: number,
+	bases: { [number]: number }?,
+	cancelled: (boolean | number)?
+): Plain
 	local ctx = newContext(week, seed, bases or {}, cfg.NewsMeanGap, true)
 	if cancelled ~= nil then
-		ctx.Director.IsCancelled = function(_week: number)
-			return cancelled
+		ctx.Director.CancelAt = function(_week: number): number?
+			if type(cancelled) == "number" then
+				return cancelled
+			end
+			return if cancelled == true then -math.huge else nil
 		end
 	end
 	return ctx :: any
@@ -1157,6 +1229,7 @@ local function onDayResult(p: Player, r: Plain)
 		Remotes.Market:FireClient(p, "DayClose", {
 			Day = pending.Day,
 			Return = if Util.IsFinite(r.Return) then r.Return else nil,
+			Transfer = if Util.IsFinite(r.Transfer) and r.Transfer > 0 then math.floor(r.Transfer) else nil,
 		})
 	end
 end
@@ -1263,6 +1336,10 @@ local function advance(t: number): boolean
 	end
 	-- 2) Kurse
 	cur.Engine:Step(t)
+	-- ab hier gilt Tick t als verarbeitet: Tick()/Candle1s/PriceAt/Dividends/IsHalted sehen t (nicht t − 1).
+	-- Sonst prüfen die Orders in OnTick(t) die Kerze t − 1 (Blick zurück auf schon gesendete Dochte) und
+	-- Dividends(t, t) wäre leer (Live-Dividenden würden nie gutgeschrieben).
+	lastTick = t
 	-- 3) Orders & Co. (WP4) – nach Step, vor Kerzen/Frame
 	fire(tickCallbacks, t)
 	-- 4) Kerzen-Ringe
@@ -1535,6 +1612,12 @@ local function handleCandles(p: Player, arg: any): Types.Reply
 	end
 	if not validInst(arg.I) then
 		return reply(p, false, "mkt.unknownInst")
+	end
+	-- Backfill (Serverstart, verspätetes Event) für dieses Fenster noch offen: Instrument vorziehen, Client fragt gleich
+	-- nochmal (MarketClient wiederholt nach 2,5 s) – sonst bliebe sein Chart bis zum Verwerfen lückenhaft
+	if store:Missing(arg.I, lastTick - (cfg.History.Candles + 1) * tf) then
+		store:Prioritize(arg.I)
+		return reply(p, false, "mkt.historyLoading")
 	end
 	local buf = store:Get(arg.I, tf)
 	if buf == nil then

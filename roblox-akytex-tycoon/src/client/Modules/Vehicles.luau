@@ -44,6 +44,11 @@ type Drive = {
 	BaseTorque: number,
 	FlipTime: number,
 	Engine: any?,
+	Tails: { BasePart },
+	Smoke: { ParticleEmitter },
+	Flames: { ParticleEmitter },
+	Braking: boolean?,
+	TestLeft: number?,
 }
 
 local ctx: any = nil
@@ -178,6 +183,7 @@ local function setHudVisible(on: boolean)
 	if on and hintLabel then
 		local okInput, kind = call("Controls", "Input")
 		hintLabel.Text = if okInput and kind == "Touch" then ctx.T("car.exitHintTouch") else ctx.T("car.exitHint")
+		hintLabel.TextColor3 = Theme.Muted
 	end
 end
 
@@ -205,10 +211,132 @@ local function collect(model: Model, prefix: string, class: string): { [string]:
 	return out
 end
 
+-- Lokale Fahr-Effekte (nur beim Fahrer, im Partikel-Budget): Drift-Rauch an den Hinterrädern, Boost-Flammen am Auspuff
+local function particleBudget(): number
+	local ok, value = call("Quality", "Budget", "Particles")
+	return if ok and type(value) == "number" then math.clamp(value, 0, 1) else 0.6
+end
+
+local function addEmitter(parent: BasePart, offset: Vector3, kind: string): ParticleEmitter
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "AT_Fx" .. kind
+	attachment.Position = offset
+	attachment.Parent = parent
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "AT_" .. kind
+	emitter.Enabled = false
+	emitter.LockedToPart = false
+	if kind == "Smoke" then
+		emitter.Texture = "rbxasset://textures/particles/smoke_main.dds"
+		emitter.Color = ColorSequence.new(Color3.fromRGB(200, 206, 216))
+		emitter.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.55),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.2), NumberSequenceKeypoint.new(1, 5) })
+		emitter.Lifetime = NumberRange.new(0.7, 1.2)
+		emitter.Speed = NumberRange.new(2, 5)
+		emitter.SpreadAngle = Vector2.new(40, 40)
+		emitter.Rate = 0
+		emitter.EmissionDirection = Enum.NormalId.Top
+	else
+		emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		emitter.Color = ColorSequence.new(Theme.Accent, Theme.Cosmic3)
+		emitter.LightEmission = 1
+		emitter.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0.1),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.7), NumberSequenceKeypoint.new(1, 0.1) })
+		emitter.Lifetime = NumberRange.new(0.15, 0.3)
+		emitter.Speed = NumberRange.new(14, 22)
+		emitter.SpreadAngle = Vector2.new(8, 8)
+		emitter.Rate = 0
+		emitter.EmissionDirection = Enum.NormalId.Back
+	end
+	emitter.Parent = attachment
+	return emitter
+end
+
+local function buildDriveFx(d: Drive)
+	for key, wheel in pairs(d.Wheels) do
+		if string.sub(key, 1, 1) == "R" then
+			table.insert(d.Smoke, addEmitter(wheel, Vector3.new(0, -d.Radius * 0.8, 0), "Smoke"))
+		end
+	end
+	for _, name in ipairs({ "ExhaustL", "ExhaustR" }) do
+		local pipe = d.Model:FindFirstChild(name)
+		if pipe and pipe:IsA("BasePart") then
+			table.insert(d.Flames, addEmitter(pipe, Vector3.zero, "Flame"))
+		end
+	end
+	for _, inst in ipairs(d.Model:GetDescendants()) do
+		if inst:IsA("BasePart") and inst:GetAttribute("Light") == "Tail" then
+			table.insert(d.Tails, inst)
+		end
+	end
+end
+
+local function clearDriveFx(d: Drive)
+	for _, list in ipairs({ d.Smoke, d.Flames }) do
+		for _, emitter in ipairs(list) do
+			local holder = emitter.Parent
+			if holder then
+				holder:Destroy()
+			end
+		end
+		table.clear(list)
+	end
+	for _, tail in ipairs(d.Tails) do
+		if tail.Parent then
+			tail.Color = Color3.fromRGB(239, 48, 56)
+		end
+	end
+end
+
+-- Bremslicht hell, Drift-Rauch, Boost-Flammen (jeden Frame; nur Werte ändern, wenn sie sich ändern)
+local function stepDriveFx(d: Drive, speed: number, braking: boolean, boosting: boolean)
+	if braking ~= d.Braking then
+		d.Braking = braking
+		local color = if braking then Color3.fromRGB(255, 72, 80) else Color3.fromRGB(176, 28, 36)
+		for _, tail in ipairs(d.Tails) do
+			if tail.Parent then
+				tail.Color = color
+			end
+		end
+	end
+	local fx = particleBudget()
+	local reduced = reducedFx()
+	local smokeRate = if handbrake and speed > 14 and not reduced then 60 * fx else 0
+	for _, emitter in ipairs(d.Smoke) do
+		if emitter.Rate ~= smokeRate then
+			emitter.Rate = smokeRate
+			emitter.Enabled = smokeRate > 0
+		end
+	end
+	local flameRate = if boosting and not reduced then 90 * fx else 0
+	for _, emitter in ipairs(d.Flames) do
+		if emitter.Rate ~= flameRate then
+			emitter.Rate = flameRate
+			emitter.Enabled = flameRate > 0
+		end
+	end
+end
+
 local function stopDrive()
 	local d = drive
 	if not d then
 		return
+	end
+	clearDriveFx(d)
+	-- Handbremse beim Aussteigen gehalten: Hinterrad-Reibung zurücksetzen (sonst driftet das Auto beim
+	-- nächsten Einsteigen dauerhaft – die "End"-Eingabe kommt erst, wenn drive schon nil ist)
+	if handbrake then
+		for key, wheel in pairs(d.Wheels) do
+			if string.sub(key, 1, 1) == "R" and wheel.Parent then
+				wheel.CustomPhysicalProperties = physical((VC.Physics and VC.Physics.WheelDensity) or 0.9, rearFriction)
+			end
+		end
 	end
 	drive = nil
 	handbrake = false
@@ -260,7 +388,13 @@ local function startDrive(model: Model, seat: VehicleSeat)
 		BaseTorque = if type(torque) == "number" then torque else 20000,
 		FlipTime = 0,
 		Engine = nil,
+		Tails = {},
+		Smoke = {},
+		Flames = {},
+		Braking = nil,
+		TestLeft = nil,
 	}
+	buildDriveFx(drive :: Drive)
 	local ok, handle = call("Sfx", "Loop", "Engine", chassis)
 	if ok and handle then
 		(drive :: Drive).Engine = handle
@@ -441,6 +575,8 @@ local function updateDrive(d: Drive, dt: number)
 			Vector3.new(0, -(physics.Downforce or 0.6) * d.Mass * workspace.Gravity * factor * factor, 0)
 	end
 	flipIfNeeded(d, dt)
+	local braking = handbrake or (throttle < -0.05 and forward > 2) or (throttle > 0.05 and forward < -2)
+	stepDriveFx(d, speed, braking, boosting)
 	-- Ton, Kamera, Tacho
 	if d.Engine then
 		pcall(d.Engine.SetSpeed, 0.7 + 0.9 * math.clamp(speed / d.Cap, 0, 1.3))
@@ -453,6 +589,22 @@ local function updateDrive(d: Drive, dt: number)
 	if speedLabel then
 		-- km/h ≈ Studs/s (1 Stud ≈ 0,28 m)
 		speedLabel.Text = tostring(math.floor(speed + 0.5))
+	end
+	-- Probefahrt: Restzeit statt Aussteige-Hinweis
+	local testUntil = d.Model:GetAttribute("TestUntil")
+	if hintLabel and type(testUntil) == "number" then
+		local left = math.max(0, math.ceil(testUntil - workspace:GetServerTimeNow()))
+		if left ~= d.TestLeft then
+			d.TestLeft = left
+			hintLabel.Text = ctx.T("car.testLeft", ("%d:%02d"):format(left // 60, left % 60))
+			hintLabel.TextColor3 = if left <= 10 then Theme.Warn else Theme.Cosmic3
+		end
+	elseif d.TestLeft ~= nil then
+		d.TestLeft = nil
+		setHudVisible(true) -- gekauft während der Probefahrt: normaler Hinweis zurück
+		if hintLabel then
+			hintLabel.TextColor3 = Theme.Muted
+		end
 	end
 	if boostFill and boostLabel then
 		local ready = t >= cooldownUntil

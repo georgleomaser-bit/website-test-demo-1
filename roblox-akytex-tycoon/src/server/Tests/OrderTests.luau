@@ -271,6 +271,22 @@ function Tests.BuySellRoundTripNeverPositive()
 	end
 end
 
+-- Nachkauf zieht den Eröffnungs-Tick mengengewichtet nach: "1 Stück lange halten, dann groß nachkaufen und sofort
+-- verkaufen" zählt NICHT als ≥ 60 s gehalten (Liga/XP/"Gut gelesen")
+function Tests.AddToPositionHoldTimeWeighted()
+	local env = makeEnv()
+	local d = newDepot(50000000)
+	local t = 1200 * 60
+	local _, ask = OrderEngine.EngineQuote(env :: any, 1, t)
+	truthy(Portfolio.Buy(d, 1, 1, ask :: number, env.Licence.FeeBps, nil, { Tick = t }), "1 Stück")
+	truthy(Portfolio.Buy(d, 1, 99, ask :: number, env.Licence.FeeBps, nil, { Tick = t + 600 }), "99 nachgekauft")
+	eq(d.Pos["1"].T, t + 594, "Eröffnungs-Tick mengengewichtet (1 × t + 99 × (t + 600)) / 100")
+	local bid = OrderEngine.EngineQuote(env :: any, 1, t + 601)
+	local ok, info = Portfolio.Sell(d, 1, 100, bid :: number, env.Licence.FeeBps, nil, { Tick = t + 601 })
+	truthy(ok, "Verkauf")
+	eq(info.HeldS, 7, "Haltedauer zählt ab dem gewichteten Einstieg")
+end
+
 function Tests.ReservationsZeroAfterCancelCashNeverNegative()
 	local env = makeEnv({ Licence = 4 })
 	local d = newDepot(2500000)

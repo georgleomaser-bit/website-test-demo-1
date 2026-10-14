@@ -195,7 +195,15 @@ local DEFAULT_DATA: PlayerData = {
 		ClubClaimDay = 0,
 		Gifts = 0,
 	}, -- WP10
-	Stats = { LifetimeCredits = 0, Collected = 0, FloorsBuilt = 0, Ipos = 0, Drive = 0, Pickups = 0 },
+	Stats = { -- AdminCredits = Admin-Geschenke in CR (Wunsch 18, ShopService markiert sie; zählen nie für die Liga)
+		LifetimeCredits = 0,
+		Collected = 0,
+		FloorsBuilt = 0,
+		Ipos = 0,
+		Drive = 0,
+		Pickups = 0,
+		AdminCredits = 0,
+	},
 	Settings = {}, -- WP1 (Schema Config.Client.SettingsSchema, Standardwerte beim Laden ergänzt)
 	Flags = {}, -- WP1 (TutorialFlag) + Besitzer-WPs (z. B. Flags.TutorialTrade WP4)
 	Mod = {}, -- WP11 (Verwarnungen, harte Kicks)

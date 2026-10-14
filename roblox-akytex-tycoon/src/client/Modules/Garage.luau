@@ -368,13 +368,38 @@ local function buildActions(car: any)
 		local affordable = credits() >= price
 		UI.Button({
 			Text = T("car.buy") .. " · " .. formatCredits(price),
-			Size = UDim2.fromOffset(240, 38),
+			Size = UDim2.fromOffset(196, 38),
 			Variant = if affordable and not full then "Primary" else "Muted",
 			LayoutOrder = 1,
 			Parent = row,
 		}, function()
 			toast(ctx.RequestFull("CarBuy", { Key = key }, true))
 		end)
+		if state.Spawned == key and state.Test == true then
+			UI.Button({
+				Text = T("car.despawn"),
+				Size = UDim2.fromOffset(132, 38),
+				Variant = "Secondary",
+				LayoutOrder = 2,
+				Parent = row,
+			}, function()
+				toast(ctx.RequestFull("CarDespawn", {}, true))
+			end)
+		else
+			-- Probefahrt (nur am Autohaus; der Server prüft Ort und Cooldown)
+			UI.Button({
+				Text = T("car.testDrive"),
+				Size = UDim2.fromOffset(132, 38),
+				Variant = "Secondary",
+				LayoutOrder = 2,
+				Parent = row,
+			}, function()
+				local reply = toast(ctx.RequestFull("CarSpawn", { Key = key, Test = true }, true))
+				if reply.Ok and window then
+					ctx.Windows.Close("Garage")
+				end
+			end)
+		end
 	elseif car.Source == "Pass" then
 		UI.Button({
 			Text = T("car.view"),
@@ -463,6 +488,30 @@ local function updateInfo()
 	end
 end
 
+-- Hover/Drück-Feedback für Karten-Knöpfe (wie das UI-Kit: Hover heller, Drücken Feder 0,97 in 0,08 s,
+-- Loslassen 0,3 s Back Out)
+local PRESS_INFO = TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local RELEASE_INFO = TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local HOVER_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function cardFeedback(card: Frame, hit: TextButton)
+	local scale: UIScale = UI.Create("UIScale", { Scale = 1, Parent = card })
+	local base = card.BackgroundColor3
+	hit.MouseEnter:Connect(function()
+		TweenService:Create(card, HOVER_INFO, { BackgroundColor3 = Theme.Hover }):Play()
+	end)
+	hit.MouseLeave:Connect(function()
+		TweenService:Create(card, HOVER_INFO, { BackgroundColor3 = base }):Play()
+		TweenService:Create(scale, RELEASE_INFO, { Scale = 1 }):Play()
+	end)
+	hit.MouseButton1Down:Connect(function()
+		TweenService:Create(scale, PRESS_INFO, { Scale = 0.97 }):Play()
+	end)
+	hit.MouseButton1Up:Connect(function()
+		TweenService:Create(scale, RELEASE_INFO, { Scale = 1 }):Play()
+	end)
+end
+
 local function carCard(parent: Instance, car: any, order: number)
 	local isSelected = car.Key == selected
 	local card = UI.Card({ Name = car.Key, LayoutOrder = order, Parent = parent })
@@ -498,7 +547,9 @@ local function carCard(parent: Instance, car: any, order: number)
 	})
 	local status: string
 	local color = Theme.Muted
-	if garageState().Spawned == car.Key then
+	if garageState().Spawned == car.Key and garageState().Test == true then
+		status, color = T("car.testDrive"), Theme.Cosmic2
+	elseif garageState().Spawned == car.Key then
 		status, color = T("car.activeTag"), Theme.Accent
 	elseif owns(car.Key) then
 		status, color = T("car.ownedTag"), Theme.Up
@@ -524,6 +575,7 @@ local function carCard(parent: Instance, car: any, order: number)
 		ZIndex = 5,
 		Parent = card,
 	})
+	cardFeedback(card, hit)
 	hit.Activated:Connect(function()
 		call("Sfx", "Play", "UIClick")
 		selectCar(car.Key)
@@ -542,8 +594,9 @@ local function buildCarList(parent: Frame, mineOnly: boolean)
 	end
 	if order == 0 then
 		UI.Label({
-			Size = UDim2.new(1, 0, 0, 30),
-			Text = if mineOnly then T("car.none") else T("car.ownedTag"),
+			Size = UDim2.new(1, 0, 0, 44),
+			Text = if mineOnly then T("car.none") else T("car.allOwned"),
+			TextWrapped = true,
 			TextColor3 = Theme.Muted,
 			MaxText = 15,
 			LayoutOrder = 1,
@@ -591,6 +644,7 @@ local function optionButton(
 		ZIndex = 5,
 		Parent = holder,
 	})
+	cardFeedback(holder, hit)
 	hit.Activated:Connect(function()
 		call("Sfx", "Play", "UIClick")
 		onClick()
@@ -854,6 +908,7 @@ local function stateSignature(): string
 	local state = garageState()
 	local parts = {
 		tostring(state.Spawned),
+		tostring(state.Test),
 		tostring(state.Used),
 		tostring(state.Slots),
 		tostring(state.Discount),

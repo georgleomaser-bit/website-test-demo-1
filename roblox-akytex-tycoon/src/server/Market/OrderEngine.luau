@@ -78,7 +78,7 @@ export type Env = {
 	Set: (number) -> string?,
 	DivBps: (number) -> number,
 	Listed: (number) -> boolean,
-	Halted: (number) -> boolean,
+	Halted: (number, number?) -> boolean, -- (Wert, Tick?) – mit Tick: Pause zu genau diesem Tick (offline == online)
 	FactDir: (number, number) -> number?,
 	AdminActive: (number) -> boolean,
 	AdminBetween: (number, number) -> boolean,
@@ -1018,13 +1018,13 @@ local function executeOrder(d: Depot, env: Env, t: number, ord: Order, px: numbe
 			if cut >= 1 then
 				ok, info = Portfolio.Buy(d, i, cut, px, bps, ord, opts)
 				if ok then
-					env.Emit("Cut", { OrderId = ord.Id, I = i, Q = cut })
+					env.Emit("Cut", { OrderId = ord.Id, I = i, Q = cut, Bot = ord.Bot })
 				end
 			end
 		end
 		removeOrder(d, ord)
 		if not ok then
-			env.Emit("Cancelled", { OrderId = ord.Id, I = i, Reason = info })
+			env.Emit("Cancelled", { OrderId = ord.Id, I = i, Reason = info, Bot = ord.Bot })
 			return
 		end
 		info.Protected = bit32.band(flags, Portfolio.FLAG_PROTECTED) ~= 0
@@ -1038,7 +1038,7 @@ local function executeOrder(d: Depot, env: Env, t: number, ord: Order, px: numbe
 	local ok, info = Portfolio.Sell(d, i, ord.Q, px, bps, ord, { Tick = t })
 	removeOrder(d, ord)
 	if not ok then
-		env.Emit("Cancelled", { OrderId = ord.Id, I = i, Reason = info })
+		env.Emit("Cancelled", { OrderId = ord.Id, I = i, Reason = info, Bot = ord.Bot })
 		return
 	end
 	emitFill(d, env, t, i, "S", info, nav, ord.Bot, kind, ord, gap)
@@ -1190,9 +1190,10 @@ function OrderEngine.CloseDay(d: Depot, env: Env, t: number)
 	local navEnd = OrderEngine.NavAt(d, env, dayEnd)
 	local rec = Portfolio.CurrentDay(d)
 	local result: Types.DayResult = { Day = closedDay, Return = 0, Trades = 0, Qualifying = false, Tainted = false }
+	local complete = false
 	if rec then
 		rec[3] = navEnd
-		local complete = rec[1] == closedDay
+		complete = rec[1] == closedDay
 		local tainted = env.AdminBetween(dayStart, dayEnd) or env.OwnerTaint
 		local counted = complete and rec[6] == 1 and rec[2] >= num(cfg.MinNavStart, 100000)
 		local r = if counted then PortfolioMath.DayReturn(rec[2], navEnd, rec[4]) else 0
@@ -1216,9 +1217,6 @@ function OrderEngine.CloseDay(d: Depot, env: Env, t: number)
 				stats.MaxDD = math.max(num(stats.MaxDD, 0), math.floor((peak - navEnd) / peak * 10000 + 0.5) / 10000)
 			end
 		end
-		if complete then
-			env.Emit("DayResult", result)
-		end
 	end
 	-- 3) neuer Börsentag startet mit dem Schluss-Depotwert
 	Portfolio.OpenDay(d, closedDay + 1, navEnd, hasExposure(d))
@@ -1235,7 +1233,13 @@ function OrderEngine.CloseDay(d: Depot, env: Env, t: number)
 			d.Pending = math.floor(num(d.Pending, 0)) + amount
 			d.LastTransferDay = closedDay
 			env.Emit("Transfer", { Cents = amount, Day = closedDay })
+			-- Tagesbilanz zeigt "Auto-Transfer: … in den Tower" (DayClose.Transfer, AKY-Cent)
+			local withTransfer: any = result
+			withTransfer.Transfer = amount
 		end
+	end
+	if complete then
+		env.Emit("DayResult", result)
 	end
 	env.Emit("Bell", { Day = closedDay + 1 })
 end
@@ -1255,7 +1259,7 @@ function OrderEngine.Step(d: Depot, env: Env, t: number, ctx: { [string]: any })
 		for _, i in ipairs(OrderEngine.ActiveInstruments(d)) do
 			local o, h, l, c = candleOf(i)
 			if type(o) == "number" and type(h) == "number" and type(l) == "number" and type(c) == "number" then
-				if #d.Orders > 0 and not env.Halted(i) then
+				if #d.Orders > 0 and not env.Halted(i, t) then
 					OrderEngine.CheckInstrument(d, env, i, t, o, h, l, c)
 				end
 				if #d.Alerts > 0 then

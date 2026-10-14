@@ -30,6 +30,7 @@
 --    TowerService.RoomCount(p, roomKey): number         z. B. "Garage" (Auto-Plätze), "Lounge"/"Marketing" (Respekt)
 --    TowerService.SetBuildEvent(mult, untilUnix)        Admin-Bau-Boom: Bauzeit-Faktor (nie unter 25 % Grundzeit)
 --    TowerService.Transfer(p, reason): (number, string?)   Gewinn-Transfer ausführen (CR, Grund-Schlüssel)
+--    TowerService.Refresh(p)                            Einkommen sofort neu (nach Pass-/Abo-Kauf; kein Yield)
 --  Request-Handler: TowerBuild, TowerRoom, TowerLevel, TowerHire, TowerFire, TowerEfficiency, TowerCollect,
 --    TowerTransfer, TowerInstant, TowerExpress, TowerHelp, TowerName, TowerSkin, TowerNeon, TowerPrivate, TowerDecor,
 --    TowerLayout, TowerAutoPlan   (TowerVisit/TowerHome/TowerElevator: PlotService)
@@ -1115,6 +1116,7 @@ function Core.ResetForIpo(data: { [string]: any }, env: Env, perks: { [string]: 
 	t.Helpers = {}
 	t.RunSpend = 0
 	t.Private = {}
+	t.PendingCredits = 0 -- vorgemerkte CR gehören zum alten Lauf (sonst umgingen sie den CR-Neustart)
 	if IPO.KeepLobbyBots == false then
 		t.Janitor = false
 		t.Security = false
@@ -1291,8 +1293,8 @@ function Core.BuildParts(f: Factors, social: boolean, timed: boolean): { MultPar
 		addPart(parts, entry.Key, entry.Value, "Trader", "Skill")
 	end
 	if f.Pass >= 4 - 1e-9 and f.Pass <= 4 + 1e-9 then
-		addPart(parts, "Income2x", 2, "Pass", "Bought")
-		addPart(parts, "Income3x", 3, "Pass", "Bought")
+		-- beide Pässe: EINE ehrliche Zeile "Einkommens-Pässe ×4" (x2 + x3 = x4, nie ×2 und ×3 nebeneinander)
+		addPart(parts, "Passes", 4, "Pass", "Bought")
 	elseif f.Pass >= 3 - 1e-9 and f.Pass <= 3 + 1e-9 then
 		addPart(parts, "Income3x", 3, "Pass", "Bought")
 	elseif f.Pass >= 2 - 1e-9 and f.Pass <= 2 + 1e-9 then
@@ -2061,6 +2063,22 @@ local function tickBoosts(p: Player, data: { [string]: any }, dt: number)
 	if after <= 0 then
 		invalidate(p)
 		markDirty(p, "Boosts", "Income")
+		-- ehrliche Rückmeldung (kein Kauf-Hinweis): welcher Boost endet, läuft ein pausierter weiter?
+		local lang = langOf(p)
+		local function label(k: string): string
+			return Format.Mult(mult(k, if k == "X5" then 5 elseif k == "X2" then 2 else 1.5), lang)
+		end
+		local nextKind = activeBoostKind(data)
+		if nextKind then
+			notify(
+				p,
+				"tower.boostResumed",
+				{ label(kind), label(nextKind), Format.Duration(num(boosts[nextKind], 0), lang) },
+				"Info"
+			)
+		else
+			notify(p, "tower.boostEnded", { label(kind) }, "Info")
+		end
 	elseif math.floor(before / 30) ~= math.floor(after / 30) then
 		markDirty(p, "Boosts")
 	end
@@ -2755,6 +2773,18 @@ function TowerService.TowerValue(p: Player): number
 	return TowerMath.Clamp(math.floor(TowerService.RunSpend(p) * 0.5))
 end
 
+-- Einkommen/Multiplikatoren sofort neu rechnen (Pass-/Abo-Kauf, Premium-Wechsel) – kein Yield
+function TowerService.Refresh(p: Player)
+	local data = dataOf(p)
+	local rt = runtime[p]
+	if not data or not rt then
+		return
+	end
+	invalidate(p)
+	refreshIncome(p, data, rt, true)
+	markDirty(p, "Income", "Tower")
+end
+
 function TowerService.RoomCount(p: Player, roomKey: string): number
 	local data = dataOf(p)
 	if not data or type(roomKey) ~= "string" then
@@ -3078,6 +3108,10 @@ function TowerService.Start()
 	call("DataService", "OnProfileLoaded", onProfileLoaded)
 	call("PlayerStateService", "OnReady", onReady)
 	Players.PlayerRemoving:Connect(onPlayerRemoving)
+	-- Roblox Premium mitten in der Sitzung gekauft/beendet -> ×1,10 sofort im Multiplikator-Chip
+	Players.PlayerMembershipChanged:Connect(function(p: Player)
+		TowerService.Refresh(p)
+	end)
 	Scheduler.Every("TowerIncome", 1, incomeJob)
 end
 

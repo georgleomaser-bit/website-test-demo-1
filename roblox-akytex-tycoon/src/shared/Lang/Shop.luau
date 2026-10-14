@@ -65,6 +65,7 @@ return {
 		["shop.bundleAllOwned"] = "Alles schon besessen",
 		["shop.bundleSave"] = "Einzeln R$ %s · Paket R$ %s (−%d %%)",
 		-- Aktive Vorteile
+		["shop.active.total"] = "Gesamt-Multiplikator jetzt %s (Aufschlüsselung: Tippen auf den Chip im HUD)",
 		["shop.active.passFactor"] = "Pässe-Faktor %s",
 		["shop.active.fixed"] = "Fix-Faktor %s",
 		["shop.active.club"] = "Vorstands-Club aktiv",
@@ -130,6 +131,7 @@ return {
 		-- Chat-Tags
 		["shop.chat.vip"] = "VIP",
 		["shop.chat.club"] = "Club",
+		["shop.plate.founder"] = "Gründer",
 		-- Artikel-Arten
 		["item.kind.Pass"] = "Gamepass",
 		["item.kind.Product"] = "Einzelkauf",
@@ -200,6 +202,7 @@ return {
 		["shop.bundleAllOwned"] = "You already own everything",
 		["shop.bundleSave"] = "Single R$ %s · Bundle R$ %s (−%d%%)",
 		-- Active perks
+		["shop.active.total"] = "Total multiplier now %s (breakdown: tap the chip in the HUD)",
 		["shop.active.passFactor"] = "Pass factor %s",
 		["shop.active.fixed"] = "Fixed factor %s",
 		["shop.active.club"] = "Executive Club active",
@@ -265,6 +268,7 @@ return {
 		-- Chat tags
 		["shop.chat.vip"] = "VIP",
 		["shop.chat.club"] = "Club",
+		["shop.plate.founder"] = "Founder",
 		-- Item kinds
 		["item.kind.Pass"] = "Game pass",
 		["item.kind.Product"] = "One-time",

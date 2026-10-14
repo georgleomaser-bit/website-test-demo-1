@@ -433,7 +433,7 @@ an; jedes bekommt eine **ID**. Solange eine ID fehlt (`Id = 0`), zeigt der Shop 
 | Offline-Tresor 24 h | **349 R$** | | Bau-Gutschein S / M / L / XL | **49 / 149 / 399 / 899 R$** |
 | Personal+ | **299 R$** | | Bau-Express S / M / L | **19 / 39 / 79 R$** |
 | Bau-Crew Pro | **399 R$** | | Feuerwerk über deinem Tower | **29 R$** |
-| Terminal-Designer | **249 R$** | | Starter-Paket (1× je Konto) | **99 R$** |
+| Terminal-Designer ⏸ | **249 R$** (noch gesperrt, siehe unten) | | Starter-Paket (1× je Konto) | **99 R$** |
 | Mega-Garage | **199 R$** | | Skyline-Pass Premium (je Saison) | **399 R$** |
 | Neon-Jetpack | **449 R$** | | +1 / +10 Pass-Stufen | **39 / 299 R$** |
 | ΛKYTEX Λ-1 Hypercar | **799 R$** | | Geschenk-Boost | **59 R$** |
@@ -441,7 +441,11 @@ an; jedes bekommt eine **ID**. Solange eine ID fehlt (`Id = 0`), zeigt der Shop 
 | Neon-Fassaden-Kit | **349 R$** | | **Abo „Vorstands-Club“** | **4,99 $** (Landeswährung, wenn ID-verifiziert) sonst **449 R$/Monat** |
 | Tycoon-Paket | **749 R$** (einzeln 1.097 R$) | | | |
 
-### 9.2 Gamepässe anlegen (14 Stück, einmal kaufen = für immer)
+> ⏸ **Terminal-Designer** jetzt noch **nicht** anlegen: Die Terminal-Themes gibt es noch nicht im Spiel. Der Pass steht in
+> `Config → Shop → Shop.Disabled` auf gesperrt (Shop zeigt „Gerade nicht verfügbar“). Erst wenn Claude die Themes eingebaut hat,
+> anlegen und die Sperre entfernen – nie einen Pass ohne Wirkung verkaufen. Die anderen **13 Pässe** kannst du sofort anlegen.
+
+### 9.2 Gamepässe anlegen (14 Stück, einmal kaufen = für immer – Terminal-Designer erst später)
 1. **create.roblox.com/dashboard/creations** → dein Spiel **Akytex Tycoon** anklicken.
 2. Links: **Monetization → Passes → Create a Pass** (ältere Ansicht: **Associated Items → Passes**).
 3. **Bild** hochladen (512 × 512), **Name** und **Beschreibung** (Englisch) aus KOPIERVORLAGEN einfügen (**Cmd + V**) → **Create Pass**.
@@ -595,15 +599,35 @@ garantieren. Was am meisten hilft:
    Für saubere Bilder: Taste **F7** (Fotomodus, versteckt alle Knöpfe; als Admin auch **Kräfte → Show-Kamera**), dann am Mac **Cmd + Shift + 4** und einen Bereich aufziehen.
 3. **Die ersten Minuten:** Das Tutorial bringt den ersten Gewinn in den Tower in ca. 2 Minuten – perfekt für die Spielzeit-Werte.
 4. **Experience Events** für jeden festen Termin (Kapitel 15) – Spieler können „Benachrichtigen“ drücken.
-5. **Codes** für deine Kanäle (Kapitel 17): `LAUNCH` = 5.000 CR, gültig bis 31.01.2027.
+5. **Codes** für deine Kanäle (Kapitel 17): `LAUNCH` = 5.000 CR, läuft am 31.01.2027 (0:00 UTC) ab.
 6. **Admin-Abuse jeden Samstag 18:00** vorher ankündigen (Post-Vorlagen: KOPIERVORLAGEN Abschnitt 9).
 7. **TikTok / YouTube Shorts:** Börsengang-Zeremonie, Crash-Freitag mit Bär, Hypercar auf dem Autobahnring, Orbit-Spire bei Nacht.
 8. **Roblox-Werbung** (Ads Manager auf **ads.roblox.com**): mit kleinem Budget testen, wenn die Spielzeit pro Spieler gut ist.
-9. **Gruppe „AKYTEX Games“**: Wer beitritt, bekommt im Spiel die Community-Krone (nur Kosmetik).
+9. **Gruppe „AKYTEX Games“**: Wer beitritt, bekommt im Spiel die **Community-Krone** und einen blauen **Namensschild-Rahmen** (nur
+   Kosmetik, kein Einkommen). **Einrichten (einmal):**
+   1. **roblox.com** → links **Communities** (früher „Groups“) → **Create Community** → Name `AKYTEX Games` → Bild → **Create**
+      (Roblox verlangt dafür einmalig Robux; der Betrag steht im Fenster).
+   2. Die Gruppe öffnen. In der Adresszeile steht `roblox.com/communities/`**`12345678`**`/AKYTEX-Games` – die Zahl ist die **Gruppen-ID**.
+   3. ID an Claude schicken (KOPIERVORLAGEN Abschnitt 13, Zeile `GroupId =`) **oder selbst eintragen:** Explorer → **Config → Progression**
+      → **Cmd + F** → `GroupId = 0` → `GroupId = 12345678` → **Play** → **Publish**.
+   4. Ab dann gibt es im Spiel **Sozial → Einladen → „Gruppe beitreten“** (Roblox-Fenster). Die Krone kommt nach dem Beitritt
+      innerhalb von ca. 2 Minuten – ohne neu beitreten zu müssen.
+10. **Teilen-Links mit Tower-Besuch:** Der Knopf **„Freunde einladen“** (Sozial → Einladen) schickt automatisch die Info „besuche den
+    Tower von …“ mit. Nimmt dein Freund die Einladung an, landet er auf deinem Server und – nach seinem Tutorial – direkt in deiner
+    Tower-Lobby. Für deine Kanäle geht dasselbe als Link (nur sinnvoll, wenn der Freund auf **deinem** Server landet, z. B. in deinem
+    Private Server):
+    ```
+    https://www.roblox.com/games/start?placeId=DEINE-PLACE-ID&launchData=visit%3ADEINE-USERID
+    ```
+    **Place-ID:** Creator Dashboard → dein Spiel → **Places** → Place anklicken → Zahl in der Adresszeile. **UserId:** dein Profil auf
+    roblox.com → Zahl in der Adresszeile (`roblox.com/users/`**`123456`**`/profile`). Ist der Tower-Besitzer gerade nicht auf dem Server,
+    sagt das Spiel das freundlich und der Spieler startet normal.
 
 **Eingebaut (du musst nichts tun):** Einladen-Knopf mit Belohnung für beide, sobald der Eingeladene wirklich spielt (Etage 10 + 10 min,
-max. 10 je Woche) · Freunde-Bonus · Favoriten-Abfrage einmal nach dem Tutorial · Benachrichtigungs-Zustimmung einmal nach einem schönen
-Moment (Senden von Benachrichtigungen kommt erst in v1.1).
+max. 10 je Woche) und mit Tower-Besuch (Punkt 10) · Freunde-Bonus · Favoriten-Abfrage einmal je Konto (nach dem Tutorial; wer das
+Tutorial überspringt, bekommt sie nach seiner ersten Lizenz-Zeremonie) · Benachrichtigungs-Zustimmung einmal nach einem schönen Moment
+(Tutorial-Ende oder Lizenz-Zeremonie; Senden von Benachrichtigungen kommt erst in v1.1) · Bestenlisten-Tafeln im Börsensaal zeigen
+die Spieler auf dem Server live (alle 15 s) zusammen mit der globalen Top-Liste.
 
 > ⚠️ Roblox-Regel: **Keine Belohnungen für Likes, Favoriten oder Gruppen-Beitritte außerhalb der eingebauten Funktionen**, keine
 > Druck-Sprüche („Nur heute!“) für Robux-Artikel.

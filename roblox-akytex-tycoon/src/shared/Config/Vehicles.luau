@@ -173,6 +173,9 @@ Vehicles.SpawnPoints = {
 	{ Key = "Helipad", Position = Vector3.new(705, 0.25, 26), Facing = Vector3.new(-1, 0, 0) },
 }
 Vehicles.GarageSpawnOffset = 68 -- Studs vor der Plot-Mitte (auf der Einfahrt)
+-- Probefahrt im Autohaus Λ Motors (§A5 „Probefahrt-Startpunkt“, Besitzer-Wunsch 14): jedes CR-Auto, nur am Autohaus,
+-- Start am Spawnpunkt "Motors", Serien-Lack, verschwindet nach Seconds; danach Cooldown
+Vehicles.TestDrive = { Seconds = 90, Cooldown = 120, Range = 140, Spawn = "Motors" }
 
 -- ---------------------------------------------------------------------
 -- 7) FAHRPHYSIK (VehicleSeat + HingeConstraint-Motoren, Servo-Lenkung, SpringConstraint-Federung) & TEMPO-PRÜFUNG
@@ -325,6 +328,16 @@ function Vehicles.Validate(_config: any): { string }
 			pair("ClassInfo." .. class .. ".Name", info.Name)
 		end
 		int("ClassValue." .. class, Vehicles.ClassValue[class], 0, 9e13)
+	end
+
+	-- Probefahrt
+	local test = Vehicles.TestDrive
+	if type(test) ~= "table" then
+		add("TestDrive: Tabelle erwartet")
+	else
+		int("TestDrive.Seconds", test.Seconds, 10, 600)
+		int("TestDrive.Cooldown", test.Cooldown, 0, 3600)
+		num("TestDrive.Range", test.Range, 10, 1000)
 	end
 
 	-- Autos

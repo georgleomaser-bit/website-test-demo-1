@@ -31,10 +31,12 @@
 -- =====================================================================
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Stats = game:GetService("Stats")
 local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
+local AssetSlot = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("AssetSlot"))
 
 local Hud = {}
 
@@ -308,6 +310,41 @@ local function squareButton(
 		Parent = button.Button,
 	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
 	return button
+end
+
+-- Hybrid-Platz (§C14.3): eigenes Bild statt Emoji, wenn Config.Client.Icons[key] ≠ 0 gesetzt ist und lädt;
+-- Ladefehler -> Emoji/Text kommt automatisch zurück
+local function applyIcon(button: UI.Button, key: string, beside: boolean?)
+	local config = ctx and ctx.Config
+	local icons = config and config.Client and config.Client.Icons
+	local id = if type(icons) == "table" then icons[key] else nil
+	local url = AssetSlot.Image(if type(id) == "number" then id else nil, "")
+	if url == "" then
+		return
+	end
+	local label = button.Label
+	local image: ImageLabel = UI.Create("ImageLabel", {
+		Name = "IconImage",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = if beside then UDim2.new(0, 34, 0.5, 0) else UDim2.fromScale(0.5, 0.36),
+		Size = if beside then UDim2.fromOffset(40, 40) else UDim2.fromScale(0.46, 0.46),
+		BackgroundTransparency = 1,
+		Image = url,
+		ScaleType = Enum.ScaleType.Fit,
+		ZIndex = label.ZIndex,
+		Parent = button.Button,
+	}, { UI.Create("UIAspectRatioConstraint", { AspectRatio = 1 }) })
+	local oldText = label.Text
+	if not beside then
+		label.TextTransparency = 1 -- Emoji ausblenden, solange das Bild steht
+	end
+	task.spawn(AssetSlot.Verify, { url }, function()
+		image:Destroy()
+		label.TextTransparency = 0
+		if label.Text == "" then
+			label.Text = oldText
+		end
+	end)
 end
 
 -- Standard-Slot übernehmen: gleiche Order oder gleiches Icon wie ein Standard-Knopf -> kein zweiter Knopf
@@ -713,6 +750,7 @@ local function buildTrade(parent: Frame)
 		Parent = parent,
 	}, openTerminal)
 	tradeButton = trade
+	applyIcon(trade, "Trade", true)
 end
 
 local function buildRight(parent: Frame)
@@ -760,6 +798,7 @@ local function buildRight(parent: Frame)
 		table.insert(defaultSlots, slot)
 		table.insert(rightButtons, { Button = button, Key = spec.Caption, Caption = spec.Caption })
 		rightByKey[windowName] = button
+		applyIcon(button, spec.Key)
 	end
 end
 
@@ -1443,7 +1482,13 @@ function Hud.Tick()
 		local leaderstats = player:FindFirstChild("leaderstats")
 		local value = leaderstats and leaderstats:FindFirstChild("Vermögen")
 		local text = ""
-		if value and value:IsA("StringValue") then
+		-- eigene Zahl lokalisiert (DE "1,25 Mio." / EN "1.25M") aus State Prog.Wealth; das Leaderstat ist für alle
+		-- Betrachter neutral auf Englisch formatiert und nur der Rückfall
+		local prog = ctx.State and ctx.State.Prog
+		local wealth = if type(prog) == "table" then prog.Wealth else nil
+		if type(wealth) == "number" and wealth == wealth and wealth > 0 then
+			text = T("ui.hud.wealth", formatCredits(wealth))
+		elseif value and value:IsA("StringValue") then
 			text = T("ui.hud.wealth", value.Value)
 		elseif value and (value:IsA("IntValue") or value:IsA("NumberValue")) then
 			text = T("ui.hud.wealth", formatCredits((value :: any).Value))
@@ -1512,7 +1557,11 @@ end
 function Hud.PulseCredits(amount: number?)
 	local scale = crScale
 	if scale then
-		UI.Pulse(scale, amount or 0.12)
+		-- amount = Pop-Stärke (≤ 1) ODER ein CR-Betrag (die meisten Aufrufer übergeben CR): CR -> sanfter,
+		-- logarithmischer Pop (nie UIScale 1 + 5000 = Zähler über den ganzen Bildschirm)
+		local a = if type(amount) == "number" and amount == amount then amount else 0.12
+		local pop = if a > 1 then math.clamp(0.06 + 0.02 * math.log10(a), 0.06, 0.2) elseif a > 0 then a else 0.12
+		UI.Pulse(scale, pop)
 	end
 end
 

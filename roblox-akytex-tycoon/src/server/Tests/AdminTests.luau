@@ -296,6 +296,27 @@ Tests["Admin: globale Nachricht mit zu großem Until verworfen, Felder geprüft"
 	falsy(Core.ValidateGlobal({ Kind = "Unknown", Id = "X1234" }, now, max), "unbekannte Art")
 	truthy(Core.ValidateGlobal({ Kind = "Live", Id = "L1234", Version = 3 }, now, max), "Live")
 	falsy(Core.ValidateGlobal("Text", now, max), "kein Table")
+	-- Besitzer-Ansage zu Admin-Abuse-Events (Avatar + Haken): nur Katalog-artige Namen, Name/UserId geprüft
+	truthy(
+		Core.ValidateGlobal(
+			{ Kind = "AbuseNote", Id = "B1234", Event = "MegaCrash", UserId = 1, Name = "Owner" },
+			now,
+			max
+		),
+		"AbuseNote gültig"
+	)
+	falsy(
+		Core.ValidateGlobal(
+			{ Kind = "AbuseNote", Id = "B1234", Event = "Mega Crash!", UserId = 1, Name = "Owner" },
+			now,
+			max
+		),
+		"AbuseNote: Event nur Buchstaben/Ziffern"
+	)
+	falsy(
+		Core.ValidateGlobal({ Kind = "AbuseNote", Id = "B1234", Event = "MegaCrash", UserId = 1 }, now, max),
+		"AbuseNote ohne Name"
+	)
 	-- EventService prüft selbst noch einmal (auch für Werte aus dem Speicher)
 	local EventService = serviceOf(services, "EventService")
 	local t = Clock.Now()
@@ -374,6 +395,28 @@ Tests["Admin: Katalog 21 Events mit DE/EN-Texten, Pflicht-Schlüssel"] = functio
 	end
 	for _, kind in ipairs(EV.Rotation) do
 		truthy(Lang.Has("evt.worldStart." .. kind), "Welt-Event-Text " .. kind)
+	end
+	-- jede Katalog-Aktion hat eine Besitzer-Ansage (DE + EN), dazu Geschenke an alle
+	for _, entry in ipairs(EV.Catalogue) do
+		local key = "admin.note." .. entry.Key
+		truthy(Lang.T("de", key) ~= key and Lang.T("en", key) ~= key, "Ansage DE/EN " .. key)
+	end
+	for _, key in ipairs({ "admin.note.Generic", "admin.note.SpeedGift", "admin.note.MoneyGift" }) do
+		truthy(Lang.T("de", key) ~= key and Lang.T("en", key) ~= key, "Ansage DE/EN " .. key)
+	end
+end
+
+Tests["Admin: Speed-Geschenk 16–200 (Wunsch 18) und Anti-Cheat-Spielraum"] = function()
+	local powers = Config.Security.Powers
+	eq(powers.Speed.Min, 16, "Tempo ab 16")
+	truthy(powers.Speed.Max >= 200, "Tempo bis mindestens 200")
+	truthy(powers.Jump.Max >= 50, "Sprungkraft-Regler")
+	truthy(powers.GiftMaxMinutes >= 60, "Geschenk bis mindestens 60 min")
+	-- das höchste Geschenk bleibt unter der absoluten Anti-Cheat-Obergrenze (600 Studs/s)
+	local sec = Config.Security
+	truthy(powers.Speed.Max * sec.SpeedTolerance + sec.SpeedSlack < 600, "Geschenk-Tempo < Anti-Cheat-Deckel")
+	for _, key in ipairs({ "admin.giftGot", "admin.giftGotOpen", "admin.giftEnded", "admin.giftGiven" }) do
+		truthy(Lang.T("de", key) ~= key and Lang.T("en", key) ~= key, "DE/EN " .. key)
 	end
 end
 

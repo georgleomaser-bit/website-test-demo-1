@@ -24,6 +24,7 @@
 -- =====================================================================
 
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
 
@@ -36,6 +37,7 @@ type Slot = {
 	Title: TextLabel,
 	Price: TextLabel,
 	Body: Frame,
+	LiveDot: Frame,
 	View: any?,
 	Cells: { { Frame: Frame, Label: TextLabel, I: number } }?,
 }
@@ -58,6 +60,7 @@ local MAX_MONITORS = 96
 local UPDATE_EVERY = 0.5 -- ≤ 2 Hz
 local SCAN_CHUNK = 1500
 local AKX36 = 40
+local LIVE_PULSE = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 
 local ctx: any = nil
 local monitors: { [BasePart]: Mon } = {}
@@ -205,9 +208,24 @@ local function newSlot(kind: string): Slot?
 			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
 		}),
 	})
+	-- „LIVE“-Punkt: pulsiert grün, solange dieser Monitor live läuft (sonst eingefrorener Schnappschuss)
+	local liveDot: Frame = UI.Create("Frame", {
+		Name = "Live",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.fromScale(0.025, 0.09),
+		Size = UDim2.fromScale(0.03, 0.03),
+		BackgroundColor3 = Theme.Up,
+		BorderSizePixel = 0,
+		Visible = false,
+		Parent = root,
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		UI.Create("UIAspectRatioConstraint", { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Height }),
+	})
+	TweenService:Create(liveDot, LIVE_PULSE, { BackgroundTransparency = 0.7 }):Play()
 	local title: TextLabel = UI.Create("TextLabel", {
 		Name = "Title",
-		Position = UDim2.fromScale(0.03, 0.02),
+		Position = UDim2.fromScale(0.06, 0.02),
 		Size = UDim2.fromScale(0.5, 0.14),
 		BackgroundTransparency = 1,
 		FontFace = UI.Faces.Display,
@@ -245,6 +263,7 @@ local function newSlot(kind: string): Slot?
 		Title = title,
 		Price = priceLabel,
 		Body = body,
+		LiveDot = liveDot,
 		View = nil,
 		Cells = nil,
 	}
@@ -319,6 +338,7 @@ local function releaseSlot(mon: Mon)
 	end
 	mon.Slot = nil
 	mon.Loaded = false
+	slot.LiveDot.Visible = false
 	slot.Gui.Enabled = false
 	slot.Gui.Adornee = nil
 	local key = poolKey(mon.Kind)
@@ -552,6 +572,10 @@ local function step()
 					updateMonitor(mon)
 				end
 				mon.Live = live
+				local slot = mon.Slot
+				if slot and slot.LiveDot.Visible ~= live then
+					slot.LiveDot.Visible = live
+				end
 			end
 		else
 			mon.Live = false

@@ -222,6 +222,25 @@ local function part(props: { [string]: any }): Part
 	return p
 end
 
+-- Echte Lichter an den Darstellern (Future-Licht), nur im Licht-Budget der Grafikstufe (Config.Quality.Lights)
+local function lightBudget(): number
+	local ok, value = tryModule("Quality", "Budget", "Lights")
+	return if ok and type(value) == "number" then value else 16
+end
+
+local function addLight(parent: BasePart, className: string, minBudget: number, props: { [string]: any })
+	if lightBudget() < minBudget then
+		return
+	end
+	local light = Instance.new(className)
+	light.Name = "AT_EventLight"
+	for key, value in pairs(props) do
+		(light :: any)[key] = value
+	end
+	(light :: any).Shadows = false -- bewegte Darsteller: keine Schatten-Kosten
+	light.Parent = parent
+end
+
 local function newModel(name: string, parts: { Part }): Model
 	local m = Instance.new("Model")
 	m.Name = name
@@ -321,7 +340,26 @@ end
 local RECIPES: { [string]: () -> Instance } = {}
 
 RECIPES.Truck = function(): Instance
-	return newModel("AT_Truck", {
+	-- Scheinwerfer vorne (−Z) mit echten SpotLights, grünes Dach-Signal mit kleinem Leuchtschein
+	local lamps: { Part } = {}
+	for _, side in ipairs({ -1, 1 }) do
+		local lamp = part({
+			Name = "Headlight",
+			Size = Vector3.new(1.3, 0.6, 0.2),
+			CFrame = CFrame.new(side * 2.5, 2.7, -10.08),
+			Color = Color3.fromRGB(240, 246, 255),
+			Material = Enum.Material.Neon,
+		})
+		addLight(lamp, "SpotLight", 16, {
+			Face = Enum.NormalId.Front,
+			Range = 38,
+			Angle = 55,
+			Brightness = 2.6,
+			Color = Color3.fromRGB(235, 242, 255),
+		})
+		table.insert(lamps, lamp)
+	end
+	local model = newModel("AT_Truck", {
 		part({
 			Size = Vector3.new(7, 6, 15),
 			CFrame = CFrame.new(0, 4, 2.5),
@@ -348,6 +386,7 @@ RECIPES.Truck = function(): Instance
 			Transparency = 0.35,
 		}),
 		part({
+			Name = "Beacon",
 			Size = Vector3.new(2.4, 0.4, 1),
 			CFrame = CFrame.new(0, 6.2, -7.5),
 			Color = Theme.Up,
@@ -378,6 +417,14 @@ RECIPES.Truck = function(): Instance
 			Color = DARK,
 		}),
 	})
+	for _, lamp in ipairs(lamps) do
+		lamp.Parent = model
+	end
+	local beacon = model:FindFirstChild("Beacon")
+	if beacon and beacon:IsA("BasePart") then
+		addLight(beacon, "PointLight", 32, { Range = 12, Brightness = 1.4, Color = Theme.Up })
+	end
+	return model
 end
 
 RECIPES.Drone = function(): Instance
@@ -421,8 +468,10 @@ local function bullRecipe(): Instance
 		props.Reflectance = props.Reflectance or 0.25
 		return part(props)
 	end
+	local body = gold({ Size = Vector3.new(5, 5, 9), CFrame = CFrame.new(0, 4.6, 0), Mesh = "Sphere" })
+	addLight(body, "PointLight", 32, { Range = 18, Brightness = 1.6, Color = GOLD }) -- goldener Schein auf dem Asphalt
 	return newModel("AT_Bull", {
-		gold({ Size = Vector3.new(5, 5, 9), CFrame = CFrame.new(0, 4.6, 0), Mesh = "Sphere" }),
+		body,
 		gold({ Size = Vector3.new(3, 3, 3.5), CFrame = CFrame.new(0, 5.6, -5), Mesh = "Sphere" }),
 		gold({ Size = Vector3.new(2.2, 1.6, 1.4), CFrame = CFrame.new(0, 4.9, -6.6), Mesh = "Sphere" }),
 		gold({
@@ -586,7 +635,12 @@ RECIPES.Hologram = function(): Instance
 			CFrame = CFrame.new(0, 2.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
 		}),
 		h({ Size = Vector3.new(2.8, 4.2, 2.2), CFrame = CFrame.new(0, 5.4, 0), Mesh = "Sphere" }),
-		h({ Shape = Enum.PartType.Ball, Size = Vector3.new(3.2, 3.2, 3.2), CFrame = CFrame.new(0, 8.9, 0) }),
+		(function(): Part
+			local head =
+				h({ Shape = Enum.PartType.Ball, Size = Vector3.new(3.2, 3.2, 3.2), CFrame = CFrame.new(0, 8.9, 0) })
+			addLight(head, "PointLight", 16, { Range = 20, Brightness = 1.3, Color = Theme.Accent })
+			return head
+		end)(),
 		h({ Size = Vector3.new(0.5, 0.5, 0.2), CFrame = CFrame.new(-0.6, 9.1, -1.55), Color = WHITE, Transparency = 0 }),
 		h({ Size = Vector3.new(0.5, 0.5, 0.2), CFrame = CFrame.new(0.6, 9.1, -1.55), Color = WHITE, Transparency = 0 }),
 	})
@@ -614,12 +668,16 @@ RECIPES.Crane = function(): Instance
 			Material = Enum.Material.Metal,
 		}),
 		part({ Size = Vector3.new(0.15, 12, 0.15), CFrame = CFrame.new(17, 54, 0), Color = DARK }),
-		part({
-			Size = Vector3.new(1.2, 1.2, 1.2),
-			CFrame = CFrame.new(17, 47.5, 0),
-			Color = Theme.Down,
-			Material = Enum.Material.Neon,
-		}),
+		(function(): Part
+			local hook = part({
+				Size = Vector3.new(1.2, 1.2, 1.2),
+				CFrame = CFrame.new(17, 47.5, 0),
+				Color = Theme.Down,
+				Material = Enum.Material.Neon,
+			})
+			addLight(hook, "PointLight", 32, { Range = 10, Brightness = 1.2, Color = Theme.Down })
+			return hook
+		end)(),
 	})
 end
 

@@ -212,6 +212,8 @@ Progression.Titles = {
 		{ Key = "LeagueGold", Name = { de = "Liga Gold", en = "League Gold" } },
 		{ Key = "LeagueDiamant", Name = { de = "Liga Diamant", en = "League Diamond" } },
 		{ Key = "S1Pioneer", Name = { de = "Skyline-Pionier S1", en = "Skyline Pioneer S1" } }, -- Pass gratis T50
+		{ Key = "S1Regular", Name = { de = "Skyline-Stammgast S1", en = "Skyline Regular S1" } }, -- Pass Premium T10
+		{ Key = "S1Magnate", Name = { de = "Skyline-Magnat S1", en = "Skyline Magnate S1" } }, -- Pass Premium T40
 		{ Key = "S1Elite", Name = { de = "Skyline-Elite S1", en = "Skyline Elite S1" } }, -- Pass Premium T50
 	},
 	ShowRange = 80, -- Kopftitel sichtbar bis (Studs)

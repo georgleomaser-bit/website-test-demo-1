@@ -143,9 +143,12 @@ Lifestyle.Jetpack = {
 	Pass = "Jetpack",
 	Fuel = 8, -- Sekunden Schub
 	Recharge = 12, -- Sekunden bis voll
-	MaxHeight = 120, -- Studs über Boden
-	VerticalMult = 3, -- Anti-Cheat-Erlaubnis nur während aktiv (SetAllowance)
-	SpeedMult = 1.6,
+	MaxHeight = 120, -- Studs über Boden (und über dem Startpunkt – so rechnet auch der Anti-Cheat)
+	VerticalMult = 3, -- Untergrenze; LifestyleService nimmt max(diesen Wert, Security-Erlaubnis, MaxHeight-Bedarf)
+	SpeedMult = 1.6, -- Anti-Cheat-Erlaubnis (waagerecht) nur während aktiv (SetAllowance)
+	Thrust = 30, -- Studs/s Steigen (Sprung gehalten)
+	Glide = 8, -- Studs/s Sinken (Sprung los)
+	AirSpeed = 44, -- Studs/s waagerecht (bleibt unter 32 × SpeedMult × 1,15 + 6)
 	Asset = slot(),
 }
 
@@ -286,6 +289,15 @@ function Lifestyle.Validate(_config: any): { string }
 	end
 	if not isNum(jet.SpeedMult) or jet.SpeedMult < 1 or jet.SpeedMult > 5 then
 		add("Jetpack.SpeedMult: Zahl 1 … 5 erwartet")
+	end
+	for _, field in ipairs({ "Thrust", "Glide", "AirSpeed" }) do
+		local value = jet[field]
+		if not isNum(value) or value < 1 or value > 120 then
+			add("Jetpack." .. field .. ": Zahl 1 … 120 erwartet")
+		end
+	end
+	if isNum(jet.AirSpeed) and isNum(jet.SpeedMult) and jet.AirSpeed > 32 * jet.SpeedMult * 1.15 then
+		add("Jetpack.AirSpeed: muss unter der Anti-Cheat-Erlaubnis bleiben (32 × SpeedMult × 1,15)")
 	end
 	return errors
 end

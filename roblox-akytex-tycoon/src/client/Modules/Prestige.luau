@@ -271,6 +271,10 @@ local function onLicenceUp(_strength: number, data: any)
 	sfx("RallyFanfare")
 	if data.Admin ~= true then
 		confetti(0.8)
+		-- schöner Moment: nach der Zeremonie einmal Favoriten-Abfrage bzw. Benachrichtigungs-Opt-in (nie im Tutorial)
+		task.delay(if reducedFx() then 3 else 5, function()
+			call("Social", "PositiveMoment")
+		end)
 	end
 end
 

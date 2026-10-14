@@ -58,6 +58,8 @@ local shopStates: { [number]: ShopState } = {}
 local tickerSlots: { [number]: BasePart } = {}
 local spotParts: { [number]: BasePart } = {}
 local shopFronts: { [number]: BasePart } = {}
+local signals: { [BasePart]: { Lamp: string, Group: number } } = {}
+local signalAccum = 0
 local AssetSlot: any = nil
 
 local LANE_SPACING = 8
@@ -68,6 +70,18 @@ local BOARD_REFRESH = 1
 local HIDE_Y = -2000
 local shopAccum = 0
 local boardAccum = 0
+local SIGNAL_HZ = 4
+local SIGNAL_CYCLE = 30 -- Sekunden: Grün 0–14, Gelb 14–17, Rot 17–30 (alle Clients gleich, aus der Server-Zeit)
+local SIGNAL_LIT: { [string]: Color3 } = {
+	Red = Color3.fromRGB(255, 64, 64),
+	Amber = Color3.fromRGB(250, 190, 40),
+	Green = Color3.fromRGB(34, 197, 94),
+}
+local SIGNAL_DIM: { [string]: Color3 } = {
+	Red = Color3.fromRGB(70, 24, 24),
+	Amber = Color3.fromRGB(70, 54, 16),
+	Green = Color3.fromRGB(14, 52, 28),
+}
 
 -- ---------------------------------------------------------------------
 -- HELFER
@@ -407,6 +421,17 @@ local function makeDrone(): { BasePart }
 		Color = Color3.fromRGB(245, 158, 11),
 		Material = Enum.Material.SmoothPlastic,
 	})
+	-- Positionslicht (blinkt, nachts gut sichtbar)
+	local blink = localPart({
+		Name = "NavBlink",
+		Shape = Enum.PartType.Ball,
+		Size = Vector3.new(0.45, 0.45, 0.45),
+		CFrame = CFrame.new(0, 0.45, 0),
+		Color = Color3.fromRGB(239, 68, 68),
+		Material = Enum.Material.Neon,
+	})
+	blink.Parent = ensureFolder()
+	table.insert(parts, blink)
 	return parts
 end
 
@@ -452,9 +477,16 @@ local function updateDrones()
 			)
 		local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
 		local cf = CFrame.lookAt(pos, pos + tangent) * CFrame.Angles(math.rad(-8), 0, 0)
+		local blinkOn = (t * 1.2 + drone.Phase) % 1 < 0.18
 		for i, part in ipairs(drone.Parts) do
 			table.insert(moveParts, part)
 			table.insert(moveCFrames, cf * drone.Offsets[i])
+			if part.Name == "NavBlink" then
+				local transparency = if blinkOn then 0 else 0.85
+				if part.Transparency ~= transparency then
+					part.Transparency = transparency
+				end
+			end
 		end
 	end
 	if #moveParts > 0 then
@@ -617,6 +649,45 @@ local function makeBoard(def: any): Board?
 		Transparency = 0.25,
 	})
 	ring.Parent = ensureFolder()
+	-- Hologramm-Projektor: Lichtkegel vom Ring zur Tafel + aufsteigende Funken (Partikel im Budget)
+	local beamFrom = Instance.new("Attachment")
+	beamFrom.Name = "HoloFrom"
+	beamFrom.Parent = ring
+	local beamTo = Instance.new("Attachment")
+	beamTo.Name = "HoloTo"
+	beamTo.Parent = root
+	local cone = Instance.new("Beam")
+	cone.Name = "HoloCone"
+	cone.Attachment0 = beamFrom
+	cone.Attachment1 = beamTo
+	cone.Width0 = 12
+	cone.Width1 = 17
+	cone.FaceCamera = true
+	cone.LightEmission = 1
+	cone.LightInfluence = 0
+	cone.Texture = "rbxasset://textures/gradient.png"
+	cone.TextureMode = Enum.TextureMode.Stretch
+	cone.Color = ColorSequence.new(color)
+	cone.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.55),
+		NumberSequenceKeypoint.new(1, 0.92),
+	})
+	cone.Segments = 2
+	cone.Parent = ring
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Name = "HoloSparks"
+	sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparks.Color = ColorSequence.new(color)
+	sparks.LightEmission = 1
+	sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.5), NumberSequenceKeypoint.new(1, 0) })
+	sparks.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	sparks.Lifetime = NumberRange.new(1.2, 2)
+	sparks.Speed = NumberRange.new(2, 4)
+	sparks.SpreadAngle = Vector2.new(25, 25)
+	sparks.Acceleration = Vector3.new(0, 1.5, 0)
+	sparks.EmissionDirection = Enum.NormalId.Right -- Zylinder-Achse X = senkrecht
+	sparks.Rate = math.floor(6 * budget("Particles", 0.6) + 0.5)
+	sparks.Parent = ring
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Hologram"
 	gui.Size = UDim2.fromScale(18, 8)
@@ -811,6 +882,29 @@ local function considerWorld(inst: Instance)
 	if type(shop) == "number" then
 		shopFronts[shop] = inst
 	end
+	local lamp = inst:GetAttribute("Signal")
+	if type(lamp) == "string" and SIGNAL_LIT[lamp] then
+		signals[inst] = { Lamp = lamp, Group = tonumber(inst:GetAttribute("SignalGroup")) or 0 }
+	end
+end
+
+-- Ampeln an den Avenue-Einmündungen schalten (rein optisch, alle Clients gleich)
+local function stepSignals()
+	local t = serverTime()
+	for part, info in pairs(signals) do
+		if not part.Parent then
+			signals[part] = nil
+			continue
+		end
+		local phase = (t + info.Group / 12) % SIGNAL_CYCLE
+		local active = if phase < 14 then "Green" elseif phase < 17 then "Amber" else "Red"
+		local lit = info.Lamp == active
+		local color = if lit then SIGNAL_LIT[info.Lamp] else SIGNAL_DIM[info.Lamp]
+		if part.Color ~= color then
+			part.Color = color
+			part.Material = if lit then Enum.Material.Neon else Enum.Material.SmoothPlastic
+		end
+	end
 end
 
 -- ---------------------------------------------------------------------
@@ -849,6 +943,11 @@ function CityLife.Frame(dt: number)
 	if boardAccum >= BOARD_REFRESH then
 		boardAccum = 0
 		refreshBoards()
+	end
+	signalAccum += dt
+	if signalAccum >= 1 / SIGNAL_HZ then
+		signalAccum = 0
+		stepSignals()
 	end
 end
 

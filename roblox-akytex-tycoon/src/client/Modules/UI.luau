@@ -15,7 +15,7 @@
 --    UI.Divider, UI.Bar, UI.SetBar, UI.Pulse, UI.Counter, UI.SetCounter, UI.RedrawCounter
 --    UI.Window, UI.Sheet(title, height), UI.OpenWindow, UI.CloseWindow, UI.ToggleWindow, UI.CloseAll, UI.IsAnyWindowOpen
 --    UI.Windows = { Register(name, open, close?), Open(name), Close(name?), IsOpen(name?), Toggle(name) }  (= ctx.Windows)
---    UI.Toast(text, kind?), UI.SetToastTop(offset?)
+--    UI.Toast(text, kind?), UI.SetToastTop(offset?), UI.SetToastFloor(y?) (Mindest-Höhe unter einer Karte oben)
 --    UI.FetchPrice(id, infoType, cb), UI.WhenRandomItemsKnown(cb), UI.RandomItemsAllowed()
 --  Neu für AT (§C7.5):
 --    UI.Segmented(parent, options, onChange): { Frame, Set(key, silent?), Get() }
@@ -32,6 +32,7 @@
 --  "AkytexTycoonWindowBlur". ProximityPrompt mit Attribut "Window" öffnet das registrierte Fenster.
 -- =====================================================================
 
+local GuiService = game:GetService("GuiService")
 local Lighting = game:GetService("Lighting")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
@@ -1234,11 +1235,23 @@ end
 
 -- Welt hinter offenen Fenstern weichzeichnen (lokaler BlurEffect, nach dem Schließen wieder weg)
 -- + Modal-Knopf: solange ein Fenster offen ist, gibt er die Maus frei (auch bei Shift-Lock)
+local touchHiddenByUs = false
 local function updateWindowState()
 	local open = UI.IsAnyWindowOpen()
 	local modal = modalButton
 	if modal and modal.Visible ~= open then
 		modal.Visible = open
+	end
+	-- Handy: Roblox-Stick + Sprungknopf liegen sonst über Fenstern (Terminal-Kauf/Verkauf-Leiste unten rechts!)
+	-- und lassen die Figur weiterlaufen -> solange ein Fenster offen ist, aus; danach wieder an
+	if open ~= touchHiddenByUs then
+		touchHiddenByUs = open
+		pcall(function()
+			GuiService.TouchControlsEnabled = not open
+		end)
+		if open then
+			playUiSound("Whoosh") -- leiser Luftzug beim ersten Fenster (Wechsel zwischen Fenstern bleibt still)
+		end
 	end
 	if open then
 		UserInputService.MouseIconEnabled = true
@@ -1960,12 +1973,28 @@ end
 
 -- Meldungen tiefer setzen, solange oben etwas anderes steht (Ticker-Leiste, Pillen, Terminal-Kopf).
 -- nil = wieder an die normale Stelle.
-function UI.SetToastTop(offset: number?)
+local toastBaseTop = TOAST_TOP
+local toastFloor = 0
+local function placeToasts()
 	local holder = toastHolder
 	if holder then
-		local y = if type(offset) == "number" and offset == offset then math.clamp(offset, 0, 600) else TOAST_TOP
-		holder.Position = UDim2.new(0.5, 0, 0, y)
+		local goal = UDim2.new(0.5, 0, 0, math.clamp(math.max(toastBaseTop, toastFloor), 0, 600))
+		if holder.Position ~= goal then
+			TweenService:Create(holder, TOAST_GROW_INFO, { Position = goal }):Play()
+		end
 	end
+end
+
+function UI.SetToastTop(offset: number?)
+	toastBaseTop = if type(offset) == "number" and offset == offset then math.clamp(offset, 0, 600) else TOAST_TOP
+	placeToasts()
+end
+
+-- Mindest-Höhe der Meldungen, solange oben in der Mitte eine Karte steht (News-Eilmeldung); nil/0 = keine.
+-- Wirkt zusätzlich zu SetToastTop (das besitzt der HUD) – so verdeckt die Karte nie eine Meldung.
+function UI.SetToastFloor(y: number?)
+	toastFloor = if type(y) == "number" and y == y then math.clamp(y, 0, 600) else 0
+	placeToasts()
 end
 
 function UI.Toast(text: string, kind: string?)
@@ -2506,6 +2535,7 @@ type TickerState = {
 	Speed: number,
 	Paused: boolean,
 	NextOrder: number,
+	Head: number, -- Index (in Labels) des Eintrags ganz vorn – wandert im Kreis (O(1) je Frame, kein Suchen)
 	ScaleAt: number,
 	Scale: number,
 	Alive: boolean,
@@ -2572,6 +2602,7 @@ function UI.Ticker(parent: Instance): Ticker
 		Speed = TICKER_SPEED,
 		Paused = false,
 		NextOrder = 0,
+		Head = 1,
 		ScaleAt = -math.huge,
 		Scale = 1,
 		Alive = true,
@@ -2628,6 +2659,16 @@ function UI.Ticker(parent: Instance): Ticker
 					label.Visible = false
 				end
 			end
+			if count ~= state.Count then
+				-- andere Anzahl (Start, Neu-Notierung): Reihenfolge = Index, vorn = 1 (Kreis wieder geschlossen)
+				for i, label in ipairs(state.Labels) do
+					label.LayoutOrder = i
+				end
+				state.NextOrder = #state.Labels
+				state.Head = 1
+				state.Offset = 0
+				state.Track.Position = UDim2.fromOffset(0, 0)
+			end
 			state.Count = count
 		end,
 		SetSpeed = function(pxPerSecond: number)
@@ -2653,20 +2694,16 @@ local function stepTickers(dt: number)
 			local trackWidth = state.Track.AbsoluteSize.X / scale
 			if clip.Visible and clip.AbsoluteSize.X > 2 and trackWidth > clipWidth then
 				state.Offset -= state.Speed * dt
-				-- erster sichtbarer Eintrag ganz draußen? -> ans Ende hängen (eine Verschiebung, kein Neuaufbau)
-				local first: TextLabel? = nil
-				local firstOrder = math.huge
-				for _, label in ipairs(state.Labels) do
-					if label.Visible and label.LayoutOrder < firstOrder then
-						first, firstOrder = label, label.LayoutOrder
-					end
-				end
+				-- erster Eintrag ganz draußen? -> ans Ende hängen (eine Verschiebung, kein Neuaufbau, kein Suchen)
+				local head = math.clamp(state.Head, 1, state.Count)
+				local first = state.Labels[head]
 				if first then
 					local width = first.AbsoluteSize.X / scale + TICKER_GAP
 					if -state.Offset >= width then
 						state.NextOrder += 1
 						first.LayoutOrder = state.NextOrder
 						state.Offset += width
+						state.Head = (head % state.Count) + 1
 					end
 				end
 				state.Track.Position = UDim2.fromOffset(math.floor(state.Offset + 0.5), 0)

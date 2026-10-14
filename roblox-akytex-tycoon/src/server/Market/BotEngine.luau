@@ -178,7 +178,7 @@ end
 -- Kauf für höchstens "budget" Cent (Bot-Kapital und freies Geld), nie unter der Mindest-Ordergröße
 local function botBuy(d: Depot, env: Env, t: number, slotIndex: number, i: number, budget: number, protect: boolean)
 	local cfg = trading()
-	if not OrderEngine.InstAllowed(env, i) or env.Halted(i) then
+	if not OrderEngine.InstAllowed(env, i) or env.Halted(i, t) then
 		return nil
 	end
 	local amount = math.min(math.floor(budget), Portfolio.Free(d))
@@ -214,7 +214,7 @@ local function botSell(d: Depot, env: Env, t: number, slotIndex: number, slot: S
 		return nil
 	end
 	local bid = OrderEngine.EngineQuote(env, i, t)
-	if type(bid) ~= "number" or env.Halted(i) then
+	if type(bid) ~= "number" or env.Halted(i, t) then
 		return nil
 	end
 	local result = OrderEngine.SellNow(d, env, t, i, q, bid, slotIndex, "Bot")

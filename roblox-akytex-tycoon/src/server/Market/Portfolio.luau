@@ -332,6 +332,11 @@ function Portfolio.Buy(
 		p.F = bit32.bor(int(p.F, 0), flags)
 		if not isInt(p.T) then
 			p.T = tick
+		elseif tick > p.T then
+			-- Nachkauf: Eröffnungs-Tick mengengewichtet nachziehen. Sonst zählt "1 Stück 60 s halten, dann groß
+			-- nachkaufen und sofort verkaufen" als ≥ 60 s gehalten (Liga-/XP-Trade, "Gut gelesen").
+			local have = int(p.Q, 0)
+			p.T = p.T + math.floor((tick - p.T) * qty / (have + qty))
 		end
 	end
 	p.Q += qty

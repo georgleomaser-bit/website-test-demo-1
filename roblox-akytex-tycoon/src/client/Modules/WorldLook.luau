@@ -103,6 +103,7 @@ local bellSwing = 0 -- verbleibende Schwing-Zeit
 local bellRest: CFrame? = nil -- Modell-Pivot in Ruhe
 local bellHinge: CFrame? = nil -- Aufhängung (oben)
 local dofWanted = false
+local cinematic: number? = nil -- Fokus-Distanz einer laufenden Kamerafahrt (SetCinematic), unabhängig vom Override
 
 -- ---------------------------------------------------------------------
 -- HELFER
@@ -392,6 +393,11 @@ local function applyLook(dt: number)
 	Lighting.ColorShift_Top = lerpColor(day.ColorShiftTop, night.ColorShiftTop, n)
 	Lighting.ExposureCompensation = lerp(day.ExposureCompensation or 0, night.ExposureCompensation or 0, n)
 
+	-- goldene Stunde (Abend-Skyline, §A4): um Sonnenuntergang/-aufgang wärmerer Dunst + Tönung
+	local golden = 0
+	if override ~= "Day" and override ~= "Night" then
+		golden = math.max(0, 1 - math.abs(clockTime - 18.1) / 1.4, 0.6 * (1 - math.abs(clockTime - 6.4) / 1.0))
+	end
 	local blendSeconds = if reducedFx() then 0.3 else (cfg.BlendSeconds or 4)
 	mode = effectiveMode()
 	blend.Crash = approach(blend.Crash, if mode == "Crash" then 1 else 0, dt, blendSeconds)
@@ -404,6 +410,9 @@ local function applyLook(dt: number)
 		atmo.Glare = lerp(a.Glare, b.Glare, n)
 		atmo.Offset = lerp(a.Offset, b.Offset, n)
 		local color = a.Color
+		if golden > 0 then
+			color = lerpColor(color, Color3.fromRGB(255, 196, 160), golden * 0.55)
+		end
 		local crashAtmo = cfg.Crash and cfg.Crash.Atmosphere
 		if typeof(crashAtmo) == "Color3" then
 			color = lerpColor(color, crashAtmo, blend.Crash)
@@ -417,6 +426,10 @@ local function applyLook(dt: number)
 		local crash = cfg.Crash or {}
 		local rally = cfg.Rally or {}
 		local tint = base.Tint or Color3.new(1, 1, 1)
+		local goldenTint = cfg.Golden and cfg.Golden.Tint
+		if golden > 0 and typeof(goldenTint) == "Color3" then
+			tint = lerpColor(tint, goldenTint, golden * 0.8)
+		end
 		tint = lerpColor(tint, crash.Tint or tint, blend.Crash)
 		tint = lerpColor(tint, rally.Tint or tint, blend.Rally)
 		if override == "Golden" and cfg.Golden then
@@ -565,7 +578,10 @@ local function manageLights()
 		return
 	end
 	local origin = camera.CFrame.Position
-	local n = math.max(0, math.floor(budget("Lights", 16)))
+	-- gemeinsames Budget je Grafikstufe: Interior-Lichter (TowerView) zählen mit
+	local okInterior, interior = call("TowerView", "InteriorLights")
+	local used = if okInterior and type(interior) == "number" then interior else 0
+	local n = math.max(0, math.floor(budget("Lights", 16)) - used)
 	local candidates: { { Light: Light, D: number } } = {}
 	for light in pairs(lights) do
 		if not light.Parent then
@@ -584,11 +600,27 @@ local function manageLights()
 	table.sort(candidates, function(a, b)
 		return a.D < b.D
 	end)
+	-- Future-Licht: echte Schatten nur für die allernächsten Lichter (teuer) – Low 0, sonst ein Viertel des Budgets
+	-- (Medium 4, High 8, Ultra 16), nur in Kameranähe; ReducedFx halbiert
+	local shadowCount = if budget("Shadows", 1) >= 1 then math.floor(n / 4) else 0
+	if shadowCount > 0 and reducedFx() then
+		shadowCount = math.floor(shadowCount / 2)
+	end
 	activeLights = 0
 	for index, item in ipairs(candidates) do
 		local on = index <= n and item.D < 600
-		if item.Light.Enabled ~= on then
-			item.Light.Enabled = on
+		local light = item.Light
+		if light.Enabled ~= on then
+			light.Enabled = on
+		end
+		local shadows = false
+		if on and index <= shadowCount and item.D < 160 and light:GetAttribute("NoShadow") ~= true then
+			-- nur Lichter, die nicht in einem schattenwerfenden Teil stecken (sonst wäre es innen dunkel)
+			local holder = light.Parent
+			shadows = light:IsA("SurfaceLight") or (holder ~= nil and holder:IsA("BasePart") and not holder.CastShadow)
+		end
+		if light.Shadows ~= shadows then
+			light.Shadows = shadows
 		end
 		if on then
 			activeLights += 1
@@ -865,12 +897,20 @@ local function updateDof()
 	if okOpen then
 		windowOpen = anyOpen == true
 	end
-	local want = (windowOpen or override == "Cinematic") and budget("DoF", 0) >= 1 and not reducedFx()
+	local want = (windowOpen or override == "Cinematic" or cinematic ~= nil)
+		and budget("DoF", 0) >= 1
+		and not reducedFx()
+	local d = cfg.DepthOfField or {}
+	-- Kamerafahrt: Motiv scharf, Hintergrund weich; Menü: nahe Fokus-Ebene (Fenster vor der Welt)
+	local focus = if cinematic and not windowOpen then cinematic else (d.FocusDistance or 14)
+	depth.FocusDistance = focus
+	depth.InFocusRadius = if cinematic and not windowOpen
+		then math.max(d.InFocusRadius or 22, focus * 0.45)
+		else (d.InFocusRadius or 22)
 	if want == dofWanted then
 		return
 	end
 	dofWanted = want
-	local d = cfg.DepthOfField or {}
 	if want then
 		depth.Enabled = true
 	end
@@ -910,6 +950,17 @@ function WorldLook.SetOverride(kind: string?)
 		call("Ticker", "SetTint", (cfg.Crash and cfg.Crash.Tint) or Color3.fromRGB(239, 68, 68))
 	else
 		call("Ticker", "SetTint", nil)
+	end
+	updateDof()
+end
+
+-- Tiefenschärfe für Kamerafahrten (Etagen-Orbit, Enthüllungen): focus = Abstand Kamera → Motiv; nil/false = aus.
+-- Eigener Schalter – überschreibt keinen Licht-Override (z. B. "Golden" eines Events).
+function WorldLook.SetCinematic(on: boolean, focus: number?)
+	if on then
+		cinematic = if type(focus) == "number" and focus == focus then math.clamp(focus, 4, 400) else 30
+	else
+		cinematic = nil
 	end
 	updateDof()
 end

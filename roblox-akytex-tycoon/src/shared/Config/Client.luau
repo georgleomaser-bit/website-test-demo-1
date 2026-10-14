@@ -215,6 +215,23 @@ Client.Splash = {
 	HardCapSeconds = 12, -- harte Obergrenze, auch wenn noch nicht alles da ist
 	SkipAfter = 0.3, -- tippen/klicken überspringt erst nach so vielen Sekunden
 	OutSeconds = 0.7, -- Ausblenden (Skalierung 1,12 + Fade)
+	-- Hybrid-Platz (§C14.3, Wunsch 17): Ladebildschirm-Hintergrund. 0 = reine Code-Grafik, sonst Bild-Id (1920 × 1080);
+	-- lädt das Bild nicht, bleibt automatisch die Code-Grafik
+	ImageId = 0,
+}
+
+-- Hybrid-Plätze (§C14.3, Wunsch 17): UI-Icons der HUD-Knöpfe. 0 = Emoji/Code-Grafik, sonst Bild-Id (256 × 256 PNG,
+-- weißes Strich-Icon auf transparent). Lädt ein Bild nicht, zeigt der Knopf automatisch wieder das Emoji.
+Client.Icons = {
+	Trade = 0,
+	Tower = 0,
+	Shop = 0,
+	Quests = 0,
+	Academy = 0,
+	Garage = 0,
+	Social = 0,
+	Boards = 0,
+	Settings = 0,
 }
 
 -- ---------------------------------------------------------------------
@@ -395,6 +412,17 @@ function Client.Validate(_config: any): { string }
 			errors,
 			"Config.Client.Splash: MinSeconds ≤ LoadedMaxSeconds ≤ 4, HardCapSeconds ≤ 12 erwartet"
 		)
+	end
+	local function imageIdOk(value: any): boolean
+		return isFinite(value) and value >= 0 and value % 1 == 0
+	end
+	if not imageIdOk(splash.ImageId) then
+		table.insert(errors, "Config.Client.Splash.ImageId: ganze Zahl ≥ 0 erwartet (0 = Code-Grafik)")
+	end
+	for name, value in pairs(Client.Icons) do
+		if not imageIdOk(value) then
+			table.insert(errors, "Config.Client.Icons." .. tostring(name) .. ": ganze Zahl ≥ 0 erwartet (0 = Emoji)")
+		end
 	end
 	return errors
 end

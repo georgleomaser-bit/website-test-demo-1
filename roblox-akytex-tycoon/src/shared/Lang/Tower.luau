@@ -16,7 +16,7 @@ return {
 		-- Bauen
 		["tower.craneBusy"] = "Der Kran baut noch – fertig in %s",
 		["tower.maxFloors"] = "Alle 50 Etagen stehen – Zeit für den Börsengang!",
-		["tower.noCredits"] = "Nicht genug CR – es fehlen %s",
+		["tower.noCredits"] = "Nicht genug CR – es fehlen %s CR",
 		["tower.gateLicence"] = "%s braucht die Lizenz %s",
 		["tower.gateIpo"] = "%s braucht mindestens %d Börsengang",
 		["tower.stageAnnounce"] = "%s erreicht Stufe %d: %s!",
@@ -51,6 +51,8 @@ return {
 		["tower.vaultEmpty"] = "Der Tresor ist leer",
 		["tower.tooFar"] = "Geh näher an deinen Tower (höchstens %d Studs)",
 		["tower.offline"] = "Dein Tower hat offline %s CR verdient",
+		["tower.boostEnded"] = "Boost %s ist abgelaufen",
+		["tower.boostResumed"] = "Boost %s ist abgelaufen – %s läuft weiter (noch %s)",
 
 		-- Gewinn-Transfer
 		["tower.transferDone"] = "Gewinn-Transfer: +%s CR für deinen Tower",
@@ -113,7 +115,7 @@ return {
 		-- Building
 		["tower.craneBusy"] = "The crane is still building – done in %s",
 		["tower.maxFloors"] = "All 50 floors are built – time for your IPO!",
-		["tower.noCredits"] = "Not enough CR – %s missing",
+		["tower.noCredits"] = "Not enough CR – %s CR missing",
 		["tower.gateLicence"] = "%s needs the %s licence",
 		["tower.gateIpo"] = "%s needs at least %d IPO",
 		["tower.stageAnnounce"] = "%s reached stage %d: %s!",
@@ -148,6 +150,8 @@ return {
 		["tower.vaultEmpty"] = "The vault is empty",
 		["tower.tooFar"] = "Move closer to your tower (at most %d studs)",
 		["tower.offline"] = "Your tower earned %s CR while you were away",
+		["tower.boostEnded"] = "Boost %s has ended",
+		["tower.boostResumed"] = "Boost %s has ended – %s continues (%s left)",
 
 		-- Profit transfer
 		["tower.transferDone"] = "Profit transfer: +%s CR for your tower",

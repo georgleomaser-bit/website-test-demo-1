@@ -44,8 +44,8 @@ Shop.GamePasses = {
 		ImageId = 0,
 		Name = { de = "Börsen-VIP", en = "Exchange VIP" },
 		Desc = {
-			de = "VIP-Balkon im Börsensaal, goldenes Λ-Namensschild + Chat-Tag, VIP-Parkplatz, Lack „Platin“, Turm-Einkommen ×1,10.",
-			en = "VIP balcony in the exchange hall, golden Λ nameplate + chat tag, VIP parking, “Platinum” paint, tower income ×1.10.",
+			de = "VIP-Balkon im Börsensaal, goldenes Λ-Namensschild + Chat-Tag, Auto-Lack „Platin“, Turm-Einkommen ×1,10.",
+			en = "VIP balcony in the exchange hall, golden Λ nameplate + chat tag, “Platinum” car paint, tower income ×1.10.",
 		},
 	},
 	{
@@ -140,8 +140,8 @@ Shop.GamePasses = {
 		ImageId = 0,
 		Name = { de = "Mega-Garage", en = "Mega Garage" },
 		Desc = {
-			de = "+12 Auto-Plätze und eine Showroom-Etage mit Drehteller.",
-			en = "+12 car slots and a showroom floor with a turntable.",
+			de = "+12 Auto-Plätze in deiner Garage – Platz für die ganze Sammlung.",
+			en = "+12 car slots in your garage – room for your whole collection.",
 		},
 	},
 	{
@@ -164,8 +164,8 @@ Shop.GamePasses = {
 		ImageId = 0,
 		Name = { de = "ΛKYTEX Λ-1 Hypercar", en = "ΛKYTEX Λ-1 Hypercar" },
 		Desc = {
-			de = "Exklusives Hypercar mit Neon-Spur und eigenem Motor-Klang. Fährt sofort aus deiner Garage.",
-			en = "Exclusive hypercar with a neon trail and its own engine sound. Drives right out of your garage.",
+			de = "Exklusives Hypercar mit Neon-Spur und eigener Form (Tempo wie die besten erspielten Hypercars). Fährt sofort aus deiner Garage.",
+			en = "Exclusive hypercar with a neon trail and its own shape (top speed like the best earned hypercars). Drives right out of your garage.",
 		},
 	},
 	{
@@ -498,8 +498,8 @@ Shop.Subscription = {
 	DailyVoucher = "CreditsS", -- tägliche Abholung (ShopClubClaim, 1× je UTC-Tag)
 	Name = { de = "Vorstands-Club", en = "Executive Club" },
 	Desc = {
-		de = "Täglich ein Bau-Gutschein S zum Abholen, Turm-Einkommen ×1,15, +4 h Offline-Deckel, monatlich ein exklusiver Lack, Dachterrasse im Börsensaal, +1 Serien-Schutz je Woche, Tag „Club“.",
-		en = "A Build Voucher S to claim every day, tower income ×1.15, +4 h offline cap, an exclusive paint every month, rooftop terrace in the exchange hall, +1 streak shield per week, “Club” tag.",
+		de = "Täglich ein Bau-Gutschein S zum Abholen, Turm-Einkommen ×1,15, +4 h Offline-Deckel, exklusiver Auto-Lack „Club Noir“, Dachterrasse im Börsensaal, +1 Serien-Schutz je Woche, Tag „Club“.",
+		en = "A Build Voucher S to claim every day, tower income ×1.15, +4 h offline cap, exclusive “Club Noir” car paint, rooftop terrace in the exchange hall, +1 streak shield per week, “Club” tag.",
 	},
 }
 
@@ -571,6 +571,9 @@ Shop.Sources = {
 	"Season",
 	"Tutorial",
 	"Refund",
+	"League", -- Liga-Belohnung (RewardService)
+	"WinBack", -- Rückkehr-Geschenk (RewardService)
+	"Referral", -- Freunde-Einladung (CommunityService)
 }
 Shop.Sinks = {
 	"Floor",
@@ -584,6 +587,7 @@ Shop.Sinks = {
 	"Watch",
 	"Accessory",
 	"Admin",
+	"Ipo", -- Börsengang: CR starten neu (TowerService.ResetForIpo)
 }
 Shop.MetricsFlushSeconds = 60 -- Quellen/Senken je Spieler gebündelt an MetricsService (Roblox-Budget)
 
@@ -617,7 +621,9 @@ Shop.PolicyWaitSeconds = 5 -- ShopPrecheck wartet höchstens so lange auf die Po
 Shop.Fixed = { Vip = 1.10, Club = 1.15, Premium = 1.10 } -- Rückfall, falls Config.Tower.Mult fehlt
 -- Notschalter (live über Config.LiveFields "Shop.Disabled.<Key>"): true = Kauf im Shop gesperrt.
 -- Bereits bezahlte Käufe werden IMMER gutgeschrieben (nie einen Beleg verschlucken).
-Shop.Disabled = {} :: { [string]: boolean }
+-- TerminalDesigner ist gesperrt, bis die 6 Terminal-Themes im Terminal (WP5) wirklich wählbar sind – nie einen Pass
+-- ohne Wirkung verkaufen (Muss-Regel 17 / §0.8 Punkt 4: exakte Wirkung vor dem Kauf). Danach hier entfernen.
+Shop.Disabled = { TerminalDesigner = true } :: { [string]: boolean }
 
 -- =====================================================================
 -- 9) NACHSCHLAGEN (doppelte Keys/Ids = Fehler beim Laden)
@@ -774,9 +780,11 @@ function Shop.SeasonIdAt(season: any, now: number): number
 	if firstStart and now < firstStart then
 		return if isInt(first.Id) then first.Id else 1
 	end
-	-- last = zuletzt begonnene Saison (Lücke zwischen zwei Saisons -> die vorige gilt weiter)
+	-- last = zuletzt begonnene Saison (Lücke zwischen zwei Saisons -> die vorige gilt weiter, genau wie
+	-- RewardService: Rolling erst nach der LETZTEN festen Saison)
 	local last = first
-	for _, entry in ipairs(list) do
+	local lastIndex = 1
+	for index, entry in ipairs(list) do
 		if type(entry) == "table" and isInt(entry.Id) then
 			local startAt, endAt = Shop.ParseUtc(entry.StartUtc), Shop.ParseUtc(entry.EndUtc)
 			if startAt and endAt and now >= startAt and now < endAt then
@@ -784,10 +792,14 @@ function Shop.SeasonIdAt(season: any, now: number): number
 			end
 			if startAt and now >= startAt then
 				last = entry
+				lastIndex = index
 			end
 		end
 	end
 	local lastId = if isInt(last.Id) then last.Id else 1
+	if lastIndex < #list then
+		return lastId
+	end
 	local rolling = season.Rolling
 	local lastEnd = Shop.ParseUtc(last.EndUtc)
 	if type(rolling) == "table" and rolling.Enabled == true and lastEnd and now >= lastEnd then

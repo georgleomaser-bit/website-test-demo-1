@@ -103,6 +103,8 @@ type Track = {
 	LastRaw: Vector3?,
 	LastSpeed: number, -- waagrechte Geschwindigkeit bei der letzten Messung (eingefroren = Lag)
 	Allowance: Allowance,
+	GiftSpeed: number, -- Speed-Geschenk des Besitzers (Spieler-Attribut GiftSpeed, nur der Server setzt es), 0 = keins
+	GiftJump: number, -- Sprung-Geschenk (Attribut GiftJump), 0 = keins
 	Probe: RaycastParams,
 	Violations: { [string]: number },
 }
@@ -825,6 +827,10 @@ local function capacityFor(track: Track, now: number): (number, number)
 	if a.MaxSpeed > 0 then
 		rate = math.max(rate, a.MaxSpeed) -- im Auto: Klassen-Deckel × Boost × Puffer (VehicleService)
 	end
+	if track.GiftSpeed > 0 then
+		-- vom Besitzer geschenktes Lauf-Tempo (AdminService.GiveSpeed) – nie ein Fehlalarm für Beschenkte
+		rate = math.max(rate, track.GiftSpeed * SEC.SpeedTolerance + SEC.SpeedSlack)
+	end
 	-- Impuls-Gnade, danach noch bis zur ersten Landung (der Client behält den Schwung in der Luft)
 	if now < math.max(track.ImpulseUntil, track.ImpulseAirUntil) then
 		rate = math.max(rate, track.ImpulseSpeed)
@@ -864,6 +870,8 @@ local function newTrack(): Track
 		LastRaw = nil,
 		LastSpeed = 0,
 		Allowance = { SpeedMult = 1, VerticalMult = 1, MaxSpeed = 0 },
+		GiftSpeed = 0,
+		GiftJump = 0,
 		Probe = probe,
 		Violations = {},
 	}
@@ -1003,9 +1011,34 @@ local function throughWall(p: Player, root: BasePart, from: Vector3, to: Vector3
 	return false, nil
 end
 
+-- Steckt die Wurzel in Terrain-Wasser (Marina)? Schwimmen ist kein Fliegen (eine 4er-Voxel-Säule, billig)
+local function inWater(pos: Vector3): boolean
+	local terrain = workspace.Terrain
+	local ok, inside = pcall(function()
+		local region = Region3.new(pos - Vector3.new(1, 5, 1), pos + Vector3.new(1, 1, 1)):ExpandToGrid(4)
+		local materials = terrain:ReadVoxels(region, 4)
+		for x = 1, #materials do
+			local column = materials[x]
+			for y = 1, #column do
+				local row = column[y]
+				for z = 1, #row do
+					if row[z] == Enum.Material.Water then
+						return true
+					end
+				end
+			end
+		end
+		return false
+	end)
+	return ok and inside == true
+end
+
 local function isGrounded(track: Track, root: BasePart, humanoid: Humanoid): boolean
 	if humanoid.FloorMaterial ~= Enum.Material.Air or humanoid.SeatPart ~= nil then
 		return true
+	end
+	if humanoid:GetState() == Enum.HumanoidStateType.Swimming or inWater(root.Position) then
+		return true -- schwimmt (Marina): Höhe/Luftzeit messen erst wieder an Land
 	end
 	local probe = math.max(humanoid.HipHeight + root.Size.Y * 0.5, 3) + 2
 	track.Probe.CollisionGroup = root.CollisionGroup
@@ -1112,6 +1145,11 @@ local function checkPlayer(p: Player, _dt: number)
 		return
 	end
 
+	local giftSpeed = p:GetAttribute("GiftSpeed")
+	local giftJump = p:GetAttribute("GiftJump")
+	track.GiftSpeed = if Util.IsFinite(giftSpeed) then math.clamp(giftSpeed, 0, MAX_ALLOWED_SPEED) else 0
+	track.GiftJump = if Util.IsFinite(giftJump) then math.clamp(giftJump, 0, 200) else 0
+
 	local impulse = now < track.ImpulseUntil
 	local grounded = isGrounded(track, root, humanoid)
 	if not impulse and track.ImpulseAirUntil > 0 and (grounded or now >= track.ImpulseAirUntil) then
@@ -1170,7 +1208,7 @@ local function checkPlayer(p: Player, _dt: number)
 		if not Util.IsFinite(jumpHeight) or jumpHeight <= 0 then
 			jumpHeight = DEFAULT_JUMP_HEIGHT
 		end
-		jumpHeight = math.min(jumpHeight, DEFAULT_JUMP_HEIGHT * 2)
+		jumpHeight = math.min(jumpHeight, math.max(DEFAULT_JUMP_HEIGHT * 2, track.GiftJump)) -- Sprung-Geschenk zählt
 		local maxHeight = jumpHeight * (SEC.SkillAirJumps + 1) * vertical * factor + SEC.VerticalSlack
 		local height = pos.Y - (track.GroundY or pos.Y)
 		if height > maxHeight then

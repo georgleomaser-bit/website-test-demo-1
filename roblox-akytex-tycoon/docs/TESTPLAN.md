@@ -72,7 +72,8 @@ Mehr Wörter: **ANLEITUNG.md, Kapitel 25** (Wörterliste A–Z).
 - [ ] **A15** Abteilungs-Wahl auf Etage 2 (3 Karten, **Trading-Desk** empfohlen); Praktikant P-1 rollt an den Tisch, Monitor zeigt Live-Chart.
 - [ ] **A16** Gratis **Hausmeister-Bot** erscheint (sammelt den Tresor alle 60 s, solange du auf deinem Plot bist).
 - [ ] **A17** Echtes Terminal (Schicht „Einfach“), erster Live-Trade mit „Schutz an“ (−8 % / +15 %).
-- [ ] **A18** 3 Starter-Quests gleiten ein. Gratis-Auto **Λ City** fährt aus der Garage, Wegpunkt-Beam zum Börsensaal.
+- [ ] **A18** Tiko: „Deine Starter-Quests sind da“ → **QUESTS ANSEHEN** öffnet das Aufgaben-Fenster direkt auf dem Reiter **Starter**.
+      Gratis-Auto **Λ City** fährt aus der Garage, Wegpunkt-Beam zum Börsensaal.
 - [ ] **A19** Börsensaal: Akademie-Kapsel **Lektion 1** (30 s + 2 Fragen, +100 XP).
 - [ ] **A20** Bei 300 XP: **Azubi II**-Zeremonie (Stempel, kleines Konfetti, Basis 25.000 → 50.000 AKY).
 - [ ] **A21** Erste **Effizienz-Stufe** (10.000 CR) → HUD-Chip „x1,10“ ploppt. Tippen öffnet die Aufschlüsselung (Quelle, Wert,
@@ -105,10 +106,15 @@ Mehr Wörter: **ANLEITUNG.md, Kapitel 25** (Wörterliste A–Z).
 - [ ] **A39** Akademie: Lizenzprüfung „Setze ein Schutz-Paar“ erkennt den Trade.
 - [ ] **A40** Aufgaben (**J**): Tagesquests, Woche, Starter, Login. Reiter **Login** → Code `LAUNCH` einlösen → +5.000 CR.
       Nochmal einlösen → „Diesen Code hast du schon eingelöst.“
-- [ ] **A41** Skyline-Pass: Gratis- und Premium-Spur sichtbar, ehrlicher Countdown bis zum Saison-Ende.
+- [ ] **A41** Skyline-Pass: Gratis- und Premium-Spur sichtbar, ehrlicher Countdown bis zum Saison-Ende. Jede Belohnung hat einen
+      lesbaren Namen (Premium Stufe 10 und 40 = Kopftitel „Skyline-Stammgast S1“ / „Skyline-Magnat S1“) – nirgends ein roher Schlüssel.
+- [ ] **A41b** Bestenlisten-Tafeln vor dem Börsensaal: nach ca. 15 s steht **dein eigener Eintrag** darauf (live, auch in Studio ohne
+      DataStore). Fenster **Bestenlisten** (Knopf 🏆): eigene Zeile blau hervorgehoben (bleibt beim Darüberfahren), Plätze 1–3 mit
+      Gold/Silber/Bronze-Streifen. Ø-Tagesrendite: negative Werte anderer Spieler erscheinen nie (kein öffentliches Verlust-Zeigen).
 
 ### A.5 Shop und Käufe (alle IDs sind noch 0)
-- [ ] **A42** Taste **N** → Shop. Alle 14 Pässe, 17 Produkte und das Abo sind sichtbar und zeigen „**Bald verfügbar**“.
+- [ ] **A42** Taste **N** → Shop. Alle 14 Pässe, 17 Produkte und das Abo sind sichtbar und zeigen „**Bald verfügbar**“
+      (Terminal-Designer: „Gerade nicht verfügbar“ – gesperrt, bis die Terminal-Themes im Spiel sind).
 - [ ] **A43** Knöpfe heißen „Ansehen“, „Details“ oder „Preis anzeigen“ – nie „JETZT KAUFEN“, „LETZTE CHANCE“, „Nur heute!“.
 - [ ] **A44** Bau-Gutscheine zeigen die **genaue CR-Zahl** vor dem Kauf; Text „Nur CR“.
 - [ ] **A45** x2- und x3-Pass: Text „x2 + x3 zusammen = x4“ ist vor dem Kauf sichtbar.
@@ -337,6 +343,14 @@ im Live-Spiel mit der **Developer Console** (**F9**, MacBook **fn + F9**) → Re
 - [ ] **F8** **Voice:** Mit einem berechtigten Konto (13+, verifiziert) ist das Mikrofon-Symbol über dem Kopf da; Nähe = lauter.
 - [ ] **F9** Zweiter Server (z. B. über einen Freund): Admin-Ansage „alle Server“ kommt dort an; Markt-Event gleichzeitig auf beiden.
 - [ ] **F10** Experience Events sind auf der Spielseite sichtbar; Private Server sind gratis aktivierbar.
+- [ ] **F11** **Einladen mit Tower-Besuch:** Sozial → Einladen → „Freunde einladen“ → Freund nimmt an → er landet auf deinem Server und
+      (nach seinem Tutorial bzw. sofort, wenn er es schon kennt) in deiner Tower-Lobby. Im Tutorial sieht er „Nach dem Tutorial geht
+      es zum Tower von …“.
+- [ ] **F12** **Gruppe** (erst mit eingetragener `GroupId`): Sozial → Einladen → „Gruppe beitreten“ → Roblox-Fenster → beitreten →
+      innerhalb von ca. 2 min Meldung „Willkommen in der Gruppe …“, Community-Krone in der Boutique (Accessoires) freigeschaltet,
+      blauer Rahmen am Namensschild (für andere sichtbar).
+- [ ] **F13** Zweites Konto, Tutorial **überspringen** → bei der ersten Lizenz-Zeremonie (Azubi II) kommt einmal die Favoriten-Abfrage;
+      bei der nächsten Zeremonie stattdessen (falls Roblox es erlaubt) die Benachrichtigungs-Zustimmung.
 
 ---
 

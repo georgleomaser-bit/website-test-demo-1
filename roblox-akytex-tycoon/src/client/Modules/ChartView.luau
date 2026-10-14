@@ -84,6 +84,7 @@ local REBASE_GAP = 1 -- höchstens 1× je Sekunde neu auslegen
 local SHRINK_REBASE = 0.05 -- Zielbereich > 5 % kleiner als angezeigt -> neu skalieren (MARKET §10.4)
 local PAD = 0.08 -- Rand oben/unten im Preisbereich
 local SCROLL_INFO = TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+local PLACEHOLDER_PULSE = TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 local HOLD_FOR_CROSSHAIR = 0.25 -- Touch: so lange halten -> Fadenkreuz statt Wischen
 local SWIPE_MIN = 70 -- px
 local SWIPE_TIME = 0.4
@@ -299,6 +300,7 @@ function ChartView.new(parent: Instance, opts: { [string]: any }?): any
 	self.YScale = 1
 	self.YPos = 0
 	self.VMaxTarget = 1
+	self.PlaceholderPulse = nil :: Tween?
 
 	local z = self.Z
 	local root = newFrame({
@@ -1729,6 +1731,18 @@ function ChartView.SetPlaceholder(self: any, text: string?)
 	end
 	if label.Visible ~= show then
 		label.Visible = show
+		-- Lade-Zustand: ruhiges Atmen des Textes (ein Tween je Chart, nur solange sichtbar)
+		local pulse = self.PlaceholderPulse
+		if pulse then
+			pulse:Cancel()
+			self.PlaceholderPulse = nil
+		end
+		label.TextTransparency = 0
+		if show and self.Labels then
+			local tween = TweenService:Create(label, PLACEHOLDER_PULSE, { TextTransparency = 0.5 })
+			self.PlaceholderPulse = tween
+			tween:Play()
+		end
 	end
 end
 
@@ -2145,6 +2159,10 @@ function ChartView.Destroy(self: any)
 		tween:Cancel()
 	end
 	table.clear(self.Tweens)
+	if self.PlaceholderPulse then
+		self.PlaceholderPulse:Cancel()
+		self.PlaceholderPulse = nil
+	end
 	self.Root:Destroy()
 end
 

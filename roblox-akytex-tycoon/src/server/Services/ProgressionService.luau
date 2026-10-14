@@ -298,6 +298,7 @@ function Core.Repair(data: Data)
 	prog.RufDay = math.floor(num(prog.RufDay, 0))
 	prog.RufToday = math.max(0, math.floor(num(prog.RufToday, 0)))
 	prog.Title = if type(prog.Title) == "string" then prog.Title else ""
+	prog.TitleOff = prog.TitleOff == true -- Spieler hat „Kein Titel“ gewählt (Vermögens-Titel nicht automatisch setzen)
 	prog.Titles = asSet(prog.Titles)
 	if prog.Title ~= "" and not prog.Titles[prog.Title] then
 		prog.Title = ""
@@ -1063,9 +1064,10 @@ local function updateWealthTitle(p: Player, prog: Data, wealth: number)
 		effect(p, "TitleUp", 1, { Title = key, Fanfare = def.Fanfare == true })
 		call("CommunityService", "Announce", "prog.titleAnnounce", { p.DisplayName, def.Name })
 	end
-	-- Anzeige folgt automatisch dem höchsten Vermögens-Titel, solange kein Sonder-Titel gewählt ist
+	-- Anzeige folgt automatisch dem höchsten Vermögens-Titel, solange kein Sonder-Titel und nicht „Kein Titel“ gewählt ist
 	local current = prog.Title
-	local isWealthTitle = current == "" or (PCFG.TitleByKey[current] and PCFG.TitleByKey[current].Min ~= nil)
+	local isWealthTitle = prog.TitleOff ~= true
+		and (current == "" or (PCFG.TitleByKey[current] and PCFG.TitleByKey[current].Min ~= nil))
 	if isWealthTitle and current ~= key then
 		prog.Title = key
 		isNew = true
@@ -2405,6 +2407,7 @@ local function handleTitle(p: Player, arg: any): Reply
 		return fail(p, "prog.titleUnknown")
 	end
 	prog.Title = arg.Id
+	prog.TitleOff = arg.Id == "" -- „Kein Titel“ bleibt stehen (sonst setzte der 5-s-Takt den Vermögens-Titel zurück)
 	setAttributes(p, prog)
 	markDirty(p, "Prog")
 	local def = PCFG.TitleByKey[arg.Id]

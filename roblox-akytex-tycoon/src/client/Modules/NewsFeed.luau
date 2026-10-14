@@ -422,6 +422,7 @@ function NewsFeed.HideCard()
 		end
 	end)
 	tween:Play()
+	UI.SetToastFloor(nil)
 end
 
 local function kindColor(item: Item): Color3
@@ -520,6 +521,8 @@ local function showCard(item: Item)
 		TweenService:Create(cardScale, IN_INFO, { Scale = 1 }):Play()
 	end
 	TweenService:Create(root, IN_INFO, { Position = UDim2.new(0.5, 0, 0, CARD_TOP) }):Play()
+	-- Meldungen (Toasts) rutschen unter die Karte statt von ihr verdeckt zu werden
+	UI.SetToastFloor(CARD_TOP + CARD_H + 8)
 	call("Sfx", "Play", "Notify")
 	task.delay(math.max(0, delay - age) + CARD_STAY, function()
 		if cardToken == token then

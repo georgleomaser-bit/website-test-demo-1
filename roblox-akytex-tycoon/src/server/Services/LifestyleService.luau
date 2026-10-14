@@ -18,7 +18,11 @@
 --    LifestyleService.ReturnDecor(p, key)            1 Stück zurück ins Lager (kein Yield)
 --    LifestyleService.Comfort(key): number           Komfort-Punkte 1–5 (0 = unbekannt)
 --    LifestyleService.CollectionValue(p): number     Sammlungswert (Vermögen, ganzzahlig, ≤ 9e15)
---  Request-Handler: LifeBuy {Key} (2/s), LifeEquip {Slot = "Watch" | "Acc", Key?} (2/s)
+--  Request-Handler: LifeBuy {Key} (2/s), LifeEquip {Slot = "Watch" | "Acc" | "Jetpack", Key?} (2/s)
+--    Neon-Jetpack (Pass, §B12.4): LifeEquip {Slot = "Jetpack", Key = "On"} zündet, ohne Key = aus. Server prüft Pass,
+--    Treibstoff (8 s, lädt in 12 s), Sitz, fremden Tower; Anti-Cheat-Erlaubnis nur solange aktiv; Abschaltung spätestens
+--    bei leerem Tank. Effekt (Neon-Düsen + Spur) hängt am Charakter -> für alle sichtbar.
+--  Ergänzung: LifestyleService.StopJetpack(p)   (VehicleService vor dem Einsteigen)
 --  State: Life = { Watches, Accessories, Equipped = { Watch, Acc }, Unlocked, Rotation, RotationEnds, Discount,
 --                  Welcome? }   ·   Storage = { Decor = { [key] = n }, Placed = { [key] = n } }
 --  Ergänzung: LifestyleService.Rotation(): ({ string }, number)   Boutique-Auslage + Ende (Unix)
@@ -486,7 +490,215 @@ local function applyAttachments(p: Player)
 	end
 end
 
+-- ---------------------------------------------------------------------
+-- 4b) NEON-JETPACK (Pass „Jetpack“, §B12.4): Treibstoff serverseitig, Erlaubnis nur während des Flugs
+-- ---------------------------------------------------------------------
+type Jet = { Active: boolean, Fuel: number, At: number, Token: number, Fx: { Instance } }
+
+local JET: { [string]: any } = byKey(LCFG.Jetpack)
+local JET_FUEL = math.clamp(num(JET.Fuel, 8), 1, 60)
+local JET_RECHARGE = math.clamp(num(JET.Recharge, 12), 1, 120)
+local JET_SLACK = 0.75 -- Sekunden Puffer (Ping) über dem Tank hinaus
+local jets: { [Player]: Jet } = {}
+
+local function jetAllowance(): (number, number)
+	local security = if type(Config.Security) == "table" then Config.Security else {}
+	local allow = byKey((security :: any).Allowances)
+	local height = math.clamp(num(JET.MaxHeight, 120), 10, 400)
+	local vertical = math.max(num(JET.VerticalMult, 3), num(allow.JetpackVerticalMult, 0), (height + 8) / 7.2)
+	local speed = math.max(num(JET.SpeedMult, 1.6), num(allow.JetpackSpeedMult, 1))
+	return math.clamp(speed, 1, 5), math.clamp(vertical, 1, 20)
+end
+
+local function jetOf(p: Player): Jet
+	local jet = jets[p]
+	if not jet then
+		jet = { Active = false, Fuel = JET_FUEL, At = os.clock(), Token = 0, Fx = {} }
+		jets[p] = jet
+	end
+	return jet
+end
+
+-- Tank aktualisieren (verbraucht im Flug, lädt am Boden nach)
+local function jetRefresh(jet: Jet, now: number)
+	local dt = math.max(0, now - jet.At)
+	jet.At = now
+	if jet.Active then
+		jet.Fuel = math.max(0, jet.Fuel - dt)
+	else
+		jet.Fuel = math.min(JET_FUEL, jet.Fuel + dt * JET_FUEL / JET_RECHARGE)
+	end
+end
+
+local function jetClearFx(jet: Jet)
+	for _, inst in ipairs(jet.Fx) do
+		inst:Destroy()
+	end
+	table.clear(jet.Fx)
+end
+
+-- Neon-Rucksack + Düsen-Funken + Spur am Rücken (repliziert, alle sehen den Flug)
+local function jetAddFx(jet: Jet, character: Model)
+	jetClearFx(jet)
+	local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+	if not torso or not torso:IsA("BasePart") then
+		return
+	end
+	local back = torso.Size.Z / 2 + 0.35
+	local pack = Instance.new("Part")
+	pack.Name = "AkyJetpack"
+	pack.Size = Vector3.new(1.3, 1.6, 0.6)
+	pack.Color = Color3.fromRGB(26, 33, 48)
+	pack.Material = Enum.Material.Metal
+	pack.Reflectance = 0.2
+	pack.Anchored = false
+	pack.Massless = true
+	pack.CanCollide = false
+	pack.CanQuery = false
+	pack.CanTouch = false
+	pack.CFrame = torso.CFrame * CFrame.new(0, 0, back)
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = torso
+	weld.Part1 = pack
+	weld.Parent = pack
+	local nozzle = Instance.new("Attachment")
+	nozzle.Name = "Nozzle"
+	nozzle.Position = Vector3.new(0, -0.85, 0)
+	nozzle.Parent = pack
+	local trailTop = Instance.new("Attachment")
+	trailTop.Name = "TrailTop"
+	trailTop.Position = Vector3.new(0, -0.4, 0.1)
+	trailTop.Parent = pack
+	local accent = Color3.fromRGB(79, 140, 255)
+	local cosmic = Color3.fromRGB(179, 107, 255)
+	local flame = Instance.new("ParticleEmitter")
+	flame.Name = "Flame"
+	flame.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	flame.Color = ColorSequence.new(accent, cosmic)
+	flame.LightEmission = 1
+	flame.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.9), NumberSequenceKeypoint.new(1, 0.1) })
+	flame.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) })
+	flame.Lifetime = NumberRange.new(0.2, 0.4)
+	flame.Speed = NumberRange.new(12, 18)
+	flame.SpreadAngle = Vector2.new(10, 10)
+	flame.EmissionDirection = Enum.NormalId.Bottom
+	flame.Rate = 45
+	flame.Parent = nozzle
+	local trail = Instance.new("Trail")
+	trail.Name = "NeonTrail"
+	trail.Attachment0 = trailTop
+	trail.Attachment1 = nozzle
+	trail.Lifetime = 0.6
+	trail.LightEmission = 1
+	trail.FaceCamera = true
+	trail.Color = ColorSequence.new(accent, cosmic)
+	trail.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1) })
+	trail.Parent = pack
+	local glow = Instance.new("PointLight")
+	glow.Name = "JetGlow"
+	glow.Color = accent
+	glow.Range = 10
+	glow.Brightness = 1.6
+	glow.Shadows = false
+	glow.Parent = nozzle
+	pack.Parent = character
+	table.insert(jet.Fx, pack)
+end
+
+local function jetStop(p: Player, reason: string?)
+	local jet = jets[p]
+	if not jet or not jet.Active then
+		return
+	end
+	jetRefresh(jet, os.clock())
+	jet.Active = false
+	jet.Token += 1
+	jetClearFx(jet)
+	local character = p.Character
+	if character then
+		character:SetAttribute("AkyJetpack", nil)
+	end
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	-- im Auto gilt die Auto-Erlaubnis (VehicleService) – nicht überschreiben
+	if p.Parent == Players and not (humanoid and humanoid.SeatPart ~= nil) then
+		call("AntiCheatService", "SetAllowance", p, nil) -- senkt die Erlaubnis -> Anti-Cheat gibt Ausroll-/Fall-Gnade
+	end
+	if reason == "Empty" then
+		call("PlayerStateService", "Notify", p, "life.jet.empty", nil, "Info")
+	end
+end
+
+function LifestyleService.StopJetpack(p: Player)
+	if typeof(p) == "Instance" and p:IsA("Player") then
+		jetStop(p, nil)
+	end
+end
+
+local function foreignTower(p: Player, position: Vector3): boolean
+	local ok, plot = call("PlotService", "TowerAt", position)
+	if not ok or not Util.IsFinite(plot) then
+		return false
+	end
+	local okOwner, owner = call("PlotService", "OwnerOf", plot)
+	return okOwner and owner ~= nil and owner ~= p
+end
+
+local function jetStart(p: Player): Reply
+	local key = JET.Pass or "Jetpack"
+	if not hasPass(p, key) then
+		return fail(p, "life.jet.noPass")
+	end
+	local character = p.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+		return fail(p, "core.invalid")
+	end
+	if humanoid.SeatPart ~= nil then
+		return fail(p, "life.jet.seated")
+	end
+	if foreignTower(p, root.Position) then
+		return fail(p, "life.jet.foreign")
+	end
+	local jet = jetOf(p)
+	local now = os.clock()
+	jetRefresh(jet, now)
+	if jet.Active then
+		return { Ok = true, Fuel = jet.Fuel }
+	end
+	if jet.Fuel < 1 then
+		return fail(p, "life.jet.recharge", { math.ceil((1 - jet.Fuel) * JET_RECHARGE / JET_FUEL) })
+	end
+	jet.Active = true
+	jet.Token += 1
+	local token = jet.Token
+	local speed, vertical = jetAllowance()
+	call("AntiCheatService", "SetAllowance", p, { SpeedMult = speed, VerticalMult = vertical })
+	character:SetAttribute("AkyJetpack", true)
+	local okFx, errFx = pcall(jetAddFx, jet, character)
+	if not okFx then
+		logError("jetAddFx", errFx)
+	end
+	-- spätestens mit leerem Tank aus (Client meldet sich normalerweise vorher)
+	task.delay(jet.Fuel + JET_SLACK, function()
+		local current = jets[p]
+		if current and current.Active and current.Token == token then
+			jetStop(p, "Empty")
+		end
+	end)
+	return { Ok = true, Fuel = jet.Fuel }
+end
+
 local function onCharacterAdded(p: Player, character: Model)
+	local jet = jets[p]
+	if jet and jet.Active then
+		-- Respawn: Flug endet (Effekt-Teile hingen an der alten Figur)
+		jetRefresh(jet, os.clock())
+		jet.Active = false
+		jet.Token += 1
+		jetClearFx(jet)
+		call("AntiCheatService", "SetAllowance", p, nil)
+	end
 	task.spawn(function()
 		-- Arm/Kopf/Torso müssen da sein (Avatar lädt asynchron)
 		local started = os.clock()
@@ -762,6 +974,15 @@ local function handleEquip(p: Player, arg: any): Reply
 	end
 	local slot = arg.Slot
 	local key = arg.Key
+	if slot == "Jetpack" then
+		if key == "On" then
+			return jetStart(p)
+		elseif key == nil or key == "" then
+			jetStop(p, nil)
+			return { Ok = true }
+		end
+		return fail(p, "core.invalid")
+	end
 	if slot ~= "Watch" and slot ~= "Acc" then
 		return fail(p, "core.invalid")
 	end
@@ -956,6 +1177,12 @@ local function onPlayerRemoving(p: Player)
 	characterConns[p] = nil
 	welcomePending[p] = nil
 	welcomeReport[p] = nil
+	local jet = jets[p]
+	if jet then
+		jet.Token += 1
+		jetClearFx(jet)
+	end
+	jets[p] = nil
 end
 
 function LifestyleService.Init(services: any)

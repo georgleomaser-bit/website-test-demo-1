@@ -19,7 +19,9 @@
 --    VehicleService.Active(p): Model?
 --    VehicleService.CollectionValue(p): number             Summe der CR-Preise eigener Autohaus-Autos
 --  Zusätzlich: VehicleService.Slots(p): (used, total) · VehicleService._Test (reine Helfer für WorldTests)
---  Request-Handler: CarSpawn {Key}, CarDespawn {}, CarBuy {Key}, CarTune {Key, Paint?, Rims?, Glow?, Spoiler?}
+--  Request-Handler: CarSpawn {Key, Test?}, CarDespawn {}, CarBuy {Key}, CarTune {Key, Paint?, Rims?, Glow?, Spoiler?}
+--    Probefahrt (Test = true): jedes CR-Auto (Source "Shop") ohne Besitz, nur im Umkreis des Autohauses (Anker
+--    "Showroom"), Start am Spawnpunkt "Motors", Serien-Lack, Ende nach Config.Vehicles.TestDrive.Seconds, Cooldown.
 --  RewardService.Track-Arten: "CarBuy" (1), "CarTune" (1), "Drive" (Studs, gebündelt ab 50)
 -- =====================================================================
 
@@ -66,6 +68,7 @@ type CarState = {
 	Parked: boolean,
 	LastPos: Vector3?,
 	DriveAcc: number,
+	TestUntil: number?, -- Probefahrt: Ende (os.clock)
 	Conns: { RBXScriptConnection },
 }
 
@@ -74,6 +77,7 @@ local active: { [Player]: CarState } = {}
 local characterConns: { [Player]: { RBXScriptConnection } } = {}
 local resetNotifyAt: { [Player]: number } = {}
 local drivenOnce: { [Player]: boolean } = {}
+local testAt: { [Player]: number } = {} -- letzte Probefahrt (os.clock) für den Cooldown
 local carFolder: Folder? = nil
 local errorLogAt: { [string]: number } = {}
 local groupsReady = false
@@ -562,8 +566,15 @@ function VehicleService.Despawn(p: Player)
 	end
 end
 
--- nächster Spawnpunkt: eigene Garage (Plot-Einfahrt) oder Config.Vehicles.SpawnPoints
-local function spawnCFrame(p: Player, root: BasePart): CFrame
+-- nächster Spawnpunkt: eigene Garage (Plot-Einfahrt) oder Config.Vehicles.SpawnPoints; fixed = fester Punkt (Probefahrt)
+local function spawnCFrame(p: Player, root: BasePart, fixed: string?): CFrame
+	if fixed then
+		for _, point in ipairs(VC.SpawnPoints or {}) do
+			if point.Key == fixed and typeof(point.Position) == "Vector3" and typeof(point.Facing) == "Vector3" then
+				return CFrame.lookAt(point.Position, point.Position + point.Facing)
+			end
+		end
+	end
 	local candidates: { CFrame } = {}
 	local okPlot, plot = call("PlotService", "PlotOf", p)
 	if okPlot and Util.IsFinite(plot) then
@@ -680,7 +691,49 @@ local function addTrail(model: Model, rig: any)
 	model:SetAttribute("Trail", true)
 end
 
-function VehicleService.Spawn(p: Player, key: string): (boolean, string?)
+-- Scheinwerfer (nachts, im Licht-Budget jedes Clients: WorldLook schaltet die nächsten N ein, §C16)
+local function addHeadlight(model: Model)
+	local head = model:FindFirstChild("HeadBar") or model:FindFirstChild("HeadL")
+	if not head or not head:IsA("BasePart") then
+		return
+	end
+	local beam = Instance.new("SpotLight")
+	beam.Name = "Headlight"
+	beam.Face = Enum.NormalId.Front
+	beam.Angle = 70
+	beam.Range = 48
+	beam.Brightness = 3
+	beam.Color = Color3.fromRGB(235, 242, 255)
+	beam.Shadows = false
+	beam.Enabled = false
+	beam:SetAttribute("Budget", true)
+	beam:SetAttribute("NightOnly", true)
+	beam.Parent = head
+end
+
+-- Probefahrt erlaubt? (Grund-Schlüssel + Argumente bei Ablehnung)
+local function testDriveCheck(p: Player, car: any, root: BasePart): (boolean, string?, { any }?)
+	local rule = VC.TestDrive
+	if type(rule) ~= "table" then
+		return false, "car.notOwned", nil
+	end
+	if car.Source ~= "Shop" then
+		return false, "car.testShopOnly", nil
+	end
+	local okAnchor, showroom = call("CityService", "Anchor", "Showroom")
+	if okAnchor and typeof(showroom) == "CFrame" then
+		if (root.Position - showroom.Position).Magnitude > (rule.Range or 140) then
+			return false, "car.testFar", nil
+		end
+	end
+	local wait = (testAt[p] or -math.huge) + (rule.Cooldown or 120) - os.clock()
+	if wait > 0 then
+		return false, "car.testCooldown", { math.ceil(wait) }
+	end
+	return true, nil, nil
+end
+
+function VehicleService.Spawn(p: Player, key: string, opts: { Test: boolean? }?): (boolean, string?, { any }?)
 	if not present(p) then
 		return false, "car.noCharacter"
 	end
@@ -688,7 +741,9 @@ function VehicleService.Spawn(p: Player, key: string): (boolean, string?)
 	if not car then
 		return false, "car.unknown"
 	end
-	if not VehicleService.Owns(p, key) then
+	local owned = VehicleService.Owns(p, key)
+	local test = type(opts) == "table" and opts.Test == true and not owned
+	if not owned and not test then
 		return false, "car.notOwned"
 	end
 	local data = dataOf(p)
@@ -701,9 +756,16 @@ function VehicleService.Spawn(p: Player, key: string): (boolean, string?)
 	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
 		return false, "car.noCharacter"
 	end
+	if test then
+		local okTest, reason, args = testDriveCheck(p, car, root :: BasePart)
+		if not okTest then
+			return false, reason, args
+		end
+	end
 	if not groupsReady then
 		registerGroups()
 	end
+	call("LifestyleService", "StopJetpack", p) -- Jetpack-Erlaubnis endet vor der Auto-Erlaubnis
 	VehicleService.Despawn(p)
 	-- fremden Sitz (Terminal-Hocker …) verlassen
 	local seatPart = humanoid.SeatPart
@@ -715,7 +777,7 @@ function VehicleService.Spawn(p: Player, key: string): (boolean, string?)
 		humanoid.Sit = false
 	end
 
-	local tune = currentTune(data, key)
+	local tune = if test then tuneDefaults(key) else currentTune(data, key)
 	local okBuild, model = pcall(VehicleModels.Build, key, tune.Paint, tune.Rims, tune.Glow)
 	if not okBuild or typeof(model) ~= "Instance" then
 		logError("Build " .. key, model)
@@ -723,7 +785,7 @@ function VehicleService.Spawn(p: Player, key: string): (boolean, string?)
 	end
 	local carModel = model :: Model
 	VehicleModels.ApplyTune(carModel, key, tune)
-	local cf = spawnCFrame(p, root)
+	local cf = spawnCFrame(p, root, if test then (VC.TestDrive and VC.TestDrive.Spawn) or "Motors" else nil)
 	carModel:PivotTo(cf + Vector3.new(0, 0.35, 0))
 	local okRig, rig = pcall(VehicleModels.Rig, carModel, key)
 	if not okRig then
@@ -752,12 +814,20 @@ function VehicleService.Spawn(p: Player, key: string): (boolean, string?)
 		Parked = false,
 		LastPos = nil,
 		DriveAcc = 0,
+		TestUntil = nil,
 		Conns = {},
 	}
+	if test then
+		local seconds = (VC.TestDrive and VC.TestDrive.Seconds) or 90
+		state.TestUntil = os.clock() + seconds
+		testAt[p] = os.clock()
+		carModel:SetAttribute("TestUntil", workspace:GetServerTimeNow() + seconds) -- Tacho zeigt die Restzeit
+	end
 	addEnterPrompt(p, state, car)
 	if car.Trail then
 		addTrail(carModel, rig)
 	end
+	addHeadlight(carModel)
 	carModel.Parent = folder()
 	active[p] = state
 	table.insert(
@@ -777,7 +847,9 @@ function VehicleService.Spawn(p: Player, key: string): (boolean, string?)
 			end
 		end)
 	)
-	garageOf(data).Active = key
+	if not test then
+		garageOf(data).Active = key
+	end
 	-- einsteigen: AntiCheat vorwarnen, dann setzen
 	call("AntiCheatService", "NoteTeleport", p, state.Seat.CFrame)
 	local okSit, sitErr = pcall(function()
@@ -824,6 +896,14 @@ local function checkCar(p: Player, state: CarState, now: number)
 	local check = VC.SpeedCheck or {}
 	if chassis.Position.Y < (check.FallY or -60) then
 		VehicleService.Despawn(p)
+		return
+	end
+	if state.TestUntil and now >= state.TestUntil then
+		local car = VC.Car(state.Key)
+		VehicleService.Despawn(p)
+		if car then
+			call("PlayerStateService", "Notify", p, "car.testOver", { carName(p, car) }, "Info")
+		end
 		return
 	end
 	if not state.Occupied then
@@ -910,6 +990,7 @@ local function garageState(p: Player): { [string]: any }
 			Slots = VC.GarageBase or 6,
 			Used = 1,
 			Spawned = "",
+			Test = false,
 			Discount = false,
 		}
 	end
@@ -937,21 +1018,26 @@ local function garageState(p: Player): { [string]: any }
 		Slots = slotsFor(data, hasPass(p, "MegaGarage")),
 		Used = usedSlots(data),
 		Spawned = if state then state.Key else "",
+		Test = state ~= nil and state.TestUntil ~= nil,
 		Discount = hasDiscount(p),
 	}
 end
 
 local function handleSpawn(p: Player, arg: any): Reply
-	if not exact(arg, { Key = "string" }, { "Key" }) then
+	if not exact(arg, { Key = "string", Test = "boolean" }, { "Key" }) then
 		return fail(p, "core.invalid")
 	end
 	local car = VC.Car(arg.Key)
 	if not car then
 		return fail(p, "car.unknown")
 	end
-	local ok, reason = VehicleService.Spawn(p, arg.Key)
+	local test = arg.Test == true and not VehicleService.Owns(p, arg.Key)
+	local ok, reason, args = VehicleService.Spawn(p, arg.Key, { Test = test })
 	if not ok then
-		return fail(p, reason or "core.error")
+		return fail(p, reason or "core.error", args)
+	end
+	if test then
+		return okReply(p, "car.testStarted", { carName(p, car), (VC.TestDrive and VC.TestDrive.Seconds) or 90 })
 	end
 	return okReply(p, "car.spawned", { carName(p, car) })
 end
@@ -1026,6 +1112,13 @@ local function handleBuy(p: Player, arg: any): Reply
 		return fail(p, "car.noCredits", { credits(p, missing) })
 	end
 	garage.Cars[car.Key] = true
+	-- gerade Probe gefahren und gekauft: Auto bleibt (kein Probefahrt-Ende mehr)
+	local driving = active[p]
+	if driving and driving.Key == car.Key and driving.TestUntil then
+		driving.TestUntil = nil
+		driving.Model:SetAttribute("TestUntil", nil)
+		garage.Active = car.Key
+	end
 	markDirty(p)
 	call("PlayerStateService", "Effect", p, "Reveal", 1, { Key = car.Key })
 	call("RewardService", "Track", p, "CarBuy", 1, { Car = car.Key, Class = car.Class })
@@ -1115,6 +1208,7 @@ local function onPrompt(prompt: ProximityPrompt, p: Player)
 		return
 	end
 	setParked(state, false)
+	call("LifestyleService", "StopJetpack", p)
 	call("AntiCheatService", "NoteTeleport", p, state.Seat.CFrame)
 	state.Seat:Sit(humanoid)
 end
@@ -1137,6 +1231,7 @@ local function onPlayerRemoving(p: Player)
 	clearCharacterConns(p)
 	resetNotifyAt[p] = nil
 	drivenOnce[p] = nil
+	testAt[p] = nil
 end
 
 local function onProfileLoaded(p: Player, data: { [string]: any })

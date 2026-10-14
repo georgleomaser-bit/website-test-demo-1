@@ -7,13 +7,18 @@
 --  nach positivem Moment, nie im Tutorial), §B9.5 (Titel am Namensschild), §C7.3 (Fenster "Social").
 --
 --  Öffentliche API: keine Pflicht-API. Zusätzlich: Social.Init(ctx), Social.Start(), Social.Open(),
---  Social.PromptNotify(force?) (Tutorial ruft das nach Schritt 17), Social.ToggleWheel().
+--  Social.PromptNotify(force?) (Tutorial ruft das nach Schritt 17), Social.ToggleWheel(),
+--  Social.PositiveMoment() (nach Lizenz-Zeremonie: einmal Favoriten-Abfrage je Konto, sonst Benachrichtigungs-Opt-in).
+--  Teilen-Links (Wunsch 11): „Freunde einladen“ hängt LaunchData "visit:<UserId>" an (ExperienceInviteOptions) – der
+--  Eingeladene landet nach dem Tutorial direkt am Tower des Einladers (State Social.LaunchVisit/LaunchVisitHere).
 --  Anfragen: SocialRespekt { UserId }, SocialReact { Kind }, SocialShow {}, SocialInvited {}, NotifyOptIn { Result },
 --  TowerVisit { UserId }.  State: "Social".  Spieler-Attribute (vom Server): Title, Licence, Group, React, ShowCard.
 --  NotifyOptIn.Result = „Abfrage wurde gezeigt“ (Roblox verrät nicht, ob zugestimmt wurde).
 -- =====================================================================
 
+local AvatarEditorService = game:GetService("AvatarEditorService")
 local ExperienceNotificationService = game:GetService("ExperienceNotificationService")
+local GroupService = game:GetService("GroupService")
 local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local SocialService = game:GetService("SocialService")
@@ -42,6 +47,7 @@ type Watch = {
 	Plate: BillboardGui?,
 	PlateTitle: TextLabel?,
 	PlateSub: TextLabel?,
+	PlateFrame: Frame?,
 	Bubble: BillboardGui?,
 	BubbleToken: number,
 	Card: BillboardGui?,
@@ -61,6 +67,9 @@ local busy = false
 local promptBusy = false
 local peopleSig = ""
 local billboardFolder: Folder? = nil
+local launchHandled = false -- Tower-Besuch aus den Launch-Daten schon erledigt (diese Sitzung)
+local launchToldLater = false
+local favoriteAsked = false
 
 -- ---------------------------------------------------------------------
 -- 1) HELFER
@@ -201,7 +210,11 @@ local function updatePlate(p: Player, watch: Watch)
 	local title = titleName(p:GetAttribute("Title"))
 	local licence = licenceName(p:GetAttribute("Licence"))
 	local group = p:GetAttribute("Group") == true
-	if p == player or (title == "" and licence == "" and not group) then
+	-- gekaufte Namensschild-Vorteile (ShopService-Attribute): VIP = goldenes Λ, Club-Tag, Rahmen „Gründer“ (Starter)
+	local vip = p:GetAttribute("Vip") == true
+	local club = p:GetAttribute("Club") == true
+	local founder = p:GetAttribute("Founder") == true
+	if p == player or (title == "" and licence == "" and not group and not vip and not club and not founder) then
 		local plate = watch.Plate
 		if plate then
 			plate.Enabled = false
@@ -219,6 +232,17 @@ local function updatePlate(p: Player, watch: Watch)
 			)
 		)
 		watch.Plate = plate
+		-- dezente Glas-Pille hinter dem Text (lesbar vor heller Fassade und Himmel, AKYTEX-Glas-Look)
+		UI.Create("Frame", {
+			Name = "PlateBg",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(0.92, 0.94),
+			BackgroundColor3 = Theme.Bg,
+			BackgroundTransparency = 0.45,
+			ZIndex = 0,
+			Parent = plate,
+		}, { UI.Create("UICorner", { CornerRadius = UDim.new(0, 10) }) })
 		watch.PlateTitle = UI.Label({
 			Size = UDim2.new(1, 0, 0.55, 0),
 			Text = "",
@@ -237,15 +261,46 @@ local function updatePlate(p: Player, watch: Watch)
 			Outline = 1,
 			Parent = plate,
 		})
+		watch.PlateFrame = UI.Create("Frame", {
+			Name = "FounderFrame",
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Visible = false,
+			Parent = plate,
+		}, {
+			UI.Create("UICorner", { CornerRadius = UDim.new(0, 10) }),
+			UI.Create("UIStroke", { Color = Theme.Gold, Thickness = 1.5, Transparency = 0.15 }),
+		})
 	end
 	local plate = watch.Plate :: BillboardGui
 	plate.Adornee = headOf(p)
 	plate.Enabled = true
 	if watch.PlateTitle then
-		watch.PlateTitle.Text = (if group then "👑 " else "") .. title
+		local tags: { string } = {}
+		if vip then
+			table.insert(tags, "Λ " .. T("shop.chat.vip"))
+		end
+		if club then
+			table.insert(tags, T("shop.chat.club"))
+		end
+		local head = if title ~= "" then title else table.concat(tags, " · ")
+		watch.PlateTitle.Text = (if group then "👑 " else "") .. (if vip and title ~= "" then "Λ " else "") .. head
 	end
 	if watch.PlateSub then
-		watch.PlateSub.Text = licence
+		local sub = licence
+		if founder then
+			sub = if sub ~= "" then sub .. " · " .. T("shop.plate.founder") else T("shop.plate.founder")
+		end
+		watch.PlateSub.Text = sub
+	end
+	local frame = watch.PlateFrame
+	if frame then
+		-- Rahmen: Gold = „Gründer“ (Starter-Paket), Akzentblau = Gruppe „AKYTEX Games“ (Namensschild-Rahmen §B11.4)
+		frame.Visible = founder or group
+		local stroke = frame:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = if founder then Theme.Gold else Theme.Accent
+		end
 	end
 end
 
@@ -418,6 +473,9 @@ local function watchPlayer(p: Player)
 	table.insert(watch.Conns, p:GetAttributeChangedSignal("Title"):Connect(onPlate))
 	table.insert(watch.Conns, p:GetAttributeChangedSignal("Licence"):Connect(onPlate))
 	table.insert(watch.Conns, p:GetAttributeChangedSignal("Group"):Connect(onPlate))
+	for _, attribute in ipairs({ "Vip", "Club", "Founder" }) do
+		table.insert(watch.Conns, p:GetAttributeChangedSignal(attribute):Connect(onPlate))
+	end
 	table.insert(
 		watch.Conns,
 		p:GetAttributeChangedSignal("React"):Connect(function()
@@ -459,6 +517,7 @@ end
 -- 3) AKTIONEN: Reaktion, Emote, Zeigen-Karte, Einladen, Opt-in
 -- ---------------------------------------------------------------------
 local function react(kind: string)
+	call("Sfx", "Play", "UIClick")
 	task.spawn(function()
 		ctx.RequestFull("SocialReact", { Kind = kind }, true)
 	end)
@@ -483,6 +542,7 @@ local function showMyCard()
 		return
 	end
 	busy = true
+	call("Sfx", "Play", "Whoosh")
 	task.spawn(function()
 		ctx.RequestFull("SocialShow", {})
 		busy = false
@@ -504,7 +564,18 @@ local function invite()
 			return
 		end
 		local okPrompt = pcall(function()
-			SocialService:PromptGameInvite(player)
+			-- Teilen-Link mit Launch-Daten: der Freund landet direkt an deinem Tower (CommunityService liest sie)
+			local okOptions, options = pcall(function()
+				local made: any = (Instance.new :: any)("ExperienceInviteOptions")
+				made.LaunchData = "visit:" .. tostring(player.UserId)
+				made.PromptMessage = T("soc.invitePrompt")
+				return made
+			end)
+			if okOptions and typeof(options) == "Instance" then
+				SocialService:PromptGameInvite(player, options)
+			else
+				SocialService:PromptGameInvite(player)
+			end
 		end)
 		if okPrompt then
 			ctx.RequestFull("SocialInvited", {}, true)
@@ -542,6 +613,81 @@ function Social.PromptNotify(force: boolean?)
 		end
 		ctx.RequestFull("NotifyOptIn", { Result = shown }, true)
 		promptBusy = false
+	end)
+end
+
+-- Nach einem schönen Moment (nie im Tutorial): einmal je Konto die Favoriten-Abfrage, sonst das Opt-in (falls erlaubt)
+function Social.PositiveMoment()
+	local okTut, tutorialActive = call("Tutorial", "IsActive")
+	if okTut and tutorialActive == true then
+		return
+	end
+	local flags = ctx.State.Flags
+	if type(flags) == "table" and flags.FavoritePrompted ~= true and not favoriteAsked then
+		favoriteAsked = true
+		pcall(function()
+			AvatarEditorService:PromptSetFavorite(game.PlaceId, Enum.AvatarItemType.Asset, true)
+		end)
+		task.spawn(function()
+			ctx.RequestFull("TutorialFlag", { Flag = "FavoritePrompted" }, true)
+		end)
+		return
+	end
+	Social.PromptNotify(false)
+end
+
+-- Teilen-Link / Einladung mit Launch-Daten: einmal den Tower des Einladers besuchen – erst wenn das Tutorial
+-- entschieden und vorbei ist (der Anflug auf den eigenen Plot hat Vorrang)
+local function checkLaunchVisit()
+	if launchHandled then
+		return
+	end
+	local s = social()
+	local target = math.floor(num(s.LaunchVisit, 0))
+	if target <= 0 or target == player.UserId then
+		return
+	end
+	local okStep, tutorialStep = call("Tutorial", "Step")
+	if okStep and tutorialStep == 0 then
+		return -- Tutorial entscheidet noch (wartet auf den Plot)
+	end
+	local owner = Players:GetPlayerByUserId(target)
+	local okTut, tutorialActive = call("Tutorial", "IsActive")
+	if okTut and tutorialActive == true then
+		if not launchToldLater and owner then
+			launchToldLater = true
+			UI.Toast(T("soc.launchLater", owner.DisplayName), "Info")
+		end
+		return
+	end
+	launchHandled = true
+	if s.LaunchVisitHere ~= true or not owner then
+		UI.Toast(T("soc.launchGone"), "Info")
+		return
+	end
+	task.spawn(function()
+		ctx.RequestFull("TowerVisit", { UserId = target })
+	end)
+end
+
+-- Gruppe „AKYTEX Games“ im Spiel beitreten (Roblox-Dialog); der Server prüft die Mitgliedschaft danach selbst nach
+local function joinGroup()
+	local s = social()
+	local groupId = math.floor(num(s.GroupId, 0))
+	if groupId <= 0 or s.Group == true or busy then
+		return
+	end
+	busy = true
+	task.spawn(function()
+		local ok, status = pcall(function()
+			return GroupService:PromptJoinAsync(groupId)
+		end)
+		busy = false
+		if not ok then
+			UI.Toast(T("soc.groupJoinFailed"), "Error")
+		elseif status == Enum.GroupMembershipStatus.Joined or status == Enum.GroupMembershipStatus.AlreadyMember then
+			UI.Toast(T("soc.groupJoinWait"), "Success")
+		end
 	end)
 end
 
@@ -868,7 +1014,7 @@ end
 
 local function buildInvite(page: Frame)
 	ui.InviteInfo = text(page, {
-		Size = UDim2.new(1, 0, 0, 40),
+		Size = UDim2.new(1, 0, 0, 58),
 		LayoutOrder = 1,
 		Face = "Body",
 		TextWrapped = true,
@@ -885,13 +1031,21 @@ local function buildInvite(page: Frame)
 	}, invite)
 	ui.InviteLocked = text(row, { Size = UDim2.new(1, -260, 1, 0), MaxText = 13, TextColor3 = Theme.Muted })
 	UI.Section(page, T("soc.groupTitle"), 4, Theme.Gold)
-	ui.Group = text(page, {
-		Size = UDim2.new(1, 0, 0, 40),
-		LayoutOrder = 5,
+	local groupRow = UI.Row(page, 5, 46)
+	ui.Group = text(groupRow, {
+		Size = UDim2.new(1, -250, 1, 0),
+		LayoutOrder = 1,
 		Face = "Body",
 		TextWrapped = true,
 		MaxText = 13,
 	})
+	ui.GroupButton = UI.Button({
+		Size = UDim2.fromOffset(230, 44),
+		Text = T("soc.btn.joinGroup"),
+		Variant = "Secondary",
+		LayoutOrder = 2,
+		Parent = groupRow,
+	}, joinGroup)
 	UI.Section(page, T("soc.btn.notify"), 6, Theme.Cyan)
 	text(page, {
 		Size = UDim2.new(1, 0, 0, 22),
@@ -916,7 +1070,7 @@ end
 
 local function refreshInvite()
 	local s = social()
-	ui.InviteInfo.Text = T("soc.inviteInfo")
+	ui.InviteInfo.Text = T("soc.inviteInfo") .. " " .. T("soc.inviteVisitInfo")
 	ui.InviteCount.Text = T(
 		"soc.inviteCount",
 		math.floor(num(s.ReferralCount, 0)),
@@ -935,6 +1089,7 @@ local function refreshInvite()
 		ui.Group.Text = T("soc.groupInfo")
 		ui.Group.TextColor3 = Theme.Text2
 	end
+	ui.GroupButton.Frame.Visible = num(s.GroupId, 0) > 0 and s.Group ~= true
 	ui.NotifyState.Text = if s.NotifOptIn == true then T("soc.notifyOn") else ""
 end
 
@@ -1005,8 +1160,14 @@ function Social.Start()
 		Social.Refresh()
 	end)
 	ctx.Hooks.On("State", function(_state: any, changed: any)
-		if type(changed) == "table" and changed.Social then
+		if type(changed) ~= "table" then
+			return
+		end
+		if changed.Social then
 			Social.Refresh()
+		end
+		if changed.Social or changed.Flags then
+			checkLaunchVisit()
 		end
 	end)
 	ctx.Hooks.On("Settings", function()

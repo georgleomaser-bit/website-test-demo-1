@@ -481,15 +481,16 @@ Zusätzlich je Auto ein **Motor-Klang** über `SoundId` in `Config → Vehicles`
 
 ---
 
-## 6. Plätze, die die Spec nennt, die es in `Config` aber (noch) nicht gibt
+## 6. Ladebildschirm-Hintergrund und HUD-Icons
 
-DESIGN.md §C14.3 nennt auch einen **Ladebildschirm-Hintergrund** und **UI-Icons** (HUD-Knöpfe) als Bild-Plätze. In den aktuellen
-Config-Dateien gibt es dafür **keinen** Eintrag (`Config.Client.Splash` hat nur Zeiten). Der Ladebildschirm und die Knöpfe sind
-komplett aus Code gebaut. Willst du dort eigene Bilder: Claude schreiben „Bild-Platz für Ladebildschirm und HUD-Icons anlegen“.
+DESIGN.md §C14.3 nennt auch einen **Ladebildschirm-Hintergrund** und **UI-Icons** (HUD-Knöpfe) als Bild-Plätze. Beide gibt es in
+`Config → Client`: **`Splash.ImageId`** (Ladebildschirm-Hintergrund, 1920 × 1080, liegt dezent hinter dem Logo) und
+**`Icons`** mit `Trade`, `Tower`, `Shop`, `Quests`, `Academy`, `Garage`, `Social`, `Boards`, `Settings` (je 256 × 256 PNG).
+0 = Code-Grafik bzw. Emoji (wie bisher); lädt ein Bild nicht, kommt automatisch die Code-Grafik zurück.
 
-Deine Bild-Ideen dafür schon jetzt: Ladebildschirm 1920 × 1080 „dark neon city skyline at dawn, blue haze, no text“;
-HUD-Icons 256 × 256 je „simple white line icon of a tower / shopping bag / checklist / graduation cap / car / two people /
-trophy / gear on transparent background“.
+Higgsfield-Ideen: Ladebildschirm „dark neon city skyline at dawn, blue haze, no text“; HUD-Icons je „simple white line icon of
+a candlestick chart / tower / shopping bag / checklist / graduation cap / car / two people / trophy / gear on transparent
+background“.
 
 ---
 

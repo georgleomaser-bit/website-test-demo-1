@@ -332,10 +332,11 @@ local function lantern(name: string, base: Vector3, toward: Vector3)
 		dir = Vector3.new(0, 0, -1)
 	end
 	dir = dir.Unit
+	-- Mast reicht 1,2 Studs in den Boden: steht bündig, egal ob auf Gehweg (0,6), Fahrbahn (0,25) oder Terrain (0)
 	part(
 		name .. "Pole",
-		CFrame.new(base + Vector3.new(0, 7, 0)) * CFrame.Angles(0, 0, math.pi / 2),
-		Vector3.new(14, 0.7, 0.7),
+		CFrame.new(base + Vector3.new(0, 6.4, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+		Vector3.new(15.2, 0.7, 0.7),
 		L.Metal,
 		{ Shape = Enum.PartType.Cylinder, Shadow = false }
 	)
@@ -1829,9 +1830,16 @@ local function buildRing()
 				{ Collide = true }
 			)
 			deco(name .. "Box", face * CFrame.new(0, 10.8, 0), Vector3.new(1.2, 3.4, 1), L.Metal)
-			neon(name .. "Red", face * CFrame.new(0, 11.8, -0.55), Vector3.new(0.7, 0.7, 0.1), rgb(90, 30, 30))
-			neon(name .. "Amber", face * CFrame.new(0, 10.8, -0.55), Vector3.new(0.7, 0.7, 0.1), rgb(90, 70, 20))
-			neon(name .. "Green", face * CFrame.new(0, 9.8, -0.55), Vector3.new(0.7, 0.7, 0.1), NEON.Up)
+			-- Attribut Signal = Lampe, SignalGroup = Einmündung: CityLife schaltet die Phasen lokal (Server-Zeit-synchron)
+			neon(name .. "Red", face * CFrame.new(0, 11.8, -0.55), Vector3.new(0.7, 0.7, 0.1), rgb(90, 30, 30), {
+				Attrs = { Signal = "Red", SignalGroup = deg },
+			})
+			neon(name .. "Amber", face * CFrame.new(0, 10.8, -0.55), Vector3.new(0.7, 0.7, 0.1), rgb(90, 70, 20), {
+				Attrs = { Signal = "Amber", SignalGroup = deg },
+			})
+			neon(name .. "Green", face * CFrame.new(0, 9.8, -0.55), Vector3.new(0.7, 0.7, 0.1), NEON.Up, {
+				Attrs = { Signal = "Green", SignalGroup = deg },
+			})
 		end
 	end
 end

@@ -972,6 +972,13 @@ function Quests.Open(which: string?)
 		type(which) == "string" and (which == "daily" or which == "weekly" or which == "starter" or which == "login")
 	then
 		tab = which
+		if window and window.IsOpen then
+			-- schon offen: nur den Reiter wechseln (Windows.Open öffnet ein offenes Fenster nicht neu)
+			segmented.Set(tab, true)
+			showTab(tab)
+			Quests.Refresh()
+			return
+		end
 	end
 	ctx.Windows.Open("Quests")
 end

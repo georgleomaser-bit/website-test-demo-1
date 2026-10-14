@@ -17,12 +17,15 @@
 --  Öffentliche API:
 --    Boutique.Open(tabOrKey?)   tab ∈ "Showcase" | "Watches" | "Accessories" | "Decor" | "Storage" oder ein Teil-Schlüssel
 --    Boutique.Step(dt)          von TowerView.Frame (EIN PreRender-Loop): Vorschau drehen + Uhrzeiger aller Spieler
+--                               + Neon-Jetpack (Pass, §B12.4): in der Luft nochmal springen = zünden, Sprung halten =
+--                               steigen, loslassen = gleiten; Tank 8 s / 12 s Nachladen (Server prüft, LifeEquip "Jetpack")
 --    Boutique.Init(ctx) · Boutique.Start()
 -- =====================================================================
 
 local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 local UI = require(script.Parent:WaitForChild("UI"))
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -89,6 +92,31 @@ type WristWatch = { Root: BasePart, Hour: Weld, Minute: Weld, HZ: number, HL: nu
 local wrist: { WristWatch } = {}
 local scanIn = 0
 local handIn = 0
+
+-- Neon-Jetpack (nur die eigene Figur; Effekt-Teile baut der Server -> alle sehen den Flug)
+local player = Players.LocalPlayer
+local JET_REQUEST_GAP = 0.4
+local JET_MIN_AIR = 0.2 -- s in der Luft, bevor ein Sprung zündet (der Boden-Sprung selbst zählt nicht)
+local JET_HEIGHT_MARGIN = 6 -- Studs unter der Anti-Cheat-Höhe bleiben
+local jet = {
+	Active = false,
+	Pending = false,
+	Fuel = 8,
+	Flight = 0,
+	GroundFor = 0,
+	AirFor = 0,
+	GroundRootY = 0,
+	LastRequest = -math.huge,
+	PrevRequest = -math.huge, -- vorletzte Anfrage: LifeEquip erlaubt 2/s (Zünden + Landen + neu Zünden)
+	HintShown = false,
+	CheckIn = 0,
+	UiIn = 0,
+}
+local jetBar: Frame? = nil
+local jetFill: Frame? = nil
+local jetRay = RaycastParams.new()
+jetRay.FilterType = Enum.RaycastFilterType.Exclude
+jetRay.IgnoreWater = false
 
 -- ---------------------------------------------------------------------
 -- 1) HELFER
@@ -605,6 +633,238 @@ local function stepWrists(minute: number, hour: number)
 				w.Hour.C0 = LifestyleModels.HandC0(w.HZ, w.HL, hour)
 				w.Minute.C0 = LifestyleModels.HandC0(w.MZ, w.ML, minute)
 			end
+		end
+	end
+end
+
+-- ---------------------------------------------------------------------
+-- 4b) NEON-JETPACK (Pass): zünden per Doppelsprung, Steigen/Gleiten, Tank-Anzeige
+-- ---------------------------------------------------------------------
+local function jetCfg(): { [string]: any }
+	local cfg = lifeCfg().Jetpack
+	return if type(cfg) == "table" then cfg else {}
+end
+
+local function jetMaxFuel(): number
+	return math.clamp(num(jetCfg().Fuel, 8), 1, 60)
+end
+
+local function ownsJetpack(): boolean
+	local passes = ctx and ctx.State and ctx.State.Passes
+	local key = jetCfg().Pass or "Jetpack"
+	return type(passes) == "table" and passes[key] == true
+end
+
+local function myRig(): (Model?, Humanoid?, BasePart?)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not character or not humanoid or not root or not root:IsA("BasePart") then
+		return nil, nil, nil
+	end
+	return character, humanoid, root
+end
+
+local function inForeignTower(): boolean
+	local okPlot, plot = call("TowerView", "InsideTower")
+	if not okPlot or type(plot) ~= "number" then
+		return false
+	end
+	local okInfo, info = call("TowerView", "PlotInfo", plot)
+	local owner = if okInfo and type(info) == "table" then num(info.Owner, 0) else 0
+	return owner > 0 and owner ~= player.UserId
+end
+
+local function jetSend(on: boolean)
+	local arg: { [string]: any } = { Slot = "Jetpack" }
+	if on then
+		arg.Key = "On"
+	end
+	jet.PrevRequest = jet.LastRequest
+	jet.LastRequest = os.clock()
+	task.spawn(function()
+		local okReply, reply = pcall(ctx.RequestFull, "LifeEquip", arg, true)
+		if not on then
+			return
+		end
+		jet.Pending = false
+		local character, humanoid = myRig()
+		if not okReply or type(reply) ~= "table" or not reply.Ok then
+			local message = if okReply and type(reply) == "table" then reply.Message else nil
+			if type(message) == "string" and message ~= "" then
+				ctx.Toast(message, "Error")
+			end
+			return
+		end
+		if not character or not humanoid or humanoid.Health <= 0 or humanoid.SeatPart ~= nil then
+			jetSend(false)
+			return
+		end
+		jet.Active = true
+		jet.Flight = 0
+		jet.GroundFor = 0
+		if type(reply.Fuel) == "number" then
+			jet.Fuel = math.clamp(reply.Fuel, 0, jetMaxFuel())
+		end
+		call("Sfx", "Play", "Whoosh")
+	end)
+end
+
+local function jetStop()
+	if jet.Active then
+		jet.Active = false
+		jetSend(false)
+	end
+	jet.Pending = false
+end
+
+local function onJumpRequest()
+	if jet.Active or jet.Pending or not ctx or not ownsJetpack() then
+		return
+	end
+	local _, humanoid = myRig()
+	if not humanoid or humanoid.Health <= 0 or humanoid.SeatPart ~= nil then
+		return
+	end
+	if humanoid.FloorMaterial ~= Enum.Material.Air or jet.AirFor < JET_MIN_AIR then
+		return -- der Sprung vom Boden ist ein normaler Sprung
+	end
+	local okRide, riding = call("Elevator", "IsRiding")
+	if okRide and riding == true then
+		return
+	end
+	local now = os.clock()
+	if now - jet.LastRequest < JET_REQUEST_GAP or now - jet.PrevRequest < 1.05 then
+		return -- sonst greift die Anfrage-Bremse des Servers (2/s)
+	end
+	if jet.Fuel < 1 then
+		ctx.Toast(T("life.jet.recharge", math.ceil((1 - jet.Fuel) * num(jetCfg().Recharge, 12) / jetMaxFuel())), "Info")
+		return
+	end
+	if inForeignTower() then
+		ctx.Toast(T("life.jet.foreign"), "Info")
+		return
+	end
+	jet.Pending = true
+	jetSend(true)
+end
+
+local function buildJetBar()
+	local frame: Frame = UI.Create("Frame", {
+		Name = "JetpackFuel",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -150),
+		Size = UDim2.fromOffset(220, 40),
+		BackgroundColor3 = Theme.Surface,
+		BackgroundTransparency = 0.12,
+		BorderSizePixel = 0,
+		Visible = false,
+		Parent = ctx.Gui,
+	}, { UI.Corner(12), UI.Stroke(Theme.Cosmic2, 1) })
+	UI.Label({
+		Name = "Caption",
+		Position = UDim2.fromOffset(12, 4),
+		Size = UDim2.new(1, -24, 0, 14),
+		Text = T("life.jet.label"),
+		Face = "MonoBold",
+		TextColor3 = Theme.Text2,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		MaxText = 12,
+		Parent = frame,
+	})
+	local back: Frame = UI.Create("Frame", {
+		Name = "Track",
+		Position = UDim2.new(0, 12, 1, -14),
+		Size = UDim2.new(1, -24, 0, 7),
+		BackgroundColor3 = Theme.Bg2,
+		BorderSizePixel = 0,
+		Parent = frame,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	jetFill = UI.Create("Frame", {
+		Name = "Fill",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0,
+		Parent = back,
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		UI.Gradient(Theme.Accent, Theme.Cosmic3, 0),
+	})
+	jetBar = frame
+end
+
+local function updateJetBar()
+	local frame = jetBar
+	if not frame then
+		return
+	end
+	local okCar, car = call("Vehicles", "Current")
+	local maxFuel = jetMaxFuel()
+	local show = ownsJetpack() and (jet.Active or jet.Fuel < maxFuel - 0.05) and not (okCar and car ~= nil)
+	if frame.Visible ~= show then
+		frame.Visible = show
+	end
+	local fill = jetFill
+	if show and fill then
+		fill.Size = UDim2.fromScale(math.clamp(jet.Fuel / maxFuel, 0, 1), 1)
+		fill.BackgroundTransparency = if jet.Active or jet.Fuel >= 1 then 0 else 0.5
+	end
+end
+
+local function stepJetpack(dt: number)
+	local maxFuel = jetMaxFuel()
+	local _, humanoid, root = myRig()
+	if humanoid and root then
+		local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+		if grounded then
+			jet.GroundRootY = root.Position.Y -- gleiche Bezugshöhe wie der Anti-Cheat (letzter Boden)
+			jet.AirFor = 0
+		else
+			jet.AirFor += dt
+		end
+	end
+	if not jet.Active then
+		jet.Fuel = math.min(maxFuel, jet.Fuel + dt * maxFuel / math.clamp(num(jetCfg().Recharge, 12), 1, 120))
+	else
+		local cfg = jetCfg()
+		if not humanoid or not root or humanoid.Health <= 0 or humanoid.SeatPart ~= nil then
+			jetStop()
+		else
+			jet.Fuel = math.max(0, jet.Fuel - dt)
+			jet.Flight += dt
+			local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+			jet.GroundFor = if grounded and jet.Flight > 0.6 then jet.GroundFor + dt else 0
+			jet.CheckIn -= dt
+			local foreign = false
+			if jet.CheckIn <= 0 then
+				jet.CheckIn = 0.5
+				foreign = inForeignTower()
+			end
+			if jet.Fuel <= 0.05 or jet.GroundFor > 0.25 or foreign then
+				jetStop()
+			else
+				local maxHeight = math.clamp(num(cfg.MaxHeight, 120), 10, 400) - JET_HEIGHT_MARGIN
+				local character = player.Character
+				if character then
+					jetRay.FilterDescendantsInstances = { character }
+				end
+				local hit = workspace:Raycast(root.Position, Vector3.new(0, -(maxHeight + 40), 0), jetRay)
+				local above = if hit then root.Position.Y - hit.Position.Y else math.huge
+				local relative = root.Position.Y - jet.GroundRootY
+				local thrust = humanoid.Jump and relative < maxHeight and above < maxHeight
+				local vy = if thrust then num(cfg.Thrust, 30) else -num(cfg.Glide, 8)
+				local move = humanoid.MoveDirection * num(cfg.AirSpeed, 44)
+				root.AssemblyLinearVelocity = Vector3.new(move.X, vy, move.Z)
+			end
+		end
+	end
+	jet.UiIn -= dt
+	if jet.UiIn <= 0 then
+		jet.UiIn = 0.1
+		updateJetBar()
+		if not jet.HintShown and ownsJetpack() then
+			jet.HintShown = true
+			ctx.Toast(T("life.jet.hint"), "Info")
 		end
 	end
 end
@@ -1388,6 +1648,11 @@ function Boutique.Step(dt: number)
 		return
 	end
 	local step = math.clamp(num(dt, 0), 0, 0.25)
+	local okJet, errJet = pcall(stepJetpack, step)
+	if not okJet then
+		warn("[Boutique] Jetpack: " .. tostring(errJet))
+		jet.Active = false
+	end
 	scanIn -= step
 	if scanIn <= 0 then
 		scanIn = SCAN_GAP
@@ -1412,6 +1677,7 @@ end
 function Boutique.Init(context: any)
 	ctx = context
 	ctx.Windows.Register("Boutique", openWindow, closeWindow)
+	buildJetBar()
 	ctx.Hooks.On("State", function(_state: { [string]: any }, changed: { [any]: any })
 		if changed.Life or changed.Storage or changed.Credits then
 			queueRefresh()
@@ -1434,6 +1700,16 @@ function Boutique.Start()
 	-- Spieler weg -> Uhr-Liste beim nächsten Abtasten ohnehin neu; sofort leeren, damit nichts Totes bleibt
 	Players.PlayerRemoving:Connect(function()
 		scanIn = 0
+	end)
+	UserInputService.JumpRequest:Connect(function()
+		local ok, err = pcall(onJumpRequest)
+		if not ok then
+			warn("[Boutique] Jetpack: " .. tostring(err))
+		end
+	end)
+	player.CharacterAdded:Connect(function()
+		jet.Active = false -- Server beendet den Flug beim Respawn selbst
+		jet.Pending = false
 	end)
 end
 

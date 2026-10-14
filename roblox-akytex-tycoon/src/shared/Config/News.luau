@@ -32,6 +32,9 @@ News.Fact = {
 		"news.fact.up.sales",
 		"news.fact.up.expansion",
 		"news.fact.up.award",
+		"news.fact.up.record",
+		"news.fact.up.patent", -- {product}
+		"news.fact.up.customers",
 	},
 	Down = {
 		"news.fact.down.recall",
@@ -40,15 +43,18 @@ News.Fact = {
 		"news.fact.down.lostdeal", -- {buyer}
 		"news.fact.down.fine",
 		"news.fact.down.supply",
+		"news.fact.down.hack",
+		"news.fact.down.strike",
+		"news.fact.down.costs",
 	},
 }
 News.Rumor = { -- immer mit {stars}
-	Up = { "news.rumor.up.takeover", "news.rumor.up.deal", "news.rumor.up.product" },
-	Down = { "news.rumor.down.ceo", "news.rumor.down.problems", "news.rumor.down.probe" },
+	Up = { "news.rumor.up.takeover", "news.rumor.up.deal", "news.rumor.up.product", "news.rumor.up.partner" },
+	Down = { "news.rumor.down.ceo", "news.rumor.down.problems", "news.rumor.down.probe", "news.rumor.down.delay" },
 }
 News.AsExpected = { -- klingt gut (Up) bzw. schlecht (Down) – der Kurs reagiert umgekehrt ("sell the news")
 	Up = { "news.expected.up.profit", "news.expected.up.sales", "news.expected.up.outlook" },
-	Down = { "news.expected.down.profit", "news.expected.down.sales" },
+	Down = { "news.expected.down.profit", "news.expected.down.sales", "news.expected.down.outlook" },
 }
 News.Confirm = "news.confirm"
 News.Deny = "news.deny"

@@ -29,6 +29,7 @@
 --    d:AddExternal(ev, carry?): { number }          Admin-Event (GlobalBus) anwenden -> betroffene Ids
 --    d:AddLocalHalt(ids?, from, untilTick)          serverlokale Pause (verspätetes Bus-Event, §8.4)
 --    d:AddListing(i, rec) · d:Listing(i) · d:IsListed(i, t) · d:Drift(i) · d:Quality(i) · d:Slots()
+--    d:CondOk(cond, t?) · d:AutoShowCut(): number?   Samstags-Show-Absage gilt ab dem Start-Tick des Bus-Events
 --    d:Windows(): { {From, To} }                    Admin-Fenster aus externen Events
 -- =====================================================================
 
@@ -577,7 +578,8 @@ function EventDirector.BuildDay(self: any, day: number)
 		pushNews(news, e.T, "Earnings", key, { name = name, band = newsCfg.Bands[band] }, {
 			I = e.I,
 			Band = band,
-			Dir = sign(e.J),
+			-- "im Rahmen der Erwartungen": keine Richtung (Tiko-Ampel neutral, kein "Gut gelesen")
+			Dir = if math.abs(e.J) < earn.InlineBelow then 0 else sign(e.J),
 		})
 		if e.T - previewLead >= dayStart then
 			pushNews(news, e.T - previewLead, "Earnings", newsCfg.Earnings.Preview, {
@@ -1155,17 +1157,39 @@ end
 -- ---------------------------------------------------------------------
 -- BEDINGUNGEN (Samstags-Show abgesagt? geplantes IPO schon per Admin gelistet?)
 -- ---------------------------------------------------------------------
-function EventDirector.CondOk(self: any, cond: string?): boolean
+-- Samstags-Show abgesagt? -> Tick, ab dem die Absage gilt (Start-Tick des CancelAutoShow-Bus-Events, auf allen Servern
+-- gleich), −∞ = immer abgesagt (Selbsttest/IsCancelled), nil = findet statt.
+function EventDirector.AutoShowCut(self: any): number?
+	local fn = self.CancelAt
+	if type(fn) == "function" then
+		local ok, at = pcall(fn, self.Week)
+		if ok and type(at) == "number" then
+			return at
+		end
+		return nil
+	end
+	local legacy = self.IsCancelled
+	if type(legacy) == "function" then
+		local ok, cancelled = pcall(legacy, self.Week)
+		if ok and cancelled == true then
+			return -math.huge
+		end
+	end
+	return nil
+end
+
+-- t (optional): Bedingung zu diesem Tick. Eine Show-Absage gilt erst ab ihrem Start-Tick (Warnphase davor bleibt
+-- Geschichte: gleiche Kurse/Kerzen auf allen Servern, kein Rückwirken auf schon gesendete Ticks).
+function EventDirector.CondOk(self: any, cond: string?, t: number?): boolean
 	if cond == nil then
 		return true
 	end
 	if cond == "AutoShow" then
-		local fn = self.IsCancelled
-		if type(fn) == "function" then
-			local ok, cancelled = pcall(fn, self.Week)
-			return not (ok and cancelled == true)
+		local cut = self:AutoShowCut()
+		if cut == nil then
+			return true
 		end
-		return true
+		return t ~= nil and t < cut
 	end
 	local id, t0 = string.match(cond, "^IpoSched:(%d+):(%d+)$")
 	if id and t0 then
@@ -1260,7 +1284,7 @@ function EventDirector.Offset(self: any, i: number, t: number, divFrom: number?)
 	local cond = self.CondEff[i]
 	if #cond > 0 then
 		for _, e in ipairs(cond) do
-			if e.S0 <= t and e.S0 >= origin and self:CondOk(e.Cond) then
+			if e.S0 <= t and e.S0 >= origin and self:CondOk(e.Cond, t) then
 				sum += evalEffect(self, e, t)
 				if t <= e.T1 + e.A then
 					active = true
@@ -1424,8 +1448,17 @@ function EventDirector.VolMul(self: any, t: number): number
 	local mul = 1
 	for index = k + 1, n do
 		local v = self.Vol[index]
-		if t < v.End and self:CondOk(v.Cond) then
-			mul *= evalVol(self, v, t)
+		if t < v.End then
+			local cut = if v.Cond == "AutoShow" then self:AutoShowCut() else nil
+			if cut ~= nil and t >= cut then
+				-- abgesagte Show: Warn-Volatilität über NormalizeSeconds ausblenden (kein Kurssprung)
+				local fade = 1 - smooth((t - cut) / self.Cfg.Admin.NormalizeSeconds)
+				if fade > 0 then
+					mul *= 1 + (evalVol(self, v, t) - 1) * fade
+				end
+			elseif self:CondOk(v.Cond, t) then
+				mul *= evalVol(self, v, t)
+			end
 		end
 	end
 	return mul
@@ -1434,7 +1467,7 @@ end
 function EventDirector.Halted(self: any, i: number, t: number): (boolean, number)
 	local halted, untilTick = false, 0
 	for _, h in ipairs(self.Halts) do
-		if t >= h.From and t < h.Until and (h.All or h.I == i) and self:CondOk(h.Cond) then
+		if t >= h.From and t < h.Until and (h.All or h.I == i) and self:CondOk(h.Cond, t) then
 			halted = true
 			if h.Until > untilTick then
 				untilTick = h.Until
@@ -1447,7 +1480,7 @@ end
 function EventDirector.AnyHalt(self: any, t: number): { [string]: number }
 	local out: { [string]: number } = {}
 	for _, h in ipairs(self.Halts) do
-		if t >= h.From and t < h.Until and self:CondOk(h.Cond) then
+		if t >= h.From and t < h.Until and self:CondOk(h.Cond, t) then
 			local key = if h.All then "0" else tostring(h.I)
 			if (out[key] or 0) < h.Until then
 				out[key] = h.Until
@@ -1470,7 +1503,7 @@ end
 function EventDirector.CrashRally(self: any, t: number): (boolean, boolean)
 	local crash, rally = false, false
 	for _, span in ipairs(self.CrashSpans) do
-		if t >= span[1] and t < span[2] and self:CondOk(span[4] :: any) then
+		if t >= span[1] and t < span[2] and self:CondOk(span[4] :: any, t) then
 			if span[3] == 1 then
 				crash = true
 			else
@@ -1491,7 +1524,7 @@ local function copyItem(item: Plain): Plain
 end
 
 function EventDirector.Visible(self: any, wrap: Plain): boolean
-	if not self:CondOk(wrap.Cond) then
+	if not self:CondOk(wrap.Cond, wrap.Item.T) then
 		return false
 	end
 	local item = wrap.Item
@@ -1597,7 +1630,7 @@ function EventDirector.FactNewsFor(self: any, i: number, t: number, window: numb
 		if item.T < t - window then
 			break
 		end
-		if item.I == i and FACT_KINDS[item.Kind] and item.Dir ~= nil and self:Visible(wrap) then
+		if item.I == i and FACT_KINDS[item.Kind] and item.Dir ~= nil and item.Dir ~= 0 and self:Visible(wrap) then
 			return self:Finish(wrap) :: any
 		end
 		index -= 1
@@ -1611,7 +1644,7 @@ function EventDirector.MessagesAt(self: any, t: number): { Plain }
 	local index = upperBound(times, t - 1) + 1
 	while index <= #times and times[index] == t do
 		local m = self.Msgs[index]
-		if self:CondOk(m.Cond) then
+		if self:CondOk(m.Cond, t) then
 			table.insert(out, { Kind = m.Kind, Data = m.Data })
 		end
 		index += 1

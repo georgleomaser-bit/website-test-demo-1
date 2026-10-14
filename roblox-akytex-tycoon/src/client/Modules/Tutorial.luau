@@ -367,6 +367,25 @@ local function buildTiko(at: CFrame)
 	light.Range = 10
 	light.Brightness = 1.4
 	light.Parent = parts[5]
+	-- Details: Augen blinzeln alle ~4 s, Hologramm-Funken am Ring (nicht bei „Reduzierte Effekte“)
+	local blink = TweenInfo.new(0.09, Enum.EasingStyle.Quad, Enum.EasingDirection.Out, -1, true, 3.8)
+	for _, eye in ipairs({ parts[2], parts[3] }) do
+		TweenService:Create(eye, blink, { Size = Vector3.new(0.28, 0.04, 0.28) }):Play()
+	end
+	if not reducedFx() then
+		local sparks = Instance.new("ParticleEmitter")
+		sparks.Name = "HoloSparks"
+		sparks.Color = ColorSequence.new(Theme.Cyan, Theme.Accent)
+		sparks.LightEmission = 1
+		sparks.LightInfluence = 0
+		sparks.Lifetime = NumberRange.new(0.6, 1.1)
+		sparks.Rate = 5
+		sparks.Speed = NumberRange.new(0.6, 1.4)
+		sparks.SpreadAngle = Vector2.new(180, 20)
+		sparks.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.12), NumberSequenceKeypoint.new(1, 0) })
+		sparks.Transparency = NumberSequence.new(0.2, 1)
+		sparks.Parent = parts[6]
+	end
 	model.PrimaryPart = root
 	model.Parent = workspace
 	tikoModel = model
@@ -425,6 +444,24 @@ local function showHologram()
 		Anchored = true,
 		CFrame = CFrame.new(center + Vector3.new(0, 0.25, 0)) * CFrame.Angles(0, 0, math.pi / 2),
 	}, model)
+	-- Licht-Säule über dem Grundstück (aus dem Kamera-Anflug gut sichtbar), atmet langsam
+	local pillar = worldPart({
+		Name = "Pillar",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(70, 2.4, 2.4),
+		Material = Enum.Material.Neon,
+		Color = Theme.Gold,
+		Transparency = 0.82,
+		Anchored = true,
+		CFrame = CFrame.new(center + Vector3.new(0, 35, 0)) * CFrame.Angles(0, 0, math.pi / 2),
+	}, model)
+	if not reducedFx() then
+		TweenService:Create(
+			pillar,
+			TweenInfo.new(1.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Transparency = 0.93 }
+		):Play()
+	end
 	local anchor = worldPart({
 		Name = "Label",
 		Size = Vector3.new(1, 1, 1),
@@ -1084,7 +1121,11 @@ function Tutorial._Action()
 		end
 	elseif n == 12 then
 		if phase == 1 then
-			ctx.Windows.Open("Quests")
+			-- direkt auf den Starter-Reiter (sonst springt das Fenster bei offenem Login-Tag auf "Login")
+			local ok = call("Quests", "Open", "starter")
+			if not ok then
+				ctx.Windows.Open("Quests")
+			end
 			setPhase(2)
 		elseif phase == 2 then
 			local entrance = exchangeEntrance()

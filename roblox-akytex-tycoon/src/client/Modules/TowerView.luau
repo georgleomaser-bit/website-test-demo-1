@@ -71,6 +71,7 @@ type FloorBuild = {
 	Groups: { AnimGroup },
 	Lights: { Light },
 	Door: BasePart?,
+	Doors: { { Part: BasePart, Base: CFrame, Side: number } }?,
 }
 
 type PlotInfo = {
@@ -147,6 +148,59 @@ end
 
 local function num(v: any, default: number): number
 	return if type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge then v else default
+end
+
+-- Gemeinsame Prompts (Aufzug, Respekt, Bau-Hilfe) wandern zwischen Teilen, die gepoolt (ClearAllChildren), vom Server
+-- neu gebaut oder herausgestreamt werden – dabei würde der Prompt mit zerstört (Parent gesperrt). placePrompt hängt
+-- ihn sicher um und baut ihn bei Bedarf neu, damit Aufzug/Respekt/Bau-Hilfe nie dauerhaft ausfallen.
+local PROMPT_DEFS: { [string]: { Name: string, Key: string, Distance: number } } = {
+	Elevator = { Name = "AkyElevator", Key = "tui.elevator.prompt", Distance = 10 },
+	Respekt = { Name = "AkyRespekt", Key = "tui.respekt.prompt", Distance = 12 },
+	Help = { Name = "AkyHelp", Key = "tui.help.prompt", Distance = 40 },
+}
+
+local function makePrompt(name: string, actionKey: string, distance: number): ProximityPrompt
+	local p = Instance.new("ProximityPrompt")
+	p.Name = name
+	p.ActionText = T(actionKey)
+	p.KeyboardKeyCode = Enum.KeyCode.E
+	p.GamepadKeyCode = Enum.KeyCode.ButtonX
+	p.RequiresLineOfSight = false
+	p.MaxActivationDistance = distance
+	p.HoldDuration = 0
+	p.Style = Enum.ProximityPromptStyle.Default
+	return p
+end
+
+local function promptVar(kind: string): ProximityPrompt?
+	return if kind == "Elevator" then prompt elseif kind == "Respekt" then respektPrompt else helpPrompt
+end
+
+local function placePrompt(kind: string, target: Instance?): ProximityPrompt?
+	local current = promptVar(kind)
+	if current and current.Parent == target then
+		return current
+	end
+	local moved = current ~= nil and pcall(function()
+		(current :: ProximityPrompt).Parent = target
+	end)
+	if moved then
+		return current
+	end
+	local def = PROMPT_DEFS[kind]
+	if not def then
+		return nil
+	end
+	local fresh = makePrompt(def.Name, def.Key, def.Distance)
+	fresh.Parent = target
+	if kind == "Elevator" then
+		prompt = fresh
+	elseif kind == "Respekt" then
+		respektPrompt = fresh
+	else
+		helpPrompt = fresh
+	end
+	return fresh
 end
 
 local function budget(key: string, default: number): number
@@ -329,11 +383,12 @@ local function releaseFloor(floor: number)
 		return
 	end
 	built[floor] = nil
+	-- Aufzugs-Prompt VOR dem Poolen abhängen (release räumt alle Kinder weg = würde ihn zerstören)
+	if prompt and build.Door and prompt.Parent == build.Door then
+		placePrompt("Elevator", nil)
+	end
 	for _, part in ipairs(build.Parts) do
 		release(part)
-	end
-	if prompt and build.Door and prompt.Parent == build.Door then
-		prompt.Parent = nil
 	end
 end
 
@@ -411,6 +466,11 @@ local function buildFloor(info: PlotInfo, floor: number)
 		end
 		if spec.Tag == "ElevatorFrame" then
 			build.Door = part
+		elseif spec.Tag == "ElevatorDoor" then
+			-- Türflügel merken: der Aufzug öffnet/schließt sie lokal mit der Kabine (Elevator.Step)
+			local doors = build.Doors or {}
+			build.Doors = doors
+			table.insert(doors, { Part = part, Base = part.CFrame, Side = if spec.Group == "DoorL" then -1 else 1 })
 		end
 	end
 	build.Groups = makeGroups(build.Parts)
@@ -440,6 +500,8 @@ local function currentFloor(info: PlotInfo): number
 	return math.clamp(math.floor((localPos.Y - 0.5) / FH) + 1, 1, math.max(1, info.Floors))
 end
 
+local interiorLightsOn = 0 -- WorldLook zieht sie vom Licht-Budget der Stadt ab (Summe bleibt ≤ Budget je Stufe)
+
 local function updateLights(current: number)
 	local cap = math.max(2, math.floor(lightBudget / 2))
 	local used = 0
@@ -455,6 +517,7 @@ local function updateLights(current: number)
 			end
 		end
 	end
+	interiorLightsOn = used
 end
 
 local function processInteriors(info: PlotInfo?)
@@ -462,6 +525,7 @@ local function processInteriors(info: PlotInfo?)
 		if builtPlot then
 			releaseAll()
 		end
+		interiorLightsOn = 0
 		return
 	end
 	if builtPlot ~= info.Plot or builtStage ~= info.Stage then
@@ -504,13 +568,10 @@ local function processInteriors(info: PlotInfo?)
 	end
 	updateLights(current)
 	-- Aufzugs-Panel-Knopf an der Tür des aktuellen Stocks (EG zusätzlich am Lobby-Panel)
-	local p = prompt
-	if p then
-		local build = built[current]
-		local target: Instance? = if build and build.Door then build.Door elseif current == 1 then info.Panel else nil
-		if p.Parent ~= target then
-			p.Parent = target
-		end
+	local build = built[current]
+	local target: Instance? = if build and build.Door then build.Door elseif current == 1 then info.Panel else nil
+	local p = placePrompt("Elevator", target)
+	if p and p.Parent then
 		p.ObjectText = T("tui.floorLabel", current)
 	end
 end
@@ -734,6 +795,11 @@ local function scanModel(info: PlotInfo)
 	info.Anim = makeGroups(animated)
 	refreshSign(info)
 	refreshLeds(info)
+	-- neue Hülle (Neubau/Morph/Streaming): Respekt-Knopf an die neue Säule hängen
+	if info.Plot == active then
+		local target = if info.Owner > 0 and info.Owner ~= player.UserId then info.Respekt else nil
+		placePrompt("Respekt", target)
+	end
 end
 
 local function attachModel(info: PlotInfo, model: Model)
@@ -757,26 +823,41 @@ local function attachModel(info: PlotInfo, model: Model)
 	)
 end
 
+-- Alte Hülle blendet aus (Morph/Abbau): der Server benennt die VORHANDENE Hülle um und setzt "Fading" – das kommt
+-- als Attribut-Änderung, nicht als ChildAdded an (nur hereingestreamte Hüllen tragen es schon beim Einhängen).
+local function startFade(info: PlotInfo, model: Model)
+	for _, entry in ipairs(info.Fading) do
+		if entry.Model == model then
+			return
+		end
+	end
+	if info.Model == model then
+		info.Model = nil
+		info.ScanDirty = true
+		for _, conn in ipairs(info.ModelConns) do
+			conn:Disconnect()
+		end
+		table.clear(info.ModelConns)
+	end
+	local seconds = num(model:GetAttribute("FadeSeconds"), 2)
+	table.insert(info.Fading, { Model = model, Start = os.clock(), Seconds = math.clamp(seconds, 0.3, 5), Last = 0 })
+end
+
 local function onModelAdded(info: PlotInfo, child: Instance)
 	if not child:IsA("Model") then
 		return
 	end
-	if child.Name == "Tower" then
+	if child:GetAttribute("Fading") == true then
+		startFade(info, child)
+	elseif child.Name == "Tower" then
 		attachModel(info, child)
 		call("EffectsTower", "OnTowerModel", info.Plot, child)
-	elseif child:GetAttribute("Fading") == true then
-		if info.Model == child then
-			info.Model = nil
-			for _, conn in ipairs(info.ModelConns) do
-				conn:Disconnect()
+		-- eigene Verbindung (nicht ModelConns: die trennt attachModel der NEUEN Hülle schon vorher)
+		child:GetAttributeChangedSignal("Fading"):Once(function()
+			if child.Parent ~= nil and child:GetAttribute("Fading") == true then
+				startFade(info, child)
 			end
-			table.clear(info.ModelConns)
-		end
-		local seconds = num(child:GetAttribute("FadeSeconds"), 2)
-		table.insert(
-			info.Fading,
-			{ Model = child, Start = os.clock(), Seconds = math.clamp(seconds, 0.3, 5), Last = 0 }
-		)
+		end)
 	end
 end
 
@@ -981,6 +1062,10 @@ end
 -- 7) KRAN (Baustelle sichtbar für alle; Bau-Hilfe für Besucher, §B4.7)
 -- ---------------------------------------------------------------------
 local function destroyCrane(info: PlotInfo)
+	-- Bau-Hilfe-Prompt VOR dem Zerstören des Masts abhängen (sonst wird er mit zerstört)
+	if helpPrompt and helpPrompt.Parent and helpPrompt.Parent:GetAttribute("CranePlot") == info.Plot then
+		placePrompt("Help", nil)
+	end
 	if info.Crane then
 		for _, part in ipairs(info.Crane) do
 			part:Destroy()
@@ -989,9 +1074,6 @@ local function destroyCrane(info: PlotInfo)
 	info.Crane = nil
 	info.CraneHook = nil
 	info.CraneFloor = 0
-	if helpPrompt and helpPrompt.Parent and helpPrompt.Parent:GetAttribute("CranePlot") == info.Plot then
-		helpPrompt.Parent = nil
-	end
 end
 
 local function buildCrane(info: PlotInfo, floor: number)
@@ -1115,10 +1197,9 @@ local function stepCrane(info: PlotInfo, now: number, cameraPos: Vector3)
 		label.Text = T("tui.crane", wanted, if okFmt then text else tostring(math.floor(remaining)))
 	end
 	-- Bau-Hilfe für Besucher (nicht der Besitzer)
-	local hp = helpPrompt
-	if hp and mast and floor > 0 and info.Owner ~= player.UserId and info.Plot == active then
-		if hp.Parent ~= mast then
-			hp.Parent = mast
+	if mast and floor > 0 and info.Owner ~= player.UserId and info.Plot == active then
+		local hp = placePrompt("Help", mast)
+		if hp and hp:GetAttribute("Owner") ~= info.Owner then
 			hp:SetAttribute("Owner", info.Owner)
 		end
 	end
@@ -1173,22 +1254,10 @@ local function stepVaultGlow(info: PlotInfo, t: number)
 	end
 end
 
-local function makePrompt(name: string, actionKey: string, distance: number): ProximityPrompt
-	local p = Instance.new("ProximityPrompt")
-	p.Name = name
-	p.ActionText = T(actionKey)
-	p.KeyboardKeyCode = Enum.KeyCode.E
-	p.GamepadKeyCode = Enum.KeyCode.ButtonX
-	p.RequiresLineOfSight = false
-	p.MaxActivationDistance = distance
-	p.HoldDuration = 0
-	return p
-end
-
 local function setupPrompts()
-	prompt = makePrompt("AkyElevator", "tui.elevator.prompt", 10)
-	respektPrompt = makePrompt("AkyRespekt", "tui.respekt.prompt", 12)
-	helpPrompt = makePrompt("AkyHelp", "tui.help.prompt", 40)
+	placePrompt("Elevator", nil)
+	placePrompt("Respekt", nil)
+	placePrompt("Help", nil)
 	ProximityPromptService.PromptTriggered:Connect(function(p: ProximityPrompt, who: Player)
 		if who ~= player then
 			return
@@ -1259,12 +1328,9 @@ local function setActive(plot: number?)
 		ctx.Hooks.Fire("Plot:Enter", plot, owner)
 	end
 	-- Respekt-Knopf nur an fremden Säulen
-	local rp = respektPrompt
-	if rp then
-		local info = if plot then plots[plot] else nil
-		local target = if info and info.Owner > 0 and info.Owner ~= player.UserId then info.Respekt else nil
-		rp.Parent = target
-	end
+	local info = if plot then plots[plot] else nil
+	local target = if info and info.Owner > 0 and info.Owner ~= player.UserId then info.Respekt else nil
+	placePrompt("Respekt", target)
 end
 
 -- ---------------------------------------------------------------------
@@ -1376,6 +1442,30 @@ function TowerView.TopCFrame(plot: number): CFrame?
 	return info.Pivot * CFrame.new(0, info.Floors * FH, 0)
 end
 
+-- Aufzugstüren einer gebauten Etage des aktiven Towers öffnen (0 = zu, 1 = offen); false = Etage nicht gebaut
+function TowerView.SetDoors(plot: number, floor: number, openness: number): boolean
+	if plot ~= builtPlot then
+		return false
+	end
+	local build = built[floor]
+	local doors = build and build.Doors
+	if not doors then
+		return false
+	end
+	local slide = math.clamp(num(openness, 0), 0, 1) * 2.25
+	for _, door in ipairs(doors) do
+		if door.Part.Parent then
+			door.Part.CFrame = door.Base * CFrame.new(door.Side * slide, 0, 0)
+		end
+	end
+	return true
+end
+
+-- eingeschaltete Interior-Lichter (für das gemeinsame Licht-Budget in WorldLook)
+function TowerView.InteriorLights(): number
+	return interiorLightsOn
+end
+
 function TowerView.NeonBands(plot: number): { BasePart }
 	local info = plots[plot]
 	return if info then table.clone(info.Bands) else {}
@@ -1410,8 +1500,12 @@ function TowerView.Frame(dt: number)
 	local pos = focusPosition()
 	local camera = workspace.CurrentCamera
 	local cameraPos = if camera then camera.CFrame.Position else (pos or Vector3.zero)
-	-- Tag/Nacht (gleiche Uhr wie WorldLook: Clock.IsNight aus der Server-Zeit)
-	local okNight, isNight = pcall(ctx.Clock.IsNight, ctx.Clock.Tick())
+	-- Tag/Nacht: dieselbe Schaltung wie die Stadt-Fenster (WorldLook: Schwellen aus Config.City.Look + Overrides
+	-- wie "Night"/"Golden" in Kamerafahrten); ohne WorldLook die Server-Uhr
+	local okNight, isNight = call("WorldLook", "IsNight")
+	if not okNight then
+		okNight, isNight = pcall(ctx.Clock.IsNight, ctx.Clock.Tick())
+	end
 	local nowNight = okNight and isNight == true
 	if nowNight ~= night then
 		night = nowNight

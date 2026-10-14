@@ -11,6 +11,10 @@
 --    CommunityService.FriendsInServer(p): number      Freunde im Server (IsFriendsWithAsync 1× je Paar/Sitzung, gecacht)
 --    CommunityService.RespektActive(p): number        aktive Respekt-Boni (je +0,01 Perm, max. 20; TowerService)
 --  Request-Handler: SocialRespekt, SocialReact, SocialShow, SocialInvited, NotifyOptIn.   State: "Social".
+--  Teilen-Links mit Launch-Daten (Wunsch 11): Einladung mit ExperienceInviteOptions.LaunchData bzw. Deep-Link
+--    "…/games/start?placeId=<id>&launchData=visit:<UserId>" -> State Social.LaunchVisit (UserId, 0 = keiner) und
+--    Social.LaunchVisitHere; der Client besucht den Tower dann einmal über "TowerVisit" (nach dem Tutorial).
+--  Gruppe: Beitritt im Spiel (GroupService:PromptJoinAsync, Client) wird alle 2 min für Nicht-Mitglieder nachgeprüft.
 --  Player-Attribute: "React" ("Art:n", Client zeigt die Blase), "ShowCard" (Zeigen-Karte, Client zeigt 6 s),
 --    "Group" (Namensschild-Rahmen).
 --  Einladungs-Gutschriften für Einlader, die gerade nicht im Server sind: DataStore Config.Tech.GlobalStore,
@@ -18,6 +22,8 @@
 -- =====================================================================
 
 local DataStoreService = game:GetService("DataStoreService")
+local GroupService = game:GetService("GroupService")
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -43,6 +49,8 @@ local LOG_GAP = 10
 local REFERRAL_EVERY = 30
 local REFERRAL_CLAIM_EVERY = 600
 local MAX_TEXT = 500
+local LAUNCH_MAX = 200 -- Launch-Daten länger als das werden ignoriert
+local GROUP_RECHECK = 120 -- Nicht-Mitglieder: Gruppe so oft nachprüfen (Beitritt über den Knopf im Spiel)
 
 -- Pro-Spieler-Tabellen (alle bei PlayerRemoving geleert)
 local sessionStart: { [Player]: number } = {}
@@ -53,6 +61,9 @@ local reactCounter: { [Player]: number } = {}
 local showCounter: { [Player]: number } = {}
 local refClaimAt: { [Player]: number } = {}
 local playBase: { [Player]: number } = {} -- Data.Playtime beim Beitritt (DataService schreibt sie erst vor dem Speichern fort)
+local launchVisit: { [Player]: number } = {} -- Tower-Besuch aus Launch-Daten (UserId des Besitzers, nur diese Sitzung)
+local groupCheckAt: { [Player]: number } = {}
+local groupBusy: { [Player]: boolean } = {}
 local lastLogAt: { [string]: number } = {}
 local refStore: DataStore? = nil
 local refStoreFailed = false
@@ -725,15 +736,47 @@ local function checkReferral(p: Player)
 	end
 end
 
-local function readReferral(p: Player, data: Data)
-	local social = socialOf(data)
-	if social.ReferredBy > 0 or num(data.Sessions, 0) > 1 then
-		return
-	end
+-- Beitritts-Daten (pcall; Studio/Fehler -> leere Tabelle)
+local function joinDataOf(p: Player): { [string]: any }
 	local ok, joinData = pcall(function()
 		return p:GetJoinData()
 	end)
-	if not ok or type(joinData) ~= "table" then
+	return if ok and type(joinData) == "table" then joinData :: any else {}
+end
+
+-- Launch-Daten -> UserId des Towers, den man besuchen soll: "visit:<UserId>" / "visit=<UserId>" / JSON {"visit": id}
+local function parseLaunch(raw: any): number?
+	if type(raw) ~= "string" or #raw == 0 or #raw > LAUNCH_MAX then
+		return nil
+	end
+	local id: number? = tonumber(string.match(raw, "^%s*[Vv]isit%s*[:=]%s*(%d+)%s*$"))
+	if not id then
+		local ok, decoded = pcall(function()
+			return HttpService:JSONDecode(raw)
+		end)
+		if ok and type(decoded) == "table" then
+			local value = decoded.visit or decoded.Visit
+			id = if isInt(value) then value elseif type(value) == "string" then tonumber(value) else nil
+		end
+	end
+	if id and isInt(id) and id > 0 then
+		return id
+	end
+	return nil
+end
+
+local function readLaunch(p: Player, joinData: { [string]: any })
+	local target = parseLaunch(joinData.LaunchData)
+	if target and target ~= p.UserId then
+		launchVisit[p] = target
+		call("MetricsService", "Custom", p, "LaunchVisit", 1, nil)
+		markDirty(p, "Social")
+	end
+end
+
+local function readReferral(p: Player, data: Data, joinData: { [string]: any })
+	local social = socialOf(data)
+	if social.ReferredBy > 0 or num(data.Sessions, 0) > 1 then
 		return
 	end
 	local inviterId = joinData.ReferredByPlayerId
@@ -747,13 +790,24 @@ end
 -- ---------------------------------------------------------------------
 -- 7) GRUPPE (IsInGroupAsync, pcall): Community-Krone + Namensschild-Rahmen, kein Einkommen
 -- ---------------------------------------------------------------------
-local function checkGroup(p: Player)
+local function checkGroup(p: Player, recheck: boolean?)
 	local groupId = SOCIAL.GroupId
-	if not isInt(groupId) or groupId <= 0 or p.UserId <= 0 then
+	if not isInt(groupId) or groupId <= 0 or p.UserId <= 0 or groupBusy[p] then
 		return
 	end
+	groupBusy[p] = true
+	groupCheckAt[p] = os.clock()
 	task.spawn(function()
 		local ok, result = pcall(function()
+			if recheck then
+				-- Nachprüfung: aktuelle Gruppenliste (IsInGroup* kann den Stand vom Beitritt zwischenspeichern)
+				for _, entry in ipairs(GroupService:GetGroupsAsync(p.UserId)) do
+					if type(entry) == "table" and entry.Id == groupId then
+						return true
+					end
+				end
+				return false
+			end
 			local subject: any = p
 			local method = subject.IsInGroupAsync
 			if type(method) == "function" then
@@ -761,6 +815,7 @@ local function checkGroup(p: Player)
 			end
 			return subject:IsInGroup(groupId)
 		end)
+		groupBusy[p] = nil
 		if not ok then
 			logError("IsInGroupAsync", result)
 			return
@@ -771,6 +826,9 @@ local function checkGroup(p: Player)
 		local data = dataOf(p)
 		if data then
 			local social = socialOf(data)
+			if recheck and result == true and social.Group ~= true then
+				notify(p, "soc.groupJoined", nil, "Success")
+			end
 			social.Group = result == true
 			p:SetAttribute("Group", social.Group)
 			markDirty(p, "Social", "Life")
@@ -821,6 +879,8 @@ local function socialState(p: Player): { [string]: any }
 		ReferralDone = social.ReferralDone,
 		ReferralCount = if social.ReferralWeek == Util.IsoWeek() then social.ReferralCount else 0,
 		ReferralMax = SOCIAL.Referral.WeeklyMax,
+		LaunchVisit = launchVisit[p] or 0,
+		LaunchVisitHere = launchVisit[p] ~= nil and Players:GetPlayerByUserId(launchVisit[p] :: number) ~= nil,
 		Group = social.Group,
 		GroupId = SOCIAL.GroupId,
 		InviteAllowed = stageNow >= SOCIAL.InviteFromStage,
@@ -843,6 +903,9 @@ local function onPlayerAdded(p: Player)
 		if other ~= p and friendCache[other] then
 			checkPair(p, other)
 		end
+		if launchVisit[other] == p.UserId then
+			markDirty(other, "Social") -- der eingeladene Spieler wartet auf diesen Tower-Besitzer
+		end
 	end
 end
 
@@ -854,8 +917,10 @@ local function onReady(p: Player)
 	local social = socialOf(data)
 	playBase[p] = math.max(0, num(data.Playtime, 0))
 	p:SetAttribute("Group", social.Group)
-	readReferral(p, data)
-	checkGroup(p)
+	local joinData = joinDataOf(p)
+	readReferral(p, data, joinData)
+	readLaunch(p, joinData)
+	checkGroup(p, false)
 	refClaimAt[p] = os.clock()
 	claimQueued(p)
 	markDirty(p, "Social")
@@ -870,6 +935,9 @@ local function onPlayerRemoving(p: Player)
 	showCounter[p] = nil
 	refClaimAt[p] = nil
 	playBase[p] = nil
+	launchVisit[p] = nil
+	groupCheckAt[p] = nil
+	groupBusy[p] = nil
 	for _, cache in pairs(friendCache) do
 		cache[p.UserId] = nil
 	end
@@ -886,6 +954,16 @@ local function referralTick()
 		local ok, ready = call("PlayerStateService", "IsReady", p)
 		if ok and ready == true then
 			checkReferral(p)
+			-- Gruppe nachprüfen (nur Nicht-Mitglieder; Beitritt über den Knopf im Sozial-Fenster)
+			local data = dataOf(p)
+			local social = data and data.Social
+			if
+				type(social) == "table"
+				and social.Group ~= true
+				and os.clock() - (groupCheckAt[p] or 0) >= GROUP_RECHECK
+			then
+				checkGroup(p, true)
+			end
 			if os.clock() - (refClaimAt[p] or 0) >= REFERRAL_CLAIM_EVERY then
 				refClaimAt[p] = os.clock()
 				claimQueued(p)

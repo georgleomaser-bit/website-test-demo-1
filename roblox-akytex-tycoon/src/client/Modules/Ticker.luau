@@ -37,6 +37,7 @@ type Wall = {
 	Count: number,
 	Offset: number,
 	NextOrder: number,
+	Head: number, -- Index des vordersten Eintrags (wandert im Kreis -> O(1) je Frame)
 	TextSize: number,
 	Gap: number,
 	Tint: Frame,
@@ -221,6 +222,16 @@ local function writeWall(wall: Wall)
 			label.Visible = false
 		end
 	end
+	if count ~= wall.Count then
+		-- andere Anzahl (erste Füllung, Neu-Notierung): Reihenfolge = Index, Kreis neu schließen
+		for index, label in ipairs(wall.Labels) do
+			label.LayoutOrder = index
+		end
+		wall.NextOrder = #wall.Labels
+		wall.Head = 1
+		wall.Offset = 0
+		wall.Track.Position = UDim2.fromOffset(0, 0)
+	end
 	wall.Count = count
 	wall.Dirty = false
 end
@@ -366,6 +377,7 @@ function Ticker.AddWall(part: BasePart)
 		Count = 0,
 		Offset = 0,
 		NextOrder = 0,
+		Head = 1,
 		TextSize = textSize,
 		Gap = textSize,
 		Tint = tint,
@@ -510,19 +522,15 @@ function Ticker.Frame(dt: number)
 			if clipWidth > 2 and trackWidth > clipWidth then
 				local speed = math.max(MIN_SPEED, trackWidth / LOOP_SECONDS)
 				wall.Offset -= speed * dt
-				local first: TextLabel? = nil
-				local firstOrder = math.huge
-				for _, label in ipairs(wall.Labels) do
-					if label.Visible and label.LayoutOrder < firstOrder then
-						first, firstOrder = label, label.LayoutOrder
-					end
-				end
+				local head = math.clamp(wall.Head, 1, wall.Count)
+				local first = wall.Labels[head]
 				if first then
 					local width = first.AbsoluteSize.X + wall.Gap
 					if -wall.Offset >= width then
 						wall.NextOrder += 1
 						first.LayoutOrder = wall.NextOrder
 						wall.Offset += width
+						wall.Head = (head % wall.Count) + 1
 					end
 				end
 				wall.Track.Position = UDim2.fromOffset(math.floor(wall.Offset + 0.5), 0)

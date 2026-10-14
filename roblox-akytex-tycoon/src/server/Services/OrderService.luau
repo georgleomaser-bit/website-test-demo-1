@@ -23,7 +23,7 @@
 --    OrderService.Withdrawable(p): (number, boolean, string?)   Cent, jetzt erlaubt, Grund-Schlüssel wenn nicht
 --    OrderService.Withdraw(p, reason): (number, string?) "Manual" | "Bell" | "Offline" – bucht ab, gibt Cent zurück
 --    OrderService.SetLicence(p, idx)                     Cash/Basis um die Basis-Differenz anpassen (Fluss)
---    OrderService.AdminCredit(p, cents): boolean         Cash + Basis (nie abhebbar), taintet die Liga-Woche
+--    OrderService.AdminCredit(p, cents): boolean         Cash + Basis (nie abhebbar); negativ = Admin-Abzug; taintet
 --    OrderService.TaintWeek(p, reason)
 --    OrderService.HoldsShares(p, i): number
 --    OrderService.LeagueStats(p): Types.LeagueStats
@@ -166,6 +166,13 @@ local function marketTick(): number?
 		return t
 	end
 	return nil
+end
+
+-- Markt fertig gebootet? (Tick() ist schon kurz VOR "ready" gesetzt; PriceAt/Dividends liefern bis dahin nur
+-- Startkurse bzw. nichts – der Offline-Abgleich darf erst danach rechnen). Fehlt die Funktion: als bereit werten.
+local function marketReady(): boolean
+	local ok, ready = call("MarketService", "IsReady")
+	return not ok or ready == true
 end
 
 -- "Jetzt" der Engine: der zuletzt verarbeitete Markt-Tick; ohne Markt die Weltzeit
@@ -524,8 +531,9 @@ local function liveDivs(t: number): { any }?
 	return divList
 end
 
-local function halted(i: number): boolean
-	local ok, result = call("MarketService", "IsHalted", i)
+-- Handelspause; mit Tick t die Pause GENAU zu diesem Tick (Offline-Abgleich rechnet dieselben Pausen wie online)
+local function halted(i: number, t: number?): boolean
+	local ok, result = call("MarketService", "IsHalted", i, t)
 	return ok and result == true
 end
 
@@ -576,11 +584,7 @@ local function makeEnv(p: Player, d: Depot, mode: string, buffer: { [string]: an
 		Set = setOf,
 		DivBps = divBpsOf,
 		Listed = isListed,
-		Halted = if mode == "Live"
-			then halted
-			else function(_i: number): boolean
-				return false
-			end,
+		Halted = halted,
 		FactDir = factDir,
 		AdminActive = adminActive,
 		AdminBetween = adminBetween,
@@ -677,10 +681,14 @@ handleEvent = function(p: Player, _d: Depot, mode: string, kind: string, data: a
 			notify(p, "trade.expired", { tickerOf(data.I) }, "Info")
 		end
 	elseif kind == "Cancelled" then
-		local key = if data.Reason == "trade.noCash" then "trade.cancelNoCash" else "trade.cancelLimit"
-		notify(p, key, { tickerOf(data.I) }, "Info")
+		if data.Bot == nil then -- Bot-Orders laufen still (Depot-Ansicht zeigt es)
+			local key = if data.Reason == "trade.noCash" then "trade.cancelNoCash" else "trade.cancelLimit"
+			notify(p, key, { tickerOf(data.I) }, "Info")
+		end
 	elseif kind == "Cut" then
-		notify(p, "trade.cut", { data.Q, tickerOf(data.I) }, "Info")
+		if data.Bot == nil then
+			notify(p, "trade.cut", { data.Q, tickerOf(data.I) }, "Info")
+		end
 	elseif kind == "Alert" then
 		local whole, cents = priceArgs(data.Px)
 		notify(p, "trade.alertHit", { tickerOf(data.I), whole, cents }, "Alarm")
@@ -714,8 +722,8 @@ local function onFlow(d: Depot, signed: number, reason: string)
 	if not p or not flow or signed == 0 then
 		return
 	end
-	if reason == "Tutorial" then
-		flow = if signed > 0 then "Source" else "Sink"
+	if reason == "Tutorial" or reason == "Admin" then
+		flow = if signed > 0 then "Source" else "Sink" -- Übung (Kauf/Verkauf) · Admin-Gabe/-Abzug
 	end
 	call("MetricsService", "Economy", p, flow, "AKY", math.abs(signed), math.floor(num(d.Cash, 0)), reason)
 end
@@ -872,13 +880,13 @@ startCatchUp = function(p: Player)
 			syncing[p] = nil
 			return
 		end
-		local now = marketTick()
+		local now = if marketReady() then marketTick() else nil
 		-- Markt bootet noch (Seed aus dem DataStore): warten statt die Offline-Zeit zu überspringen
 		local waited = 0
 		while not now and Services and Services.MarketService ~= nil and present(p) and waited < MARKET_WAIT do
 			task.wait(1)
 			waited += 1
-			now = marketTick()
+			now = if marketReady() then marketTick() else nil
 		end
 		if not present(p) or depotOf(p) ~= d then
 			syncing[p] = nil
@@ -1117,16 +1125,26 @@ function OrderService.TaintWeek(p: Player, reason: string)
 	flushDirty(p)
 end
 
+-- cents > 0: Admin-Gabe (Cash + Basis, nie abhebbar). cents < 0: Admin-Abzug (Besitzer-Wunsch "geben oder abziehen")
+-- höchstens bis zum freien Geld – Positionen und Reservierungen bleiben unberührt, die Basis sinkt um denselben Betrag
+-- (der abhebbare Gewinn NAV − Basis bleibt gleich). Beides taintet die Liga-Woche.
 function OrderService.AdminCredit(p: Player, cents: number): boolean
-	if not isInt(cents) or cents <= 0 or cents >= MAX_MONEY then
+	if not isInt(cents) or cents == 0 or math.abs(cents) >= MAX_MONEY then
 		return false
 	end
 	local d = depotOf(p)
 	if not d then
 		return false
 	end
-	if not Portfolio.Credit(d, cents, "Admin") then
-		return false
+	if cents > 0 then
+		if not Portfolio.Credit(d, cents, "Admin") then
+			return false
+		end
+	else
+		local take = math.min(-cents, Portfolio.Free(d))
+		if take <= 0 or not Portfolio.Debit(d, take, "Admin") then
+			return false
+		end
 	end
 	OrderService.TaintWeek(p, "AdminCredit")
 	markDirty(p, "Depot")
@@ -1409,7 +1427,7 @@ local function tradingOpen(p: Player): string?
 	if not live[p] then
 		return "trade.syncing"
 	end
-	if not marketTick() then
+	if not marketTick() or not marketReady() then
 		return "trade.marketClosed"
 	end
 	local ok, blocked = call("AdminService", "OwnerTradeBlocked", p)

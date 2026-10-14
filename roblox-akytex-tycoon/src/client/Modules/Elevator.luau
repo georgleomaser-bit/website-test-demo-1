@@ -30,6 +30,8 @@ local PANEL_RANGE = 16 -- Studs: weiter weg -> Panel schließt
 local CORE = 10
 local CABIN = 8.6
 local CABIN_H = 9
+local DOOR_Z = -CORE / 2 + 0.45 -- Kabinentür innen im Schacht (nicht auf der Ebene der Etagen-Türen: kein Flimmern)
+local HALL_CLOSE_DELAY = 0.7 -- Etagen-Türen bleiben nach der Ankunft so lange offen
 
 type Ride = {
 	Plot: number,
@@ -56,6 +58,7 @@ local panelPlot: number? = nil
 local panelOrigin: Vector3? = nil
 local ride: Ride? = nil
 local fxFolder: Folder? = nil
+local hallClose: { Plot: number, Floor: number, Start: number }? = nil
 
 -- ---------------------------------------------------------------------
 -- HELFER
@@ -339,24 +342,28 @@ local function buildCabin(base: CFrame): ({ BasePart }, BasePart, BasePart)
 	local doorL = cabinPart(
 		parts,
 		Vector3.new(doorW, 7.2, 0.2),
-		base * CFrame.new(-3.4, 3.6, -CORE / 2 - 0.35),
+		base * CFrame.new(-3.4, 3.6, DOOR_Z),
 		Color3.fromRGB(192, 199, 212),
 		Enum.Material.Metal
 	)
 	local doorR = cabinPart(
 		parts,
 		Vector3.new(doorW, 7.2, 0.2),
-		base * CFrame.new(3.4, 3.6, -CORE / 2 - 0.35),
+		base * CFrame.new(3.4, 3.6, DOOR_Z),
 		Color3.fromRGB(192, 199, 212),
 		Enum.Material.Metal
 	)
 	return parts, doorL, doorR
 end
 
+local function hallDoors(plot: number, floor: number, openness: number)
+	call("TowerView", "SetDoors", plot, floor, openness)
+end
+
 local function setDoors(r: Ride, base: CFrame, openness: number)
 	local x = 1.2 + openness * 2.2
-	r.DoorL.CFrame = base * CFrame.new(-x, 3.6, -CORE / 2 - 0.35)
-	r.DoorR.CFrame = base * CFrame.new(x, 3.6, -CORE / 2 - 0.35)
+	r.DoorL.CFrame = base * CFrame.new(-x, 3.6, DOOR_Z)
+	r.DoorR.CFrame = base * CFrame.new(x, 3.6, DOOR_Z)
 end
 
 local function endRide()
@@ -365,6 +372,14 @@ local function endRide()
 		return
 	end
 	ride = nil
+	call("WorldLook", "SetCinematic", false)
+	local closing = hallClose
+	local arrived = closing ~= nil and closing.Plot == r.Plot and closing.Floor == r.To and closing.Start >= r.Start
+	if not arrived then
+		-- abgebrochen (Respawn, Kamera übernommen): Etagen-Türen nicht halb offen stehen lassen
+		hallDoors(r.Plot, r.From, 0)
+		hallDoors(r.Plot, r.To, 0)
+	end
 	for _, part in ipairs(r.Parts) do
 		part:Destroy()
 	end
@@ -439,6 +454,7 @@ function Elevator.Go(floor: number)
 	}
 	ride = r
 	camera.CameraType = Enum.CameraType.Scriptable
+	call("WorldLook", "SetCinematic", true, 8) -- Kabine scharf, Schacht/Stadt durchs Glas weich
 	camera.CFrame = CFrame.lookAt((base * CFrame.new(0, 5.2, 2.8)).Position, (base * CFrame.new(0, 4.6, -8)).Position)
 	request(target)
 	sfx("UIClick")
@@ -463,6 +479,15 @@ function Elevator.Step(_dt: number)
 			Elevator.ClosePanel()
 		end
 	end
+	-- Etagen-Türen nach der Ankunft wieder schließen (die Figur steht schon davor)
+	local closing = hallClose
+	if closing and not ride then
+		local alpha = math.clamp((os.clock() - closing.Start - HALL_CLOSE_DELAY) / (DOOR_SECONDS * 1.5), 0, 1)
+		hallDoors(closing.Plot, closing.Floor, 1 - alpha)
+		if alpha >= 1 then
+			hallClose = nil
+		end
+	end
 	local r = ride
 	if not r then
 		return
@@ -475,9 +500,11 @@ function Elevator.Step(_dt: number)
 	end
 	local t = os.clock()
 	local elapsed = t - r.Start
-	-- 1) Türen schließen
+	-- 1) Türen schließen (Kabine + Etage)
 	if not r.MoveStart then
-		setDoors(r, r.Base, 1 - math.clamp(elapsed / DOOR_SECONDS, 0, 1))
+		local openness = 1 - math.clamp(elapsed / DOOR_SECONDS, 0, 1)
+		setDoors(r, r.Base, openness)
+		hallDoors(r.Plot, r.From, openness)
 		if elapsed >= DOOR_SECONDS then
 			if r.Ok == true then
 				r.MoveStart = t
@@ -505,12 +532,14 @@ function Elevator.Step(_dt: number)
 			end
 		end
 	end
-	-- 3) Türen auf, dann Kamera zurück
+	-- 3) Türen auf (Kabine + Ziel-Etage), dann Kamera zurück; die Etagen-Türen schließen kurz danach
 	local openAt = r.OpenAt
 	if openAt then
 		local alpha = math.clamp((t - openAt) / DOOR_SECONDS, 0, 1)
 		setDoors(r, r.Base, alpha)
+		hallDoors(r.Plot, r.To, alpha)
 		if alpha >= 1 then
+			hallClose = { Plot = r.Plot, Floor = r.To, Start = t }
 			endRide()
 			return
 		end

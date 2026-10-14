@@ -27,6 +27,14 @@ return {
 		["life.accOff"] = "%s abgelegt",
 		["life.accCleared"] = "Alle Accessoires abgelegt",
 		["life.accFull"] = "Höchstens %d Accessoires gleichzeitig",
+		-- Neon-Jetpack (Pass)
+		["life.jet.noPass"] = "Das Neon-Jetpack gibt es mit dem Pass „Neon-Jetpack“",
+		["life.jet.seated"] = "Erst aussteigen, dann abheben",
+		["life.jet.foreign"] = "In fremden Towern bleibt das Jetpack aus",
+		["life.jet.recharge"] = "Jetpack lädt noch – %d s",
+		["life.jet.empty"] = "Jetpack leer – lädt am Boden nach",
+		["life.jet.hint"] = "Neon-Jetpack bereit: in der Luft nochmal springen und gedrückt halten",
+		["life.jet.label"] = "JETPACK",
 
 		-- Fenster & Tabs
 		["life.title"] = "Chronohaus",
@@ -127,6 +135,14 @@ return {
 		["life.accOff"] = "%s taken off",
 		["life.accCleared"] = "All accessories taken off",
 		["life.accFull"] = "At most %d accessories at once",
+		-- Neon jetpack (pass)
+		["life.jet.noPass"] = "The neon jetpack comes with the “Neon Jetpack” pass",
+		["life.jet.seated"] = "Get out of the car first, then take off",
+		["life.jet.foreign"] = "The jetpack stays off inside other players' towers",
+		["life.jet.recharge"] = "Jetpack still recharging – %d s",
+		["life.jet.empty"] = "Jetpack empty – it recharges on the ground",
+		["life.jet.hint"] = "Neon jetpack ready: jump again in mid-air and hold",
+		["life.jet.label"] = "JETPACK",
 
 		-- Window & tabs
 		["life.title"] = "Chronohaus",

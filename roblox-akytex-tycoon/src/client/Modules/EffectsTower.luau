@@ -186,6 +186,7 @@ local function endOrbit()
 	if o.Conn then
 		o.Conn:Disconnect()
 	end
+	call("WorldLook", "SetCinematic", false)
 	local camera = workspace.CurrentCamera
 	if camera and camera.CameraType == Enum.CameraType.Scriptable then
 		camera.CameraType = o.Saved
@@ -225,6 +226,7 @@ local function startOrbit(plot: number)
 		Saved = camera.CameraType,
 	}
 	camera.CameraType = Enum.CameraType.Scriptable
+	call("WorldLook", "SetCinematic", true, o.Radius) -- Tower scharf, Stadt dahinter weich (High/Ultra)
 	o.Conn = UserInputService.InputBegan:Connect(function(input: InputObject)
 		local kind = input.UserInputType
 		if

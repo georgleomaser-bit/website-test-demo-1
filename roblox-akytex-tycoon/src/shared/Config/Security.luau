@@ -110,10 +110,11 @@ local Security = {
 	StatsMaxKeys = 64, -- Live-Statistik: höchstens so viele Schlüssel pro Art
 	StatsCacheSeconds = 60, -- Admin-Statistik (Shards lesen) so lange zwischenspeichern
 	Powers = {
-		Speed = { Min = 16, Max = 150 }, -- AdminSpeed (WalkSpeed)
-		Jump = { Min = 7.2, Max = 100 }, -- AdminJump (JumpHeight)
+		Speed = { Min = 16, Max = 200 }, -- AdminSpeed (WalkSpeed) und Speed-Geschenk an Spieler (Wunsch 18: 16–200)
+		Jump = { Min = 7.2, Max = 100 }, -- AdminJump (JumpHeight) und Sprung-Geschenk
 		FlySpeed = 70, -- Fliegen (Taste G), Shift = ×2
 		EspMax = 20, -- ESP über Highlights (Budget 31 gesamt)
+		GiftMaxMinutes = 120, -- Speed-Geschenk: höchstens so viele Minuten (0 = bis zum Zurücksetzen)
 	},
 
 	-- -----------------------------------------------------------------
@@ -248,6 +249,10 @@ function Security.Validate(_config: any): { string }
 	range("Config.Security.Powers.Speed", Security.Powers.Speed)
 	range("Config.Security.Powers.Jump", Security.Powers.Jump)
 	positive("Config.Security.Powers.FlySpeed", Security.Powers.FlySpeed)
+	positive("Config.Security.Powers.GiftMaxMinutes", Security.Powers.GiftMaxMinutes)
+	if isNumber(Security.Powers.Speed.Max) and Security.Powers.Speed.Max * Security.SpeedTolerance > 500 then
+		table.insert(errors, "Config.Security.Powers.Speed.Max: zu hoch für die Anti-Cheat-Obergrenze (600 Studs/s)")
+	end
 	positive("Config.Security.Powers.EspMax", Security.Powers.EspMax)
 	if isNumber(Security.Powers.EspMax) and Security.Powers.EspMax > 31 then
 		table.insert(errors, "Config.Security.Powers.EspMax: höchstens 31 (Highlight-Budget)")

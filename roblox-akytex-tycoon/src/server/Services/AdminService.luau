@@ -77,6 +77,11 @@ local MAX_TRADED_KEYS = 64
 local MAX_OWNER_EVENTS = 16
 local BANNER_MAX = 120
 local MAINTENANCE_ATTR = "AT_Maintenance"
+-- Speed-Geschenk (Wunsch 18): Spieler-Attribute, die NUR der Server setzt (AntiCheatService liest sie mit)
+local GIFT_SPEED = "GiftSpeed"
+local GIFT_JUMP = "GiftJump"
+local GIFT_UNTIL = "GiftUntil"
+local DEFAULT_JUMP = 7.2
 
 -- Kräfte (§B15.2 "Kräfte"): "bool" = an/aus, sonst { Min, Max } aus Config.Security.Powers
 local POWERS: { [string]: string } = {
@@ -377,6 +382,17 @@ function Core.ValidateGlobal(msg: any, now: number, maxSeconds: number): Plain?
 			return nil
 		end
 		return { Kind = "Live", Id = id, Version = msg.Version }
+	elseif kind == "AbuseNote" then
+		-- Besitzer-Ansage zu einem Admin-Abuse-Event (Avatar + Haken, Text je Empfänger lokalisiert)
+		local event = msg.Event
+		local name = cleanText(msg.Name, MAX_NAME)
+		if type(event) ~= "string" or #event < 1 or #event > 40 or not string.match(event, "^%w+$") then
+			return nil
+		end
+		if not name or not isInt(msg.UserId) then
+			return nil
+		end
+		return { Kind = "AbuseNote", Id = id, Event = event, UserId = msg.UserId, Name = name }
 	end
 	return nil
 end
@@ -862,6 +878,19 @@ local function showAnnouncement(text: string, userId: number, name: string)
 	effectAll("Announce", 0, { Text = text, UserId = userId, Name = name })
 end
 
+-- Admin-Abuse-Ansage im Besitzer-Stil (Avatar + blauer Haken, ohne Kasten), je Empfänger in seiner Sprache
+local function showAbuseNote(event: string, userId: number, name: string)
+	local key = "admin.note." .. event
+	local known = Lang.Has(key)
+	for _, p in ipairs(Players:GetPlayers()) do
+		local lang = langOf(p)
+		local text = if known
+			then Lang.T(lang, key)
+			else Lang.T(lang, "admin.note.Generic", Lang.T(lang, "admin.ev." .. event))
+		effect(p, "Announce", 0, { Text = text, UserId = userId, Name = name })
+	end
+end
+
 local function handleGlobal(message: any)
 	local clean = Core.ValidateGlobal(message, now(), tonumber(EV.MaxGlobalSeconds) or 3600)
 	if not clean then
@@ -872,6 +901,8 @@ local function handleGlobal(message: any)
 	end
 	if clean.Kind == "Announce" then
 		showAnnouncement(clean.Text, clean.UserId, clean.Name)
+	elseif clean.Kind == "AbuseNote" then
+		showAbuseNote(clean.Event, clean.UserId, clean.Name)
 	elseif clean.Kind == "AdminAbuse" then
 		call("EventService", "ApplyGlobal", clean)
 	elseif clean.Kind == "Live" then
@@ -892,6 +923,22 @@ local function publishGlobal(message: Plain): boolean
 		handleGlobal(message)
 	end
 	return ok
+end
+
+-- Ansage zu einem Admin-Abuse-Event: global (alle Server) oder nur dieser Server
+local function announceAbuse(admin: Player, event: string, global: boolean)
+	local message = {
+		Kind = "AbuseNote",
+		Id = newId("B"),
+		Event = event,
+		UserId = admin.UserId,
+		Name = string.sub(admin.DisplayName, 1, MAX_NAME),
+	}
+	if global then
+		publishGlobal(message)
+	else
+		handleGlobal(message)
+	end
 end
 
 local function abuseSeconds(kind: string, args: Plain): number
@@ -1083,6 +1130,67 @@ local function teleport(p: Player, cf: CFrame): boolean
 		return okPivot
 	end
 	return false
+end
+
+-- =====================================================================
+-- SPEED-GESCHENK (Wunsch 18): Tempo/Sprungkraft für beliebige Spieler, befristet oder bis zum Zurücksetzen.
+-- Der Server setzt Humanoid.WalkSpeed/JumpHeight (repliziert zum Client des Spielers) und die Attribute
+-- GiftSpeed/GiftJump/GiftUntil (AntiCheatService erlaubt das Tempo/die Höhe; ein Respawn übernimmt das Geschenk).
+-- =====================================================================
+local function defaultWalk(): number
+	local client: any = Config.Client
+	local move = if type(client) == "table" then client.Movement else nil
+	return if type(move) == "table" and Util.IsFinite(move.WalkSpeed) then move.WalkSpeed else 16
+end
+
+local function giftActive(p: Player): boolean
+	return p:GetAttribute(GIFT_SPEED) ~= nil or p:GetAttribute(GIFT_JUMP) ~= nil
+end
+
+local function applyGift(p: Player)
+	local character = p.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+	local speed = p:GetAttribute(GIFT_SPEED)
+	local jump = p:GetAttribute(GIFT_JUMP)
+	humanoid.WalkSpeed = if type(speed) == "number" then speed else defaultWalk()
+	humanoid.UseJumpPower = false
+	humanoid.JumpHeight = if type(jump) == "number" then jump else DEFAULT_JUMP
+end
+
+-- Geschenk beenden: Standardwerte zurück, laufender Schwung/Sprung zählt bis zur Landung nicht als Verstoß
+local function clearGift(p: Player, tell: boolean): boolean
+	if not giftActive(p) then
+		return false
+	end
+	local oldSpeed = tonumber(p:GetAttribute(GIFT_SPEED)) or defaultWalk()
+	call("AntiCheatService", "Grace", p, "Impulse", 2, oldSpeed * 1.25)
+	p:SetAttribute(GIFT_SPEED, nil)
+	p:SetAttribute(GIFT_JUMP, nil)
+	p:SetAttribute(GIFT_UNTIL, nil)
+	local character = p.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.WalkSpeed = defaultWalk()
+		humanoid.JumpHeight = DEFAULT_JUMP
+	end
+	if tell then
+		call("PlayerStateService", "Notify", p, "admin.giftEnded", nil, "Info")
+	end
+	return true
+end
+
+-- Abgelaufene Geschenke beenden (1 Hz, kein Yield)
+local function expireGifts()
+	local t = now()
+	for _, p in ipairs(Players:GetPlayers()) do
+		local untilT = p:GetAttribute(GIFT_UNTIL)
+		if type(untilT) == "number" and t >= untilT then
+			clearGift(p, true)
+		end
+	end
 end
 
 -- =====================================================================
@@ -1759,6 +1867,8 @@ Actions.PlayerData = function(admin, args)
 		Stars = type(prog.Prestige) == "table" and prog.Prestige.Stars or 0,
 		Ipos = type(prog.Prestige) == "table" and prog.Prestige.Count or 0,
 		LeagueTainted = league.Tainted == true,
+		AdminGiftCredits = type(data.Stats) == "table" and tonumber(data.Stats.AdminCredits) or 0,
+		GiftSpeed = target:GetAttribute(GIFT_SPEED) or "-",
 		Cars = count(type(data.Garage) == "table" and data.Garage.Cars),
 		Watches = count(type(data.Life) == "table" and data.Life.Watches),
 		Playtime = math.floor((tonumber(data.Playtime) or 0) / 60),
@@ -1887,10 +1997,124 @@ Actions.SetPower = function(admin, args)
 	return true, L(admin, "admin.powerSet", name, shown), { Name = name, Value = value }
 end
 
+-- Speed/Sprung schenken (Ziel-Feld me/all/others/Name): { Target, Speed?, Jump?, Minutes? (0 = bis Reset), Reset? }
+Actions.GiveSpeed = function(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, L(admin, "admin.noTarget")
+	end
+	if args.Reset == true then
+		local cleared: { Player } = {}
+		for _, p in ipairs(targets) do
+			if clearGift(p, p ~= admin) then
+				table.insert(cleared, p)
+			end
+		end
+		if #cleared == 0 then
+			return false, L(admin, "admin.giftNone")
+		end
+		return true, L(admin, "admin.giftReset", names(cleared))
+	end
+	local powers: Plain = SEC.Powers or {}
+	local speedRange: Plain = powers.Speed or { Min = 16, Max = 200 }
+	local jumpRange: Plain = powers.Jump or { Min = DEFAULT_JUMP, Max = 100 }
+	local speedMin = tonumber(speedRange.Min) or 16
+	local jumpMin = tonumber(jumpRange.Min) or DEFAULT_JUMP
+	local speed: number? = nil
+	if Util.IsFinite(args.Speed) then
+		speed = math.floor(math.clamp(args.Speed, speedMin, tonumber(speedRange.Max) or 200) + 0.5)
+		if (speed :: number) <= speedMin then
+			speed = nil -- Standard-Tempo = kein Geschenk
+		end
+	end
+	local jump: number? = nil
+	if Util.IsFinite(args.Jump) then
+		jump = math.floor(math.clamp(args.Jump, jumpMin, tonumber(jumpRange.Max) or 100) * 10 + 0.5) / 10
+		if (jump :: number) <= jumpMin + 0.05 then
+			jump = nil
+		end
+	end
+	if speed == nil and jump == nil then
+		return false, L(admin, "admin.giftEmpty")
+	end
+	local maxMinutes = math.max(1, math.floor(tonumber(powers.GiftMaxMinutes) or 120))
+	local minutes = if Util.IsFinite(args.Minutes) then math.clamp(math.floor(args.Minutes), 0, maxMinutes) else 0
+	local untilT: number? = if minutes > 0 then now() + minutes * 60 else nil
+	local shownSpeed = speed or defaultWalk()
+	local shownJump = jump or DEFAULT_JUMP
+	for _, p in ipairs(targets) do
+		local old = tonumber(p:GetAttribute(GIFT_SPEED))
+		if old and old > shownSpeed then
+			call("AntiCheatService", "Grace", p, "Impulse", 2, old * 1.25) -- langsamer werden ist nie ein Verstoß
+		end
+		p:SetAttribute(GIFT_SPEED, speed)
+		p:SetAttribute(GIFT_JUMP, jump)
+		p:SetAttribute(GIFT_UNTIL, untilT)
+		applyGift(p)
+		if p ~= admin then
+			call(
+				"PlayerStateService",
+				"Notify",
+				p,
+				if minutes > 0 then "admin.giftGot" else "admin.giftGotOpen",
+				{ shownSpeed, shownJump, minutes },
+				"Success"
+			)
+		end
+	end
+	local lower = if type(args.Target) == "string" then string.lower(args.Target) else ""
+	if lower == "all" or lower == "others" then
+		announceAbuse(admin, "SpeedGift", false) -- Geschenk gilt auf diesem Server
+	end
+	local duration = if minutes > 0 then L(admin, "admin.giftMinutes", minutes) else L(admin, "admin.giftOpen")
+	return true, L(admin, "admin.giftGiven", shownSpeed, shownJump, duration, names(targets))
+end
+
+-- Zuschauen auch bei fernen Spielern (StreamingEnabled): Replikation um das Ziel, Client folgt mit der Kamera
+Actions.Spectate = function(admin, args)
+	if args.On == false then
+		admin.ReplicationFocus = nil
+		return true, L(admin, "admin.spectateStop")
+	end
+	local target, err = resolveOne(admin, args.Target)
+	if not target then
+		return false, err or ""
+	end
+	local root = rootOf(target)
+	if target == admin or not root then
+		return false, L(admin, "admin.noTarget")
+	end
+	admin.ReplicationFocus = root
+	return true, L(admin, "admin.spectating", target.DisplayName)
+end
+
 -- =====================================================================
 -- AKTIONEN – GELD & ITEMS (Turm-Seite über ShopService.Grant, AKY/Lizenz taint die Liga-Woche)
 -- =====================================================================
 Actions.Give = function(admin, args)
+	-- negative CR = abziehen (Besitzer-Wunsch 18 "geben oder abziehen"): höchstens das Guthaben, Senke "Admin"
+	local raw = if type(args.Grant) == "table" then args.Grant else nil
+	if raw and Util.IsFinite(raw.Credits) and raw.Credits <= -1 then
+		if not has("ShopService", "Debit") then
+			return false, L(admin, "admin.unavailable", "ShopService")
+		end
+		local want = math.floor(math.min(-raw.Credits, MAX_GIVE_CREDITS))
+		local taken: { Player } = {}
+		for _, p in ipairs(resolveTargets(admin, args.Target)) do
+			local okBal, balance = call("ShopService", "Balance", p)
+			local amount = math.min(want, if okBal and Util.IsFinite(balance) then math.floor(balance) else 0)
+			if amount >= 1 then
+				local okDebit, debited = call("ShopService", "Debit", p, amount, "Admin")
+				if okDebit and debited == true then
+					table.insert(taken, p)
+				end
+			end
+		end
+		if #taken == 0 then
+			return false, L(admin, "admin.giveFailed")
+		end
+		return true, L(admin, "admin.taken", want, names(taken))
+	end
 	local grant = sanitizeGrant(args.Grant)
 	if not grant then
 		return false, L(admin, "admin.giveEmpty")
@@ -1902,6 +2126,10 @@ Actions.Give = function(admin, args)
 	local done = grantTo(targets, grant)
 	if #done == 0 then
 		return false, L(admin, if #targets > 0 then "admin.giveFailed" else "admin.noTarget")
+	end
+	local lower = if type(args.Target) == "string" then string.lower(args.Target) else ""
+	if grant.Credits and (lower == "all" or lower == "others") then
+		announceAbuse(admin, "MoneyGift", false) -- Admin-Geschenk an alle auf diesem Server (im Konto markiert)
 	end
 	return true, L(admin, "admin.given", names(done))
 end
@@ -1938,10 +2166,11 @@ end
 
 Actions.GiveAky = function(admin, args)
 	local aky = tonumber(args.Aky)
-	if not aky or aky ~= aky or aky < 1 then
+	if not aky or aky ~= aky or math.abs(aky) < 1 then
 		return false, L(admin, "core.invalid")
 	end
-	local cents = math.floor(math.min(aky, MAX_GIVE_AKY)) * 100
+	-- negativ = abziehen (Besitzer-Wunsch "geben oder abziehen"; OrderService.AdminCredit zieht höchstens freies AKY ab)
+	local cents = math.sign(aky) * math.floor(math.min(math.abs(aky), MAX_GIVE_AKY)) * 100
 	local done: { Player } = {}
 	for _, p in ipairs(resolveTargets(admin, args.Target)) do
 		local ok, result = call("OrderService", "AdminCredit", p, cents)
@@ -2033,7 +2262,7 @@ local function noteOwnerEvent(admin: Player)
 	end
 end
 
-local function marketAction(admin: Player, kind: string, args: Plain): (boolean, string)
+local function marketAction(admin: Player, kind: string, args: Plain, quiet: boolean?): (boolean, string)
 	local action, clean, errKey = Core.MarketArgs(kind, args, nil)
 	if not action or not clean then
 		return false, L(admin, errKey or "core.invalid")
@@ -2051,6 +2280,10 @@ local function marketAction(admin: Player, kind: string, args: Plain): (boolean,
 	end
 	if success == true and action ~= "Resume" and action ~= "Normalize" and action ~= "Halt" then
 		noteOwnerEvent(admin)
+	end
+	if success == true and not quiet then
+		-- Markt-Events laufen immer global (GlobalBus) -> Besitzer-Ansage ebenfalls auf allen Servern
+		announceAbuse(admin, kind, true)
 	end
 	return success == true, tostring(message or "")
 end
@@ -2177,7 +2410,7 @@ local function saturdayShow(admin: Player, global: boolean): (boolean, string)
 			Strength = pct,
 			Ramp = 60,
 			Decay = 30,
-		})
+		}, true)
 		if not okRally or rallied ~= true then
 			call(
 				"PlayerStateService",
@@ -2188,6 +2421,7 @@ local function saturdayShow(admin: Player, global: boolean): (boolean, string)
 			)
 		end
 	end)
+	announceAbuse(admin, "SaturdayShow", global)
 	return true, L(admin, "admin.showStarted")
 end
 
@@ -2200,7 +2434,8 @@ Actions.Abuse = function(admin, args)
 		return marketAction(admin, kind, if type(args.Args) == "table" then args.Args else {})
 	end
 	if kind == "SaturdayShow" then
-		return saturdayShow(admin, args.Global == true)
+		-- die Auto-Show wird im GlobalBus für ALLE Server abgesagt -> die Show läuft auch auf allen Servern (§B15.3)
+		return saturdayShow(admin, true)
 	end
 	local eventKind = if kind == "BuildBoom" then "AdminBuildBoom" else kind
 	local ok, started, key = call(
@@ -2213,6 +2448,9 @@ Actions.Abuse = function(admin, args)
 	)
 	if not ok then
 		return false, L(admin, "admin.unavailable", "EventService")
+	end
+	if started == true then
+		announceAbuse(admin, kind, args.Global == true and kind ~= "AllToHall")
 	end
 	return started == true, L(admin, if type(key) == "string" then key else "core.error")
 end
@@ -2559,12 +2797,25 @@ local function onPlayer(p: Player)
 			return
 		end
 	end
-	p.CharacterAdded:Connect(function(_character)
-		if p:GetAttribute("AdminFrozen") ~= nil then
-			p:SetAttribute("AdminFrozen", nil)
-		end
+	p.CharacterAdded:Connect(function(character)
 		if AdminService.IsAdmin(p) and p:GetAttribute("AdminInvisible") == true then
 			task.defer(setInvisible, p, true)
+		end
+		if p:GetAttribute("AdminFrozen") == true or giftActive(p) then
+			-- Einfrieren übersteht den Respawn (kein Entkommen per Reset), das Speed-Geschenk ebenso
+			task.spawn(function()
+				local root = character:WaitForChild("HumanoidRootPart", 10)
+				character:WaitForChild("Humanoid", 10)
+				if p.Character ~= character or p.Parent ~= Players then
+					return
+				end
+				if p:GetAttribute("AdminFrozen") == true and root and root:IsA("BasePart") then
+					root.Anchored = true
+				end
+				if giftActive(p) then
+					applyGift(p)
+				end
+			end)
 		end
 	end)
 end
@@ -2605,6 +2856,7 @@ function AdminService.Start()
 		flushPurchaseStats
 	)
 	Scheduler.Every("AdminGroupOwner", 1 / 120, refreshGroupOwner)
+	Scheduler.Every("AdminGifts", 1, expireGifts)
 
 	-- Global: Ansagen, Admin-Abuse, Live-Config (Sender empfängt auch selbst)
 	task.spawn(function()

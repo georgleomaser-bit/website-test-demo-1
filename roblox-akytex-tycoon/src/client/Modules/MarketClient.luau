@@ -215,10 +215,11 @@ function MarketClient.Layer(): string
 	return "Simple"
 end
 
--- TradingPerks-Ersatz: kommt der Server-Wert mit (Prog.Perks mit Indicators), gilt er; sonst aus Lizenz + Know-how
+-- TradingPerks-Ersatz: kommt der Server-Wert mit (State Prog.Tools = ProgressionService Core.TradingPerks), gilt er;
+-- sonst aus Lizenz + Know-how. (Prog.Perks ist der Vorstands-Perk-Baum des Börsengangs – NICHT die Werkzeuge.)
 function MarketClient.Perks(): { [string]: any }
 	local prog = state().Prog
-	local raw = if type(prog) == "table" then prog.Perks else nil
+	local raw = if type(prog) == "table" then prog.Tools else nil
 	if type(raw) == "table" and type(raw.Indicators) == "table" then
 		return raw
 	end

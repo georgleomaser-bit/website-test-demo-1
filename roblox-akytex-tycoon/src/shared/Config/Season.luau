@@ -80,7 +80,7 @@ local PREMIUM_S1 = {
 	cr(7, 30, 6000),
 	{ Tier = 8, Decor = { HoloTicker = 1 } },
 	{ Tier = 9, BoostX2 = 1800 },
-	{ Tier = 10, Cosmetics = { "ThemeSkyline" } }, -- Terminal-Theme „Neon-Skyline“ (rein kosmetisch)
+	{ Tier = 10, Title = "S1Regular" }, -- Kopftitel „Skyline-Stammgast S1“ (sichtbar am Namensschild + Zeigen-Karte)
 	cr(11, 45, 8000),
 	{ Tier = 12, Decor = { SkylineRug = 1 } },
 	{ Tier = 13, InstantTokens = 1 },
@@ -110,7 +110,8 @@ local PREMIUM_S1 = {
 	cr(37, 105, 24000),
 	{ Tier = 38, Decor = { OrbitLamp = 1 } },
 	{ Tier = 39, InstantTokens = 2 },
-	{ Tier = 40, Cosmetics = { "CrownFxS1" } }, -- Kronen-Effekt S1 (kosmetisch)
+	{ Tier = 40, Title = "S1Magnate" }, -- Kopftitel „Skyline-Magnat S1“ (Terminal-Themes/Kronen-Effekte gibt es noch
+	-- nicht im Spiel – nie eine Premium-Belohnung ohne sichtbare Wirkung, §0.8 Punkt 4)
 	cr(41, 120, 28000),
 	{ Tier = 42, Decor = { NeonPalm = 1 } },
 	{ Tier = 43, BoostX2 = 5400 },

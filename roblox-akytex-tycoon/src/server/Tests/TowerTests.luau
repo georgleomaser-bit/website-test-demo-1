@@ -455,6 +455,18 @@ Tests["Einkommen: x2 allein ×2, x3 allein ×3, beide ×4"] = function(services)
 		near(base * total, base * case[2], 1e-9, "Einkommen")
 		eq(steady, case[2])
 	end
+	-- beide Pässe: EINE ehrliche Zeile ×4 in der Aufschlüsselung (nie ×2 und ×3 nebeneinander)
+	local f = newFactors(services)
+	f.Pass = 4
+	local passParts = {}
+	for _, part in ipairs(c.BuildParts(f, true, true)) do
+		if part.Group == "Pass" then
+			table.insert(passParts, part)
+		end
+	end
+	eq(#passParts, 1, "eine Pass-Zeile")
+	eq(passParts[1].Key, "Passes")
+	eq(passParts[1].Value, 4)
 end
 
 Tests["Multiplikator-Deckel ×10, Event ≤ ×3, Perm additiv"] = function(services)
@@ -532,6 +544,7 @@ Tests["Börsengang-Reset behält Depot, Lizenz, Lager"] = function(services)
 	data.Tower.Instant = 2
 	table.insert(data.Tower.Express, 600)
 	data.Tower.Skin = "Obsidian"
+	data.Tower.PendingCredits = 777
 	local depotBefore = Util.DeepCopy(data.Depot)
 	local progBefore = Util.DeepCopy(data.Prog)
 	local garageBefore = Util.DeepCopy(data.Garage)
@@ -550,6 +563,7 @@ Tests["Börsengang-Reset behält Depot, Lizenz, Lager"] = function(services)
 	eq(data.Tower.Eff, 0, "Effizienz neu")
 	eq(data.Tower.Vault, 0, "Tresor neu")
 	eq(data.Tower.RunSpend, 0, "Lauf-Ausgaben neu")
+	eq(data.Tower.PendingCredits, 0, "vorgemerkte CR gehören zum alten Lauf")
 	eq(data.Tower.Build.Floor, nil, "keine Baustelle")
 	eq(data.Tower.Janitor, true, "Lobby-Bot bleibt")
 	eq(data.Tower.Instant, 2, "Token bleiben")

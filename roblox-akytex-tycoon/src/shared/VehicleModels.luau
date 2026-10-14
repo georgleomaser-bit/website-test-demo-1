@@ -583,6 +583,7 @@ local function buildGlow(model: Model, r: Recipe, chassis: BasePart)
 	light.Shadows = false
 	light.Enabled = false -- WorldLook schaltet im Licht-Budget (Attribut "Budget")
 	light:SetAttribute("Budget", true)
+	light:SetAttribute("NoShadow", true) -- sitzt in der Karosserie: mit Schatten bliebe der Boden dunkel
 	light.Parent = chassis
 end
 

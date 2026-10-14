@@ -102,7 +102,7 @@ local ticket = {
 
 -- Oberfläche (wird bei jedem Neuaufbau ersetzt)
 local ui: { [string]: any } = {}
-local views: { { View: any, I: number, Tf: string, Untrack: () -> (), Stale: boolean? } } = {}
+local views: { { View: any, I: number, Tf: string, Untrack: () -> (), Stale: boolean?, Role: string? } } = {}
 local layoutKind = "PC"
 local builtKey = ""
 local isOpen = false
@@ -162,6 +162,12 @@ end
 local function pct(fraction: number, digits: number?): string
 	local ok, text = pcall(ctx.Format.Pct, fraction, lang(), digits or 2, true)
 	return if ok then text else string.format("%+.2f %%", fraction * 100)
+end
+
+-- ganze Zahl mit Tausender-Trennung (DE 12.500 · EN 12,500) – Stückzahlen
+local function int(n: number): string
+	local ok, text = pcall(ctx.Format.Int, math.floor(num(n, 0)), lang())
+	return if ok and type(text) == "string" then text else tostring(math.floor(num(n, 0)))
 end
 
 -- Dezimalzahl in Landesschreibweise (DE mit Komma)
@@ -913,7 +919,7 @@ local function openSheet(side: string)
 	sheet.Yes.SetVariant(if side == "B" then "Success" else "Danger")
 	sheet.No.SetText(T("term.confirm.no"))
 	local est = estimate(side)
-	setText(sheet.Body, if est then T("term.qtyPreview", est.Qty, price(est.Px)) else "")
+	setText(sheet.Body, if est then T("term.qtyPreview", int(est.Qty), price(est.Px)) else "")
 	sheet.Root.Visible = true
 	sheet.Scale.Scale = 0.96
 	TweenService:Create(sheet.Scale, OPEN_INFO, { Scale = 1 }):Play()
@@ -957,7 +963,7 @@ local function sheetChip(delta: number)
 	ticket.Amount = "Chip"
 	sheet.Chips.Set(ticket.Chip)
 	local est = estimate(sheetSide)
-	setText(sheet.Body, if est then T("term.qtyPreview", est.Qty, price(est.Px)) else "")
+	setText(sheet.Body, if est then T("term.qtyPreview", int(est.Qty), price(est.Px)) else "")
 end
 
 local function buildSheet(parent: Instance)
@@ -1008,7 +1014,7 @@ local function buildSheet(parent: Instance)
 		local side = sheetSide
 		if side then
 			local est = estimate(side)
-			setText(body, if est then T("term.qtyPreview", est.Qty, price(est.Px)) else "")
+			setText(body, if est then T("term.qtyPreview", int(est.Qty), price(est.Px)) else "")
 		end
 	end)
 	local hint = text({
@@ -1321,7 +1327,10 @@ local function updateList(view: { [string]: any }?, sparks: boolean)
 	view.Empty.Visible = #ids == 0
 	setText(
 		view.Empty,
-		if listMode == "Watch" then T("term.watch.empty") elseif listMode == "Depot" then T("term.pos.empty") else ""
+		if listMode == "Watch"
+			then T("term.watch.empty")
+			elseif listMode == "Depot" then T("term.pos.empty")
+			else T("mkt.notReady") -- noch kein Kurs-Frame (Beitritt, Markt startet)
 	)
 	for index, i in ipairs(ids) do
 		local row = view.Rows[index]
@@ -1569,7 +1578,7 @@ local function chartLib(): any
 	return modules and modules.ChartView
 end
 
-local function trackView(entry: { View: any, I: number, Tf: string, Untrack: () -> (), Stale: boolean? })
+local function trackView(entry: { View: any, I: number, Tf: string, Untrack: () -> (), Stale: boolean?, Role: string? })
 	entry.Untrack()
 	local view = entry.View
 	view:SetData({}, entry.Tf)
@@ -1709,7 +1718,15 @@ local function buildCharts()
 	local tf = currentTf()
 	local indicators = indicatorMap()
 	local candles = if layoutKind == "Phone" then 60 else math.clamp(quality("Candles", 90), 60, 120)
-	local function add(slot: Frame, i: number, tfUse: string, n: number, labels: boolean, interactive: boolean)
+	local function add(
+		slot: Frame,
+		i: number,
+		tfUse: string,
+		n: number,
+		labels: boolean,
+		interactive: boolean,
+		role: string?
+	)
 		local view = lib.new(slot, {
 			Candles = n,
 			Volume = true,
@@ -1722,7 +1739,7 @@ local function buildCharts()
 		})
 		view:SetIndicators(if interactive then indicators else {})
 		view:SetPickMode(interactive and alarmMode)
-		local entry = { View = view, I = i, Tf = tfUse, Untrack = function() end }
+		local entry = { View = view, I = i, Tf = tfUse, Untrack = function() end, Role = role or "Main" }
 		table.insert(views, entry)
 		trackView(entry)
 	end
@@ -1734,7 +1751,7 @@ local function buildCharts()
 		local right = frame({ Position = UDim2.new(0.5, 4, 0, 0), Size = UDim2.new(0.5, -4, 1, 0), Parent = host })
 		add(left, sel, tf, math.min(candles, 90), true, true)
 		local second = if tf == "1T" then "15m" else "1T"
-		add(right, sel, second, 60, true, false)
+		add(right, sel, second, 60, true, false, "Second")
 	else
 		local ids = multiIds()
 		for index, i in ipairs(ids) do
@@ -1795,6 +1812,7 @@ local function buildToolbar(parent: Instance, compact: boolean): { [string]: any
 		holder.Size = UDim2.new(1, 0, 0, 102)
 	end
 	local chips: { [string]: any } = {}
+	local chipColors: { [string]: Color3 } = {}
 	local order = 0
 	for _, name in ipairs(allowedIndicators()) do
 		order += 1
@@ -1835,6 +1853,7 @@ local function buildToolbar(parent: Instance, compact: boolean): { [string]: any
 		end)
 		b.Stroke.Color = color
 		chips[name] = b
+		chipColors[name] = color
 	end
 	order += 1
 	local alarm = UI.Button({
@@ -1880,7 +1899,15 @@ local function buildToolbar(parent: Instance, compact: boolean): { [string]: any
 			refreshAll()
 		end)
 	end
-	return { Holder = holder, Tf = tfSeg, Style = styleSeg, Chips = chips, Alarm = alarm, Split = split }
+	return {
+		Holder = holder,
+		Tf = tfSeg,
+		Style = styleSeg,
+		Chips = chips,
+		ChipColors = chipColors,
+		Alarm = alarm,
+		Split = split,
+	}
 end
 
 local function updateToolbar(tb: { [string]: any }?)
@@ -1892,6 +1919,11 @@ local function updateToolbar(tb: { [string]: any }?)
 	local active = indicatorMap()
 	for name, b in pairs(tb.Chips) do
 		b.SetVariant(if active[name] then "Primary" else "Secondary")
+		-- Rahmen in der Linienfarbe des Indikators (wie js/chart.js) – SetVariant setzt den Rahmen zurück
+		local color = tb.ChipColors and tb.ChipColors[name]
+		if color and b.Stroke.Color ~= color then
+			b.Stroke.Color = color
+		end
 	end
 	local alerts = depot().Alerts
 	local count = if type(alerts) == "table" then #alerts else 0
@@ -2233,7 +2265,7 @@ local function updateTicket(t: { [string]: any }?)
 			local pnl = q * bid - q * avg
 			setText(
 				t.Holding,
-				T("term.holding", q, price(math.floor(avg + 0.5)))
+				T("term.holding", int(q), price(math.floor(avg + 0.5)))
 					.. "\n"
 					.. string.format(
 						'<font color="%s">%s</font>',
@@ -2297,7 +2329,7 @@ local function updateTicket(t: { [string]: any }?)
 				t.Preview,
 				T("trade.costPreview", aky(est.Cost), aky(est.Fee))
 					.. "\n"
-					.. T("term.qtyPreview", est.Qty, price(est.Px))
+					.. T("term.qtyPreview", int(est.Qty), price(est.Px))
 					.. " · "
 					.. T("term.spread", aky(est.Spread))
 			)
@@ -2306,7 +2338,7 @@ local function updateTicket(t: { [string]: any }?)
 				t.Preview,
 				T("term.proceeds", aky(est.Proceeds), aky(est.Fee))
 					.. "\n"
-					.. T("term.qtyPreview", est.Qty, price(est.Px))
+					.. T("term.qtyPreview", int(est.Qty), price(est.Px))
 			)
 		end
 	elseif est then
@@ -4255,6 +4287,16 @@ function Terminal.Frame(dt: number)
 		analysisClock = 0
 		updateAnalysis(ui.Analysis)
 		updatePractice(ui.Practice)
+		-- Fehlerzustand: lädt die Historie nicht (Markt öffnet gleich, Server-Limit …), die Server-Meldung zeigen
+		-- statt endlos „Historie lädt …“ (MarketClient versucht es mit wachsendem Abstand weiter)
+		for _, entry in ipairs(views) do
+			if entry.View.Alive and entry.View:Count() == 0 then
+				local okErr, err = call("MarketClient", "SeriesError", entry.I, entry.Tf)
+				if okErr and type(err) == "string" and err ~= "" then
+					entry.View:SetPlaceholder(err)
+				end
+			end
+		end
 	end
 end
 
@@ -4308,7 +4350,18 @@ function Terminal.Init(context: any)
 			end
 		end
 		if needReload then
-			buildCharts()
+			-- Zeitrahmen gewechselt: dieselben gepoolten Charts behalten, nur die Reihe neu verfolgen (kein Neuaufbau
+			-- von ~900 Frames je Chart -> der Wechsel bleibt flüssig, Historie kommt aus dem MarketClient-Cache)
+			local tf = currentTf()
+			for _, entry in ipairs(views) do
+				local want = if entry.Role == "Second" then (if tf == "1T" then "15m" else "1T") else tf
+				if entry.Tf ~= want then
+					entry.Tf = want
+					entry.Stale = false
+					trackView(entry)
+				end
+			end
+			chartMarks()
 		end
 		refreshAll()
 	end)

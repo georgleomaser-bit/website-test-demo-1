@@ -32,8 +32,9 @@ local MAX_LINES = 90
 local SIDEBAR_W = 160
 local TOP = 66 -- erste Zeile unter dem Fenster-Kopf (Kopf 58 + 8)
 local GAP = 12
-local STATUS_POP_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-local TAB_FADE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+-- iOS-artige Feder: kurzes Überschwingen (Back) statt linearem Ausblenden
+local STATUS_POP_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local TAB_FADE_INFO = TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 
 local built = false
 local win: any = nil
@@ -203,33 +204,77 @@ end
 -- ---------------------------------------------------------------------
 -- ZUSCHAUEN (Client, Taste X beendet)
 -- ---------------------------------------------------------------------
+local spectateConn: RBXScriptConnection? = nil
+
+-- Admin-Remote direkt (für Aufrufe außerhalb des Fensters, z. B. Zuschauen per Taste)
+local function adminInvoke(action: string, args: { [string]: any }): any
+	local remotes = ctx and ctx.Remotes
+	local remote = remotes and remotes.Admin
+	if not remote or not remote:IsA("RemoteFunction") then
+		return nil
+	end
+	local ok, result = pcall(function()
+		return remote:InvokeServer(action, args)
+	end)
+	return if ok then result else nil
+end
+
 local function stopSpectate()
 	if not spectating then
 		return
 	end
 	spectating = nil
+	if spectateConn then
+		spectateConn:Disconnect()
+		spectateConn = nil
+	end
 	local camera = workspace.CurrentCamera
 	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	if camera and humanoid then
 		camera.CameraSubject = humanoid
 	end
 	tryModule("Controls", "SetContext", "World")
+	task.spawn(function()
+		adminInvoke("Spectate", { On = false }) -- Replikation wieder um die eigene Figur
+	end)
 	if ctx and type(ctx.Toast) == "function" then
 		ctx.Toast(T("admin.spectateStop"), "Info")
 	end
 end
 
+-- Kamera auf die Figur des Ziels; unter StreamingEnabled kommt eine ferne Figur erst nach dem Fokus-Wechsel an
+local function followTarget(target: Player)
+	task.spawn(function()
+		adminInvoke("Spectate", { Target = tostring(target.UserId), On = true }) -- Server streamt um das Ziel
+		local deadline = os.clock() + 5
+		while spectating == target and os.clock() < deadline do
+			local character = target.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			local camera = workspace.CurrentCamera
+			if humanoid and camera then
+				camera.CameraSubject = humanoid
+				return
+			end
+			task.wait(0.1)
+		end
+	end)
+end
+
 local function spectate(target: Player?): boolean
-	if not target or target == player or not target.Character then
-		return false
-	end
-	local humanoid = target.Character:FindFirstChildOfClass("Humanoid")
-	local camera = workspace.CurrentCamera
-	if not humanoid or not camera then
+	if not target or target == player or target.Parent ~= Players then
 		return false
 	end
 	spectating = target
-	camera.CameraSubject = humanoid
+	if spectateConn then
+		spectateConn:Disconnect()
+	end
+	-- Respawn des Ziels: Fokus + Kamera auf die neue Figur
+	spectateConn = target.CharacterAdded:Connect(function()
+		if spectating == target then
+			followTarget(target)
+		end
+	end)
+	followTarget(target)
 	tryModule("Controls", "SetContext", "Spectate")
 	if ctx and type(ctx.Toast) == "function" then
 		ctx.Toast(T("admin.spectating", target.DisplayName), "Info")
@@ -477,9 +522,13 @@ local function build()
 				if result.Ok then T("admin.ok", message) else T("admin.fail", message),
 				if result.Ok then Theme.Up else Theme.Down
 			)
+			if not result.Ok then
+				tryModule("Sfx", "Play", "UIError") -- hörbares Fehler-Feedback (Klick-Ton kommt vom Knopf)
+			end
 			return result
 		end
 		setStatus(T("core.noAnswer"), Theme.Down)
+		tryModule("Sfx", "Play", "UIError")
 		return nil
 	end
 
@@ -526,7 +575,7 @@ local function build()
 			page.Visible = pageId == id
 			local scale = page:FindFirstChildOfClass("UIScale")
 			if pageId == id and scale then
-				scale.Scale = 0.98
+				scale.Scale = 0.965
 				TweenService:Create(scale, TAB_FADE_INFO, { Scale = 1 }):Play()
 			end
 		end
@@ -850,6 +899,12 @@ local function build()
 			if not spectate(findPlayer(target())) then
 				setStatus(T("admin.noTarget"), Theme.Down)
 			end
+		end)
+		act("admin.kickAll", "Danger", function()
+			if needsConfirm("KickAll", T("admin.kickAll")) then
+				return
+			end
+			admin("KickAll", { Reason = reasonBox.Text })
 		end)
 
 		UI.Section(page, T("admin.secBan"), 7)
@@ -1398,11 +1453,28 @@ local function build()
 		local page = pages.Give
 		textLine(page, T("admin.giveHint"), 0, Theme.Warn)
 		UI.Section(page, T("admin.secMoney"), 1)
+		-- Großer Betrag, Abzug oder mehrere Empfänger -> erst beim zweiten Tippen (5 s)
+		local function moneyConfirm(kind: string, amount: number, label: string): boolean
+			local who = string.lower(target())
+			local big = math.abs(amount) >= 1e6 or amount < 0 or who == "all" or who == "others"
+			if not big then
+				return false
+			end
+			local shown = (if amount < 0 then "−" else "") .. fmtCredits(math.abs(amount))
+			return needsConfirm(
+				("%s|%s|%s"):format(kind, target(), tostring(amount)),
+				("%s %s → %s"):format(label, shown, target())
+			)
+		end
 		local crRow = UI.Row(page, 2, 40)
 		local crBox = textBox(crRow, T("admin.creditsHint"), part(0.5))
 		button(crRow, T("admin.giveCredits"), "Success", part(0.5), function()
 			local amount = tonumber(crBox.Text)
-			if target() == "all" and needsConfirm("GiveCR", T("admin.giveCredits")) then
+			if not amount or amount ~= amount or math.abs(amount) < 1 then
+				setStatus(T("core.invalid"), Theme.Down)
+				return
+			end
+			if moneyConfirm("CR", amount, T("admin.giveCredits")) then
 				return
 			end
 			admin("Give", { Target = target(), Grant = { Credits = amount } })
@@ -1410,13 +1482,84 @@ local function build()
 		local akyRow = UI.Row(page, 3, 40)
 		local akyBox = textBox(akyRow, T("admin.akyHint"), part(0.5))
 		button(akyRow, T("admin.giveAky"), "Primary", part(0.5), function()
-			if needsConfirm("GiveAky" .. target(), T("admin.giveAky")) then
+			local amount = tonumber(akyBox.Text)
+			if not amount or amount ~= amount or math.abs(amount) < 1 then
+				setStatus(T("core.invalid"), Theme.Down)
 				return
 			end
-			admin("GiveAky", { Target = target(), Aky = tonumber(akyBox.Text) })
+			-- AKY markiert immer die Liga-Woche des Empfängers -> immer bestätigen
+			if needsConfirm(("AKY|%s|%s"):format(target(), tostring(amount)), T("admin.giveAky")) then
+				return
+			end
+			admin("GiveAky", { Target = target(), Aky = amount })
 		end)
-		UI.Section(page, T("admin.secProgress"), 4)
-		local licRow = UI.Row(page, 5, 40)
+		local quickRain = UI.Slider(page, 4, T("admin.rainSeconds"), 60, 300, 120, function() end)
+		local rainRow = UI.Row(page, 5, 40)
+		button(rainRow, T("admin.moneyRainAll"), "Success", part(0.5), function()
+			if needsConfirm("GiveRain", T("admin.moneyRainAll")) then
+				return
+			end
+			admin("Abuse", { Event = "MoneyRain", Args = { Seconds = quickRain.Get() }, Global = false })
+		end)
+		button(rainRow, T("admin.ev.GoldenHour") .. " ×2", "Premium", part(0.5), function()
+			if needsConfirm("GiveGolden", T("admin.ev.GoldenHour")) then
+				return
+			end
+			admin("Abuse", { Event = "GoldenHour", Args = { Mult = 2, Minutes = 15 }, Global = false })
+		end)
+
+		-- Tempo & Sprung schenken (Wunsch 18): Ziel-Feld oben, befristet oder bis zum Zurücksetzen
+		UI.Section(page, T("admin.secSpeed"), 6)
+		textLine(page, T("admin.giftHint"), 7, Theme.Muted)
+		local powers = Config.Security and Config.Security.Powers or {}
+		local speedRange = powers.Speed or { Min = 16, Max = 200 }
+		local jumpRange = powers.Jump or { Min = 7.2, Max = 100 }
+		local giftSpeed = UI.Slider(
+			page,
+			8,
+			T("admin.giftSpeedLabel"),
+			math.floor(speedRange.Min),
+			math.floor(speedRange.Max),
+			50,
+			function() end
+		)
+		local giftJump = UI.Slider(
+			page,
+			9,
+			T("admin.giftJumpLabel"),
+			math.floor(jumpRange.Min),
+			math.floor(jumpRange.Max),
+			math.floor(jumpRange.Min),
+			function() end
+		)
+		local giftRow = UI.Row(page, 10, 40)
+		local durationMinutes: { [string]: number } =
+			{ ["5 min"] = 5, ["15 min"] = 15, ["30 min"] = 30, ["60 min"] = 60 }
+		local durationCycler = UI.Cycler(
+			giftRow,
+			T("admin.giftDuration"),
+			{ "15 min", "30 min", "60 min", T("admin.giftForever"), "5 min" },
+			part(0.4)
+		)
+		button(giftRow, T("admin.giveSpeed"), "Success", part(0.3), function()
+			local who = string.lower(target())
+			if (who == "all" or who == "others") and needsConfirm("GiftSpeed" .. who, T("admin.secSpeed")) then
+				return
+			end
+			local choice = durationCycler.Get() or ""
+			admin("GiveSpeed", {
+				Target = target(),
+				Speed = giftSpeed.Get(),
+				Jump = giftJump.Get(),
+				Minutes = durationMinutes[choice] or 0,
+			})
+		end)
+		button(giftRow, T("admin.giftResetBtn"), "Ghost", part(0.3), function()
+			admin("GiveSpeed", { Target = target(), Reset = true })
+		end)
+
+		UI.Section(page, T("admin.secProgress"), 11)
+		local licRow = UI.Row(page, 12, 40)
 		local licences: { string } = {}
 		local licenceList = Config.Progression and Config.Progression.Licences or {}
 		for i, def in ipairs(licenceList) do
@@ -1431,7 +1574,7 @@ local function build()
 			end
 			admin("SetLicence", { Target = target(), Licence = idx })
 		end)
-		local floorRow = UI.Row(page, 6, 40)
+		local floorRow = UI.Row(page, 13, 40)
 		local floorBox = textBox(floorRow, T("admin.floorsHint"), part(0.5))
 		button(floorRow, T("admin.setFloors"), "Primary", part(0.5), function()
 			if needsConfirm("Floors" .. target(), T("admin.setFloors")) then
@@ -1439,8 +1582,8 @@ local function build()
 			end
 			admin("SetFloors", { Target = target(), Floors = tonumber(floorBox.Text) })
 		end)
-		UI.Section(page, T("admin.secItems"), 7)
-		local itemRow = UI.Row(page, 8, 40)
+		UI.Section(page, T("admin.secItems"), 14)
+		local itemRow = UI.Row(page, 15, 40)
 		local kindCycler = UI.Cycler(
 			itemRow,
 			T("admin.itemKind"),
@@ -1459,7 +1602,7 @@ local function build()
 			end
 			admin("Give", { Target = target(), Grant = grant })
 		end)
-		local allGrid = UI.Grid(page, 9, 122, 40)
+		local allGrid = UI.Grid(page, 16, 122, 40)
 		for _, kind in ipairs({ "Cars", "Watches", "Accessories", "Decor" }) do
 			button(allGrid, T("admin.giveAll" .. kind), "Secondary", UDim2.fromScale(1, 1), function()
 				if needsConfirm("GiveAll" .. kind .. target(), T("admin.giveAll" .. kind)) then
@@ -1468,8 +1611,8 @@ local function build()
 				admin("GiveAllItems", { Target = target(), Kind = kind })
 			end)
 		end
-		UI.Section(page, T("admin.secTokens"), 10)
-		local tokenRow = UI.Row(page, 11, 40)
+		UI.Section(page, T("admin.secTokens"), 17)
+		local tokenRow = UI.Row(page, 18, 40)
 		local tokenKind = UI.Cycler(
 			tokenRow,
 			T("admin.tokenKind"),

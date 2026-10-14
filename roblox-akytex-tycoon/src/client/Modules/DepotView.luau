@@ -485,7 +485,8 @@ local function updatePositions(view: View)
 		end
 		local inst = instOf(entry.I)
 		setText(row.Name, if type(inst) == "table" then inst.Ticker else tickerOf(entry.I))
-		setText(row.Qty, tostring(entry.Q))
+		local okQty, qtyText = pcall(ctx.Format.Int, entry.Q, lang())
+		setText(row.Qty, if okQty and type(qtyText) == "string" then qtyText else tostring(entry.Q))
 		local avg = entry.C / math.max(1, entry.Q)
 		setText(row.Avg, price(math.floor(avg + 0.5)))
 		local bid = entry.Value / math.max(1, entry.Q)
@@ -690,7 +691,14 @@ local function updateOrders(view: View)
 		if order.Type == "STP" and order.Side == "B" then
 			typeText = T("trade.typeBuyStop")
 		end
-		local title = string.format("%s · %s %s · %d", tickerOf(order.I), sideText, typeText, num(order.Q, 0))
+		local okQ, qText = pcall(ctx.Format.Int, math.floor(num(order.Q, 0)), lang())
+		local title = string.format(
+			"%s · %s %s · %s",
+			tickerOf(order.I),
+			sideText,
+			typeText,
+			if okQ and type(qText) == "string" then qText else tostring(num(order.Q, 0))
+		)
 		if type(order.Bot) == "number" then
 			title ..= " · " .. T("term.ord.bot")
 		end
@@ -898,9 +906,13 @@ local function buildOverview(view: View)
 		Parent = transfer,
 	}, function()
 		local current = depot().AutoTransfer ~= false
-		local okSet = call("Settings", "Set", "AutoTransfer", not current)
+		-- Einstellung und Depot können auseinanderlaufen (z. B. anderes Gerät): steht die Einstellung schon auf dem
+		-- Zielwert, würde Settings.Set nichts senden -> dann direkt an das Depot (WP4)
+		local okGet, settings = call("Settings", "Get")
+		local already = okGet and type(settings) == "table" and settings.AutoTransfer == not current
+		local okSet = not already and call("Settings", "Set", "AutoTransfer", not current)
 		if not okSet then
-			ctx.RequestFull("TradeAuto", { On = not current })
+			task.spawn(ctx.RequestFull, "TradeAuto", { On = not current })
 		end
 	end)
 	-- Starthilfe (Rettungsschirm, §B8.4)

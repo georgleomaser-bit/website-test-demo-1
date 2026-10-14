@@ -248,6 +248,8 @@ Tests["Beleg: Wiederholung gewährt genau einmal"] = function(services: any)
 	eq(data.Credits, 5000, "CR nur einmal")
 	truthy(monCore.HasReceipt(data, id), "Beleg vermerkt")
 	eq(data.Purchases.RobuxSpent, 49, "RobuxSpent")
+	local last = data.Purchases.Receipts[#data.Purchases.Receipts]
+	truthy(type(last) == "table" and type(last.Key) == "string" and last.Key ~= "", "Beleg nennt den Artikel (Admin)")
 end
 
 Tests["Beleg: gleichzeitig mit gleicher PurchaseId genau einmal"] = function(services: any)
@@ -783,6 +785,42 @@ Tests["Saison-Premium zweimal -> Bau-Gutschein L, neue Saison wieder Premium"] =
 	eq(g3.SeasonPremium, nil, "schon Premium (anders erhalten) -> Ersatz")
 	local g4 = monCore.BuildGrant(product, data, { SeasonId = season + 1, Steady = 5, Now = os.time() })
 	eq(g4.SeasonPremium, true, "neue Saison")
+end
+
+Tests["Saison-Id: Lücke zwischen festen Saisons = vorige (wie RewardService), danach Rolling"] = function()
+	local day = 86400
+	local cfg = {
+		Seasons = {
+			{ Id = 1, StartUtc = "2030-01-01T00:00:00Z", EndUtc = "2030-01-29T00:00:00Z" },
+			{ Id = 2, StartUtc = "2030-03-01T00:00:00Z", EndUtc = "2030-03-29T00:00:00Z" },
+		},
+		Rolling = { Enabled = true, LengthDays = 28 },
+		MaxSeasons = 999,
+	}
+	local s1 = SHOP.ParseUtc("2030-01-01T00:00:00Z") :: number
+	local s2 = SHOP.ParseUtc("2030-03-01T00:00:00Z") :: number
+	local e2 = SHOP.ParseUtc("2030-03-29T00:00:00Z") :: number
+	eq(SHOP.SeasonIdAt(cfg, s1 - day), 1, "vor der ersten")
+	eq(SHOP.SeasonIdAt(cfg, s1 + day), 1, "in Saison 1")
+	eq(SHOP.SeasonIdAt(cfg, s2 - day), 1, "Lücke: Saison 1 gilt weiter (kein Rolling)")
+	eq(SHOP.SeasonIdAt(cfg, s2 + day), 2, "in Saison 2")
+	eq(SHOP.SeasonIdAt(cfg, e2 + day), 3, "nach der letzten: Rolling")
+	eq(SHOP.SeasonIdAt(cfg, e2 + 29 * day), 4, "Rolling weiter")
+end
+
+Tests["CR-Senke Ipo und Quellen League/WinBack/Referral (keine Fremd-Buchung als Event/Admin)"] = function(
+	services: any
+)
+	local shopCore = cores(services)
+	local data = newData(services)
+	truthy(shopCore.Credit(data, 1000, "League"), "Quelle League")
+	truthy(shopCore.Credit(data, 1000, "WinBack"), "Quelle WinBack")
+	eq(shopCore.SourceOf("Referral", false), "Referral", "Einladung")
+	truthy(shopCore.Debit(data, 2000, "Ipo"), "Börsengang-Senke")
+	eq(data.Credits, 0, "Börsengang leert das CR-Konto")
+	truthy(shopCore.Credit(data, 300, "Admin"), "Admin-Geschenk")
+	eq(data.Stats.AdminCredits, 300, "Admin-CR im Konto markiert (Wunsch 18)")
+	truthy(SHOP.Disabled.TerminalDesigner == true, "Terminal-Designer gesperrt, solange die Themes fehlen")
 end
 
 Tests["Boutique-Rotation deterministisch, verschieden, begrenzt"] = function(services: any)
