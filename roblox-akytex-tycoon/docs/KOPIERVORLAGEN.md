@@ -82,25 +82,43 @@ Aufbau (Pflicht, DESIGN.md §A1): Zeile 1 Fantasie · Zeile 2 Disclaimer · Zeil
 ### Englisch (für Roblox)
 
 ```
-🏙️ Start in a garage in a neon city. Read breaking news before the market moves, trade 36 fictional companies on the AKYTEX Exchange with play money, and turn your profits into your own skyscraper, floor by floor, up to the 50-floor ΛKYTEX Orbit-Spire. Hire robot staff, drive your hypercar around the highway ring, wear your watch and ring the bell at your own IPO.
+🏙️ AKYTEX TYCOON – become a stock market legend!
+Start in a garage in a neon city. Read breaking news before the market moves, trade 36 fictional companies on the AKYTEX Exchange with play money and build your own skyscraper, floor by floor, up to the 50-floor ΛKYTEX Orbit-Spire!
+
+📈 Live charts, indicators & breaking news
+🏢 Build your tower and hire robot staff
+🚗 Drive hypercars through the open city
+⌚ Collect watches, cars & luxury
+🔔 Ring the bell at your own IPO
+🏆 Weekly league – the best traders win
+🎙️ Voice chat on the trading floor
 
 ⚠️ Game with play money. All companies, prices and news are fictional. Game money has no real value and cannot be cashed out. Not investment advice.
 
 📅 Bell every 20 minutes · Wed 7 pm Rally Wednesday · Fri 7 pm Crash Friday · Sat 5 pm IPO · Sat 6 pm Admin Abuse · Sun 8 pm League Finale (Berlin time)
 
-🔔 Check out our social media links on our game's page
+👍 Like & ⭐ favorite to get every update!
 ```
 
 ### Deutsch (für die Übersetzung unter Localization)
 
 ```
-🏙️ Starte in einer Garage mitten in einer Neon-Stadt. Lies Eilmeldungen, bevor der Markt reagiert, handle 36 erfundene Firmen an der AKYTEX Exchange mit Spielgeld und steck deine Gewinne in deinen eigenen Wolkenkratzer – Etage für Etage, bis zum 50-stöckigen ΛKYTEX Orbit-Spire. Stell Roboter-Personal ein, fahr deinen Hypersportwagen über den Autobahnring, trag deine Uhr, läute die Glocke zu deinem eigenen Börsengang.
+🏙️ AKYTEX TYCOON – werde zur Börsen-Legende!
+Starte in einer Garage mitten in einer Neon-Stadt. Lies Eilmeldungen, bevor der Markt reagiert, handle 36 erfundene Firmen an der AKYTEX Exchange mit Spielgeld und bau deinen eigenen Wolkenkratzer – Etage für Etage, bis zum 50-stöckigen ΛKYTEX Orbit-Spire!
+
+📈 Live-Charts, Indikatoren & Eilmeldungen
+🏢 Bau deinen Tower, stell Roboter-Personal ein
+🚗 Fahr Hypersportwagen durch die offene Stadt
+⌚ Sammle Uhren, Autos & Luxus
+🔔 Läute die Glocke zu deinem eigenen Börsengang
+🏆 Wochen-Liga – die besten Trader gewinnen
+🎙️ Voice-Chat im Börsensaal
 
 ⚠️ Spiel mit Spielgeld. Alle Firmen, Kurse und Nachrichten sind frei erfunden. Spielgeld hat keinen echten Wert und kann nicht ausgezahlt werden. Keine Anlageberatung.
 
 📅 Glocke alle 20 Minuten · Mi 19:00 Rally-Mittwoch · Fr 19:00 Crash-Freitag · Sa 17:00 IPO · Sa 18:00 Admin-Abuse · So 20:00 Bilanz-Sonntag (Berlin-Zeit)
 
-🔔 Unsere Social-Links findest du auf der Spielseite.
+👍 Like & ⭐ favorisiere das Spiel für jedes Update!
 ```
 
 **Wo eintragen?** Studio: **Home → Game Settings → Basic Info → Description** → **Save**.
