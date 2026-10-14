@@ -8,7 +8,9 @@
 --  Cursor == Random-Access) · Kerzen-Aggregation 1m aus 1s == Ring · Backfill/Stillstand-Ringe == live ·
 --  Frame ≤ 900 B (43 = 439 B) · QuoteCodec-Rundreise/falsche Länge · Dividenden-Ex-Tick · Gerüchte-Bestätigung ·
 --  News nie vor t_a · Wochenwechsel stetig · Berlin-Termine auf Tick genau · CancelAutoShow · Admin-Event (Rampe,
---  Abklingen, Pause) · Config/Lang · Live-Markt.
+--  Abklingen, Pause) · Config/Lang · Live-Markt · W20 §4.1.5/§11.1: State-Status (Typen), Handelbar/Nur-Ansicht
+--  (Test-Double), MarketSeed.ForceLocal · W25 perf_server F1: Live-Mid-Ring == Random-Access, Wochen-Hoch ohne
+--  Kerzen-Tabellen und gestaffelt.
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -22,6 +24,7 @@ local MarketFolder = script.Parent.Parent:WaitForChild("Market")
 local Noise = require(MarketFolder:WaitForChild("Noise"))
 local MarketClock = require(MarketFolder:WaitForChild("MarketClock"))
 local CandleStore = require(MarketFolder:WaitForChild("CandleStore"))
+local MarketSeed = require(MarketFolder:WaitForChild("MarketSeed"))
 
 local Tests = {}
 
@@ -379,6 +382,8 @@ Tests["Markt: Berlin-Termine auf Tick genau (Sommer-/Winterzeit)"] = function(se
 		end
 	end
 	assert(warned, "Warnung 3 min vorher")
+	-- die Erstnotiz plant der Director mit dem Börsentag der Notiz (frameJob baut 2 Tage voraus) -> bis dahin bauen
+	build(ctx, MarketClock.DayIndex(25282800) + 1)
 	local listing = ctx.Director:Listing(100)
 	assert(listing and listing.T0 == 25282800, "IPO 100 notiert Samstag 17:00 Berlin")
 end
@@ -579,6 +584,160 @@ Tests["Markt: OnTick(t) sieht Tick t (Kerze, Dividenden, Pause)"] = function(ser
 	eq(r.Tick, r.T, "Tick() == t im Callback")
 	assert(r.Close ~= nil and r.Close == r.Mid, "Candle1s(i, t) im Callback = Kerze von t (Schluss == Quote-mid)")
 	assert(type(r.Halted) == "boolean", "IsHalted(i, t)")
+end
+
+-- ---------------------------------------------------------------------
+-- W20 §4.1.5 + Korrektur §11.1: Markt-Status, Ersatzmarkt nur Ansicht
+-- ---------------------------------------------------------------------
+Tests["Markt: State Market hat Status/Attempt/Since/Ready/ViewOnly (Typen), Status()/Tradeable()"] = function(services)
+	local svc = market(services)
+	local s = svc._Test.State()
+	assert(type(s.Status) == "string", "Status: Text")
+	local known = { Booting = true, Live = true, Local = true, Failed = true }
+	assert(known[s.Status], "Status unbekannt: " .. tostring(s.Status))
+	assert(type(s.Attempt) == "number" and s.Attempt >= 0 and s.Attempt % 1 == 0, "Attempt: ganze Zahl ≥ 0")
+	assert(type(s.Since) == "number" and s.Since >= 0, "Since: Unix-Sekunden")
+	assert(type(s.Ready) == "boolean", "Ready: boolean")
+	assert(type(s.ViewOnly) == "boolean", "ViewOnly: boolean")
+	local status, attempt = svc.Status()
+	eq(status, s.Status, "Status() == State.Status")
+	eq(attempt, s.Attempt, "Status() Versuch == State.Attempt")
+	assert(type(svc.Tradeable()) == "boolean", "Tradeable(): boolean")
+	if s.Ready then
+		assert(s.Status == "Live" or s.Status == "Local", "bereit -> Live/Local")
+	end
+	-- SelfTests laufen im Studio: dort ist auch der Testmarkt handelbar, nie "nur Ansicht"
+	eq(s.ViewOnly, false, "Studio: nie nur Ansicht")
+	eq(svc.Tradeable(), s.Ready, "Studio: handelbar == bereit")
+	local stats = svc.Stats()
+	assert(type(stats.BootStatus) == "string" and type(stats.BootAttempt) == "number", "Stats: BootStatus/-Attempt")
+	assert(type(stats.BootError) == "string" and type(stats.ViewOnly) == "boolean", "Stats: BootError/ViewOnly")
+end
+
+Tests["Markt: Ersatzmarkt außerhalb Studio = nur Ansicht, nie handelbar (Test-Double)"] = function(services)
+	local T = market(services)._Test
+	eq(T.TradeableFor(true, true, false), false, "Live-Server + Ersatzmarkt: nicht handelbar")
+	eq(T.ViewOnlyFor(true, true, false), true, "Live-Server + Ersatzmarkt: nur Ansicht")
+	eq(T.TradeableFor(true, true, true), true, "Studio-Testmarkt: handelbar")
+	eq(T.ViewOnlyFor(true, true, true), false, "Studio-Testmarkt: keine Ansicht-Sperre")
+	eq(T.TradeableFor(true, false, false), true, "echter Markt: handelbar")
+	eq(T.ViewOnlyFor(true, false, false), false, "echter Markt: keine Ansicht-Sperre")
+	eq(T.TradeableFor(false, false, false), false, "nicht bereit: nicht handelbar")
+	eq(T.ViewOnlyFor(false, true, false), false, "nicht bereit: Status Booting, nicht nur Ansicht")
+end
+
+Tests["Markt: MarketSeed.ForceLocal -> Load liefert (Fallback, true), Ersatzmarkt liest/schreibt nichts"] = function()
+	-- ohne Yield zwischen An und Aus (im Ersatzmodus yieldet keine dieser Funktionen): kein anderer Thread sieht es
+	local before = MarketSeed.ForceLocal(true)
+	local okLoad, seed, isLocal = pcall(MarketSeed.Load, TEST_WEEK)
+	local okClose, closes, closeOk = pcall(MarketSeed.LoadClose, TEST_WEEK - 1)
+	local okIpos, ipos, iposOk = pcall(MarketSeed.LoadIpos, 1)
+	local okLog, log, logOk = pcall(MarketSeed.LoadAdminLog, TEST_WEEK)
+	local nowLocal = MarketSeed.IsLocal()
+	MarketSeed.ForceLocal(before)
+	assert(okLoad and okClose and okIpos and okLog, "Ersatzmodus darf nicht werfen")
+	eq(seed, MarketSeed.Fallback(TEST_WEEK), "Fallback-Seed")
+	eq(isLocal, true, "lokal")
+	eq(closes, nil, "kein Wochenschluss im Ersatzmodus")
+	eq(closeOk, true, "LoadClose ok (nichts zu lesen)")
+	eq(next(ipos), nil, "keine IPOs im Ersatzmodus")
+	eq(iposOk, true, "LoadIpos ok")
+	eq(log, nil, "kein Admin-Log im Ersatzmodus")
+	eq(logOk, true, "LoadAdminLog ok")
+	eq(nowLocal, true, "IsLocal im Ersatzmodus")
+	eq(MarketSeed.ForceLocal(before), before, "vorheriger Zustand wiederhergestellt")
+end
+
+-- ---------------------------------------------------------------------
+-- W25 perf_server F1: Live-Mid-Ring, Wochen-Hoch
+-- ---------------------------------------------------------------------
+Tests["Markt: Live-Mid-Ring == Random-Access (letzte 240 Ticks), ClearRing"] = function(services)
+	local a = context(services)
+	local c = context(services)
+	local start = MarketClock.WeekStart(TEST_WEEK) + 30 * MarketClock.DAY
+	build(a, MarketClock.DayIndex(start + 400) + 1)
+	build(c, MarketClock.DayIndex(start + 400) + 1)
+	local ids = { 1, 9, 28, 40 }
+	for t = start, start + 299 do
+		a.Engine:Step(t)
+	end
+	local last = start + 299
+	local mismatches, hits = 0, 0
+	for t = last - 239, last do
+		for _, i in ipairs(ids) do
+			if a.Engine.Insts[i].RingT[t % 240 + 1] == t then
+				hits += 1
+			end
+			if a.Engine:MidAt(i, t) ~= c.Engine:MidAt(i, t) then
+				mismatches += 1
+			end
+		end
+	end
+	eq(hits, 240 * #ids, "Ring hält die letzten 240 Live-Ticks")
+	eq(mismatches, 0, "Ring-Werte == Random-Access (frische Instanz)")
+	eq(a.Engine:MidAt(9, last - 260), c.Engine:MidAt(9, last - 260), "älter als der Ring: Random-Access")
+	a.Engine:ClearRing()
+	for _, i in ipairs(ids) do
+		eq(a.Engine.Insts[i].RingT[last % 240 + 1], -1, "ClearRing leert den Ring")
+	end
+	eq(a.Engine:MidAt(28, last - 5), c.Engine:MidAt(28, last - 5), "nach ClearRing Random-Access")
+	local quote = select(3, a.Engine:Quote(28))
+	eq(a.Engine:MidAt(28, last), quote, "aktueller Tick weiter aus dem Live-Zustand")
+end
+
+Tests["Markt: Wochen-Hoch ohne Kerzen-Tabellen (== Rohdaten), gestaffelt je Instrument"] = function()
+	local store = CandleStore.new(Config.Market)
+	local i = 7 -- frischt in Sekunde 7 einer neuen Minute auf
+	local function px(t: number): number
+		return 10000 + math.floor(400 * math.sin(t / 97) + 150 * math.sin(t / 13))
+	end
+	local rawHigh: { [number]: number } = {}
+	local rawLow: { [number]: number } = {}
+	local function push(t: number, bump: number?)
+		local o, c = px(t - 1), px(t) + (bump or 0)
+		local h, l = math.max(o, c) + 3, math.min(o, c) - 3
+		store:Push(i, t, o, h, l, c, 10)
+		local m = t // 60
+		rawHigh[m] = math.max(rawHigh[m] or 0, h)
+		rawLow[m] = math.min(rawLow[m] or math.huge, l)
+	end
+	local firstMinute = 6000
+	local minutes = 150
+	for t = firstMinute * 60, (firstMinute + minutes) * 60 - 1 do
+		push(t)
+	end
+	local head = firstMinute + minutes - 1
+	local wantHi, wantLo = 0, math.huge
+	for m = head - Config.Market.WeekHighCandles + 1, head do
+		wantHi = math.max(wantHi, rawHigh[m])
+		wantLo = math.min(wantLo, rawLow[m])
+	end
+	local hi, lo = store:Range(i)
+	assert(math.abs(hi - wantHi) <= math.ceil(wantHi * 0.0002) + 1, ("Hoch %d ≈ %d"):format(hi, wantHi))
+	assert(math.abs(lo - wantLo) <= math.ceil(wantLo * 0.0002) + 1, ("Tief %d ≈ %d"):format(lo, wantLo))
+	eq(store:WeekHigh(i), hi, "erster Aufruf rechnet sofort")
+	local wh = store.Rings[i].WH
+	eq(wh[1], head, "Wert gehört zur letzten Minute")
+	-- neue Minute mit neuem Hoch: erst in Sekunde 7 übernommen (gestaffelt), davor der alte Wert
+	local nextStart = (head + 1) * 60
+	push(nextStart, 3000)
+	eq(store:WeekHigh(i), hi, "Sekunde 0: noch der alte Wert")
+	for t = nextStart + 1, nextStart + 6 do
+		push(t)
+		store:WeekHigh(i)
+	end
+	eq(wh[1], head, "Sekunden 1–6: nicht neu gerechnet")
+	push(nextStart + 7)
+	local fresh = store:WeekHigh(i)
+	eq(wh[1], head + 1, "Sekunde 7: neu gerechnet")
+	assert(fresh >= px(nextStart) + 3000, "neues Hoch übernommen")
+	-- eine ganze Minute ohne Abfrage (Sekunde 7 verpasst) -> zwei Minuten Rückstand: sofort neu
+	for t = nextStart + 8, nextStart + 179 do
+		push(t)
+	end
+	push(nextStart + 180)
+	store:WeekHigh(i)
+	eq(wh[1], head + 4, "ab 2 Minuten Rückstand sofort neu gerechnet")
 end
 
 return Tests

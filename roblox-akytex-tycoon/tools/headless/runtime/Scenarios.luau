@@ -23,6 +23,21 @@ return function(R)
 	local fmt = string.format
 
 	local Sc = {}
+
+	--- auf höchstens n Bytes kürzen, ohne ein UTF-8-Zeichen zu zerschneiden
+	local function cut(s, n)
+		if #s <= n then
+			return s
+		end
+		local i = n
+		local b = string.byte(s, i + 1)
+		while i > 0 and b and b >= 0x80 and b < 0xC0 do
+			i -= 1
+			b = string.byte(s, i + 1)
+		end
+		return string.sub(s, 1, i)
+	end
+	Sc.cut = cut
 	Sc.OWNER_ID = 4120001
 	Sc.PLAYER2_ID = 4120002
 
@@ -59,7 +74,7 @@ return function(R)
 				extra = fmt(" @(%d,%d %dx%d)%s", x, y, w, h, vis)
 				local text = M.props.Text
 				if text and text ~= "" then
-					extra ..= ' "' .. string.sub(string.gsub(text, "\n", " "), 1, 60) .. '"'
+					extra ..= ' "' .. cut((string.gsub(text, "\n", " ")), 60) .. '"'
 				end
 			end
 			lines[#lines + 1] = string.rep("  ", depth) .. M.name .. " (" .. M.cls.name .. ")" .. extra
@@ -145,6 +160,15 @@ return function(R)
 		for _, c in results.checks or {} do
 			L[#L + 1] = fmt("  [%s] %s%s", c.ok and "OK" or "FEHLT", c.name, c.detail and (" – " .. c.detail) or "")
 		end
+		-- zusätzliche Szenario-Abschnitte (scenarios/*: Klick-/Request-Auswertung) direkt nach den Prüfungen
+		for _, sec in results.sections or {} do
+			L[#L + 1] = ""
+			L[#L + 1] = sec.title
+			L[#L + 1] = string.rep("-", 100)
+			for _, line in sec.lines do
+				L[#L + 1] = line
+			end
+		end
 
 		local function section(title)
 			L[#L + 1] = ""
@@ -195,7 +219,7 @@ return function(R)
 		section("SPIEL-WARNUNGEN (warn() des Spiels) UND INFINITE-YIELDS")
 		for _, w in Report.warnings do
 			if w.kind == "gameWarn" or w.kind == "infiniteYield" then
-				L[#L + 1] = fmt("[W] (%s, %s, %dx, erstmals %.2f s) %s", w.ctx, w.kind, w.count, w.firstTime, string.sub(w.message, 1, 600))
+				L[#L + 1] = fmt("[W] (%s, %s, %dx, erstmals %.2f s) %s", w.ctx, w.kind, w.count, w.firstTime, cut(w.message, 600))
 				if w.location ~= "?" then
 					L[#L + 1] = "    Ort: " .. w.location
 				end
@@ -273,10 +297,22 @@ return function(R)
 			table.sort(locs)
 			L[#L + 1] = fmt("  %s (%dx) %s", d.name, d.count, table.concat(locs, ", ", 1, math.min(#locs, 6)))
 		end
+		local injected = {}
+		for _, c in Report.caughtList do
+			if c.kind == "injected" then
+				injected[#injected + 1] = fmt("  (%s, %dx) %s  @ %s", c.ctx, c.count, cut(c.message, 200), c.location)
+			end
+		end
+		if #injected > 0 then
+			section("INJIZIERTE DIENST-FEHLER (--faults), VOM SPIEL ABGEFANGEN – nur Information")
+			for _, line in injected do
+				L[#L + 1] = line
+			end
+		end
 		section("VOM SPIEL GEWORFENE, ABGEFANGENE FEHLER (error() im Spiel-Code – nur Information)")
 		for _, c in Report.caughtList do
 			if c.kind == "thrown" then
-				L[#L + 1] = fmt("  (%s, %dx) %s  @ %s", c.ctx, c.count, string.sub(c.message, 1, 200), c.location)
+				L[#L + 1] = fmt("  (%s, %dx) %s  @ %s", c.ctx, c.count, cut(c.message, 200), c.location)
 			end
 		end
 		return table.concat(L, "\n")
@@ -346,6 +382,15 @@ return function(R)
 	end
 
 	function Sc.checkBoot(results, opts)
+		if #Svc.faultLog > 0 then
+			local L = {}
+			for _, f in Svc.faultLog do
+				L[#L + 1] = fmt("%s@%.2fs %s (%s)", f.kind, f.t, f.what or "?", f.loc or "?")
+			end
+			results.info[#results.info + 1] = "Injizierte Fehler: " .. table.concat(L, " · ")
+		end
+		local market = Report.findOutput("Markt läuft", "server")
+		check(results, "Markt läuft (MarketService)", market ~= nil, market and market.text or "keine Meldung \"Markt läuft\"")
 		local started = Report.findOutput("Server gestartet", "server")
 		check(results, 'Server meldet "Server gestartet"', started ~= nil, started and started.text or "nicht gefunden")
 		local cfg = Report.findOutput("Config hat %d+ Problem", "server")
@@ -464,7 +509,7 @@ return function(R)
 					terminalVisible = true
 				end
 				if #sample < 6 and DM.cls.isA.TextLabel and (DM.props.Text or "") ~= "" then
-					sample[#sample + 1] = string.sub(DM.props.Text, 1, 40)
+					sample[#sample + 1] = cut(DM.props.Text, 40)
 				end
 			end
 		end
@@ -483,6 +528,15 @@ return function(R)
 		R.config.studio = opts.studio == true
 		if opts.streaming ~= nil then
 			Net.streamingOverride = opts.streaming
+		end
+		if opts.faults then
+			local parts = {}
+			for k, v in opts.faults do
+				Svc.faults[k] = v
+				parts[#parts + 1] = k .. "=" .. v
+			end
+			table.sort(parts)
+			results.info[#results.info + 1] = "Fehler-Injektion: " .. table.concat(parts, ", ")
 		end
 		results.info[#results.info + 1] = fmt(
 			"Modus: %s · Client: Spieler %d · Simulationsdauer: %d s · %d Hz · Seed %d",

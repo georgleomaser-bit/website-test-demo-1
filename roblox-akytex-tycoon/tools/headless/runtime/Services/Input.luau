@@ -509,15 +509,30 @@ return function(R, Svc)
 		end
 	end
 
-	--- Harness: GuiButton anklicken (Reihenfolge wie Roblox: InputBegan, MouseButton1Down, InputEnded,
+	--- Harness: GuiButton anklicken (Reihenfolge wie Roblox: MouseEnter, InputBegan, MouseButton1Down, InputEnded,
 	--- MouseButton1Up, MouseButton1Click, Activated). Liefert false, wenn der Knopf nicht klickbar ist.
-	function In.clickGui(ctx, btn)
+	--- Wie Roblox: Interactable = false -> keine Eingabe-Ereignisse; Active = false -> kein Activated
+	--- (MouseButton1Click feuert trotzdem). cx/cy optional (Standard: Mitte des Knopfs).
+	function In.clickGui(ctx, btn, cx, cy)
 		local M = getmt(btn)
 		if M.destroyed or not M.cls.isA.GuiButton then
 			return false
 		end
-		local x, y, w, h = Inst.Gui.abs(btn)
-		local cx, cy = x + w / 2, y + h / 2
+		if Inst.getProp(btn, "Interactable") == false then
+			return false
+		end
+		if cx == nil or cy == nil then
+			local x, y, w, h = Inst.Gui.abs(btn)
+			cx, cy = x + w / 2, y + h / 2
+		end
+		local s = state(ctx)
+		if s.hover ~= btn then
+			if s.hover and not getmt(s.hover).destroyed then
+				Inst.fire(s.hover, "MouseLeave", cx, cy)
+			end
+			s.hover = btn
+			Inst.fire(btn, "MouseEnter", cx, cy)
+		end
 		local io = In.mouseButton(ctx, 1, true, cx, cy, true)
 		Inst.fire(btn, "InputBegan", io)
 		Inst.fire(btn, "MouseButton1Down", cx, cy)
@@ -526,9 +541,21 @@ return function(R, Svc)
 		Inst.fire(btn, "InputEnded", io2)
 		Inst.fire(btn, "MouseButton1Up", cx, cy)
 		Inst.fire(btn, "MouseButton1Click")
-		Inst.fire(btn, "Activated", io2, 1)
+		if Inst.getProp(btn, "Active") ~= false then
+			Inst.fire(btn, "Activated", io2, 1)
+		end
 		Sched.flush()
 		return true
+	end
+
+	--- Harness: Maus verlässt das zuletzt "überfahrene" GUI-Objekt (MouseLeave)
+	function In.unhover(ctx)
+		local s = state(ctx)
+		if s.hover and not getmt(s.hover).destroyed then
+			local x, y = s.mouse.X, s.mouse.Y
+			Inst.fire(s.hover, "MouseLeave", x, y)
+		end
+		s.hover = nil
 	end
 
 	function In.windowFocus(ctx, focused)
@@ -551,6 +578,10 @@ return function(R, Svc)
 		local M = getmt(tb)
 		M.ext = M.ext or {}
 		M.ext.focused = true
+		-- wie Roblox: ClearTextOnFocus (Standard true) leert den Text beim Fokussieren
+		if Inst.getProp(tb, "ClearTextOnFocus") ~= false and (M.props.Text or "") ~= "" then
+			Inst.setProp(tb, "Text", "")
+		end
 		Inst.fire(tb, "Focused")
 		local uis = uisOf(ctx)
 		if uis then

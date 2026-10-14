@@ -77,6 +77,10 @@ return {
 		["trade.invalid"] = "Ungültige Order",
 		["trade.syncing"] = "Depot wird abgeglichen …",
 		["trade.marketClosed"] = "Markt gerade nicht erreichbar",
+		-- Markt-Status (W20 §10.2 + Korrektur §11.1)
+		["trade.marketBooting"] = "Die Börse startet gerade – gleich geht's los.",
+		["trade.marketDown"] = "Börse auf diesem Server gestört – dein Depot ist sicher.",
+		["trade.marketLocal"] = "Die Börse läuft hier im Notbetrieb – Handel startet, sobald sie verbunden ist.",
 		["trade.unknownInst"] = "Diesen Wert gibt es nicht",
 		["trade.notLicensed"] = "Für deine Lizenz noch gesperrt",
 		["trade.typeLocked"] = "Diesen Ordertyp gibt es ab Trader I",
@@ -119,6 +123,7 @@ return {
 		["trade.tutSold"] = "Übung verkauft: %s AKY",
 		["trade.tutDone"] = "Übung schon abgeschlossen",
 		["trade.tutNotRunning"] = "Übung läuft gerade nicht",
+		["trade.tutSkipped"] = "Übung beendet – das echte Terminal gehört dir.",
 		["trade.tutLabel"] = "Übung",
 
 		-- Liga (§B11.1)
@@ -197,6 +202,9 @@ return {
 		["trade.invalid"] = "Invalid order",
 		["trade.syncing"] = "Portfolio is syncing …",
 		["trade.marketClosed"] = "Market not reachable right now",
+		["trade.marketBooting"] = "The exchange is starting – just a moment.",
+		["trade.marketDown"] = "Exchange down on this server – your portfolio is safe.",
+		["trade.marketLocal"] = "The exchange runs in fallback mode here – trading starts once it is connected.",
 		["trade.unknownInst"] = "This stock does not exist",
 		["trade.notLicensed"] = "Locked for your licence",
 		["trade.typeLocked"] = "This order type unlocks at Trader I",
@@ -237,6 +245,7 @@ return {
 		["trade.tutSold"] = "Practice sold: %s AKY",
 		["trade.tutDone"] = "Practice already completed",
 		["trade.tutNotRunning"] = "Practice is not running",
+		["trade.tutSkipped"] = "Practice ended – the real terminal is yours.",
 		["trade.tutLabel"] = "Practice",
 
 		["trade.tierNone"] = "No tier yet",

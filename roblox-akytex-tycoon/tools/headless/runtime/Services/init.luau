@@ -51,6 +51,31 @@ return function(R)
 		return Inst.dataModelOf(inst)
 	end
 
+	-- ---------------------------------------------------------------------------------------------
+	--  Fehler-Injektion (Option --faults): die ersten n Aufrufe einer Dienst-Art schlagen mit einem
+	--  typischen Roblox-Fehler fehl (vorübergehende Störung in Live-Servern). Arten: ds (DataStore),
+	--  mem (MemoryStore), msg (MessagingService), http (MarketplaceService/Policy/Group …)
+	-- ---------------------------------------------------------------------------------------------
+	Svc.faults = {}
+	Svc.faultLog = {}
+	local faultMessages = {
+		ds = "502: API Services rejected request with error. HTTP 503 (Service Unavailable)",
+		mem = "MemoryStoreService: InternalError: Internal Error. API: SortedMap.GetRange",
+		msg = "MessagingService: Request failed (HTTP 503)",
+		http = "HTTP 503 (Service Unavailable)",
+	}
+	function Svc.fault(kind, what)
+		local n = Svc.faults[kind]
+		if n and n > 0 then
+			Svc.faults[kind] = n - 1
+			local msg = faultMessages[kind] or "Request failed"
+			Svc.faultLog[#Svc.faultLog + 1] = { kind = kind, what = what, t = Sched.now, loc = Util.gameLocation() }
+			Sched.wait(0.2)
+			Util.lastInjected = msg
+			raise(msg)
+		end
+	end
+
 	--- Simulierte Laufzeit einer Async-Methode. Yieldet immer (wie Roblox) – aus nicht-yieldbarem Kontext Fehler.
 	function Svc.latency(t)
 		Sched.wait(t or 0)

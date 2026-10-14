@@ -11,6 +11,9 @@
 --  schon auf die Frame-Auflösung (0,01-%-Schritte, max. 255) gerundet – Order-Trigger (WP4), Frame und 1s-Ring
 --  sehen damit exakt dieselbe Kerze ("was der Chart zeigt, hat die Order gesehen").
 --  Live-Felder und Random-Access-Felder sind getrennt; ein Cursor hat eigene Felder (Offline-Abgleich).
+--  Live-Mid-Ring (W25, perf_server F1/E1/E2): Step merkt sich je Instrument die Mids der letzten RING Ticks;
+--  MidAt(i, t) ohne divFrom liefert sie für diese Ticks ohne Neuberechnung (bitgleich, dieselbe Formel wie Random-
+--  Access). Ein verspätetes Event ändert vergangene Kurse -> MarketService ruft ClearRing (applyToContext).
 --
 --  Öffentliche API (nur WP3)
 --    PriceEngine.new({ Seed, Week, Config, Specs = { Spec }, Env = { Offset(i, t, divFrom?), VolMul(t) } }): Engine
@@ -20,7 +23,7 @@
 --    e:MidAt(i, t, divFrom?): number    e:CandleAt(i, t): (O, H, L, C, V, hiOff, loOff)   e:RegimeAt(t): number
 --    e:QuoteAt(i, t): (bid, ask, mid)   Quote zu einem beliebigen Tick (IPO-Klasse/Übergang wie live; Fill-Audit)
 --    e:NewCursor(i, t0): Cursor         Cursor:Candle(t) -> (O, H, L, C) · Cursor:Seek(t)
---    e:AddInstrument(spec) · e:Has(i) · e:IsActive(i, t) · e:Ids(): { number }
+--    e:AddInstrument(spec) · e:Has(i) · e:IsActive(i, t) · e:Ids(): { number } · e:ClearRing()
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -33,6 +36,7 @@ PriceEngine.__index = PriceEngine
 
 local FieldAt = Noise.FieldAt
 local White = Noise.White
+local RING = 240 -- Live-Mids je Instrument (deckt t − 1, Minuten-Schlüsse M − 1/M − 2, Tages-Open der ersten Minuten)
 
 export type Spec = {
 	Id: number,
@@ -86,6 +90,9 @@ type Inst = {
 	Bid: number,
 	Ask: number,
 	News: boolean,
+	-- Live-Mid-Ring: Slot (t % RING) + 1 hält den Mid von Tick RingT[slot]
+	Ring: { number },
+	RingT: { number },
 }
 
 export type Env = {
@@ -166,6 +173,8 @@ function PriceEngine.AddInstrument(self: any, spec: Spec)
 		Bid = 0,
 		Ask = 0,
 		News = false,
+		Ring = table.create(RING, 0),
+		RingT = table.create(RING, -1),
 	}
 	if fresh then
 		if spec.Etf then
@@ -199,6 +208,22 @@ end
 
 function PriceEngine.LiveTick(self: any): number
 	return self.LiveT
+end
+
+-- Live-Mid-Ring verwerfen (verspätetes Event/Absage ändert schon gerechnete Kurse); danach Random-Access
+function PriceEngine.ClearRing(self: any)
+	for _, inst in pairs(self.Insts :: { [number]: Inst }) do
+		local ringT = inst.RingT
+		for slot = 1, RING do
+			ringT[slot] = -1
+		end
+	end
+end
+
+local function remember(inst: Inst, t: number, mid: number)
+	local slot = t % RING + 1
+	inst.Ring[slot] = mid
+	inst.RingT[slot] = t
 end
 
 -- ---------------------------------------------------------------------
@@ -270,10 +295,13 @@ end
 -- Log-Mid einer Aktie (unrundet) + News-aktiv-Flag
 local function stockLog(self: any, fs: FieldSet, inst: Inst, t: number, divFrom: number?): (number, boolean)
 	local spec = inst.Spec
+	-- Offset ZUERST: es kann über den Preis-Haken (Dividenden lazy auflösen) selbst Random-Access rechnen und damit
+	-- das Memo des RA-Feldsatzes auf einen anderen Tick setzen. Erst danach das Memo für t holen und lesen – sonst
+	-- wiche der erste RA-Kurs nach einer Dividenden-Auflösung vom Live-Kurs ab (MemoR eines fremden Ticks).
+	local offset, news = self.Env.Offset(spec.Id, t, divFrom)
 	shared(self, fs, t)
 	local sigma = classAt(spec, t)
 	local level = noiseLevel(self, fs, spec.Id, spec.SectorIdx, t) - n0Of(self, inst)
-	local offset, news = self.Env.Offset(spec.Id, t, divFrom)
 	local micro = self.Micro * White(self.Seed, 200 + spec.Id, t)
 	return inst.LnBase + spec.Drift * (t - spec.Origin) + offset + sigma * (fs.MemoR * level + micro), news
 end
@@ -379,6 +407,7 @@ function PriceEngine.Step(self: any, t: number)
 		inst.O, inst.H, inst.L, inst.C, inst.V, inst.HiOff, inst.LoOff = o, h, l, c, v, hiOff, loOff
 		inst.Bid, inst.Ask = bid, ask
 		inst.News = news
+		remember(inst, t, mid)
 	end
 	for _, i in ipairs(self.Etfs) do
 		local inst: Inst = self.Insts[i]
@@ -394,6 +423,7 @@ function PriceEngine.Step(self: any, t: number)
 		inst.T, inst.Mid, inst.Log = t, mid, lm
 		inst.O, inst.H, inst.L, inst.C, inst.V, inst.HiOff, inst.LoOff = o, h, l, c, v, hiOff, loOff
 		inst.Bid, inst.Ask = bid, ask
+		remember(inst, t, mid)
 	end
 	self.LiveT = t
 	self.LiveR = r
@@ -465,8 +495,15 @@ function PriceEngine.MidAt(self: any, i: number, t: number, divFrom: number?): n
 	if inst == nil then
 		return 0
 	end
-	if divFrom == nil and inst.T == t and self.LiveT == t then
-		return inst.Mid
+	if divFrom == nil then
+		if inst.T == t and self.LiveT == t then
+			return inst.Mid
+		end
+		-- jüngst live gerechnet: aus dem Ring (gleicher Wert, den Step für diesen Tick berechnet hat)
+		local slot = t % RING + 1
+		if inst.RingT[slot] == t then
+			return inst.Ring[slot]
+		end
 	end
 	local lm = self:LogAt(i, t, divFrom)
 	return toCents(self, lm)

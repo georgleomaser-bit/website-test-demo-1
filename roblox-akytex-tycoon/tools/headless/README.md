@@ -1,135 +1,196 @@
-# AKYTEX TYCOON · Headless-Roblox-Harness (Entwurf – Fundament)
+# AKYTEX TYCOON · Headless-Roblox-Harness
 
-Ein Roblox-Emulator in reinem Luau, der den echten Spiel-Code (Server **und** Client) ohne Roblox ausführt,
-Laufzeitfehler mit `src/…:Zeile` meldet und später UI-Klicks, Request-Fuzzing und einen Welt-Export erlaubt.
+Ein Roblox-Emulator in reinem Luau, der den echten Spiel-Code (Server **und** Client, alle 148 Skripte aus
+`default.project.json`) ohne Roblox ausführt und Laufzeitfehler mit `src/…:Zeile` meldet.
 Ziel: Jede gemeldete Spiel-Fehlermeldung ist ein **echter** Bug (keine Fehlalarme), und echte Bugs werden nicht
-übersehen. Verbindliche Spezifikation: `aky3_harness_spec.md` (Scratchpad).
+übersehen. Verbindliche Spezifikation: `aky3_harness_spec.md` (Scratchpad). Spiel-Bugs werden nur **gemeldet** –
+der Harness ändert nie etwas unter `src/`.
 
-Stand dieses Entwurfs: **Fundament fertig** (API-Daten, Datentypen, Enums, Instanz-System, Signale, Scheduler,
-Kontexte, Fehlererfassung, Script-Umgebungen + `require`, Selbsttest). Es fehlen noch: Services mit Verhalten
-(Players, RunService, TweenService, DataStore, Remotes/Netzwerk …), Bundler, Szenarien, `run.py`, Berichte als
-Dateien, Renderer.
+## Schnellstart
 
-## Aufruf
+```bash
+cd roblox-akytex-tycoon
+python3 tools/headless/run.py boot                       # Besitzer-Client, Live-Modus, 120 s simuliert
+python3 tools/headless/run.py boot --client 2            # Client des normalen Spielers
+python3 tools/headless/run.py boot --studio              # RunService:IsStudio() = true (SelfTests laufen)
+python3 tools/headless/run.py boot --client 2 --studio --out boot-p2-studio
+```
+
+Ergebnis: Kurzfassung auf stdout, Berichte unter `tools/headless/out/` (bzw. `out/<--out>/`).
+Exit-Code 0 = Szenario lief durch (auch wenn Spiel-Bugs gefunden wurden), 2 = Harness-Absturz.
+Laufzeit: Live ca. 25–35 s, Studio ca. 60–70 s (SelfTests rechnen viel Marktgeschichte) für 120 s Spielzeit.
+
+Selbsttests des Harness:
 
 ```bash
 SP=/tmp/claude-0/-home-user-website-test-demo-1/14caf8fd-3993-54cd-bb2d-9f5bab2d1eaf/scratchpad
-cd roblox-akytex-tycoon
-$SP/luau-build/luau tools/headless/selftest.luau        # Selbsttest -> "SELFTEST OK (n Prüfungen)"
-python3 tools/headless/gen_api.py                        # api_data.luau neu erzeugen (+ Stichproben-Check)
-python3 tools/headless/gen_api.py --check                # nur prüfen
+$SP/luau-build/luau tools/headless/selftest.luau           # Fundament  -> "SELFTEST OK (326 Prüfungen)"
+$SP/luau-build/luau tools/headless/selftest_services.luau  # Services/Netz -> "SELFTEST-SERVICES OK (62 Prüfungen)"
+python3 tools/headless/gen_api.py --check                  # API-Daten prüfen (neu erzeugen: ohne --check)
 ```
 
-Der Luau-CLI hat `loadstring`, `getfenv/setfenv`, `newproxy`, `os`, Datei-`require` (relativ zur Datei; in
-`init.luau` heißt `@self/X` „Kind“, `./X` „Geschwister des Ordners“), aber **kein `io`**: Ausgaben laufen über
-`print`; `Report.emit(name, text)` schreibt Blöcke zwischen `@@BEGIN name@@` / `@@END name@@` für einen
-Python-Wrapper.
+Der Luau-CLI-Pfad kann mit `--luau PFAD` oder der Umgebungsvariable `LUAU` überschrieben werden.
+
+## Optionen von `run.py`
+
+| Option | Bedeutung |
+|---|---|
+| `boot` | Szenario (derzeit nur `boot`) |
+| `--client 1\|2` | welcher Spieler einen Client-Kontext bekommt: 1 = Besitzer (UserId = `game.CreatorId`, de-de, Premium), 2 = normaler Spieler (en-us). Der andere Spieler existiert nur serverseitig. |
+| `--studio` / `--live` | `RunService:IsStudio()`; Standard `--live` |
+| `--seconds N` | simulierte Spielzeit (Standard 120) |
+| `--seed N` | Zufalls-Seed (`math.random`, `Random.new()` ohne Seed, GUIDs) |
+| `--echo` | Fehler und Ausgaben sofort auf stdout |
+| `--no-streaming` | Instanz-Streaming aus (Standard: wie `Workspace.StreamingEnabled` aus dem Projekt) |
+| `--faults "ds=1,mem=1,msg=1,http=1"` | Fehler-Injektion: die ersten n Aufrufe je Dienst-Art schlagen mit typischem Roblox-Fehler fehl (Live-Server-Störung) |
+| `--no-bundle` | `out/bundle.luau` nicht neu bauen |
+| `--out DIR` | Berichte nach `out/DIR/` |
+| `--timeout S` | Abbruch des Luau-Prozesses (Standard 900 s) |
+
+## Szenario `boot`
+
+1. Server-DataModel bauen (Rojo-Sourcemap + `$properties`/`$attributes`), Server-Skripte in
+   ServerScriptService/Workspace starten (alle Services Init/Start).
+2. Nach 1 s tritt **AkyOwner** (Besitzer) bei, nach weiteren 0,5 s **Spieler2**. Für den gewählten Spieler
+   läuft ein vollständiger Client: Erst-Replikation (Phase A: Players + eigener Player + ReplicatedFirst,
+   Phase B einen Frame später: restliche replizierte Services, `game.Loaded`), PlayerScripts aus
+   StarterPlayerScripts, StarterGui-Kopie, Figur mit StarterCharacterScripts.
+3. Prüfungen: `Server gestartet`, `Markt läuft`, Config-Validierung, SelfTest-Ergebnis (nur Studio),
+   Client-UI (`AkytexTycoonUI`, Hud sichtbar, TRADE-Knopf sichtbar), Figur repliziert, Klick auf TRADE
+   (öffnet das Terminal; neu sichtbare GUI-Objekte werden gezählt).
+
+## Berichte (`tools/headless/out/…`)
+
+| Datei | Inhalt |
+|---|---|
+| `report.txt` | Hauptbericht (Abschnitte siehe unten) |
+| `report.json` | dieselben Daten maschinenlesbar |
+| `output.txt` | alle `print`/`warn`-Ausgaben des Spiels (Server + Client, mit Zeit und Kontext) |
+| `ui_tree.txt` | GUI-Baum des Clients mit AbsolutePosition/-Size, Sichtbarkeit, Texten |
+| `ui_tree_trade.txt` | GUI-Baum nach dem Klick auf TRADE |
+| `harness_crash.txt` | nur bei Absturz des Harness selbst |
+| `bundle.luau` | Bündel aller Skripte (von `bundle.py`, nicht committen) |
+
+Abschnitte von `report.txt`:
+
+* **ZUSAMMENFASSUNG / PRÜFUNGEN** – Zähler und Szenario-Prüfungen (`[OK]`/`[FEHLT]`).
+* **(A) Unbehandelte Laufzeitfehler** – Fehler, die einen Spiel-Thread beendet haben, mit Traceback
+  (`src/…:Zeile`), Auslöser (Remote/Signal/Skriptstart) und Zähler. Das sind Spiel-Bugs.
+* **(A) Abgefangene Laufzeit-/API-Fehler** – Fehler in `pcall`/`xpcall` des Spiels, die auf einen Bug hindeuten
+  (Indexfehler, falsche API-Nutzung, `X is not a valid member …`). Das Spiel läuft weiter, aber das Feature
+  funktioniert nicht.
+* **Spiel-Warnungen / Infinite-Yields** – `warn()` des Spiels und `WaitForChild` ohne Timeout nach 5 s.
+* **Harness-Hinweise** – Roblox-Verhalten, das Daten still verändert (Remote-Tabellen mit gemischten Schlüsseln,
+  Funktionen in Remote-Argumenten, DataStore-Warteschlange, Unreliable > 900 Byte …).
+* **(B) Harness-Verdacht** – Fehler, deren oberster Frame im Harness liegt (kein Spiel-Bug, Harness verbessern).
+* **Unmocked / Deprecated APIs** – laut API vorhandene, im Harness nur als Stub (nil) umgesetzte Member;
+  veraltete APIs mit Fundstellen.
+* **Injizierte Dienst-Fehler** (nur mit `--faults`) – per Fehler-Injektion ausgelöste DataStore-/MemoryStore-/
+  Messaging-Fehler, die das Spiel abgefangen hat (Info; die Reaktion des Spiels steht in den Warnungen/Prüfungen).
+  Unbehandelte Folgefehler einer Injektion erscheinen dagegen in (A): Das Spiel verträgt die Störung nicht.
+* **Vom Spiel geworfene, abgefangene Fehler** – `error()` im Spiel-Code, die das Spiel selbst abfängt (Info).
 
 ## Dateien
 
 | Datei | Inhalt |
 |---|---|
-| `gen_api.py` | Generator: globalTypes.d.luau (Member/Klassen/Enums/Creatable/Services) + Full-API-Dump (Enum-Werte, float/int/double, ReadOnly, Yields, Sicherheit, von luau-lsp weggelassene skriptbare Member) + rbx-reflection-DB (Defaults) + creator-docs (BrickColor-Tabelle, Font.fromEnum) |
-| `api_data.luau` | erzeugt, committet (941 Klassen, 649 Enums, Defaults) |
-| `runtime/init.luau` | Loader `require("./tools/headless/runtime").boot(config)` + **interne API-Doku** |
-| `runtime/Util.luau` | `raise` (Fehler mit Spiel-Position), Argument-Prüfungen, `typeof`/`type`, float32, Formatierung |
-| `runtime/Report.luau` | Fehler/Warnungen/Infinite-Yields/unmocked/deprecated sammeln, deduplizieren, rendern |
-| `runtime/Scheduler.luau` | simulierte Zeit, Frame-Phasen, Threads, Kontexte, Deferred-Queue, `task.*`, alte `wait/spawn/delay` |
-| `runtime/Signal.luau` | RBXScriptSignal/Connection (Deferred) |
-| `runtime/Enum.luau` | Enum-System |
-| `runtime/Datatypes/*` | Vector3/2(+int16), CFrame, Color3/BrickColor/ColorSequence, UDim/UDim2/Rect/Font/Content, NumberRange/NumberSequence/TweenInfo/Ray/Region3/PhysicalProperties/Axes/Faces/PathWaypoint/RaycastParams/OverlapParams/RaycastResult/CatalogSearchParams/SharedTable, DateTime/Random, JSON |
-| `runtime/Instance/init.luau` | Instanz-Kern: Klassen-Records, Properties, Baum, Events, Attribute, Tags, Clone/Destroy, WaitForChild |
-| `runtime/Instance/BasePart.luau` | BasePart/PVInstance/Model, Gelenke (WeldConstraint, Weld/Motor6D) |
-| `runtime/Instance/Gui.luau` | AbsoluteSize/-Position, Layouts, TextBounds, ScrollingFrame, TextBox-Fokus |
-| `runtime/Instance/DataModel.luau` | DataModel, `GetService`, Standard-Services, Workspace-Grundlagen, CollectionService |
-| `runtime/Globals.luau` | Script-Umgebungen je Kontext, `require` (Cache je Kontext), `startScript` |
-| `selftest.luau` | Selbsttest (Datentyp-Mathematik, Instanz-Fehler, Deferred-Signale, WaitForChild-Warnung, require …) |
+| `bundle.py` | Bundler: `rojo sourcemap` + `default.project.json` (`$properties`, `$attributes`, `$className`) -> `out/bundle.luau` (Baum + Quelltexte als Long-Strings) |
+| `run.py` / `run.luau` | Einstieg: Bündel bauen, Luau-CLI starten, Marker-Blöcke `@@BEGIN name@@ … @@END name@@` in Dateien zerlegen |
+| `gen_api.py` / `api_data.luau` | API-Daten (Klassen, Member, Enums, Defaults, Sicherheit, Yields) aus luau-lsp-Typen + Full-API-Dump + rbx-reflection |
+| `runtime/init.luau` | Loader `require("./tools/headless/runtime").boot(config)` + interne API-Doku |
+| `runtime/Util.luau`, `Report.luau`, `Scheduler.luau`, `Signal.luau`, `Enum.luau` | Fehler mit Spiel-Position, Fehlererfassung, simulierte Zeit/Frame-Phasen/Threads/Kontexte, Deferred-Signale, Enums |
+| `runtime/Datatypes/*` | alle Roblox-Datentypen (Vector3, CFrame, Color3, UDim2, TweenInfo, Ray, Region3, DateTime, Random, JSON …) |
+| `runtime/Instance/*` | Instanz-Kern, BasePart/Model/Gelenke, GUI-Geometrie (inkl. UIScale), DataModel/CollectionService |
+| `runtime/Globals.luau` | Script-Umgebungen je Kontext, `require` mit Cache je Kontext, `pcall`-Erfassung, `os.clock`/`tick` |
+| `runtime/Services/init.luau` | Service-Helfer, Fehler-Injektion, RunService |
+| `runtime/Services/Players.luau` | Players/Player/Figuren (R15-Rig), Humanoid, Sitze, Animator, Ban-API |
+| `runtime/Services/World.luau` | Workspace-Abfragen (Raycast/Shapecast/GetPartBounds…), Kollisionsgruppen, Terrain, Kamera |
+| `runtime/Services/Tween.luau` | TweenService (Validierung, Easing, Wiederholung), Debris |
+| `runtime/Services/Input.luau` | UserInputService, ContextActionService, GuiService, StarterGui:SetCore, GUI-Klicks |
+| `runtime/Services/Data.luau` | DataStore (Validierung, Budgets, 6-s-Schreibsperre), OrderedDataStore, MemoryStore, MessagingService |
+| `runtime/Services/Platform.luau` | Marketplace, Policy, Badge, Group, Social, Localization, Analytics, HttpService … |
+| `runtime/Services/Text.luau` | TextService, TextChatService (Kanäle, Befehle, Callbacks), Chat |
+| `runtime/Services/Misc.luau` | ContentProvider, ProximityPrompt, ClickDetector, Sound, Lighting, Teams, Pathfinding, LogService, ScriptContext, Bindables, UserSettings, Path2D … |
+| `runtime/Net.luau` | Replikator, Remotes, Streaming |
+| `runtime/Game.luau` | DataModels aus dem Bündel bauen, Spieler beitreten/verlassen lassen, Shutdown |
+| `runtime/Scenarios.luau` | Szenarien, Prüfungen, Berichte |
+| `selftest.luau`, `selftest_services.luau` | Selbsttests |
 
-## Interne API (Kurzfassung – Details im Kopf von `runtime/init.luau`)
+## Architektur und Treue-Entscheidungen
 
-```lua
-local R = require("./tools/headless/runtime").boot({ frameRate = 30, startUnix = 1791972000, seed = 1 })
-local server = R.Sched.newContext({ kind = "server", name = "server" })
-local game = R.Inst.newDataModel({ name = "AkytexTycoon", creatorId = 1, placeId = 1, context = server })
-server.game = game
-R.Inst.setScriptSource(scriptInst, source, "src/server/Main.server.luau")   -- Bundler
-R.Globals.startScript(server, scriptInst, source, "src/server/Main.server.luau")
-R.Sched.run(10)                    -- 10 s simulieren (30 Hz)
-print(R.Report.renderText())
-```
+### Server/Client: getrennte DataModels + Replikator (bewusste Abweichung)
 
-* **Kontexte:** Jeder Thread trägt einen Kontext (`R.Sched.ctx()`); neue Threads (task.*, Signal-Handler,
-  `coroutine.create/wrap`) erben den Kontext des Erzeugers bzw. des **verbindenden** Threads. `_G`, `shared` und der
-  `require`-Cache sind je Kontext getrennt (wie getrennte VMs). `RunService:IsServer/IsClient` und
-  `Players.LocalPlayer` sollen `R.Sched.ctx()` auswerten.
-* **Fehler:** `R.Util.raise(msg)` für Roblox-artige API-Fehler (Position = aufrufende Spiel-Zeile, Kategorie A).
-  Unbehandelte Fehler in Spiel-Threads landen automatisch per `xpcall`-Traceback in `R.Report.error` (dedupliziert
-  nach Nachricht + erster `src/…`-Position, mit Zähler und Auslöser via `R.Report.setTrigger`). Abstürze im Harness
-  selbst (oberster Frame im Harness, nicht per `raise`) werden als Kategorie B markiert. Fehler nach einem
-  unmocked-Stub im selben Thread bekommen einen Hinweis.
-* **Klassenverhalten / Services:** `R.Inst.define(class, spec)` bzw. `R.Inst.registerService(class, spec + setup)`
-  mit `methods`, `props` (get/set), `callbacks` (onSet), `init`, `onChanged`, `onAncestry`, `postClone`,
-  `onDestroy`, `signalOpts`. Nur laut API existierende Member (sonst Harness-Fehler). Nicht implementierte Methoden
-  sind Stubs (geben nil zurück, Eintrag „unmocked“); nicht existierende Member werfen wie Roblox.
-* **Frame-Phasen:** `network → input → render → legacyWait → preAnimation → preSimulation → physics →
-  postSimulation → timers → late`; `R.Sched.addHook(phase, fn, name)`. RunService soll in `render`
-  (RenderStepped/PreRender, nur Client), `preSimulation` (Stepped/PreSimulation) und `postSimulation`
-  (Heartbeat/PostSimulation) feuern.
-* **Beobachter:** `R.Inst.observe("created"|"changed"|"reparented"|"destroying"|"attribute"|"tag", fn)` – Basis
-  für Replikation, Streaming, Welt-Export.
-* **Harness-Helfer:** `Inst.create` (ohne creatable-Prüfung), `Inst.setProp` (typgeprüft, ohne read only),
-  `Inst.rawSet`, `Inst.fire(inst, "Event", …)`, `Inst.callback(inst, "OnServerInvoke")`,
-  `Inst.closeCallbacks(game)`, `Inst.setLoaded(game)` (feuert `game.Loaded`; Server sofort, Client nach der
-  Erst-Replikation aufrufen), `Inst.Parts.simulateTouch(a, b)`, `Inst.Gui.isRendered(gui)`,
-  `R.Sched.invoke(ctx, fn, …)` + `R.Sched.await(h)`, `R.Sched.callNoYield(fn, …)` (UpdateAsync-Transform,
-  OnIncomingMessage).
+Die Spezifikation beschreibt einen gemeinsamen Baum mit Sichtbarkeitsfilter. Umgesetzt ist stattdessen ein
+**eigenes DataModel je Kontext** (Server + je Client) in **einer** Luau-VM mit einem Replikator. Grund: In Roblox
+bleiben Client-Änderungen lokal. Mit einem gemeinsamen Baum würden Client-Skripte, die Server-Teile verändern
+oder zerstören, auf dem Server wirken (Fehlalarme bzw. übersehene Bugs). Folgen:
 
-### Empfehlung Server/Client-Modell (für den nächsten Schritt)
+* ServerScriptService/ServerStorage sind auf dem Client leer; `_G`, `shared` und `require`-Caches sind je
+  Kontext getrennt (wie getrennte VMs).
+* Replikation über **eine geordnete Nachrichten-Warteschlange je Client** (Teilbaum-Schnappschüsse,
+  Property/Name/Attribut/Tag/Parent/Destroy/Pivot, Remote-Events, Invokes, Antworten), angewendet in der
+  `network`-Phase des **nächsten** Frames (ein Frame Latenz, Reihenfolge wie gesendet). `InvokeServer` braucht
+  damit mindestens zwei Frames hin und zurück.
+* Neue Teilbäume kommen atomar an; Instanz-Referenzen auf noch nicht replizierte Objekte werden nachgereicht.
+* Eigene Figur: CFrame-Änderungen des Clients replizieren zum Server (Network-Ownership), sonst nichts.
+* PlayerGui/Backpack nur für den Besitzer, StarterGear/PlayerScripts nie; Server-Kamera wird nicht repliziert.
 
-Das Fundament unterstützt beide Varianten der Spezifikation:
+### Remotes (Roblox-Serialisierung)
 
-1. **Getrennte DataModels je Kontext + Replikator (empfohlen):** Server-Baum ist maßgeblich; ein Replikator
-   (über `Inst.observe`) spiegelt Erzeugen/Property-/Attribut-/Tag-Änderungen/Parent-Wechsel/Destroy replizierter
-   Container mit 1 Frame Latenz in den Client-Baum; Client-Änderungen bleiben lokal (außer eigener Figur).
-   Remote-Argumente bilden Instanzen über eine Replikations-ID ab (nicht replizierte -> nil, wie Roblox). Vorteil:
-   Client-Code, der Server-Teile lokal zerstört/verändert oder eigene Teile in Workspace legt, erzeugt **keine**
-   Fehlalarme auf dem Server; ServerScriptService/ServerStorage sind auf dem Client automatisch leer; Streaming
-   = Replikator lässt ferne Teile weg.
-2. **Gemeinsamer Baum + `Inst.setVisibilityFilter(fn(inst, ctx))`:** einfacher, aber Client-Schreibzugriffe auf
-   Server-Instanzen wirken dann auch auf dem Server (mögliche Fehlalarme bzw. übersehene Bugs).
+Tiefe Kopie; Metatabellen fallen weg; Funktionen/Threads -> nil (Bindables behalten sie); Instanzen nur, wenn
+beim Empfänger repliziert (sonst nil); gemischte/lückenhafte Tabellen -> nur Array-Teil (+ Hinweis);
+Nicht-String-Schlüssel in Dictionaries -> `tostring` (+ Hinweis); zyklische Tabellen -> Fehler beim Sender;
+UnreliableRemoteEvent > 900 Byte wird verworfen (+ Warnung). Events vor dem ersten `Connect` werden gepuffert
+(Limit 256, danach „Remote event invocation queue exhausted“). Fehler in `OnServerInvoke` kommen beim
+aufrufenden Client als Fehler an. Seitenprüfungen (`FireServer` nur Client usw.) wie in Roblox.
 
-## Treue-Entscheidungen
+### Streaming
 
-* Datentypen sind `newproxy`-userdata mit eigener Metatabelle (Daten liegen darin). `typeof` erkennt sie über
-  registrierte `__index`-Funktionen (Luau-`typeof` ignoriert `__type` bei newproxy). In der Spiel-Umgebung liefert
-  `type(Vector3)` wie in Roblox **"vector"**, `getmetatable` von Roblox-Objekten `"The metatable is locked"`.
-* Vector3 wird als nativer Luau-`vector` gespeichert (float32 wie Roblox) und **interniert**: gleiche Vector3 sind
-  rawequal und als Tabellenschlüssel gleichwertig (in Roblox ist Vector3 ein Werttyp). CFrame/Color3/UDim/Vector2
-  sind float32-gerundet, UDim-Offsets int32. Float-Properties werden auf float32 gerundet
-  (`part.Transparency = 0.1` liefert 0.10000000149…), int-Properties abgeschnitten.
-* CFrame-Algorithmen nach G3D (Euler-Zerlegung, Achse/Winkel, `lookAt` mit Up-Wechsel und NaN bei Nullrichtung),
-  `Lerp` = Quaternion-Slerp.
-* Signale verhalten sich **Deferred** (Handler in eigenem Thread beim nächsten Resumption-Punkt, Disconnect vor
-  Ausführung verhindert den Aufruf, `Once` trennt beim Feuern); `Destroying` läuft sofort; `Destroy` trennt alle
-  Verbindungen. ValueBase.Changed liefert den neuen Wert (nur für `Value`).
-* Property-Changed feuert nur bei echter Änderung; CFrame-Zuweisung meldet auch Position/Orientation/Rotation.
-* `WaitForChild`: kein Yield, wenn vorhanden; erkennt Umbenennungen; Timeout -> nil; ohne Timeout nach 5 s
-  simulierter Zeit Warnung `Infinite yield possible on 'X:WaitForChild("Y")'` mit Traceback des wartenden Threads.
-* `Model.PrimaryPart` darf vor dem Parenten gesetzt werden und wird im nächsten Schritt auf nil gesetzt, wenn das
-  Teil kein Nachfahre ist (Roblox-Legacy-Verhalten laut Doku). `WorldPivot` = Box-Mitte bis zum ersten Setzen.
-* Gelenke wirken nur in Workspace: `part.CFrame = …` bewegt die Baugruppe, `part.Position = …` nur das Teil
-  (WeldConstraint-Doku); Weld/Motor6D rasten auf `Part0 * C0 * Transform * C1:Inverse()` ein; verankerte Teile
-  werden nie verschoben.
-* `os.date` ohne `!` liefert auf dem **Server UTC** (Roblox-Server), auf dem Client die Prozess-Zeitzone (`TZ`).
+Bei `Workspace.StreamingEnabled` (aus dem Projekt) streamt der Replikator BaseParts und Modelle nach Abstand zur
+Figur (StreamingTargetRadius/MinRadius aus den `$properties`, Opportunistic Stream-Out), `Persistent`/
+`PersistentPerPlayer`-Modelle und die eigene Figur immer, nicht-räumliche Instanzen sofort; Pässe alle 0,25 s;
+`RequestStreamAroundAsync` setzt einen temporären Fokus. Atomic-Modelle kommen als Ganzes, Legacy-Modelle
+verhalten sich wie Nonatomic.
 
-## Bekannte Grenzen (Fundament)
+### Zeit
 
-* Keine Physik (kein Fallen, keine Kollisionen; `Touched` nur über `Inst.Parts.simulateTouch`).
-* GUI-Geometrie grob: `AutomaticSize`, `UITextSizeConstraint`, Rich-Text-Breiten, Schriftmetriken sind Näherungen.
+Simulierte Zeit mit 30 Hz und Frame-Phasen `network → input → render → legacyWait → preAnimation →
+preSimulation → physics → postSimulation → timers → late`. `os.clock()`/`tick()` = simulierte Zeit + echte
+Rechenzeit seit dem letzten Fortsetzen des laufenden Threads – so terminieren Zeitbudget-Schleifen des Spiels
+(z. B. `CandleStore.Work`), und lange Rechenblöcke zählen wie in Roblox. `os.time`/`DateTime` laufen ab
+Samstag 10.10.2026 17:59 Berlin. `os.date` ohne `!` liefert auf dem Server UTC.
+
+### Fehlererfassung
+
+* Unbehandelte Fehler in Spiel-Threads -> Report (dedupliziert nach Nachricht + erster `src/…`-Position).
+* `pcall`/`xpcall` des Spiels sind umhüllt: abgefangene Fehler werden klassifiziert in *api* (Roblox-API-Fehler),
+  *runtime* (Index-/Arithmetik-/Aufruffehler), *thrown* (`error()` des Spiels oder direkt von `pcall` gerufene
+  Builtins – erwartet) und *harness* (oberster Frame im Harness).
+* NotScriptable-Properties aus `$properties` (z. B. `BanningEnabled`, `StreamingTargetRadius`) sind für den
+  Spiel-Code unsichtbar (Zugriff wirft wie in Roblox), werden aber vom Harness ausgewertet.
+
+### Weitere Details (Fundament)
+
+* Datentypen sind `newproxy`-userdata; `type(Vector3)` liefert wie in Roblox `"vector"`, `getmetatable` von
+  Roblox-Objekten `"The metatable is locked"`. Vector3 wird interniert (gleiche Werte sind rawequal),
+  float32-Rundung für CFrame/Color3/Float-Properties, int32 für UDim-Offsets.
+* Signale verhalten sich **Deferred**; `Destroying` läuft sofort; `Destroy` trennt alle Verbindungen.
+* `WaitForChild` ohne Timeout warnt nach 5 s simulierter Zeit (`Infinite yield possible on …`) mit Traceback.
+* Gelenke (WeldConstraint/Weld/Motor6D) bewegen Baugruppen in Workspace; verankerte Teile werden nie verschoben.
+* Nur laut API existierende Member; nicht existierende werfen wie Roblox, nicht implementierte sind Stubs
+  (Eintrag „unmocked“, Folgefehler werden markiert).
+
+## Bekannte Grenzen
+
+* Keine Physik (kein Fallen, keine Kollisionen); `Touched` nur simuliert, Humanoid:MoveTo läuft geradlinig.
+* GUI-Geometrie genähert: `AutomaticSize`, Schriftmetriken, Rich-Text-Breiten, `ClipsDescendants`.
 * `Random` ist deterministisch, aber nicht Roblox' exakte PCG32-Folge.
-* Mehrdeutige Roblox-Fehlertexte sind sinngemäß nachgebildet (Fehler entsteht immer, Wortlaut kann abweichen).
-* Unmocked-Stubs geben nil zurück (Folgefehler werden im Report mit Hinweis markiert).
-* Vector3 ist in Roblox ein nativer `vector`; hier userdata – Spiel-Code mit `vector.*`-Bibliothek würde nicht
-  mit Vector3 zusammenpassen (das Spiel nutzt sie nicht).
-* Noch nicht vorhanden: Services mit Verhalten, Netzwerk/Remotes, Spieler/Figuren, Streaming, Bundler,
-  Szenarien, Berichtsdateien.
+* Einige Roblox-Fehlertexte sind sinngemäß nachgebildet (der Fehler entsteht immer, der Wortlaut kann abweichen).
+* Replikation von Teilbäumen ist atomar (Roblox kann große Teilbäume aufteilen); Streaming vereinfacht
+  (Abstand je Teil, kein Speicherdruck).
+* `os.clock()` kann zwischen verschiedenen Threads minimal zurückspringen (Rechenzeit je Fortsetzung).
+* Figur-Rig vereinfacht (R15-Teile/Motor6D, keine echten Animationen).
+* Nur Desktop-Geräte (Maus/Tastatur, 1280×720); Touch/Gamepad/VR nur als Flags.
+* MarketplaceService-Kaufdialoge enden immer „abgebrochen“; DataStores sind nur im Speicher.
+* Noch nicht umgesetzt: Szenarien ui-crawl, prompt-crawl, request-fuzz, purchase, shutdown, world-Export,
+  Renderer.

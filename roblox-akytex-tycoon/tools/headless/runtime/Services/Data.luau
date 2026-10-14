@@ -226,6 +226,7 @@ return function(R, Svc)
 	local keyLastWrite = {}
 	local warnedQueue = {}
 	local function consume(kind, storeKey, key, isWrite)
+		Svc.fault("ds", kind .. " " .. key)
 		refill()
 		local waited = false
 		while (budgets[kind] or 100) < 1 do
@@ -763,6 +764,10 @@ return function(R, Svc)
 		end
 		return copy
 	end
+	local function msLatency(what)
+		Svc.fault("mem", what)
+		Svc.latency(0.05)
+	end
 	local function msLive(e)
 		return e ~= nil and e.expires > Sched.now
 	end
@@ -810,7 +815,7 @@ return function(R, Svc)
 	function SM.GetAsync(self, key)
 		Inst.checkSelf(self, "GetAsync")
 		key = msCheckKey(key, 1, "GetAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local e = sOf(self).data[key]
 		if not msLive(e) then
 			return nil
@@ -823,7 +828,7 @@ return function(R, Svc)
 		local copy = msValue(value, "SetAsync")
 		expiration = msCheckExpiration(expiration, 3, "SetAsync")
 		sortKeyOk(sortKey, 4, "SetAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local s = sOf(self)
 		local isNew = not msLive(s.data[key])
 		s.data[key] = { value = copy, expires = Sched.now + expiration, sortKey = sortKey }
@@ -836,7 +841,7 @@ return function(R, Svc)
 			Util.badArg(2, "UpdateAsync", "function", transform)
 		end
 		expiration = msCheckExpiration(expiration, 3, "UpdateAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local s = sOf(self)
 		local e = s.data[key]
 		local cur = msLive(e) and deepCopy(e.value) or nil
@@ -855,7 +860,7 @@ return function(R, Svc)
 	function SM.RemoveAsync(self, key)
 		Inst.checkSelf(self, "RemoveAsync")
 		key = msCheckKey(key, 1, "RemoveAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		sOf(self).data[key] = nil
 	end
 	function SM.GetRangeAsync(self, direction, count, lower, upper)
@@ -882,7 +887,7 @@ return function(R, Svc)
 			return b
 		end
 		lower, upper = bound(lower, 3), bound(upper, 4)
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local items = {}
 		for k, e in sOf(self).data do
 			if msLive(e) then
@@ -944,7 +949,7 @@ return function(R, Svc)
 	HM.GetAsync = function(self, key)
 		Inst.checkSelf(self, "GetAsync")
 		key = msCheckKey(key, 1, "GetAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local e = sOf(self).data[key]
 		if not msLive(e) then
 			return nil
@@ -956,7 +961,7 @@ return function(R, Svc)
 		key = msCheckKey(key, 1, "SetAsync")
 		local copy = msValue(value, "SetAsync")
 		expiration = msCheckExpiration(expiration, 3, "SetAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local s = sOf(self)
 		local isNew = not msLive(s.data[key])
 		s.data[key] = { value = copy, expires = Sched.now + expiration }
@@ -969,7 +974,7 @@ return function(R, Svc)
 			Util.badArg(2, "UpdateAsync", "function", transform)
 		end
 		expiration = msCheckExpiration(expiration, 3, "UpdateAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local s = sOf(self)
 		local e = s.data[key]
 		local res = table.pack(Sched.callNoYield(transform, msLive(e) and deepCopy(e.value) or nil))
@@ -990,7 +995,7 @@ return function(R, Svc)
 		if count < 1 or count > 200 then
 			raise("ListItemsAsync: count must be between 1 and 200")
 		end
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local keys = {}
 		for k, e in sOf(self).data do
 			if msLive(e) then
@@ -1019,7 +1024,7 @@ return function(R, Svc)
 		local copy = msValue(value, "AddAsync")
 		expiration = msCheckExpiration(expiration, 2, "AddAsync")
 		priority = Util.optNumber(priority, 3, "AddAsync", 0)
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local s = sOf(self)
 		s.seq += 1
 		table.insert(s.queue, { value = copy, expires = Sched.now + expiration, priority = priority, seq = s.seq })
@@ -1041,7 +1046,7 @@ return function(R, Svc)
 		local invis = (getmt(self).ext.extra or 30)
 		local deadline = waitTimeout < 0 and Sched.now + 30 or Sched.now + waitTimeout
 		while true do
-			Svc.latency(0.05)
+			msLatency("MemoryStore")
 			local avail = {}
 			for _, it in s.queue do
 				if msLive(it) and (it.invisibleUntil == nil or it.invisibleUntil <= Sched.now) then
@@ -1071,7 +1076,7 @@ return function(R, Svc)
 	function MQ.RemoveAsync(self, id)
 		Inst.checkSelf(self, "RemoveAsync")
 		id = Util.checkString(id, 1, "RemoveAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local s = sOf(self)
 		for i = #s.queue, 1, -1 do
 			if s.queue[i].readId == id then
@@ -1081,7 +1086,7 @@ return function(R, Svc)
 	end
 	function MQ.GetSizeAsync(self, excludeInvisible)
 		Inst.checkSelf(self, "GetSizeAsync")
-		Svc.latency(0.05)
+		msLatency("MemoryStore")
 		local n = 0
 		for _, it in sOf(self).queue do
 			if msLive(it) and not (excludeInvisible and it.invisibleUntil and it.invisibleUntil > Sched.now) then
@@ -1137,6 +1142,7 @@ return function(R, Svc)
 		if bytes > 1024 then
 			raise(fmt("PublishAsync: message size (%d bytes) exceeds the 1kB limit", bytes))
 		end
+		Svc.fault("msg", "PublishAsync " .. topic)
 		Svc.latency(0.05)
 		local sent = Sched.unix()
 		Sched.addTimer(Sched.now + 0.1, function()
@@ -1158,6 +1164,7 @@ return function(R, Svc)
 		if type(callback) ~= "function" then
 			Util.badArg(2, "SubscribeAsync", "function", callback)
 		end
+		Svc.fault("msg", "SubscribeAsync " .. topic)
 		Svc.latency(0.05)
 		local sig = R.Signal.new("MessagingService:" .. topic)
 		local conn = sig:Connect(function() end)

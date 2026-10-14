@@ -16,6 +16,8 @@
 --                                 "Module code did not return exactly one value", Fehler im Modul ->
 --                                 "Requested module experienced an error while loading" (Original im Report).
 --  G.moduleProvider = function(moduleScript) -> source, chunkName   (Standard: Inst.setScriptSource-Ablage)
+--  G.requireHooks               Liste von fn(ctx, moduleScript, wert, chunkName) nach jedem erfolgreichen require
+--                               (Szenarien hängen sich so z. B. an PlayerStateService.Handle)
 -- =====================================================================
 return function(R)
 	local Util = R.Util
@@ -420,6 +422,9 @@ return function(R)
 		return { e, debug.traceback(Util.errToString(e), 2) }
 	end
 
+	-- Harness: Funktionen (ctx, moduleScript, rückgabewert, chunkName), die nach jedem erfolgreichen require laufen
+	G.requireHooks = {}
+
 	local function wakeAll(entry)
 		local ws = entry.waiters
 		entry.waiters = {}
@@ -492,6 +497,13 @@ return function(R)
 		end
 		entry.state = "done"
 		entry.value = res[2]
+		-- Harness-Beobachter (Szenarien: z. B. Spion auf PlayerStateService.Handle) – vor dem ersten Rückgabewert
+		for _, hook in G.requireHooks do
+			local okHook, errHook = xpcall(hook, debug.traceback, ctx, target, entry.value, chunk)
+			if not okHook then
+				Report.harnessError("require-Hook fehlgeschlagen: " .. tostring(errHook))
+			end
+		end
 		wakeAll(entry)
 		return entry.value
 	end

@@ -24,7 +24,7 @@ return {
 		["ui.welcomePad"] = "Y = Terminal · Steuerkreuz = Menüs · Start = Einstellungen",
 		["ui.welcomeTouch"] = "Tippe unten auf TRADE – die Börse wartet!",
 		-- HUD
-		["ui.trade"] = "TRADE",
+		["ui.trade"] = "TRADING",
 		["ui.tradeSub"] = "Börse · Terminal",
 		["ui.hud.vault"] = "Tresor",
 		["ui.hud.wealth"] = "Vermögen %s",
@@ -199,7 +199,7 @@ return {
 		["ui.welcomePad"] = "Y = Terminal · D-pad = menus · Start = Settings",
 		["ui.welcomeTouch"] = "Tap TRADE below – the market is waiting!",
 		-- HUD
-		["ui.trade"] = "TRADE",
+		["ui.trade"] = "TRADING",
 		["ui.tradeSub"] = "Market · Terminal",
 		["ui.hud.vault"] = "Vault",
 		["ui.hud.wealth"] = "Net worth %s",

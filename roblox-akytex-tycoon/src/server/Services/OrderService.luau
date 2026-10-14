@@ -31,8 +31,14 @@
 --    OrderService.OnTrade(cb(p, FillInfo)) · OnDayResult(cb(p, DayResult)) · OnBell(cb(p))
 --    OrderService.TutorialState(p): "None" | "Running" | "Done"
 --  Request-Handler: TradePlace, TradeCancel, TradeModify, TradeBasket, TradeRefill, TradeAuto, TradeWatch,
---    AlertSet, AlertRemove, BotSet, BotToggle, DepotHistory, TutorialTrade
---  State: Depot, League. Effekt: ReadWell. Remotes: Replay (ACAD-Übung), Market "DayClose" (FireClient).
+--    AlertSet, AlertRemove, BotSet, BotToggle, DepotHistory, TutorialTrade (Action Start|Buy|Sell|Skip)
+--  State: Depot (+ SyncPct 0…1 während des Abgleichs), League. Effekt: ReadWell. Remotes: Replay (ACAD-Übung),
+--    Market "DayClose" (FireClient).
+--  Markt-Status (W20 §4.2 + Korrektur §11.1): gehandelt wird nur auf einem handelbaren Markt (MarketService.Tradeable;
+--  fehlt die Funktion: IsReady). Ablehnungen nennen den Grund: trade.marketBooting / trade.marketDown /
+--  trade.marketLocal (Ersatzmarkt eines Live-Servers = nur Ansicht). Der Offline-Abgleich rechnet nie gegen einen
+--  nicht handelbaren Markt (wartet, Depot bleibt "Syncing"); Nav(p) liefert für nicht-live Depots den zuletzt
+--  gespeicherten Wert (Nav-Ring) statt mit Ersatz- oder Startkursen neu zu bewerten.
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -84,7 +90,11 @@ local MAX_PENDING_DAYS = 72
 local MAX_NUMBER_ARG = 1e12
 local MAX_PRICE_ARG = 1e9
 local INVALID_LOG_EVERY = 10
-local MARKET_WAIT = 90 -- s: so lange wartet der Offline-Abgleich beim Beitritt auf den bootenden Markt
+-- s: so lange wartet der Offline-Abgleich höchstens auf einen handelbaren Markt (startet, nur Ansicht, gestört).
+-- Nie "live ohne Markt" (Bewertung mit Ersatz-/Startkursen wäre falsch); danach bleibt das Depot im Abgleich.
+local MARKET_WAIT_MAX = 21600
+local SYNC_FLUSH_SECONDS = 2 -- Abgleich-Fortschritt höchstens so oft an den Client (Depot.SyncPct)
+local PX_CACHE_MAX = 4096 -- Kurs-Cache je Markt-Tick (alle Depots gemeinsam)
 local MAX_MONEY = 9e15
 
 -- Pro-Spieler-Zustand (alles wird bei PlayerRemoving geleert)
@@ -98,6 +108,8 @@ local spam: { [Player]: { Window: number, Count: number, Flagged: boolean } } = 
 local perksCache: { [Player]: { At: number, Lic: Lic, Perks: { [string]: any } } } = {}
 local pendingLicence: { [Player]: number } = {}
 local dirty: { [Player]: { [string]: boolean } } = {}
+local syncSpan: { [Player]: { From: number, To: number } } = {} -- Abgleich-Fenster (Depot.SyncPct)
+local syncFlushAt: { [Player]: number } = {}
 local ownerOf: { [any]: Player } = {} -- Depot-Tabelle -> Spieler (Metriken)
 
 local tradeCallbacks: { (Player, Types.FillInfo) -> () } = {}
@@ -168,11 +180,59 @@ local function marketTick(): number?
 	return nil
 end
 
--- Markt fertig gebootet? (Tick() ist schon kurz VOR "ready" gesetzt; PriceAt/Dividends liefern bis dahin nur
--- Startkurse bzw. nichts – der Offline-Abgleich darf erst danach rechnen). Fehlt die Funktion: als bereit werten.
+-- Markt handelbar? (Tick() ist schon kurz VOR "ready" gesetzt; PriceAt/Dividends liefern bis dahin nur
+-- Startkurse bzw. nichts – der Offline-Abgleich darf erst danach rechnen). Ein Ersatzmarkt auf einem Live-Server
+-- ist bereit, aber NICHT handelbar (W20 Korrektur §11.1). Fehlt Tradeable: IsReady; fehlt auch das: als bereit werten.
 local function marketReady(): boolean
+	local okT, tradeable = call("MarketService", "Tradeable")
+	if okT then
+		return tradeable == true
+	end
 	local ok, ready = call("MarketService", "IsReady")
 	return not ok or ready == true
+end
+
+-- Markt-Sicht für Ablehnungsgründe (Selbsttests setzen ein Test-Double ein)
+type MarketView = { Tick: () -> number?, Tradeable: () -> boolean, Status: () -> string? }
+
+local LIVE_MARKET: MarketView = {
+	Tick = marketTick,
+	Tradeable = marketReady,
+	Status = function(): string?
+		local ok, status = call("MarketService", "Status")
+		return if ok and type(status) == "string" then status else nil
+	end,
+}
+
+-- Grund-Schlüssel, warum der Markt gerade keinen Handel annimmt (nil = handelbar)
+local function marketClosedKey(view: MarketView): string?
+	local tick = view.Tick()
+	if tick and view.Tradeable() then
+		return nil
+	end
+	local status = view.Status()
+	if status == "Failed" then
+		return "trade.marketDown"
+	end
+	if status == "Local" and tick then
+		return "trade.marketLocal" -- bereit, aber Ersatzmarkt eines Live-Servers: nur Ansicht
+	end
+	return "trade.marketBooting"
+end
+
+-- Offline-Abgleich: "go" (handelbar) · "wait" (startet / nur Ansicht / gestört) · "none" (kein Markt-Dienst)
+local function catchUpGate(hasMarket: boolean, tick: number?, tradeable: boolean): string
+	if not hasMarket then
+		return "none"
+	end
+	if tick and tradeable then
+		return "go"
+	end
+	return "wait"
+end
+
+local function marketGate(): string
+	return catchUpGate(Services ~= nil and Services.MarketService ~= nil, marketTick(), marketReady())
 end
 
 -- "Jetzt" der Engine: der zuletzt verarbeitete Markt-Tick; ohne Markt die Weltzeit
@@ -453,17 +513,35 @@ end
 -- ---------------------------------------------------------------------
 -- 4) MARKT-ZUGRIFF (pcall) + Tick-Caches
 -- ---------------------------------------------------------------------
-local tickPx: { [number]: number } = {}
-local tickPxAt = -1
+-- Kurs-Cache je Markt-Tick (W25 perf_server F1 Schritt 2, E2): Schlüssel i · 2^32 + t, beim nächsten Tick geleert.
+-- Immer für t = jetzt; während onMarketTick (sharedTick) für JEDES t – Bots, Halb-Spread (t − 1) und Tagesschluss
+-- (NavAt(t − 1)) aller Spieler rechnen jeden Kurs dieses Ticks nur einmal. Innerhalb eines Ticks ändert sich kein
+-- Kurs (späte Bus-Events laufen nie mitten im synchronen Tick).
+local pxCache: { [number]: number } = {}
+local pxCacheTick = -1
+local pxCacheCount = 0
+local sharedTick = false
 
 local function priceAt(i: number, t: number): number?
 	local now = marketTick()
-	if now and t == now - LIVE_LAG then
-		if tickPxAt ~= t then
-			table.clear(tickPx)
-			tickPxAt = t
+	local key: number? = nil
+	if
+		now
+		and (sharedTick or t == now - LIVE_LAG)
+		and isInt(i)
+		and isInt(t)
+		and i >= 0
+		and i < 65536
+		and t >= 0
+		and t < 4294967296
+	then
+		if pxCacheTick ~= now then
+			table.clear(pxCache)
+			pxCacheTick = now
+			pxCacheCount = 0
 		end
-		local cached = tickPx[i]
+		key = i * 4294967296 + t
+		local cached = pxCache[key :: number]
 		if cached then
 			return cached
 		end
@@ -471,8 +549,9 @@ local function priceAt(i: number, t: number): number?
 	local ok, px = call("MarketService", "PriceAt", i, t)
 	if ok and Util.IsFinite(px) and px > 0 then
 		local value = math.floor(px)
-		if tickPxAt == t then
-			tickPx[i] = value
+		if key and pxCacheTick == now and pxCacheCount < PX_CACHE_MAX then
+			pxCache[key] = value
+			pxCacheCount += 1
 		end
 		return value
 	end
@@ -768,18 +847,25 @@ local function processLive(p: Player, d: Depot, target: number)
 end
 
 local function onMarketTick(t: number)
-	if not isInt(t) then
-		return
+	if not isInt(t) or not marketReady() then
+		return -- nie gegen einen nicht handelbaren Markt (Ersatzmarkt eines Live-Servers) rechnen
 	end
 	local target = t - LIVE_LAG
-	for _, p in ipairs(Players:GetPlayers()) do
-		if live[p] then
-			local d = depotOf(p)
-			if d then
-				processLive(p, d, target)
+	sharedTick = true -- alle Depots dieses Ticks teilen sich den Kurs-Cache (priceAt)
+	local ok, err = pcall(function()
+		for _, p in ipairs(Players:GetPlayers()) do
+			if live[p] then
+				local d = depotOf(p)
+				if d then
+					processLive(p, d, target)
+				end
+				flushDirty(p)
 			end
-			flushDirty(p)
 		end
+	end)
+	sharedTick = false
+	if not ok then
+		logError("Tick", err)
 	end
 end
 
@@ -827,13 +913,15 @@ local function applyLicence(p: Player, d: Depot, idx: number)
 end
 
 -- Übung: liegengebliebene ACAD-Stück verkaufen (Abschnitt 9; vorab deklariert, goLive braucht sie)
-local finishTutorial: (Player, Depot, boolean) -> number?
+local finishTutorial: (Player, Depot, boolean, number?) -> number?
 
 local function goLive(p: Player, d: Depot, buffer: { [string]: any }?, report: { [string]: any }?)
 	local env = makeEnv(p, d, "Live")
 	ensureDayRecord(d, env, math.floor(num(d.LastTick, engineNow())))
 	live[p] = true
 	syncing[p] = nil
+	syncSpan[p] = nil
+	syncFlushAt[p] = nil
 	local queued = pendingLicence[p]
 	if queued then
 		pendingLicence[p] = nil
@@ -880,20 +968,29 @@ startCatchUp = function(p: Player)
 			syncing[p] = nil
 			return
 		end
-		local now = if marketReady() then marketTick() else nil
-		-- Markt bootet noch (Seed aus dem DataStore): warten statt die Offline-Zeit zu überspringen
+		-- Markt startet (Seed aus dem DataStore), ist nur Ansicht (Ersatzmarkt) oder gestört: warten statt die
+		-- Offline-Zeit zu überspringen oder gegen falsche Kurse nachzurechnen (W20 Korrektur §11.1)
+		local gate = marketGate()
 		local waited = 0
-		while not now and Services and Services.MarketService ~= nil and present(p) and waited < MARKET_WAIT do
+		while gate == "wait" and present(p) and depotOf(p) == d and waited < MARKET_WAIT_MAX do
 			task.wait(1)
 			waited += 1
-			now = if marketReady() then marketTick() else nil
+			gate = marketGate()
 		end
 		if not present(p) or depotOf(p) ~= d then
 			syncing[p] = nil
 			return
 		end
-		if not now then
-			-- kein Markt (Dienst fehlt/ausgefallen): nichts nachzurechnen, Depot trotzdem nutzbar
+		if gate == "wait" then
+			-- nach MARKET_WAIT_MAX noch immer kein handelbarer Markt: Depot bleibt im Abgleich (sicher), neuer Beitritt
+			-- versucht es erneut
+			warn(("[OrderService] Kein handelbarer Markt für %s – Depot bleibt im Abgleich"):format(p.Name))
+			syncing[p] = nil
+			return
+		end
+		local now = marketTick()
+		if gate == "none" or not now then
+			-- kein Markt-Dienst: nichts nachzurechnen, Depot trotzdem nutzbar
 			d.LastTick = math.max(math.floor(num(d.LastTick, 0)), Clock.Tick())
 			goLive(p, d, nil, nil)
 			return
@@ -906,11 +1003,21 @@ startCatchUp = function(p: Player)
 		end
 		local buffer = { Fills = {}, Days = {}, Bell = false }
 		local env = makeEnv(p, d, "Replay", buffer)
+		local span = { From = math.floor(num(d.LastTick, 0)), To = target }
+		syncSpan[p] = span
+		syncFlushAt[p] = os.clock()
 		local report = CatchUp.Run(d, env, target, {
 			Cursor = newCursor,
 			Candle = randomCandle,
 			Yield = function()
 				task.wait()
+				-- Fortschritt (Depot.SyncPct) höchstens alle SYNC_FLUSH_SECONDS an den Client
+				local nowClock = os.clock()
+				if nowClock - (syncFlushAt[p] or 0) >= SYNC_FLUSH_SECONDS and present(p) then
+					syncFlushAt[p] = nowClock
+					markDirty(p, "Depot")
+					flushDirty(p)
+				end
 			end,
 			BudgetMs = 2,
 			Abort = function(): boolean
@@ -918,12 +1025,17 @@ startCatchUp = function(p: Player)
 			end,
 			Target = function(): number?
 				local t = marketTick()
+				if t and t - LIVE_LAG > span.To then
+					span.To = t - LIVE_LAG -- der Markt läuft weiter: Fortschritt auf das neue Ziel beziehen
+				end
 				return if t then t - LIVE_LAG else nil
 			end,
 		})
 		-- ab hier kein Yield mehr bis "live" (kein Tick darf verloren gehen)
 		if not present(p) or depotOf(p) ~= d then
 			syncing[p] = nil
+			syncSpan[p] = nil
+			syncFlushAt[p] = nil
 			return
 		end
 		local nowAfter = marketTick()
@@ -985,6 +1097,8 @@ local function onPlayerRemoving(p: Player)
 	perksCache[p] = nil
 	pendingLicence[p] = nil
 	dirty[p] = nil
+	syncSpan[p] = nil
+	syncFlushAt[p] = nil
 end
 
 -- ---------------------------------------------------------------------
@@ -993,6 +1107,29 @@ end
 local function navNow(p: Player, d: Depot): number
 	local env = makeEnv(p, d, "Live")
 	return OrderEngine.NavAt(d, env, engineNow())
+end
+
+-- zuletzt gespeicherter Depotwert (Nav-Ring { day, navStart, navEnd, … } -> navEnd; leer -> Basis): für Depots, die
+-- (noch) nicht live sind – nie mit Ersatz- oder Startkursen neu bewerten (Vermögen/Bestenlisten, W20 §11.1)
+local function storedNav(d: Depot): number
+	local ring = d.Nav
+	local rec = if type(ring) == "table" then ring[#ring] else nil
+	if type(rec) == "table" and Util.IsFinite(rec[3]) then
+		return math.max(0, math.floor(rec[3]))
+	end
+	return math.max(0, math.floor(num(d.Basis, 0)))
+end
+
+-- Abgleich-Fortschritt 0…1 (live = 1; wartet noch auf den Markt = 0)
+local function syncPct(p: Player, d: Depot): number
+	if live[p] then
+		return 1
+	end
+	local span = syncSpan[p]
+	if not span then
+		return 0
+	end
+	return math.clamp((num(d.LastTick, 0) - span.From) / math.max(1, span.To - span.From), 0, 1)
 end
 
 local function currentDay(): number
@@ -1044,6 +1181,9 @@ function OrderService.Nav(p: Player): number
 	local d = depotOf(p)
 	if not d then
 		return 0
+	end
+	if not live[p] then
+		return storedNav(d)
 	end
 	return navNow(p, d)
 end
@@ -1263,8 +1403,9 @@ local function encodeReplay(tick: number, close: number, phase: number): buffer
 	return b
 end
 
--- Verkauf der Übungsstück (Knopf, Automatik bei 90 s, oder beim nächsten Beitritt). auto = Preis +12 %.
-finishTutorial = function(p: Player, d: Depot, auto: boolean): number?
+-- Verkauf der Übungsstück (Knopf, Automatik nach AutoSellAfter, Abbruch, oder beim nächsten Beitritt).
+-- auto = Preis + AutoSellAt; at = Tick des Verkaufs (Standard jetzt; Selbsttests setzen ihn fest)
+finishTutorial = function(p: Player, d: Depot, auto: boolean, at: number?): number?
 	local tut = d.Tutorial
 	local qty = math.floor(num(tut.Q, 0))
 	if qty <= 0 then
@@ -1276,7 +1417,7 @@ finishTutorial = function(p: Player, d: Depot, auto: boolean): number?
 	if auto or not session then
 		px = math.floor(num(cfg.Start, 10000) * (1 + num(cfg.AutoSellAt, 0.12)) + 0.5)
 	else
-		px = tutPrice(Clock.Tick() - session.T0)
+		px = tutPrice((at or Clock.Tick()) - session.T0)
 	end
 	local bid = math.max(1, px - tutHalfSpread(px))
 	local lic = licenceOf(p)
@@ -1423,18 +1564,29 @@ local function withSeq(p: Player, arg: any, fn: (Depot) -> Reply): Reply
 	return reply
 end
 
-local function tradingOpen(p: Player): string?
+-- erst der Markt (Grund für alle: startet / gestört / nur Ansicht), dann das eigene Depot, dann die Besitzer-Sperre
+local function tradingOpenWith(p: Player, view: MarketView): string?
+	local closed = marketClosedKey(view)
+	if closed then
+		return closed
+	end
 	if not live[p] then
 		return "trade.syncing"
-	end
-	if not marketTick() or not marketReady() then
-		return "trade.marketClosed"
 	end
 	local ok, blocked = call("AdminService", "OwnerTradeBlocked", p)
 	if ok and blocked == true then
 		return "trade.ownerBlocked"
 	end
 	return nil
+end
+
+local function tradingOpen(p: Player): string?
+	return tradingOpenWith(p, LIVE_MARKET)
+end
+
+-- Ablehnungsgrund "Depot noch nicht live": wartet das Depot auf den Markt, zählt der Markt-Status
+local function notLiveKey(): string
+	return marketClosedKey(LIVE_MARKET) or "trade.syncing"
 end
 
 local function noteSpam(p: Player)
@@ -1588,7 +1740,7 @@ local function handleCancel(p: Player, arg: any): Reply
 	end
 	return withSeq(p, arg, function(d: Depot): Reply
 		if not live[p] then
-			return reject(p, "trade.syncing")
+			return reject(p, notLiveKey())
 		end
 		if not isId(arg.OrderId) then
 			return reject(p, "trade.invalid")
@@ -1711,7 +1863,7 @@ local function handleRefill(p: Player, arg: any): Reply
 		return { Ok = false, Key = "core.loading" }
 	end
 	if not live[p] then
-		return reject(p, "trade.syncing")
+		return reject(p, notLiveKey())
 	end
 	local amount, why = refillInfo(p, d)
 	if amount <= 0 then
@@ -1857,7 +2009,7 @@ local function handleBotSet(p: Player, arg: any): Reply
 		return { Ok = false, Key = "core.loading" }
 	end
 	if not live[p] then
-		return reject(p, "trade.syncing")
+		return reject(p, notLiveKey())
 	end
 	local env = makeEnv(p, d, "Live")
 	local slots = math.floor(num(env.Perks.BotSlots, env.Licence.BotSlots))
@@ -1922,7 +2074,7 @@ local function handleBotToggle(p: Player, arg: any): Reply
 		return { Ok = false, Key = "core.loading" }
 	end
 	if not live[p] then
-		return reject(p, "trade.syncing")
+		return reject(p, notLiveKey())
 	end
 	local slot = d.Bots[arg.Slot]
 	if type(slot) ~= "table" or not BotEngine.Preset(slot.Preset) then
@@ -1960,12 +2112,35 @@ local function handleHistory(p: Player, arg: any): Reply
 	return { Ok = true, Fills = d.Fills, Nav = d.Nav }
 end
 
+-- Übung abbrechen (W20 §4.2.3), idempotent: ohne Sitzung nichts zu tun; gekauft -> zum aktuellen Übungskurs
+-- verkaufen (Done + Flag); nicht gekauft -> Sitzung weg (TutorialState "None"). Braucht keinen Markt.
+local function skipTutorial(p: Player, d: Depot, now: number): Reply
+	local session = tutorials[p]
+	if session == nil then
+		return { Ok = true }
+	end
+	if session.Ended then
+		tutorials[p] = nil -- schon verkauft/beendet: nur aufräumen
+		return { Ok = true }
+	end
+	if session.Bought and num(d.Tutorial.Q, 0) > 0 then
+		finishTutorial(p, d, false, now)
+		flushDirty(p)
+		return { Ok = true }
+	end
+	tutorials[p] = nil
+	markDirty(p, "Depot")
+	flushDirty(p)
+	notify(p, "trade.tutSkipped", nil, "Info")
+	return { Ok = true }
+end
+
 local function handleTutorial(p: Player, arg: any): Reply
 	if not exactKeys(arg, { Action = true }) then
 		return reject(p, "trade.invalid")
 	end
 	local action = arg.Action
-	if action ~= "Start" and action ~= "Buy" and action ~= "Sell" then
+	if action ~= "Start" and action ~= "Buy" and action ~= "Sell" and action ~= "Skip" then
 		return reject(p, "trade.invalid")
 	end
 	local data = dataOf(p)
@@ -1973,8 +2148,11 @@ local function handleTutorial(p: Player, arg: any): Reply
 	if type(d) ~= "table" then
 		return { Ok = false, Key = "core.loading" }
 	end
+	if action == "Skip" then
+		return skipTutorial(p, d, Clock.Tick())
+	end
 	if not live[p] then
-		return reject(p, "trade.syncing")
+		return reject(p, notLiveKey())
 	end
 	local cfg = tutCfg()
 	local done = d.Tutorial.Done == true or (type(data.Flags) == "table" and data.Flags.TutorialTrade == true)
@@ -2056,6 +2234,7 @@ local function depotState(p: Player): { [string]: any }
 			Stats = {},
 			Pending = 0,
 			Syncing = true,
+			SyncPct = 0,
 			Tutorial = "None",
 		}
 	end
@@ -2064,7 +2243,7 @@ local function depotState(p: Player): { [string]: any }
 	return {
 		Cash = d.Cash,
 		Basis = d.Basis,
-		Nav = navNow(p, d),
+		Nav = OrderService.Nav(p),
 		Pos = d.Pos,
 		Orders = d.Orders,
 		Alerts = d.Alerts,
@@ -2077,6 +2256,7 @@ local function depotState(p: Player): { [string]: any }
 		Stats = d.Stats,
 		Pending = math.floor(num(d.Pending, 0)),
 		Syncing = live[p] ~= true,
+		SyncPct = syncPct(p, d),
 		Tutorial = OrderService.TutorialState(p),
 	}
 end
@@ -2156,6 +2336,32 @@ OrderService._Test = {
 	TutPrice = tutPrice,
 	NormalizeLicence = normalizeLicence,
 	BasisFor = basisFor,
+	-- Markt-Status (W20 §4.2.1, Korrektur §11.1): Test-Doubles statt des echten MarketService
+	ClosedKey = marketClosedKey,
+	TradingOpen = tradingOpenWith,
+	CatchUpGate = catchUpGate,
+	StoredNav = storedNav,
+	-- Übung abbrechen (W20 §4.2.3) mit einem Stellvertreter-Schlüssel statt eines Spielers
+	Tutorial = {
+		Begin = function(key: any, t0: number, bought: boolean, cost: number)
+			tutorials[key] = { T0 = t0, Bought = bought, Ended = false, Cost = cost }
+		end,
+		Skip = function(key: any, d: Depot, now: number): Reply
+			return skipTutorial(key, d, now)
+		end,
+		Session = function(key: any): { [string]: any }?
+			return tutorials[key]
+		end,
+		Clear = function(key: any)
+			tutorials[key] = nil
+			dirty[key] = nil
+			perksCache[key] = nil
+		end,
+		HalfSpread = tutHalfSpread,
+		Licence = function(key: any): Lic
+			return licenceOf(key)
+		end,
+	},
 	Seq = {
 		Duplicate = seqDuplicate,
 		Record = recordSeq,

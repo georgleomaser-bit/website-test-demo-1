@@ -9,7 +9,9 @@
 --  OCO storniert die Gegenseite, Trigger-Lücken, Pfad-Regel, Nachzieh-Stopp ohne Zukunftsblick, Ablauf, Dividenden-
 --  Ex-Tick, Gewinn-Transfer (Schwelle 1,02, Limit 6 %, 1× je Börsentag, Starthilfe/Admin nicht abhebbar, Tutorial-
 --  Ausnahme), Offline == Online (gleiche Fills, gleiche Ticks), Bot-Deckel, Tagesbremse, Seq-Fenster rückt bei
---  Ablehnung vor, Token-Bucket 6/1,5, Depot-Reparatur, Liga-Statistik, ACAD-Pfad.
+--  Ablehnung vor, Token-Bucket 6/1,5, Depot-Reparatur, Liga-Statistik, ACAD-Pfad (Werte aus Config.Trading.Tutorial).
+--  W20 §4.2 + Korrektur §11.1: Ablehnung mit Markt-Status (startet/gestört/nur Ansicht, Test-Double statt
+--  MarketService), kein Offline-Abgleich gegen einen nicht handelbaren Markt, gespeicherter NAV, Übung abbrechen.
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,6 +19,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Util = require(Shared:WaitForChild("Util"))
 local Config = require(Shared:WaitForChild("Config"))
+local Lang = require(Shared:WaitForChild("Lang"))
 local MarketFolder = script.Parent.Parent:WaitForChild("Market")
 local Portfolio = require(MarketFolder:WaitForChild("Portfolio"))
 local OrderEngine = require(MarketFolder:WaitForChild("OrderEngine"))
@@ -980,22 +983,118 @@ end
 function Tests.AcadTutorialPath(services: any)
 	local tutPrice = orderService(services)._Test.TutPrice
 	local cfg = Config.Trading.Tutorial
+	-- Zeitpunkte aus der Config (FX-HUD-ONBOARDING ändert Rampe/Automatik, W20 §11.5): keine festen Sekunden
+	local newsAt = cfg.NewsAt
+	local rampFrom = newsAt + cfg.ReadSeconds
+	local rampEnd = rampFrom + cfg.Ramp
 	local p0, phase0 = tutPrice(0)
-	truthy(math.abs(p0 - cfg.Start) <= cfg.Start * 0.003, "Start 100 AKY")
-	eq(phase0, 0, "vor der News")
-	local _, phase1 = tutPrice(5)
-	eq(phase1, 1, "Lesefenster (News bei t0 + 2 s, 8 s)")
-	local pRead = tutPrice(9)
+	truthy(math.abs(p0 - cfg.Start) <= cfg.Start * 0.003, "Start-Kurs")
+	eq(phase0, if newsAt > 0 then 0 else 1, "vor der News")
+	local _, phase1 = tutPrice((newsAt + rampFrom) / 2)
+	eq(phase1, 1, "Lesefenster")
+	local pRead = tutPrice(rampFrom - 1)
 	truthy(math.abs(pRead - cfg.Start) <= cfg.Start * 0.003, "im Lesefenster noch keine Reaktion")
-	local _, phase2 = tutPrice(30)
+	local _, phase2 = tutPrice((rampFrom + rampEnd) / 2)
 	eq(phase2, 2, "Rampe")
-	local pEnd, phase3 = tutPrice(80)
+	local pEnd, phase3 = tutPrice(rampEnd + 25)
 	eq(phase3, 3, "flach")
 	local want = cfg.Start * (1 + cfg.Jump)
-	truthy(math.abs(pEnd - want) <= want * 0.003, "+15 % nach der Rampe")
-	-- Gewinn bei 10 % von 25.000 AKY ≈ +375 AKY (vor Gebühren)
-	local qty = math.floor(0.10 * 2500000 / p0)
-	truthy(math.abs(qty * (pEnd - p0) - 37500) <= 2000, "≈ +375 AKY")
+	truthy(math.abs(pEnd - want) <= want * 0.003, "+Jump nach der Rampe")
+	-- Gewinn bei Chip · 25.000 AKY Depot ≈ Stück · Start · Jump (Standardwerte: ≈ +375 AKY vor Gebühren)
+	local qty = math.floor(cfg.Chip * 2500000 / p0)
+	local gain = qty * cfg.Start * cfg.Jump
+	truthy(
+		math.abs(qty * (pEnd - p0) - gain) <= math.max(2000, gain * 0.06),
+		"Übungsgewinn ≈ Stück · Start · Jump"
+	)
+end
+
+-- ---------------------------------------------------------------------
+-- 8) Markt-Status, Ersatzmarkt (nur Ansicht), Übung abbrechen (W20 §4.2, Korrektur §11.1)
+-- ---------------------------------------------------------------------
+-- Test-Double für den MarketService (Tick, Tradeable, Status)
+local function marketView(tick: number?, tradeable: boolean, status: string?): { [string]: any }
+	return {
+		Tick = function(): number?
+			return tick
+		end,
+		Tradeable = function(): boolean
+			return tradeable
+		end,
+		Status = function(): string?
+			return status
+		end,
+	}
+end
+
+function Tests.MarketStatusRejections(services: any)
+	local T = orderService(services)._Test
+	eq(T.ClosedKey(marketView(nil, false, "Booting")), "trade.marketBooting", "Markt startet (noch kein Tick)")
+	eq(T.ClosedKey(marketView(5000, false, "Booting")), "trade.marketBooting", "Neustart läuft")
+	eq(T.ClosedKey(marketView(5000, false, "Failed")), "trade.marketDown", "gestört")
+	eq(T.ClosedKey(marketView(5000, false, "Local")), "trade.marketLocal", "Ersatzmarkt = nur Ansicht")
+	eq(T.ClosedKey(marketView(5000, false, nil)), "trade.marketBooting", "älterer Markt ohne Status")
+	eq(T.ClosedKey(marketView(5000, true, "Live")), nil, "Live handelbar")
+	eq(T.ClosedKey(marketView(5000, true, "Local")), nil, "Studio-Testmarkt handelbar")
+	local key = {} -- Stellvertreter für einen Spieler (nie live)
+	eq(T.TradingOpen(key, marketView(nil, false, "Booting")), "trade.marketBooting", "Markt-Grund vor Depot-Abgleich")
+	eq(T.TradingOpen(key, marketView(5000, false, "Local")), "trade.marketLocal", "ViewOnly -> trade.marketLocal")
+	eq(T.TradingOpen(key, marketView(5000, false, "Failed")), "trade.marketDown", "gestört -> trade.marketDown")
+	eq(T.TradingOpen(key, marketView(5000, true, "Live")), "trade.syncing", "handelbar, Depot noch nicht live")
+	for _, k in ipairs({ "trade.marketBooting", "trade.marketDown", "trade.marketLocal", "trade.tutSkipped" }) do
+		truthy(Lang.Has(k), "Lang fehlt: " .. k)
+	end
+end
+
+function Tests.ViewOnlyNoCatchUpStoredNav(services: any)
+	local T = orderService(services)._Test
+	eq(T.CatchUpGate(true, 5000, false), "wait", "nur Ansicht/startet/gestört -> kein Abgleich, warten")
+	eq(T.CatchUpGate(true, nil, true), "wait", "noch kein Markt-Tick -> warten")
+	eq(T.CatchUpGate(true, 5000, true), "go", "handelbar -> Abgleich")
+	eq(T.CatchUpGate(false, nil, false), "none", "kein Markt-Dienst")
+	local d = newDepot(2500000)
+	eq(T.StoredNav(d), 2500000, "leerer Nav-Ring -> Basis")
+	Portfolio.OpenDay(d, 100, 2400000, true)
+	local rec = Portfolio.CurrentDay(d) :: any
+	rec[3] = 2612345
+	eq(T.StoredNav(d), 2612345, "letzter gespeicherter Wert (navEnd), keine Neu-Bewertung")
+end
+
+function Tests.TutorialSkipIdempotent(services: any)
+	local svc = orderService(services)
+	local T = svc._Test.Tutorial
+	local key = {} -- Stellvertreter für einen Spieler
+	local d = newDepot(2500000)
+	-- 1) ohne Sitzung: nichts zu tun
+	eq(T.Skip(key, d, 1000).Ok, true, "Skip ohne Sitzung")
+	eq(T.Session(key), nil, "keine Sitzung")
+	-- 2) Sitzung ohne Kauf -> Sitzung weg (TutorialState "None"), kein Geldfluss
+	T.Begin(key, 1000, false, 0)
+	eq(T.Skip(key, d, 1010).Ok, true, "Skip ohne Kauf")
+	eq(T.Session(key), nil, "Sitzung weg -> None")
+	eq(d.Cash, 2500000, "kein Geldfluss")
+	eq(d.Tutorial.Done, false, "nicht erledigt")
+	-- 3) Sitzung mit Kauf -> Verkauf zum aktuellen Übungskurs, Done, Q = 0
+	local qty, cost, t0 = 25, 250600, 2000
+	truthy(Portfolio.Debit(d, cost, "Tutorial"), "Übungskauf gebucht")
+	T.Begin(key, t0, true, cost)
+	d.Tutorial.Q = qty
+	local now = t0 + 70
+	local cashBefore = d.Cash
+	eq(T.Skip(key, d, now).Ok, true, "Skip mit Kauf")
+	local px = svc._Test.TutPrice(now - t0)
+	local bid = math.max(1, px - T.HalfSpread(px))
+	local lic = T.Licence(key)
+	local proceeds = PortfolioMath.SellProceeds(qty, bid, lic.FeeBps, Config.Trading.MinFeeCents)
+	eq(d.Cash - cashBefore, proceeds, "Gutschrift = SellProceeds zum aktuellen Übungskurs")
+	eq(d.Tutorial.Q, 0, "Q = 0")
+	eq(d.Tutorial.Done, true, "Done")
+	-- 4) zweiter Abbruch: idempotent (kein zweiter Verkauf, Sitzung aufgeräumt)
+	local cashAfter = d.Cash
+	eq(T.Skip(key, d, now + 1).Ok, true, "zweiter Skip")
+	eq(d.Cash, cashAfter, "kein zweiter Verkauf")
+	eq(T.Session(key), nil, "aufgeräumt")
+	T.Clear(key)
 end
 
 return Tests

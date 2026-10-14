@@ -5,7 +5,8 @@
 --  Domänen-Dateien (jedes Paket pflegt seine, Präfix-Pflicht; gleiche Liste = LANG_PREFIX in contract_check.py):
 --    Core core. (WP1) · Ui ui. (WP2) · Market mkt. · News news. (WP3) · Trade trade. (WP4) · Terminal term. (WP5) ·
 --    Tower tower. (WP6) · TowerUi tui. · Life life. (WP8) · World world. · Vehicle car. (WP7) ·
---    Progress prog. · Tutorial tut. · Social soc. (WP9) · Shop shop./item. (WP10) · Admin admin. · Events evt. (WP11)
+--    Progress prog. · Tutorial tut. · Social soc. (WP9) · Shop shop./item. (WP10) · Admin admin. · Events evt. (WP11) ·
+--    Team admin. (W19 Team-Rollen, Chat-Befehle, Banns – gleiches Präfix wie Admin, Schlüssel nie doppelt)
 --  Jede Datei gibt { de = { [key] = text }, en = { [key] = text } } zurück. Doppelte Schlüssel -> warn.
 --
 --  Öffentliche API:
@@ -42,6 +43,7 @@ local FILES: { { Name: string, Prefixes: { string } } } = {
 	{ Name = "Social", Prefixes = { "soc." } },
 	{ Name = "Shop", Prefixes = { "shop.", "item." } },
 	{ Name = "Admin", Prefixes = { "admin." } },
+	{ Name = "Team", Prefixes = { "admin." } },
 	{ Name = "Events", Prefixes = { "evt." } },
 }
 

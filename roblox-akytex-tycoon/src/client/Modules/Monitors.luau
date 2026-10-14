@@ -17,6 +17,12 @@
 --    Kürzel (z. B. "CGVO")     Chart dieses Werts
 --  Optionale Attribute: "Face" (Enum.NormalId-Name, Standard Front), "Inst" (Zahl).
 --  Gepoolte Ansichten (SurfaceGui + ChartView) werden zwischen Monitoren weitergereicht – kein Neuaufbau beim Laufen.
+--  Runde 3 PERF-WORLDGUI (W25, Optik unverändert): Pool-Deckel = maxGuis der Stufe je Pool-Schlüssel (Überhang wird
+--  ≤ 1 je Frame abgebaut), je Step höchstens 2 neue Oberflächen (Pool-Treffer unbegrenzt), restliche wartende
+--  Monitore und der Vorrat nach dem Beitritt ≤ 1 Neubau je Frame (Vorrat nur ohne offenes Fenster), Hysterese an der
+--  Reichweite (rein ≤ 300, raus > 330) und am Rang (Vorsprung für angehängte/live Monitore), Historien-Anfragen
+--  gestaffelt (≤ 1 je Frame). Vollbild-Fenster offen (UI.IsFullscreenOpen, per pcall; fehlt = false): Step, Neubau und
+--  Historie pausieren; nach dem Schließen sofort ein Step, nach längerer Pause Historie der Live-Monitore gestaffelt neu.
 --
 --  Öffentliche API (WP5-intern):
 --    Monitors.Count(): (live, mit Oberfläche, gesamt)    (DebugOverlay „Live-Monitore“)
@@ -49,6 +55,10 @@ type Mon = {
 	Slot: Slot?,
 	Live: boolean,
 	Dist: number,
+	Rank: number, -- Entfernung minus Vorsprung (angehängt/live) für die Sortierung
+	Want: boolean, -- soll eine Oberfläche haben (letzter Step)
+	WantLive: boolean,
+	Queued: boolean, -- Historie steht in der Warteschlange
 	Loaded: boolean,
 	Conn: RBXScriptConnection?,
 }
@@ -56,19 +66,35 @@ type Mon = {
 local Theme = UI.Theme
 local PIXELS_PER_STUD = 40
 local MAX_DISTANCE = 300
+local RELEASE_DISTANCE = 330 -- Hysterese: angehängte Monitore erst jenseits davon freigeben
+local ATTACH_BONUS = 30 -- Studs Vorsprung beim Rang für Monitore mit Oberfläche (kein Pendeln am Rang maxGuis)
+local LIVE_BONUS = 10 -- dto. für live laufende (kein Pendeln am Rang K -> weniger Historien-Anfragen)
 local MAX_MONITORS = 96
 local UPDATE_EVERY = 0.5 -- ≤ 2 Hz
+local STEP_NEW_SLOTS = 2 -- neue Oberflächen je Step (Rest ≤ 1 je Frame)
+local HISTORY_PER_FRAME = 1
+local RESYNC_AFTER = 2 -- s Vollbild-Pause, danach Historie der Live-Monitore neu (keine Lücke)
 local SCAN_CHUNK = 1500
 local AKX36 = 40
 local LIVE_PULSE = TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local POOL_KEYS = { "Candles", "Heatmap", "Chart" } -- Reihenfolge beim Vorbauen (je Art erst eine, dann Charts)
 
 local ctx: any = nil
 local monitors: { [BasePart]: Mon } = {}
 local count = 0
 local pool: { [string]: { Slot } } = {}
+local slotsByKey: { [string]: number } = {} -- erzeugte Oberflächen je Pool-Schlüssel (frei + angehängt)
+local monsByKey: { [string]: number } = {} -- registrierte Monitore je Pool-Schlüssel
+local waiting: { Mon } = {} -- gewünscht, aber im Step ohne Oberfläche geblieben (Neubau-Deckel)
+local historyQueue: { Mon } = {}
+local maxGuis = 0 -- Oberflächen-Deckel der Stufe (letzter Step)
 local clock = 0
 local liveCount = 0
 local guiCount = 0
+local paused = false
+local pausedAt = 0
+local resync = false
+local settingsKey = ""
 local playerGui: PlayerGui? = nil
 
 -- ---------------------------------------------------------------------
@@ -86,6 +112,21 @@ end
 
 local function lang(): string
 	return ctx.Lang_()
+end
+
+-- Vollbild-Fenster offen? (UI.IsFullscreenOpen kommt mit Welle 2; bis dahin false = heutiges Verhalten)
+local function fullscreenOpen(): boolean
+	local fn = (UI :: any).IsFullscreenOpen
+	if type(fn) ~= "function" then
+		return false
+	end
+	local ok, value = pcall(fn)
+	return ok and value == true
+end
+
+local function anyWindowOpen(): boolean
+	local ok, value = pcall(UI.IsAnyWindowOpen)
+	return ok and value == true
 end
 
 local function price(cents: number): string
@@ -322,15 +363,46 @@ local function poolKey(kind: string): string
 	return if kind == "Heatmap" then "Heatmap" elseif kind == "Candles" then "Candles" else "Chart"
 end
 
-local function takeSlot(kind: string): Slot?
+local function poolOf(key: string): { Slot }
+	local list = pool[key]
+	if not list then
+		list = {}
+		pool[key] = list
+	end
+	return list
+end
+
+local function createSlot(key: string): Slot?
+	local slot = newSlot(key)
+	if slot then
+		slotsByKey[key] = (slotsByKey[key] or 0) + 1
+	end
+	return slot
+end
+
+local function destroySlot(slot: Slot)
+	slotsByKey[slot.Kind] = math.max(0, (slotsByKey[slot.Kind] or 0) - 1)
+	if slot.View then
+		pcall(slot.View.Destroy, slot.View)
+	end
+	slot.Gui:Destroy()
+end
+
+-- Oberfläche aus dem Pool; Neubau nur mit allowNew (Deckel je Step/Frame). Zweiter Wert: neu gebaut?
+local function takeSlot(kind: string, allowNew: boolean): (Slot?, boolean)
 	local key = poolKey(kind)
 	local list = pool[key]
 	if list and #list > 0 then
-		return table.remove(list)
+		return table.remove(list), false
 	end
-	return newSlot(key)
+	if not allowNew then
+		return nil, false
+	end
+	local slot = createSlot(key)
+	return slot, slot ~= nil
 end
 
+-- zurück in den Pool (Überhang über dem Deckel baut trimPool ≤ 1 je Frame ab – kein Zerstör-Schub)
 local function releaseSlot(mon: Mon)
 	local slot = mon.Slot
 	if not slot then
@@ -341,20 +413,7 @@ local function releaseSlot(mon: Mon)
 	slot.LiveDot.Visible = false
 	slot.Gui.Enabled = false
 	slot.Gui.Adornee = nil
-	local key = poolKey(mon.Kind)
-	local list = pool[key]
-	if not list then
-		list = {}
-		pool[key] = list
-	end
-	if #list < 6 then
-		table.insert(list, slot)
-	else
-		if slot.View then
-			slot.View:Destroy()
-		end
-		slot.Gui:Destroy()
-	end
+	table.insert(poolOf(poolKey(mon.Kind)), slot)
 end
 
 -- ---------------------------------------------------------------------
@@ -398,6 +457,27 @@ local function loadHistory(mon: Mon)
 	end)
 end
 
+-- Historie gestaffelt (≤ HISTORY_PER_FRAME je Frame) statt alle Anfragen/SetData im selben Frame
+local function queueHistory(mon: Mon)
+	if not mon.Queued then
+		mon.Queued = true
+		table.insert(historyQueue, mon)
+	end
+end
+
+local function processHistory()
+	local done, guard = 0, 0
+	while done < HISTORY_PER_FRAME and #historyQueue > 0 and guard < 32 do
+		guard += 1
+		local mon = table.remove(historyQueue, 1)
+		mon.Queued = false
+		if monitors[mon.Part] == mon and mon.Slot and mon.Slot.View then
+			loadHistory(mon)
+			done += 1
+		end
+	end
+end
+
 local function updateMonitor(mon: Mon)
 	local slot = mon.Slot
 	if not slot then
@@ -423,7 +503,10 @@ local function updateMonitor(mon: Mon)
 		local wanted = deskInstrument()
 		if wanted ~= mon.Inst then
 			mon.Inst = wanted
-			loadHistory(mon)
+			if slot.View then
+				slot.View:SetData({}, "1m") -- alte Reihe weg, bevor Kurse des neuen Werts kommen
+			end
+			queueHistory(mon)
 		end
 	end
 	drawTitle(slot, mon.Inst)
@@ -437,13 +520,14 @@ local function updateMonitor(mon: Mon)
 	end
 end
 
-local function attach(mon: Mon): boolean
+-- Oberfläche anhängen (aus dem Pool; Neubau nur mit allowNew). Rückgabe: angehängt?, neu gebaut?
+local function attach(mon: Mon, allowNew: boolean): (boolean, boolean)
 	if mon.Slot then
-		return true
+		return true, false
 	end
-	local slot = takeSlot(mon.Kind)
+	local slot, made = takeSlot(mon.Kind, allowNew)
 	if not slot then
-		return false
+		return false, false
 	end
 	mon.Slot = slot
 	slot.Gui.Adornee = mon.Part
@@ -454,10 +538,18 @@ local function attach(mon: Mon): boolean
 	end
 	if slot.View then
 		slot.View:SetData({}, "1m")
-		loadHistory(mon)
+		queueHistory(mon)
 	end
 	updateMonitor(mon) -- einmal zeichnen (danach bleibt der Schnappschuss stehen, wenn nicht live)
-	return true
+	return true, made
+end
+
+local function setLive(mon: Mon, live: boolean)
+	mon.Live = live
+	local slot = mon.Slot
+	if slot and slot.LiveDot.Visible ~= live then
+		slot.LiveDot.Visible = live
+	end
 end
 
 -- ---------------------------------------------------------------------
@@ -468,6 +560,8 @@ local function remove(part: BasePart)
 	if mon then
 		monitors[part] = nil
 		count -= 1
+		local key = poolKey(mon.Kind)
+		monsByKey[key] = math.max(0, (monsByKey[key] or 0) - 1)
 		if mon.Conn then
 			mon.Conn:Disconnect()
 		end
@@ -502,6 +596,10 @@ local function add(inst: Instance)
 		Slot = nil,
 		Live = false,
 		Dist = math.huge,
+		Rank = math.huge,
+		Want = false,
+		WantLive = false,
+		Queued = false,
 		Loaded = false,
 		Conn = nil,
 	}
@@ -512,6 +610,8 @@ local function add(inst: Instance)
 	end)
 	monitors[part] = mon
 	count += 1
+	local key = poolKey(kind)
+	monsByKey[key] = (monsByKey[key] or 0) + 1
 end
 
 local function scan()
@@ -539,6 +639,12 @@ local function budget(): number
 	return if ok and type(value) == "number" then math.max(0, math.floor(value)) else 4
 end
 
+-- K live, maxGuis Oberflächen (Low 5 · Medium 8 · High 14 · Ultra 20)
+local function limits(): (number, number)
+	local k = budget()
+	return k, k + math.max(2, k // 2 + 2)
+end
+
 local function step()
 	local camera = workspace.CurrentCamera
 	if not camera then
@@ -549,39 +655,142 @@ local function step()
 	for part, mon in pairs(monitors) do
 		if part.Parent then
 			mon.Dist = (part.Position - origin).Magnitude
+			mon.Rank = mon.Dist - (if mon.Slot then ATTACH_BONUS else 0) - (if mon.Live then LIVE_BONUS else 0)
 			table.insert(sorted, mon)
 		end
 	end
 	table.sort(sorted, function(a: Mon, b: Mon): boolean
-		return a.Dist < b.Dist
+		return a.Rank < b.Rank
 	end)
-	local k = budget()
-	local maxGuis = k + math.max(2, k // 2 + 2)
-	liveCount, guiCount = 0, 0
-	for index, mon in ipairs(sorted) do
-		local inRange = mon.Dist <= MAX_DISTANCE
-		if inRange and index <= maxGuis then
-			if attach(mon) then
-				guiCount += 1
-				local live = index <= k
-				if live then
-					liveCount += 1
-					if not mon.Live and mon.Slot and mon.Slot.View then
-						loadHistory(mon) -- wieder live: Historie auffrischen (keine Lücke)
-					end
-					updateMonitor(mon)
-				end
-				mon.Live = live
-				local slot = mon.Slot
-				if slot and slot.LiveDot.Visible ~= live then
-					slot.LiveDot.Visible = live
-				end
-			end
-		else
+	local k, cap = limits()
+	maxGuis = cap
+	-- Auswahl mit Hysterese: angehängte Monitore bleiben bis RELEASE_DISTANCE, neue erst ab MAX_DISTANCE
+	local wanted = 0
+	for _, mon in ipairs(sorted) do
+		local limit = if mon.Slot then RELEASE_DISTANCE else MAX_DISTANCE
+		mon.Want = mon.Dist <= limit and wanted < cap
+		if mon.Want then
+			wanted += 1
+		end
+		mon.WantLive = mon.Want and wanted <= k
+	end
+	-- erst freigeben (Oberflächen zurück in den Pool -> gleich wieder für nähere Monitore nutzbar)
+	for _, mon in ipairs(sorted) do
+		if not mon.Want then
 			mon.Live = false
 			releaseSlot(mon)
 		end
 	end
+	-- dann anhängen: Pool-Treffer unbegrenzt, höchstens STEP_NEW_SLOTS Neubauten, Rest wartet (≤ 1 je Frame)
+	liveCount, guiCount = 0, 0
+	table.clear(waiting)
+	local created = 0
+	for _, mon in ipairs(sorted) do
+		if mon.Want then
+			local attached, made = attach(mon, created < STEP_NEW_SLOTS)
+			if made then
+				created += 1
+			end
+			if attached then
+				guiCount += 1
+				local live = mon.WantLive
+				if live then
+					liveCount += 1
+					if (not mon.Live or resync) and mon.Slot and mon.Slot.View then
+						queueHistory(mon) -- wieder live / nach Pause: Historie auffrischen (keine Lücke)
+					end
+					updateMonitor(mon)
+				end
+				setLive(mon, live)
+			else
+				table.insert(waiting, mon)
+			end
+		end
+	end
+	resync = false
+end
+
+-- nächsten wartenden Monitor anhängen (Pool-Treffer frei, höchstens ein Neubau je Frame)
+local function attachWaiting(): boolean
+	local guard = 0
+	while #waiting > 0 and guard < MAX_MONITORS do
+		guard += 1
+		local mon = table.remove(waiting, 1)
+		if monitors[mon.Part] == mon and mon.Want and not mon.Slot then
+			local attached, made = attach(mon, true)
+			if attached then
+				guiCount += 1
+				if mon.WantLive then
+					liveCount += 1
+				end
+				setLive(mon, mon.WantLive)
+			end
+			if made or not attached then
+				return true
+			end
+		end
+	end
+	return false
+end
+
+-- Vorrat bis maxGuis vorbauen (nach dem Beitritt / Stufe rauf): ≤ 1 je Frame, nur ohne offenes Fenster
+local function prewarm(): boolean
+	if maxGuis <= 0 then
+		return false
+	end
+	local total = 0
+	for _, n in pairs(slotsByKey) do
+		total += n
+	end
+	if total >= maxGuis then
+		return false
+	end
+	local bestKey, bestHave = nil, math.huge
+	for _, key in ipairs(POOL_KEYS) do
+		local need = math.min(maxGuis, monsByKey[key] or 0)
+		local have = slotsByKey[key] or 0
+		if have < need and have < bestHave then
+			bestKey, bestHave = key, have
+		end
+	end
+	if not bestKey or anyWindowOpen() then
+		return false
+	end
+	local slot = createSlot(bestKey)
+	if slot then
+		table.insert(poolOf(bestKey), slot)
+	end
+	return true
+end
+
+-- Pool über dem Deckel (Stufe runter): ≤ 1 Oberfläche je Frame abbauen
+local function trimPool()
+	local cap = math.max(1, maxGuis)
+	for _, key in ipairs(POOL_KEYS) do
+		local list = pool[key]
+		if list and #list > cap then
+			local slot = table.remove(list)
+			if slot then
+				destroySlot(slot)
+			end
+			return
+		end
+	end
+end
+
+-- je Frame (nicht im Frame des Steps): Historie gestaffelt, ein Neubau (wartend oder Vorrat), Pool-Überhang abbauen
+local function work(stepped: boolean)
+	if stepped then
+		return
+	end
+	processHistory()
+	if attachWaiting() then
+		return
+	end
+	if prewarm() then
+		return
+	end
+	trimPool()
 end
 
 function Monitors.Count(): (number, number, number)
@@ -589,22 +798,52 @@ function Monitors.Count(): (number, number, number)
 end
 
 function Monitors.Frame(dt: number)
-	clock += dt
-	if clock < UPDATE_EVERY then
+	if fullscreenOpen() then
+		if not paused then
+			paused = true
+			pausedAt = os.clock()
+		end
 		return
 	end
-	clock = 0
-	local ok, err = pcall(step)
+	if paused then
+		-- Nachholen nach dem Schließen: sofort ein Step (gestaffelt durch die Neubau-/Historien-Deckel)
+		paused = false
+		if os.clock() - pausedAt >= RESYNC_AFTER then
+			resync = true
+		end
+		clock = UPDATE_EVERY
+	end
+	clock += dt
+	local stepped = false
+	if clock >= UPDATE_EVERY then
+		clock = 0
+		stepped = true
+		local ok, err = pcall(step)
+		if not ok then
+			warn("[Monitors] " .. tostring(err))
+		end
+	end
+	local ok, err = pcall(work, stepped)
 	if not ok then
 		warn("[Monitors] " .. tostring(err))
 	end
+end
+
+-- Sprache/Farbenblind (Settings feuert auch bei jedem Regler-Zug -> nur bei echter Änderung neu zeichnen)
+local function settingsSignature(): string
+	return table.concat({ lang(), UI.ColorHex(UI.UpColor()), UI.ColorHex(UI.DownColor()) }, "|")
 end
 
 function Monitors.Init(context: any)
 	ctx = context
 	playerGui = Players.LocalPlayer:WaitForChild("PlayerGui") :: PlayerGui
 	ctx.Hooks.On("Settings", function()
-		-- Sprache/Farbenblind: Schnappschüsse neu zeichnen
+		local key = settingsSignature()
+		if key == settingsKey then
+			return
+		end
+		settingsKey = key
+		-- Schnappschüsse neu zeichnen
 		for _, mon in pairs(monitors) do
 			if mon.Slot then
 				if mon.Slot.View then
@@ -617,6 +856,8 @@ function Monitors.Init(context: any)
 end
 
 function Monitors.Start()
+	local _, cap = limits()
+	maxGuis = cap
 	workspace.DescendantAdded:Connect(function(inst: Instance)
 		if inst:IsA("BasePart") and inst:GetAttribute("Monitor") ~= nil then
 			add(inst)

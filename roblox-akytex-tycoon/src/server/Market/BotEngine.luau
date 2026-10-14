@@ -13,6 +13,10 @@
 --    * Lohn 0,02 % des verwalteten Kapitals je Börsentag (AKY-Senke, OrderEngine.CloseDay ruft PayWages)
 --  Bot-Platz (Types.BotSlot + Zusatzfelder): { Preset, Pct, Target?, On, Paused, DayNav, DayVal, DayFlow, Day, Last,
 --  Q = { [instId-String] = Stück des Bots } }.
+--  Kurs-Caches (server-weit, für alle Depots gemeinsam; W25 perf_server F1/E3): 1m-Schlüsse und Tages-Open je
+--  Instrument, nur für Ticks älter als env.CacheBefore (späte Bus-Events ändern jüngere Kurse noch). Über dem Deckel
+--  je Instrument fliegen die ÄLTESTEN Einträge dieses Instruments – nie ein globales Leeren (sonst wären alle Trend-
+--  Bots nach einem langen Offline-Abgleich in der nächsten Minute kalt).
 --
 --  Öffentliche API:
 --    BotEngine.Decide(d, env, t)                  alle Bots eines Depots (von OrderEngine.Step aufgerufen)
@@ -41,11 +45,16 @@ type Slot = { [string]: any }
 type Env = OrderEngine.Env
 
 local DAY = Clock.DAY_TICKS
-local CLOSE_CACHE_MAX = 30000
+local CLOSE_PER_INST = 800 -- 1m-Schlüsse je Instrument (≥ 12 h Offline-Abgleich + laufende Minuten)
+local CLOSE_KEEP = 600 -- nach dem Räumen bleiben die jüngsten so viele
+local OPEN_PER_INST = 96 -- Tages-Open je Instrument (12 h = 36 Börsentage)
+local OPEN_KEEP = 64
 local INST_IDS_FALLBACK = 46
 
-local closeCache: { [number]: { [number]: number } } = {}
-local closeCount = 0
+type InstCache = { Map: { [number]: number }, Count: number }
+
+local closeCache: { [number]: InstCache } = {} -- [inst] -> { Map = { [Minute] = Schluss } }
+local openCache: { [number]: InstCache } = {} -- [inst] -> { Map = { [Börsentag] = Schluss vor Tagesbeginn } }
 
 local function trading(): { [string]: any }
 	local t = Config.Trading
@@ -100,10 +109,46 @@ function BotEngine.Capital(env: Env, slot: Slot): number
 	return math.clamp(cap, 0, num(cfg.BotTotalPct, 0.30))
 end
 
+local function cacheGet(cache: { [number]: InstCache }, i: number, key: number): number?
+	local c = cache[i]
+	return if c then c.Map[key] else nil
+end
+
+-- Eintrag merken; über dem Deckel nur die ältesten Schlüssel DIESES Instruments räumen (gebunden: ≤ cap Schlüssel)
+local function cachePut(
+	cache: { [number]: InstCache },
+	i: number,
+	key: number,
+	value: number,
+	cap: number,
+	keep: number
+)
+	local c = cache[i]
+	if c == nil then
+		c = { Map = {}, Count = 0 }
+		cache[i] = c
+	end
+	local entry = c :: InstCache
+	if entry.Map[key] == nil then
+		entry.Count += 1
+	end
+	entry.Map[key] = value
+	if entry.Count > cap then
+		local keys: { number } = table.create(entry.Count)
+		for k in pairs(entry.Map) do
+			table.insert(keys, k)
+		end
+		table.sort(keys)
+		for index = 1, #keys - keep do
+			entry.Map[keys[index]] = nil
+		end
+		entry.Count = math.min(#keys, keep)
+	end
+end
+
 -- 1m-Schlusskurs der Minute "minute" (gecacht für Minuten, die sicher abgeschlossen sind)
 local function closeOf(env: Env, i: number, minute: number): number?
-	local perInst = closeCache[i]
-	local cached = perInst and perInst[minute]
+	local cached = cacheGet(closeCache, i, minute)
 	if cached then
 		return cached
 	end
@@ -112,17 +157,24 @@ local function closeOf(env: Env, i: number, minute: number): number?
 		return nil
 	end
 	if minute * 60 + 59 < env.CacheBefore then
-		if closeCount >= CLOSE_CACHE_MAX then
-			table.clear(closeCache)
-			closeCount = 0
-		end
-		perInst = closeCache[i]
-		if not perInst then
-			perInst = {}
-			closeCache[i] = perInst
-		end
-		perInst[minute] = px
-		closeCount += 1
+		cachePut(closeCache, i, minute, px, CLOSE_PER_INST, CLOSE_KEEP)
+	end
+	return px
+end
+
+-- Tages-Open = Schluss vor dem Börsentag (dayStart − 1); ab der 2. Minute des Tages unveränderlich -> gecacht
+local function openOf(env: Env, i: number, dayStart: number): number?
+	local day = dayStart // DAY
+	local cached = cacheGet(openCache, i, day)
+	if cached then
+		return cached
+	end
+	local px = env.PriceAt(i, dayStart - 1)
+	if type(px) ~= "number" or px <= 0 then
+		return nil
+	end
+	if dayStart - 1 < env.CacheBefore then
+		cachePut(openCache, i, day, px, OPEN_PER_INST, OPEN_KEEP)
 	end
 	return px
 end
@@ -395,10 +447,10 @@ local function runDip(
 			break
 		end
 		if held(slot, i) == 0 and OrderEngine.InstAllowed(env, i) then
-			local open = env.PriceAt(i, dayStart - 1)
+			local open = openOf(env, i, dayStart)
 			local now = closeOf(env, i, t // 60 - 1)
 			local before = if t - 61 >= dayStart then closeOf(env, i, t // 60 - 2) else open
-			if type(open) == "number" and open > 0 and now and before then
+			if open and now and before then
 				local changeNow = now / open - 1
 				local changeBefore = before / open - 1
 				-- nur beim Unterschreiten der Schwelle (kein Nachkaufen nach einem Stopp ohne neue Erholung)

@@ -30,9 +30,10 @@ Config.GameName = "AKYTEX TYCOON"
 Config.Version = "1.0.0"
 
 -- ---------------------------------------------------------------------
--- 1) ADMINS – NUR DU: Wem das Spiel gehört (dein Account bzw. der Besitzer deiner Gruppe), ist Admin.
---    Du musst hier nichts eintragen! Admin kann man NICHT kaufen – der Server prüft es bei jeder Aktion.
---    Im Studio-Test bist du Admin (Player1 = -1), Player2 (-2) bewusst NIE (§B15.1).
+-- 1) ADMINS – Du (Besitzer) bist automatisch Owner: wem das Spiel gehört (dein Account bzw. der Besitzer deiner
+--    Gruppe). Weitere Teammitglieder (Admin/Moderator) vergibst du IM SPIEL: Panel (P) → Team oder Chat /admin Name,
+--    /mod Name. Rechte je Rolle: Config.Security.Staff. Rollen kann man NICHT kaufen – der Server prüft jede Aktion.
+--    Im Studio-Test bist du Owner (Player1 = -1), Player2 (-2) bewusst NIE (§B15.1).
 -- ---------------------------------------------------------------------
 Config.Admin = {
 	OwnerIsAdmin = true,
@@ -50,6 +51,7 @@ Config.Tech = {
 	DataVersion = 1,
 	KeyPrefix = "P_", -- Schlüssel P_<UserId>
 	MessagingTopic = "AT_Global", -- Ansagen, Admin-Abuse (Nicht-Markt)
+	StaffTopic = "AT_Staff", -- MessagingService: Team-Rollen, Bann-Kick, Meldungen (W19)
 	BusTopic = "AT_EV", -- Schnellweg für neue Markt-Bus-Events
 	AutoSaveSeconds = 90, -- Auto-Save aller Spielstände
 	AutoSaveStagger = 0.5, -- Abstand zwischen zwei Spielern beim Auto-Save
@@ -639,6 +641,7 @@ local function validateCore(): { string }
 		"DataStoreName",
 		"KeyPrefix",
 		"MessagingTopic",
+		"StaffTopic",
 		"BusTopic",
 		"LiveStore",
 		"StatsStore",

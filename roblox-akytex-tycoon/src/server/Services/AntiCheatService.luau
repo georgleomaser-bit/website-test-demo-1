@@ -16,10 +16,13 @@
 --    Messungen, nur echtes Durchqueren einer Wand; lokal geöffnete/versteckte Teile werden ignoriert).
 --    Erlaubnisse: Auto (VehicleService: SetAllowance{ MaxSpeed = Klassen-Deckel × Boost × 1,2 }), Aufzug/Teleport
 --    (NoteTeleport: 1 s Gnade + Ziel-Anker), Jetpack (SetAllowance{ SpeedMult, VerticalMult } nur aktiv), Admin-Fly/
---    Noclip (Admins sind ausgenommen), Impulse (Grace "Impulse"/"Launch" mit Tempo bis zur Landung).
+--    Noclip (ausgenommen: Besitzer und Teammitglieder mit Recht Fly/Noclip – StaffService.MoveExempt), Impulse (Grace
+--    "Impulse"/"Launch" mit Tempo bis zur Landung). Punkte (Add) und Honeypot nehmen NUR den Besitzer aus.
 --  Verdacht: Gewichte aus Config.Security.Weights, Abbau 1 Punkt je 30 s, ≥ 25 Prüf-Flag (AT_Mod_v1 F_<yyyymmdd>_<shard>),
 --    ≥ 60 Kick. Honeypot-Remote "GrantCash" = +100, Kick, Flag (unser Code feuert ihn NIE).
---  Meldungen (Request "Report" {UserId, Reason}, 3 pro 10 min): Server hängt einen Schnappschuss an (R_<yyyymmdd>_<shard>).
+--  Meldungen (Request "Report" {UserId, Reason, Note?} und Chat /report über SubmitReport, gemeinsam 3 pro 10 min): Server
+--    hängt einen Schnappschuss an (R_<yyyymmdd>_<shard>), Notiz gefiltert, Teammitglieder werden benachrichtigt
+--    (StaffService.OnReport). Auto-Bann landet zusätzlich in der eigenen Bann-Liste (StaffService.AddBan, Src "Auto").
 --
 --  Öffentliche API (§C5.10):
 --    AntiCheatService.NoteTeleport(p, cf)                              1 s Gnade nach einem Server-Teleport
@@ -29,14 +32,17 @@
 --    AntiCheatService.Add(p, reason, points, evidence?)
 --    AntiCheatService.Score(p): number      AntiCheatService.Flags(): { Flag }      AntiCheatService.Snapshot(p)
 --  Zusatz (AdminService, gleiche Namen wie CC):
---    AntiCheatService.Reports() · AllFlags(days?) · AllReports(days?) · Dismiss(id) · LogBan(entry) · BanLog() ·
---    MarkUnbanned(userId) · Stats(): { Tracked, Flags, Reports, Kicks }       (AllFlags/AllReports/Dismiss/Bann-Log yielden)
+--    AntiCheatService.Reports() · AllFlags(days?) · AllReports(days?) · Dismiss(id): (true, entry?) · LogBan(entry) ·
+--    BanLog() · MarkUnbanned(userId) · Stats(): { Tracked, Flags, Reports, Kicks }  (AllFlags/AllReports/Dismiss/Bann-Log
+--    yielden)
+--  W19: AntiCheatService.SubmitReport(p, userId, reason, note?, via?): Reply   Menü ("Menu") und Chat /report ("Chat")
 -- =====================================================================
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -140,6 +146,9 @@ export type Report = {
 	UserId: number,
 	Name: string,
 	Reason: string,
+	Note: string?, -- Freitext des Melders (gefiltert, ≤ Config.Security.Staff.ReportNoteMax Zeichen)
+	Via: string?, -- "Menu" | "Chat"
+	Job: string?, -- erste 8 Zeichen der JobId (welcher Server)
 	Snapshot: { [string]: any },
 	T: number,
 }
@@ -186,6 +195,9 @@ local storedCache: { [string]: { T: number, List: { any } } } = {}
 local sessionBans: { BanEntry } = {}
 local banLogCache: { BanEntry }? = nil
 local banLogAt = -math.huge
+-- Meldungen: EIN Limiter für Menü und Chat (/report), damit beide Wege zusammen höchstens ReportLimit erlauben
+local reportRate = SEC.ReportLimit or { 3, 600 }
+local reportLimiter = Util.RateLimiter(tonumber(reportRate[1]) or 3, tonumber(reportRate[2]) or 600)
 
 -- ---------------------------------------------------------------------
 -- KLEINE HELFER
@@ -219,6 +231,16 @@ end
 local function isAdmin(p: Player): boolean
 	local ok, result = call("AdminService", "IsAdmin", p)
 	return ok and result == true
+end
+
+-- Bewegungs-Ausnahme: Besitzer und Teammitglieder, die fliegen/noclippen dürfen (StaffService); fehlt der Dienst,
+-- gilt die alte Regel (nur der Besitzer). Punkte/Honeypot nehmen weiter nur den Besitzer aus (isAdmin).
+local function moveExempt(p: Player): boolean
+	local ok, result = call("StaffService", "MoveExempt", p)
+	if ok then
+		return result == true
+	end
+	return isAdmin(p)
 end
 
 local function round(n: number, digits: number?): number
@@ -705,6 +727,16 @@ local function autoBan(p: Player, evidence: string): boolean
 		Active = true,
 		Auto = true,
 	})
+	-- W26: auch in die eigene Bann-Liste (Tab „Banns“, /unban); By = 0 = Anti-Cheat
+	call("StaffService", "AddBan", {
+		UserId = p.UserId,
+		Until = os.time() + seconds,
+		Reason = display,
+		By = 0,
+		ByName = "Anti-Cheat",
+		Name = p.Name,
+		Src = "Auto",
+	})
 	return true
 end
 
@@ -1119,8 +1151,8 @@ local function checkPlayer(p: Player, _dt: number)
 	local stalled = stalledFor >= (tonumber(SEC.StallSeconds) or 0.6) and track.LastSpeed > 2
 	track.LastSpeed = horizontalSpeed(root)
 
-	-- Ausnahmen: tot, verankert (Einfrieren/Zeremonie), Ausnahme-Zeit, Admin
-	if humanoid.Health <= 0 or root.Anchored or now < track.ExemptUntil or isAdmin(p) then
+	-- Ausnahmen: tot, verankert (Einfrieren/Zeremonie), Ausnahme-Zeit, Besitzer/Team mit Fly-/Noclip-Recht
+	if humanoid.Health <= 0 or root.Anchored or now < track.ExemptUntil or moveExempt(p) then
 		accept(track, root, now, true)
 		return
 	end
@@ -1449,15 +1481,18 @@ function AntiCheatService.AllReports(days: number?): { Report }
 	return mergeWithLocal(AntiCheatService.Reports(), storedEntries("R", count))
 end
 
--- Flag oder Meldung abweisen (lokal + im gespeicherten Shard) – yieldet
-function AntiCheatService.Dismiss(id: string): boolean
+-- Flag oder Meldung abweisen (lokal + im gespeicherten Shard) – yieldet. Gibt (true, Eintrag?) zurück: den entfernten
+-- Eintrag aus den lokalen Listen oder aus dem gespeicherten Shard (ResolveReport benachrichtigt damit den Melder).
+function AntiCheatService.Dismiss(id: string): (boolean, any?)
 	if type(id) ~= "string" or #id > 80 then
-		return false
+		return false, nil
 	end
 	dismissed[id] = true
+	local removed: any = nil
 	for _, list in ipairs({ localFlags, localReports, pendingFlags, pendingReports } :: { { any } }) do
 		for i = #list, 1, -1 do
 			if list[i].Id == id then
+				removed = removed or list[i]
 				table.remove(list, i)
 			end
 		end
@@ -1465,21 +1500,31 @@ function AntiCheatService.Dismiss(id: string): boolean
 	local colon = string.find(id, ":", 1, true)
 	local key = if colon then string.sub(id, 1, colon - 1) else nil
 	if key and string.match(key, "^[FR]_%d+_%d+$") then
+		local fromStore: any = nil
 		storeUpdate(key, function(old)
+			fromStore = nil -- der Transform kann mehrfach laufen: nur der letzte Lauf zählt
 			if type(old) ~= "table" then
 				return nil
 			end
 			local kept: { any } = {}
 			for _, entry in ipairs(old) do
-				if type(entry) == "table" and entry.Id ~= id then
-					table.insert(kept, entry)
+				if type(entry) == "table" then
+					if entry.Id == id then
+						fromStore = entry
+					else
+						table.insert(kept, entry)
+					end
 				end
+			end
+			if fromStore == nil then
+				return nil -- nicht in diesem Shard: nichts schreiben
 			end
 			return kept
 		end)
+		removed = removed or fromStore
 	end
 	table.clear(storedCache)
-	return true
+	return true, removed
 end
 
 -- ---------------------------------------------------------------------
@@ -1500,17 +1545,37 @@ local function onHoneypot(p: Player, ...: any)
 	})
 end
 
-local function onReport(p: Player, arg: any): Types.Reply
-	if type(arg) ~= "table" then
-		return { Ok = false, Message = L(p, "core.invalid") }
+-- Freitext zur Meldung: getrimmt, auf ReportNoteMax Zeichen gekürzt, gefiltert (TextService, pcall). Fehler/leer -> nil.
+local function cleanNote(p: Player, note: any): string?
+	if type(note) ~= "string" then
+		return nil
 	end
-	for key in pairs(arg) do
-		if key ~= "UserId" and key ~= "Reason" then
-			return { Ok = false, Message = L(p, "core.invalid") }
-		end
+	local text = string.gsub(string.gsub(note, "^%s+", ""), "%s+$", "")
+	if text == "" or utf8.len(text) == nil then
+		return nil
 	end
-	local userId = arg.UserId
-	local reason = arg.Reason
+	local staff = if type(SEC.Staff) == "table" then SEC.Staff else {}
+	local maxChars = math.max(1, math.floor(tonumber(staff.ReportNoteMax) or 120))
+	if (utf8.len(text) :: number) > maxChars then
+		local cut = utf8.offset(text, maxChars + 1)
+		text = if cut then string.sub(text, 1, cut - 1) else text
+	end
+	local ok, filtered = pcall(function()
+		local result = TextService:FilterStringAsync(text, p.UserId, Enum.TextFilterContext.PublicChat)
+		return result:GetNonChatStringForBroadcastAsync()
+	end)
+	if ok and type(filtered) == "string" and filtered ~= "" then
+		return filtered
+	end
+	return nil
+end
+
+-- Meldung abgeben (Menü "Report" und Chat /report über StaffService): gemeinsamer Limiter (ReportLimit), Ziel muss auf
+-- diesem Server sein, Notiz gefiltert, Schnappschuss des Ziels; danach werden Teammitglieder benachrichtigt. Yieldet.
+function AntiCheatService.SubmitReport(p: Player, userId: any, reason: any, note: any, via: any): Types.Reply
+	if not present(p) then
+		return { Ok = false }
+	end
 	if not Util.IsFinite(userId) or userId % 1 ~= 0 or type(reason) ~= "string" or not REPORT_REASONS[reason] then
 		return { Ok = false, Message = L(p, "core.invalid") }
 	end
@@ -1521,6 +1586,13 @@ local function onReport(p: Player, arg: any): Types.Reply
 	if not target then
 		return { Ok = false, Message = L(p, "admin.reportGone") }
 	end
+	if not reportLimiter.Check(p) then
+		return { Ok = false, Message = L(p, "admin.rep.limit") }
+	end
+	local cleanedNote = cleanNote(p, note)
+	if not present(p) or target.Parent ~= Players then
+		return { Ok = false, Message = L(p, "admin.reportGone") } -- während des Filterns gegangen
+	end
 	local report: Report = {
 		Id = newId("R"),
 		From = p.UserId,
@@ -1528,6 +1600,9 @@ local function onReport(p: Player, arg: any): Types.Reply
 		UserId = target.UserId,
 		Name = target.Name,
 		Reason = reason,
+		Note = cleanedNote,
+		Via = if via == "Chat" then "Chat" else "Menu",
+		Job = string.sub(if game.JobId ~= "" then game.JobId else "Studio", 1, 8),
 		Snapshot = snapshotOf(target),
 		T = os.time(),
 	}
@@ -1539,7 +1614,27 @@ local function onReport(p: Player, arg: any): Types.Reply
 	while #pendingReports > (SEC.FlagsLocalMax or 200) do
 		table.remove(pendingReports, 1)
 	end
+	-- Teammitglieder mit Recht Reports benachrichtigen (yieldet ggf. – eigener Thread, die Antwort wartet nicht)
+	task.spawn(function()
+		call("StaffService", "OnReport", report)
+	end)
 	return { Ok = true, Message = L(p, "admin.reportThanks") }
+end
+
+-- Request "Report": nur UserId, Reason und optional Note (Text) -> SubmitReport(..., "Menu")
+local function onReport(p: Player, arg: any): Types.Reply
+	if type(arg) ~= "table" then
+		return { Ok = false, Message = L(p, "core.invalid") }
+	end
+	for key in pairs(arg) do
+		if key ~= "UserId" and key ~= "Reason" and key ~= "Note" then
+			return { Ok = false, Message = L(p, "core.invalid") }
+		end
+	end
+	if arg.Note ~= nil and (type(arg.Note) ~= "string" or #arg.Note > 600) then
+		return { Ok = false, Message = L(p, "core.invalid") }
+	end
+	return AntiCheatService.SubmitReport(p, arg.UserId, arg.Reason, arg.Note, "Menu")
 end
 
 -- ---------------------------------------------------------------------
@@ -1581,6 +1676,7 @@ function AntiCheatService.Start()
 		tracks[p] = nil
 		suspicions[p] = nil
 		honeypotHit[p] = nil
+		reportLimiter.Clear(p)
 		local index = table.find(trackedList, p)
 		if index then
 			table.remove(trackedList, index)

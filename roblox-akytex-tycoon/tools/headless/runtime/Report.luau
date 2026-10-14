@@ -231,6 +231,10 @@ return function(R)
 		if directBuiltin and kind ~= "api" then
 			kind = "thrown"
 		end
+		-- per --faults injizierter Dienst-Fehler: vom Spiel abgefangen = erwünschtes Verhalten (nur Information)
+		if kind == "api" and Util.lastInjected ~= nil and string.sub(msg, -#Util.lastInjected) == Util.lastInjected then
+			kind = "injected"
+		end
 		local tb = debug.traceback(msg, (level or 2) + 1)
 		local co = coroutine.running()
 		c = {

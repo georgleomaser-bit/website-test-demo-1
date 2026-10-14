@@ -28,10 +28,15 @@ def main():
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--studio", action="store_true", help="RunService:IsStudio() = true")
     mode.add_argument("--live", action="store_true", help="RunService:IsStudio() = false (Standard)")
-    ap.add_argument("--seconds", type=float, default=120)
+    ap.add_argument("--seconds", type=float, default=None,
+                    help="simulierte Spielzeit (Standard 120; world: 30 s nach dem Beitritt)")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--echo", action="store_true", help="Fehler/Ausgaben sofort zeigen")
     ap.add_argument("--no-streaming", action="store_true", help="Instanz-Streaming aus (Standard: wie Workspace.StreamingEnabled)")
+    ap.add_argument("--faults", default=None,
+                    help='Fehler-Injektion, z. B. "ds=1,mem=1,msg=1" (erste n Aufrufe je Dienst schlagen fehl)')
+    ap.add_argument("--opt", action="append", default=[], metavar="NAME=WERT",
+                    help="Szenario-Option, mehrfach möglich (z. B. --opt max-clicks=300, siehe README)")
     ap.add_argument("--no-bundle", action="store_true", help="out/bundle.luau nicht neu bauen")
     ap.add_argument("--out", default=None, help="Unterordner von out/ für die Berichte")
     ap.add_argument("--luau", default=DEFAULT_LUAU)
@@ -47,20 +52,31 @@ def main():
         subprocess.run([sys.executable, os.path.join(HERE, "bundle.py")], cwd=ROOT, check=True)
 
     cmd = [args.luau, "-O2", "tools/headless/run.luau", "-a", args.scenario, "--client", str(args.client),
-           "--seconds", str(args.seconds), "--seed", str(args.seed)]
+           "--seconds", str(args.seconds if args.seconds is not None else (30 if args.scenario == "world" else 120)), "--seed", str(args.seed)]
     cmd.append("--studio" if args.studio else "--live")
     if args.echo:
         cmd.append("--echo")
     if args.no_streaming:
         cmd.append("--no-streaming")
+    if args.faults:
+        cmd += ["--faults", args.faults]
+    for o in args.opt:
+        cmd += ["--opt", o]
     t0 = time.time()
-    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=args.timeout)
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=args.timeout)
     wall = time.time() - t0
     out = proc.stdout
     blocks = {}
     for m in re.finditer(r"@@BEGIN (.+?)@@\n(.*?)\n@@END \1@@", out, re.S):
         blocks[m.group(1)] = m.group(2)
     rest = re.sub(r"@@BEGIN (.+?)@@\n.*?\n@@END \1@@\n?", "", out, flags=re.S)
+    # Berichte eines früheren Laufs im selben Ordner entfernen (sonst bliebe z. B. ein alter harness_crash.txt liegen)
+    for stale in ("report.txt", "report.json", "output.txt", "ui_tree.txt", "ui_tree_trade.txt",
+                  "harness_crash.txt", "stdout_rest.txt", "crawl.txt", "prompts.txt", "fuzz.txt", "purchase.txt",
+                  "shutdown.txt"):
+        path = os.path.join(out_dir, stale)
+        if os.path.exists(path):
+            os.remove(path)
     for name, text in blocks.items():
         with open(os.path.join(out_dir, name), "w", encoding="utf-8") as f:
             f.write(text + "\n")

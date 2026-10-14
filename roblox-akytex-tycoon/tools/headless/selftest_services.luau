@@ -241,6 +241,24 @@ do
 	check("Yield im Transform -> Fehler", o.yield and o.yield[1] == false and string.find(o.yield[2], "yield", 1, true) ~= nil, o.yield and o.yield[2])
 	check("Transform nil bricht ab", o.cancel == nil)
 	check("UpdateAsync schreibt", o.upd == 15)
+
+	-- Fehler-Injektion: erster Aufruf schlägt fehl, wird als "injected" (nicht als Spiel-Bug) erfasst
+	Svc.faults.ds = 1
+	local hf = runGame(sctx, "faults", [[
+		local ds = game:GetService("DataStoreService"):GetDataStore("Test")
+		local ok1, e1 = pcall(function() return ds:GetAsync("k") end)
+		local ok2 = pcall(function() return ds:GetAsync("k") end)
+		return ok1, tostring(e1), ok2
+	]])
+	local r = hf.results or {}
+	check("injizierter DataStore-Fehler", r[1] == false and string.find(r[2] or "", "502", 1, true) ~= nil and r[3] == true, r[2])
+	local kind = nil
+	for _, c in Report.caughtList do
+		if string.find(c.message, "502: API Services", 1, true) then
+			kind = c.kind
+		end
+	end
+	check("injizierter Fehler als 'injected' erfasst", kind == "injected", tostring(kind))
 end
 
 -- =================================================================================================

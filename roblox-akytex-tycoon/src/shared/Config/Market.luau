@@ -13,7 +13,8 @@
 --  Abschnitte: 1 Zeit · 2 Rauschen · 3 Risikoklassen · 4 Fundament & Bewertungs-Bremse · 5 Firmen-News ·
 --  6 Sektor-News & Makro-Matrix · 7 Quartalszahlen & Analysten · 8 Dividenden · 9 Crash & Rallye ·
 --  10 Wochen-Termine (Berlin-Zeit) · 11 Handelspausen · 12 Admin-Markt (§B15.3) · 13 GlobalBus · 14 Kerzen & Historie ·
---  15 Anfragen · 16 IPO-Pipeline · 17 Seed · 18 Fundamentaldaten-Anzeige · Validate(Config)
+--  15 Anfragen (+ Übersicht) · 16 IPO-Pipeline · 17 Seed & Markt-Start (Boot) · 18 Fundamentaldaten-Anzeige ·
+--  Validate(Config)
 -- =====================================================================
 
 local Market = {}
@@ -256,9 +257,11 @@ Market.WeekHighCandles = 140 -- Wochen-Hoch-Flag = Hoch der letzten 140 1m-Kerze
 -- ---------------------------------------------------------------------
 -- 15) ANFRAGEN (§C9; B = Token-Bucket {Kapazität, Nachfüllen/s})
 -- ---------------------------------------------------------------------
-Market.Buckets = { MktCandles = { 6, 2 }, MktProfile = { 6, 1 }, MktCalendar = { 6, 1 } }
+Market.Buckets = { MktCandles = { 6, 2 }, MktProfile = { 6, 1 }, MktCalendar = { 6, 1 }, MktOverview = { 2, 0.2 } }
 Market.NewsRate = { 2, 1 } -- MktNews 2/s
 Market.NewsKeep = 50 -- News-Liste endlich (letzte 50)
+-- Markt-Übersicht (Anfrage MktOverview, W20 §4.1.4): ein Server-Cache für alle Spieler, höchstens so viele Zeilen
+Market.Overview = { CacheSeconds = 10, MaxRows = 64 }
 
 -- ---------------------------------------------------------------------
 -- 16) IPO-PIPELINE (v1 Erstnotiz ohne Zeichnung, §B6.3). Saison s, Woche k der Saison -> Season[s][k] notiert
@@ -279,10 +282,14 @@ Market.IpoPipeline = {
 }
 
 -- ---------------------------------------------------------------------
--- 17) SEED (MARKET §5.6): DataStore AT_Market_v1 (Config.Tech.MarketStore). Studio -> lokaler Testmarkt.
+-- 17) SEED (MARKET §5.6) & MARKT-START: DataStore AT_Market_v1 (Config.Tech.MarketStore). Studio -> lokaler Testmarkt.
 -- ---------------------------------------------------------------------
 Market.Seed = { RetrySeconds = 60, Backoff = { 2, 4, 8, 15, 30 }, PrefetchBefore = 3600 }
 Market.StudioSalt = 0x2A7E5713 -- Fallback-Seed = hash4(StudioSalt, w, …) (+ Server-Geheimnis, siehe MarketSeed)
+-- Markt-Start (W20 §4.1.1, Korrektur §11.1; Sekunden): bis zu Attempts Startversuche, dazwischen
+-- min(RetryMax, RetryBase · 2^(n−1)) warten, danach Ersatzmarkt. Auf Live-Servern ist der Ersatzmarkt NUR ANSICHT
+-- (kein Handel) und prüft alle LocalRetrySeconds mit ProbeSeconds Budget, ob der echte Seed erreichbar ist -> Live.
+Market.Boot = { Attempts = 3, RetryBase = 5, RetryMax = 60, LocalRetrySeconds = 120, ProbeSeconds = 10 }
 
 -- ---------------------------------------------------------------------
 -- 18) FUNDAMENTALDATEN-ANZEIGE (Firmenprofil; deterministisch, verrät q nur über die Quartale)
@@ -484,7 +491,14 @@ function Market.Validate(config: any): { string }
 		add("History.Candles: 10 … 300 erwartet")
 	end
 	for name, bucket in pairs(Market.Buckets) do
-		if not pair(bucket) or bucket[1] < 1 then
+		-- Token-Bucket { Kapazität, Nachfüllen je s } – kein { von ≤ bis }-Paar (Kapazität ist meist größer)
+		if
+			type(bucket) ~= "table"
+			or not isNum(bucket[1])
+			or not isNum(bucket[2])
+			or bucket[1] < 1
+			or bucket[2] <= 0
+		then
 			add("Buckets." .. tostring(name) .. ": { Kapazität ≥ 1, Nachfüllen } erwartet")
 		end
 	end
@@ -523,6 +537,37 @@ function Market.Validate(config: any): { string }
 	end
 	if not isInt(Market.StudioSalt) or Market.StudioSalt < 1 then
 		add("StudioSalt: ganze Zahl > 0 erwartet")
+	end
+	local boot = Market.Boot
+	if type(boot) ~= "table" then
+		add("Boot: Tabelle erwartet")
+	else
+		if not isInt(boot.Attempts) or boot.Attempts < 1 or boot.Attempts > 10 then
+			add("Boot.Attempts: ganze Zahl 1 … 10 erwartet")
+		end
+		if not isNum(boot.RetryBase) or boot.RetryBase <= 0 then
+			add("Boot.RetryBase: Zahl > 0 erwartet")
+		end
+		if not isNum(boot.RetryMax) or boot.RetryMax <= 0 then
+			add("Boot.RetryMax: Zahl > 0 erwartet")
+		end
+		if not isNum(boot.LocalRetrySeconds) or boot.LocalRetrySeconds < 30 or boot.LocalRetrySeconds > 900 then
+			add("Boot.LocalRetrySeconds: 30 … 900 erwartet")
+		end
+		if not isNum(boot.ProbeSeconds) or boot.ProbeSeconds < 2 or boot.ProbeSeconds > 60 then
+			add("Boot.ProbeSeconds: 2 … 60 erwartet")
+		end
+	end
+	local overview = Market.Overview
+	if type(overview) ~= "table" then
+		add("Overview: Tabelle erwartet")
+	else
+		if not isNum(overview.CacheSeconds) or overview.CacheSeconds < 2 or overview.CacheSeconds > 60 then
+			add("Overview.CacheSeconds: 2 … 60 erwartet")
+		end
+		if not isInt(overview.MaxRows) or overview.MaxRows < 16 or overview.MaxRows > 128 then
+			add("Overview.MaxRows: ganze Zahl 16 … 128 erwartet")
+		end
 	end
 	return errors
 end

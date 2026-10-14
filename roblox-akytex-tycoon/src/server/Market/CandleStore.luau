@@ -19,6 +19,10 @@
 --    s:Work(budgetMs): boolean                   Aufträge abarbeiten; true = nichts mehr zu tun
 --    s:Pending(): number · s:WeekHigh(i): number · s:Range(i): (lo, hi) · s:Clear()
 --    s:Missing(i, from): boolean (Historie ab from noch unvollständig) · s:Prioritize(i) (Aufträge von i zuerst)
+--  Wochen-Hoch (W25, perf_server F1 Schritt 3): Range/WeekHigh lesen den 1m-Ring direkt (keine Kerzen-Tabellen);
+--  WeekHigh(i) frischt je Instrument nur in Sekunde (i % 60) einer neuen Minute auf (sonst ab 2 Minuten Rückstand
+--  sofort) -> statt 43 Neuberechnungen im ersten Tick jeder Minute höchstens eine bis zwei je Tick. Das Frame-Flag
+--  "Wochen-Hoch" läuft damit höchstens eine Minute nach (nur Anzeige).
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -263,36 +267,60 @@ function CandleStore.Get(self: any, i: number, tf: number): buffer?
 	return buf
 end
 
+-- Hoch/Tief der letzten `minutes` 1m-Kerzen direkt aus dem Ring (ohne Tabellen; dieselben Regeln wie
+-- minuteCandles: Lücken und Kerzen ohne Vorgänger zählen nicht)
+local function ringRange(ring: Ring, minutes: number): (number, number)
+	if ring.Head < 0 then
+		return 0, 0
+	end
+	local n = math.min(minutes, ring.Cap - 1)
+	local first = ring.Head - n + 1
+	local prev = (QuoteCodec.ReadRecord(ring.Buf, (first - 1) % ring.Cap))
+	local hi, lo = 0, math.huge
+	for b = first, ring.Head do
+		local close, hiOff, loOff = QuoteCodec.ReadRecord(ring.Buf, b % ring.Cap)
+		if close > 0 and prev > 0 then
+			local h = QuoteCodec.HiFrom(prev, close, hiOff)
+			local l = QuoteCodec.LoFrom(prev, close, loOff)
+			if h > hi then
+				hi = h
+			end
+			if l < lo then
+				lo = l
+			end
+		end
+		prev = close
+	end
+	return hi, if lo == math.huge then 0 else lo
+end
+
 -- Hoch/Tief der letzten 1W-Kerze (140 × 1m) – Frame-Flag "Wochen-Hoch" und Firmenprofil
 function CandleStore.Range(self: any, i: number): (number, number)
 	local r = self.Rings[i]
 	if r == nil then
 		return 0, 0
 	end
-	local candles = minuteCandles(r.M1, self.Cfg.WeekHighCandles)
-	local hi, lo = 0, math.huge
-	for _, c in ipairs(candles) do
-		if c.H > hi then
-			hi = c.H
-		end
-		if c.L < lo then
-			lo = c.L
-		end
-	end
-	return hi, if lo == math.huge then 0 else lo
+	return ringRange(r.M1, self.Cfg.WeekHighCandles)
 end
 
+-- gestaffelt: Instrument i frischt in Sekunde (i % 60) einer neuen Minute auf; ab 2 Minuten Rückstand (Stillstand,
+-- übersprungene Sekunde beim Nachholen mehrerer Ticks) oder ohne Wert sofort
 function CandleStore.WeekHigh(self: any, i: number): number
 	local r = self.Rings[i]
 	if r == nil then
 		return 0
 	end
 	local minute = r.M1.Head
-	if r.WH[1] ~= minute then
-		local hi = self:Range(i)
-		r.WH = { minute, hi }
+	local wh = r.WH
+	local cached = wh[1]
+	if cached ~= minute then
+		local second = r.S1.Head % 60
+		if cached < 0 or minute - cached >= 2 or minute < cached or second == i % 60 then
+			wh[1] = minute
+			wh[2] = (ringRange(r.M1, self.Cfg.WeekHighCandles))
+		end
 	end
-	return r.WH[2]
+	return wh[2]
 end
 
 -- ---------------------------------------------------------------------

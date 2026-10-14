@@ -10,7 +10,8 @@
 --      Aufschlüsselungs-Sheet aus State.Income.Parts (jede Quelle mit Wert, Herkunft und Restzeit)
 --    · Tresor-Ring neben der Karte: Füllstand (32 Segmente, zwischen State-Updates mit Income.PerSec hochgerechnet),
 --      voll = glüht rot; Tippen = Request "TowerCollect" (Server prüft Abstand ≤ 70 Studs)
---    · großer TRADE-Knopf unten Mitte (öffnet das Terminal)
+--    · großer TRADING-Knopf unten Mitte (öffnet das Terminal): Untertitel live (AKX36-Kurs bzw. Börsen-Status),
+--      Status-Punkt, Puls 2,4 s bis zum ersten echten Trade bzw. ersten Öffnen (W20 §4.10, Korrektur §11.3)
 --    · rechte Knöpfe Tower/Shop/Quests/Akademie/Garage/Social/Bestenlisten/Einstellungen (Admin 99 fügt AdminPanel an)
 --    · FPS/Ping/Speicher oben rechts (Einstellung "ShowNet")
 --  Tasten T/B/N/J (Controls-Aktionen Terminal/Tower/Shop/Quests) öffnen die Fenster, falls deren Modul die Taste
@@ -27,7 +28,8 @@
 --                                          vor den automatischen des HUD.
 --    Hud.CreditsAnchor(): Vector2?          Bildschirmpunkt des CR-Zählers (Ziel für den CR-Flug)
 --    Hud.PulseCredits(amount?)
---  Zusätzlich: Hud.RightButton(key): UI.Button? (Badges setzen), Hud.Refresh(state), Hud.Tick(), Hud.Init(ctx), Hud.Start()
+--  Zusätzlich: Hud.RightButton(key): UI.Button? (Badges setzen), Hud.Refresh(state), Hud.Tick(), Hud.Init(ctx), Hud.Start(),
+--    Hud.TradeOpened() (Terminal meldet das erste Öffnen -> Puls aus)
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -91,6 +93,8 @@ local SOURCE_COLORS: { [string]: Color3 } = {
 	Event = Theme.Purple,
 }
 local RING_PULSE_INFO = TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+local TRADE_PULSE_INFO = TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true) -- 2,4 s je Takt
+local TRADE_INST = 40 -- AKX36 (Leitindex) im Untertitel
 
 type Pill = { Text: string, Until: number? }
 type DefaultSlot = { Order: number, Icon: string, Button: UI.Button, Adopted: boolean, Handler: () -> () }
@@ -105,6 +109,11 @@ local stats: Frame? = nil
 local rightBar: Frame? = nil
 local rightGrid: UIGridLayout? = nil
 local tradeButton: UI.Button? = nil
+local tradeDot: Frame? = nil
+local tradePulse: UIStroke? = nil
+local tradePulseTween: Tween? = nil
+local tradePulseMode = ""
+local tradeOpened = false
 local netLabel: TextLabel? = nil
 local crLabel: TextLabel? = nil
 local crScale: UIScale? = nil
@@ -424,7 +433,87 @@ local function openTerminal()
 	local ok = moduleCall("Terminal", "Open")
 	if not ok and windows then
 		windows.Open("Terminal")
+		-- Terminal-Modul fehlt (Init-Fehler) und kein Fenster registriert: sichtbar melden statt nur warn (§4.10)
+		if type(windows.IsOpen) == "function" and not windows.IsOpen("Terminal") and ctx then
+			ctx.Toast(T("term.unavailable"), "Error")
+		end
 	end
+end
+
+-- Puls-Ring um den TRADING-Knopf: Accent, Transparenz 0,2↔0,75, 2,4 s Sine InOut (ReducedFx: statisch 0,4)
+local function setTradePulse(on: boolean)
+	local stroke = tradePulse
+	if not stroke then
+		return
+	end
+	local mode = if not on then "off" elseif setting("ReducedFx") == true then "static" else "anim"
+	if mode == tradePulseMode then
+		return
+	end
+	tradePulseMode = mode
+	if tradePulseTween then
+		tradePulseTween:Cancel()
+		tradePulseTween = nil
+	end
+	if mode == "off" then
+		stroke.Transparency = 1
+	elseif mode == "static" then
+		stroke.Transparency = 0.4
+	else
+		stroke.Transparency = 0.75
+		local tween = TweenService:Create(stroke, TRADE_PULSE_INFO, { Transparency = 0.2 })
+		tween:Play()
+		tradePulseTween = tween
+	end
+end
+
+-- Untertitel + Punktfarbe: live „AKX36 1.234,56 ▲0,8 %“, sonst der Börsen-Status (nie ein falsches „offen“)
+local function tradeSubtitle(): (string, Color3)
+	local okStatus, st = moduleCall("MarketClient", "Status")
+	if not okStatus or type(st) ~= "table" then
+		return T("ui.tradeSub"), Theme.Muted
+	end
+	local status = st.Status
+	if status == "Failed" then
+		return T("term.status.failed"), UI.DownColor()
+	elseif status == "Local" and st.ViewOnly == true then
+		return T("term.hud.localView"), Theme.Warn
+	elseif status ~= "Live" and status ~= "Local" then
+		return T("term.hud.booting"), Theme.Warn -- Booting / Connecting / Stalled
+	end
+	local dot = if status == "Live" then UI.UpColor() else Theme.Warn
+	local okQuote, close, change = moduleCall("MarketClient", "Quote", TRADE_INST)
+	if not okQuote or type(close) ~= "number" or close ~= close then
+		return T("ui.tradeSub"), dot
+	end
+	local okInst, inst = moduleCall("MarketClient", "Instrument", TRADE_INST)
+	local symbol = if okInst and type(inst) == "table" and type(inst.Ticker) == "string" then inst.Ticker else "AKX36"
+	local text = symbol .. " " .. (formatCall("Price", close, lang()) or fallbackNumber(close / 100))
+	if type(change) == "number" and change == change then
+		local pctText = formatCall("Pct", math.abs(change), lang(), 1, false)
+		if pctText then
+			text ..= " " .. UI.TrendArrow(change) .. pctText
+		end
+	end
+	return text, dot
+end
+
+-- 1 Hz (Hud.Tick) + Sprache: Untertitel, Punkt, Puls bis zum ersten echten Trade bzw. ersten Öffnen
+local function updateTrade()
+	local trade = tradeButton
+	if not trade then
+		return
+	end
+	local text, color = tradeSubtitle()
+	trade.SetSub(text)
+	local dot = tradeDot
+	if dot and dot.BackgroundColor3 ~= color then
+		dot.BackgroundColor3 = color
+	end
+	local state = ctx and ctx.State
+	local flags = if type(state) == "table" then state.Flags else nil
+	local traded = type(flags) == "table" and flags.FirstLiveTrade == true
+	setTradePulse(not tradeOpened and not traded)
 end
 
 -- ---------------------------------------------------------------------
@@ -750,7 +839,37 @@ local function buildTrade(parent: Frame)
 		Parent = parent,
 	}, openTerminal)
 	tradeButton = trade
+	-- Status-Punkt oben rechts im Knopf (Live = Up, startet/Ersatz = Warn, gestört = Down)
+	local dot: Frame = UI.Create("Frame", {
+		Name = "StatusDot",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -10, 0, 10),
+		Size = UDim2.fromOffset(10, 10),
+		BackgroundColor3 = Theme.Muted,
+		BorderSizePixel = 0,
+		ZIndex = trade.Button.ZIndex + 2,
+		Parent = trade.Button,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }) })
+	tradeDot = dot
+	-- Puls-Ring knapp außerhalb des Knopfs (fängt keine Eingaben, überdeckt nichts)
+	local ring: Frame = UI.Create("Frame", {
+		Name = "Pulse",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 8, 1, 8),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Parent = trade.Frame,
+	}, { UI.Create("UICorner", { CornerRadius = UDim.new(0, 18) }) })
+	tradePulse = UI.Create("UIStroke", {
+		Color = Theme.Accent,
+		Thickness = 2,
+		Transparency = 1,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = ring,
+	})
 	applyIcon(trade, "Trade", true)
+	updateTrade()
 end
 
 local function buildRight(parent: Frame)
@@ -890,7 +1009,7 @@ local function relabel()
 	local trade = tradeButton
 	if trade then
 		trade.SetText(T("ui.trade"))
-		trade.SetSub(T("ui.tradeSub"))
+		updateTrade() -- Sprache; ReducedFx-Wechsel ändert den Puls-Modus (statisch/animiert) und greift dort
 	end
 	if vaultCaption then
 		vaultCaption.Text = UI.Upper(T("ui.hud.vault"))
@@ -1523,6 +1642,7 @@ end
 
 -- Jede Sekunde: Tresor-Hochrechnung, Pillen-Countdowns, Laufband, Vermögen, FPS/Ping
 function Hud.Tick()
+	updateTrade()
 	updateVault()
 	computeAutoPills()
 	renderPills()
@@ -1590,6 +1710,12 @@ function Hud.Tick()
 	end
 	local fps = if type(ctx.Fps) == "number" then ctx.Fps else 0
 	net.Text = T("ui.netStats", math.floor(fps + 0.5), math.floor((tonumber(ping) or 0) + 0.5), math.floor(memory))
+end
+
+-- Terminal meldet das erste Öffnen dieser Sitzung: Puls aus (W20 §4.4.11)
+function Hud.TradeOpened()
+	tradeOpened = true
+	setTradePulse(false)
 end
 
 function Hud.SetVisible(on: boolean)

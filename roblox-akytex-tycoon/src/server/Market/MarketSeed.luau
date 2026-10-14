@@ -1,26 +1,37 @@
 --!strict
 -- =====================================================================
 --  AKYTEX TYCOON – Wochen-Seeds, Wochenschluss, IPO-Liste (Server/Market/MarketSeed)
---  Besitzer: WP3 (Markt-Engine). Vertrag: MARKET.md §5.6, DESIGN.md §C13, §C17, §C19 Nr. 10.
+--  Besitzer: WP3 (Markt-Engine). Vertrag: MARKET.md §5.6, DESIGN.md §C13, §C17, §C19 Nr. 10; W20 §4.1.2 + §11.1.
 --  DataStore Config.Tech.MarketStore ("AT_Market_v1"):
 --    Seed_W<w>  zufällige 31-Bit-Zahl, UpdateAsync "nur setzen, wenn leer"; der erste Server legt auch Seed_W<w+1> an
 --    Close_W<w> { [tostring(id)] = Cent } Wochenschlusskurse (Aktien, ETFs, gelistete IPOs) = Basis der Woche w+1
 --    Ipo_S<s>   { [tostring(id)] = { Tick, Issue, Open, By } } gelistete IPOs der Saison s
 --    Tune_W<w>  { NewsMeanGap } – Live-Stellschraube, beim Anlegen der Woche eingefroren (alle Server gleich)
+--  Nur lesen: Config.Tech.GlobalStore ("AT_Global") AdminLog_W<w> (Format und Prüfung gehören GlobalBus).
 --  Der Seed ist NIE im Place-File/Config und erreicht NIE einen Client.
 --  Studio (Config.Studio.LocalMarket) oder DataStore nicht erreichbar -> Fallback-Seed (lokaler Testmarkt):
 --    hash4(Config.Market.StudioSalt, w, PEPPER, 0) – PEPPER liegt nur hier (ServerScriptService, nicht repliziert),
 --    damit ein Client aus der replizierten Config den Fallback-Markt nicht vorausrechnen kann.
 --  Live: zuerst Wiederholen mit Backoff (Config.Market.Seed.RetrySeconds), dann Fallback.
---  Alle DataStore-Aufrufe in pcall; alle Funktionen außer Fallback() YIELDEN (nur aus eigenen Threads aufrufen).
+--  ForceLocal(true) (Ersatzmarkt des MarketService, W20 §4.1.2) wirkt wie der Studio-Testmarkt: Load liefert den
+--  Fallback, alle anderen Lese-Funktionen liefern nichts, Schreib-Funktionen schreiben nichts – ein Ersatzmarkt
+--  schreibt NIE in den globalen Speicher. TryLoad liest den echten Seed ohne Fallback und ohne Moduswechsel
+--  (Hintergrund-Prüfung im Ersatzmarkt, Vorab-Laden der nächsten Woche auf einem Live-Markt).
+--  Lese-Funktionen liefern zusätzlich "ok" (Zugriff gelungen): nil/leer + ok = gibt es nicht, nil/leer + nicht ok =
+--  gerade nicht erreichbar (der Markt-Start wiederholt dann, statt mit falschen Daten zu starten).
+--  Alle DataStore-Aufrufe in pcall; alle Funktionen außer Fallback()/ForceLocal()/IsLocal()/Ok() YIELDEN
+--  (nur aus eigenen Threads aufrufen).
 --
 --  Öffentliche API (nur WP3)
---    MarketSeed.Load(w): (seed: number, local: boolean)
---    MarketSeed.Peek(w): number?  (nur lesen)   MarketSeed.EnsureNext(w)   MarketSeed.Fallback(w): number
---    MarketSeed.LoadClose(w): { [number]: number }?      MarketSeed.SaveClose(w, closes)
---    MarketSeed.LoadIpos(s): { [number]: { Tick, Issue, Open, By } }      MarketSeed.SaveIpo(s, id, rec)
---    MarketSeed.LoadTune(w, default): number (NewsMeanGap)
---    MarketSeed.IsLocal(): boolean            MarketSeed.Ok(): boolean (letzter DataStore-Zugriff erfolgreich)
+--    MarketSeed.Load(w, budgetSeconds?): (seed: number, local: boolean)
+--    MarketSeed.TryLoad(w, budgetSeconds?): number?   nur der echte Seed (nil = nicht erreichbar / Studio-Testmarkt)
+--    MarketSeed.Peek(w): (number?, ok)  (nur lesen)   MarketSeed.EnsureNext(w)   MarketSeed.Fallback(w): number
+--    MarketSeed.LoadClose(w): ({ [number]: number }?, ok)      MarketSeed.SaveClose(w, closes)
+--    MarketSeed.LoadIpos(s): ({ [number]: { Tick, Issue, Open, By } }, ok)      MarketSeed.SaveIpo(s, id, rec)
+--    MarketSeed.LoadTune(w, default): (NewsMeanGap: number, ok)
+--    MarketSeed.LoadAdminLog(w): (rohe Liste: any, ok)
+--    MarketSeed.ForceLocal(on): boolean (vorheriger Wert)   MarketSeed.IsLocal(): boolean
+--    MarketSeed.Ok(): boolean (letzter DataStore-Zugriff erfolgreich)
 -- =====================================================================
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -35,18 +46,26 @@ local MarketSeed = {}
 
 local PEPPER = 0x6B1D3A57 -- Server-Geheimnis für den Fallback-Seed (nur ServerScriptService)
 local MAX_ENTRIES = 300 -- so viele Einträge darf ein Close-/Ipo-Datensatz höchstens haben
+local MAX_FETCH_ROUNDS = 32 -- Backoff-Schleife gebunden (das Zeitbudget endet vorher)
 
 local store: DataStore? = nil
+local globalStore: DataStore? = nil
 local localMode = false
+local forced = false -- Ersatzmarkt des MarketService (W20 §4.1.2): wirkt wie der Studio-Testmarkt
 local lastOk = true
 
 local function marketCfg(): { [string]: any }
 	return Config.Market :: any
 end
 
-local function studioLocal(): boolean
+-- Studio mit Config.Studio.LocalMarket: nie DataStore
+local function configLocal(): boolean
 	local studio: any = Config.Studio
 	return RunService:IsStudio() and type(studio) == "table" and studio.LocalMarket == true
+end
+
+local function studioLocal(): boolean
+	return forced or configLocal()
 end
 
 local function isAccessError(err: any): boolean
@@ -77,11 +96,18 @@ function MarketSeed.Fallback(w: number): number
 end
 
 function MarketSeed.IsLocal(): boolean
-	return localMode
+	return localMode or studioLocal()
 end
 
 function MarketSeed.Ok(): boolean
 	return lastOk
+end
+
+-- Ersatzmarkt an/aus (nur MarketService); Rückgabe: vorheriger Wert (Selbsttests stellen ihn wieder her)
+function MarketSeed.ForceLocal(on: boolean): boolean
+	local before = forced
+	forced = on == true
+	return before
 end
 
 -- ein DataStore-Aufruf mit pcall; Rückgabe ok, Ergebnis, ist Zugriffsfehler (Studio ohne API)
@@ -135,50 +161,72 @@ local function fetchSeed(w: number): (boolean, number?, boolean)
 	return false, nil, access
 end
 
-function MarketSeed.Load(w: number): (number, boolean)
-	if studioLocal() then
-		localMode = true
-		return MarketSeed.Fallback(w), true
-	end
+-- Seed mit Backoff holen – ohne Fallback, ohne Moduswechsel. nil = innerhalb des Budgets nicht erreichbar.
+local function fetchWithBackoff(w: number, budgetSeconds: number?): number?
 	local cfg = marketCfg().Seed or {}
 	local backoff: { number } = cfg.Backoff or { 2, 4, 8, 15, 30 }
-	local budget = tonumber(cfg.RetrySeconds) or 60
+	local budget = math.max(0, tonumber(budgetSeconds) or tonumber(cfg.RetrySeconds) or 60)
 	local waited = 0
-	local attempt = 0
-	while true do
-		attempt += 1
+	for attempt = 1, MAX_FETCH_ROUNDS do
 		local ok, seed, access = fetchSeed(w)
 		if ok and seed then
-			localMode = false
-			return seed, false
+			return seed
 		end
 		if access and RunService:IsStudio() then
-			break -- Studio ohne API-Zugriff: sofort lokaler Testmarkt
+			return nil -- Studio ohne API-Zugriff: sofort aufgeben
 		end
 		local pause = backoff[math.min(attempt, #backoff)] or 5
 		if waited + pause > budget then
-			break
+			return nil
 		end
 		task.wait(pause)
 		waited += pause
+	end
+	return nil
+end
+
+function MarketSeed.Load(w: number, budgetSeconds: number?): (number, boolean)
+	if forced then
+		-- Ersatzmarkt: Fallback, der gespeicherte Modus bleibt unberührt (Schreib-/Lese-Sperre kommt über "forced")
+		return MarketSeed.Fallback(w), true
+	end
+	if configLocal() then
+		localMode = true
+		return MarketSeed.Fallback(w), true
+	end
+	local seed = fetchWithBackoff(w, budgetSeconds)
+	if seed then
+		localMode = false
+		return seed, false
 	end
 	warn("[MarketSeed] Seed nicht erreichbar – lokaler Fallback-Markt für Woche " .. w)
 	localMode = true
 	return MarketSeed.Fallback(w), true
 end
 
--- nur lesen (Vorwoche für Historie/Offline-Abgleich): nil = gab es nicht oder nicht erreichbar
-function MarketSeed.Peek(w: number): number?
+-- nur der echte Seed (nie Fallback, kein Moduswechsel): nil = gerade nicht erreichbar oder Studio-Testmarkt
+function MarketSeed.TryLoad(w: number, budgetSeconds: number?): number?
+	if configLocal() then
+		return nil
+	end
+	return fetchWithBackoff(w, budgetSeconds)
+end
+
+-- nur lesen (Vorwoche für Historie/Offline-Abgleich): (Seed?, ok) – nil + ok = gab es nicht
+function MarketSeed.Peek(w: number): (number?, boolean)
 	if studioLocal() or localMode then
-		return MarketSeed.Fallback(w)
+		return MarketSeed.Fallback(w), true
 	end
 	local ok, value = call(function(ds: DataStore)
 		return (ds:GetAsync("Seed_W" .. w))
 	end)
-	if ok and validSeed(value) then
-		return value
+	if not ok then
+		return nil, false
 	end
-	return nil
+	if validSeed(value) then
+		return value, true
+	end
+	return nil, true
 end
 
 function MarketSeed.EnsureNext(w: number)
@@ -220,17 +268,18 @@ local function cleanCloses(raw: any): { [number]: number }?
 	return out
 end
 
-function MarketSeed.LoadClose(w: number): { [number]: number }?
+-- (Schlusskurse?, ok) – nil + ok = noch kein Wochenschluss gespeichert
+function MarketSeed.LoadClose(w: number): ({ [number]: number }?, boolean)
 	if localMode or studioLocal() then
-		return nil
+		return nil, true
 	end
 	local ok, result = call(function(ds: DataStore)
 		return (ds:GetAsync("Close_W" .. w))
 	end)
 	if not ok then
-		return nil
+		return nil, false
 	end
-	return cleanCloses(result)
+	return cleanCloses(result), true
 end
 
 function MarketSeed.SaveClose(w: number, closes: { [number]: number })
@@ -254,16 +303,20 @@ end
 -- ---------------------------------------------------------------------
 -- IPO-LISTE JE SAISON
 -- ---------------------------------------------------------------------
-function MarketSeed.LoadIpos(s: number): { [number]: { [string]: number } }
+-- (IPOs der Saison, ok) – leer + ok = noch keine Erstnotiz
+function MarketSeed.LoadIpos(s: number): ({ [number]: { [string]: number } }, boolean)
 	local out: { [number]: { [string]: number } } = {}
 	if localMode or studioLocal() then
-		return out
+		return out, true
 	end
 	local ok, result = call(function(ds: DataStore)
 		return (ds:GetAsync("Ipo_S" .. s))
 	end)
-	if not ok or type(result) ~= "table" then
-		return out
+	if not ok then
+		return out, false
+	end
+	if type(result) ~= "table" then
+		return out, true
 	end
 	local count = 0
 	for key, rec in pairs(result) do
@@ -284,7 +337,7 @@ function MarketSeed.LoadIpos(s: number): { [number]: { [string]: number } }
 			end
 		end
 	end
-	return out
+	return out, true
 end
 
 function MarketSeed.SaveIpo(s: number, id: number, rec: { [string]: number })
@@ -307,10 +360,12 @@ end
 -- ---------------------------------------------------------------------
 -- EINGEFRORENE LIVE-STELLSCHRAUBE (News-Takt) JE WOCHE
 -- ---------------------------------------------------------------------
-function MarketSeed.LoadTune(w: number, default: number): number
+-- (NewsMeanGap, ok) – nicht ok = weder gelesen noch angelegt: der Rückfall-Wert könnte von dem der übrigen Server
+-- dieser Woche abweichen (andere Kurse) -> der Markt-Start wiederholt statt damit zu handeln
+function MarketSeed.LoadTune(w: number, default: number): (number, boolean)
 	local fallback = math.clamp(tonumber(default) or 1500, 300, 6000)
 	if localMode or studioLocal() then
-		return fallback
+		return fallback, true
 	end
 	local ok, result = call(function(ds: DataStore)
 		return ds:UpdateAsync("Tune_W" .. w, function(old: any)
@@ -321,15 +376,50 @@ function MarketSeed.LoadTune(w: number, default: number): number
 		end)
 	end)
 	if ok and type(result) == "table" and type(result.NewsMeanGap) == "number" then
-		return math.clamp(result.NewsMeanGap, 300, 6000)
+		return math.clamp(result.NewsMeanGap, 300, 6000), true
 	end
 	local okGet, value = call(function(ds: DataStore)
 		return (ds:GetAsync("Tune_W" .. w))
 	end)
 	if okGet and type(value) == "table" and type(value.NewsMeanGap) == "number" then
-		return math.clamp(value.NewsMeanGap, 300, 6000)
+		return math.clamp(value.NewsMeanGap, 300, 6000), true
 	end
-	return fallback
+	return fallback, false
+end
+
+-- ---------------------------------------------------------------------
+-- ADMIN-LOG DER WOCHE (nur lesen; jeden Eintrag prüft GlobalBus.Validate im MarketService)
+-- ---------------------------------------------------------------------
+local function getGlobalStore(): DataStore?
+	if globalStore then
+		return globalStore
+	end
+	local ok, result = pcall(function()
+		return DataStoreService:GetDataStore((Config.Tech :: any).GlobalStore or "AT_Global")
+	end)
+	if ok and result then
+		globalStore = result
+		return result
+	end
+	return nil
+end
+
+-- (rohe Liste?, ok) – nil + ok = kein Admin-Log dieser Woche
+function MarketSeed.LoadAdminLog(w: number): (any, boolean)
+	if localMode or studioLocal() then
+		return nil, true
+	end
+	local ds = getGlobalStore()
+	if ds == nil then
+		return nil, false
+	end
+	local ok, result = pcall(function()
+		return (ds :: DataStore):GetAsync("AdminLog_W" .. w)
+	end)
+	if not ok then
+		return nil, false
+	end
+	return result, true
 end
 
 return MarketSeed

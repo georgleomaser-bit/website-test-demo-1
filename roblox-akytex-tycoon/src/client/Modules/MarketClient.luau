@@ -24,6 +24,10 @@
 --    Ids(), AllowedIds(), Tick(),
 --    BidAsk(i): (bid, ask, mid), Halted(i), Flags(), Candle1s(i), DayOpen(i), Spark(i), Sector(i),
 --    Licence(), LicenceDef(idx?), LicenceName(idx?), Layer(), Perks(), Practice(), Init(ctx), Start()
+--  Markt-Status (W20 §4.3, Korrektur §11.1): MarketClient.Status(): { Status, Ready, Attempt, Since, FrameAge, ViewOnly }
+--    Status ∈ Connecting (noch kein State) · Booting · Failed · Stalled (bereit, aber > 6 s kein Frame) · Live · Local;
+--    ViewOnly = lokaler Ersatzmarkt auf einem Live-Server (nur Ansicht, kein Handel). Fehlen die neuen State-Felder
+--    (älterer Server), gilt: Ready aus State.Market.Ready bzw. laufenden Frames, Status Live.
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -60,6 +64,15 @@ type Series = {
 
 type Practice = { Tick: number, Close: number, Phase: number, At: number, Candles: { Candle } }
 
+export type MarketStatus = {
+	Status: string,
+	Ready: boolean,
+	Attempt: number,
+	Since: number,
+	FrameAge: number,
+	ViewOnly: boolean,
+}
+
 local DAY = 1200
 local MAX_KEEP = 320 -- so viele Kerzen je Reihe (Chart ≤ 120 + Aufwärmen der Indikatoren)
 local RECENT_1S = 16 -- letzte 1s-Kerzen je Wert (nach dem Laden der Historie nachrechnen)
@@ -75,6 +88,8 @@ local PRACTICE_STALE = 4 -- ohne Replay-Paket so lange -> Übung nicht mehr akti
 local PRACTICE_KEEP = 240
 local REMOTE_RETRIES = 6
 local REMOTE_RETRY_GAP = 5
+local STALL_SECONDS = 6 -- bereit, aber so lange kein Kurs-Frame -> "Stalled"
+local FIRST_FRAME_WAIT = 8 -- nach dem Start so lange auf den ersten Frame warten, bevor "Stalled" gilt
 
 local SET_RANK: { [string]: number } = { Azubi = 1, Trader = 2, Fonds = 3 }
 -- Indikatoren ab Lizenz (§B7.5): SMA/EMA Azubi III · Bollinger Trader I · RSI Trader II · MACD/VWAP Trader III ·
@@ -116,6 +131,8 @@ local trackIdCounter = 0
 local practice: Practice? = nil
 local connected: { [string]: boolean } = {}
 local errorAt: { [string]: number } = {}
+local startClock = os.clock()
+local lastFrameClock = 0 -- os.clock() des letzten dekodierten Kurs-Frames (0 = noch keiner)
 
 -- ---------------------------------------------------------------------
 -- HELFER
@@ -811,6 +828,7 @@ local function onFrame(payload: any)
 	if not frame then
 		return
 	end
+	lastFrameClock = os.clock()
 	if frame.Tick <= lastTick then
 		return -- alt oder doppelt
 	end
@@ -897,6 +915,47 @@ local function onFrame(payload: any)
 	end
 	pump()
 	ctx.Hooks.Fire("Quotes", frame)
+end
+
+-- ---------------------------------------------------------------------
+-- MARKT-STATUS (Pille/Overlay im Terminal, HUD-Punkt) – nur Anzeige, der Server prüft jede Order selbst
+-- ---------------------------------------------------------------------
+function MarketClient.Status(): MarketStatus
+	local now = os.clock()
+	local frameAge = if lastFrameClock > 0 then now - lastFrameClock else math.huge
+	local out: MarketStatus = {
+		Status = "Connecting",
+		Ready = false,
+		Attempt = 0,
+		Since = 0,
+		FrameAge = frameAge,
+		ViewOnly = false,
+	}
+	local st = state().Market
+	if type(st) ~= "table" then
+		-- noch kein State, aber Frames laufen (Reihenfolge beim Beitritt): Markt läuft
+		if frameAge <= STALL_SECONDS then
+			out.Status = "Live"
+			out.Ready = true
+		end
+		return out
+	end
+	out.Attempt = if finite(st.Attempt) then math.max(0, math.floor(st.Attempt)) else 0
+	out.Since = if finite(st.Since) then st.Since else 0
+	out.ViewOnly = st.ViewOnly == true
+	-- älterer Server ohne "Ready": laufende Frames zählen als bereit
+	local ready = st.Ready == true or (st.Ready == nil and frameAge <= STALL_SECONDS)
+	out.Ready = ready
+	if not ready then
+		out.Status = if st.Status == "Failed" then "Failed" else "Booting"
+		return out
+	end
+	if frameAge > STALL_SECONDS and (lastFrameClock > 0 or now - startClock > FIRST_FRAME_WAIT) then
+		out.Status = "Stalled"
+		return out
+	end
+	out.Status = if st.Status == "Local" or out.ViewOnly then "Local" else "Live"
+	return out
 end
 
 -- ---------------------------------------------------------------------

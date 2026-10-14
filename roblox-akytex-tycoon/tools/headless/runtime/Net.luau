@@ -766,12 +766,14 @@ return function(R)
 		end
 	end
 
-	local function processClient(rec)
-		local q = rec.queue
+	local function processClient(rec, q)
+		if q == nil then
+			q = rec.queue
+			rec.queue = {}
+		end
 		if #q == 0 then
 			return
 		end
-		rec.queue = {}
 		N.applying = rec
 		for i = 1, #q do
 			local ok, err = xpcall(applyMessage, debug.traceback, rec, q[i])
@@ -783,12 +785,14 @@ return function(R)
 	end
 
 	-- Eingang Client -> Server
-	local function processInbound(rec)
-		local q = rec.inbound
+	local function processInbound(rec, q)
+		if q == nil then
+			q = rec.inbound
+			rec.inbound = {}
+		end
 		if #q == 0 then
 			return
 		end
-		rec.inbound = {}
 		for _, m in q do
 			local ok, err = xpcall(function()
 				local kind = m[1]
@@ -824,19 +828,30 @@ return function(R)
 		end
 	end
 
+	--- Netzwerk-Schritt: nur Nachrichten aus FRÜHEREN Frames (Antworten, die jetzt entstehen, gehen im nächsten
+	--- Frame raus -> Rundreise InvokeServer = 2 Schritte, wie über eine echte Verbindung)
 	function N.flushNow()
-		for _, rec in table.clone(N.clients) do
+		local clients = table.clone(N.clients)
+		local ins, outs = {}, {}
+		for i, rec in clients do
+			ins[i] = rec.inbound
+			rec.inbound = {}
+			outs[i] = rec.queue
+			rec.queue = {}
+		end
+		for i, rec in clients do
 			if not rec.closed then
-				processInbound(rec)
+				processInbound(rec, ins[i])
 			end
 		end
 		Sched.flush()
-		for _, rec in table.clone(N.clients) do
+		for i, rec in clients do
 			if not rec.closed then
 				if rec.initializing and rec.phaseB and Sched.frame >= rec.phaseB then
+					-- Phase B: erst der Schnappschuss, dann die bis dahin gesammelten Nachrichten
 					N.finishJoin(rec)
 				end
-				processClient(rec)
+				processClient(rec, outs[i])
 			end
 		end
 	end
@@ -901,14 +916,14 @@ return function(R)
 				end
 				seen[v] = true
 				local o = {}
-				if v[1] ~= nil then
+				if rawget(v, 1) ~= nil then
 					local i = 1
-					while v[i] ~= nil do
-						o[i] = copy(v[i], seen, path .. "[" .. i .. "]")
+					while rawget(v, i) ~= nil do
+						o[i] = copy(rawget(v, i), seen, path .. "[" .. i .. "]")
 						i += 1
 					end
 					local extra = false
-					for k in v do
+					for k in next, v do
 						if not (type(k) == "number" and k >= 1 and k < i and k == math.floor(k)) then
 							extra = true
 							break
@@ -927,7 +942,7 @@ return function(R)
 					end
 				else
 					local converted = false
-					for k, x in v do
+					for k, x in next, v do
 						local key = k
 						if type(k) ~= "string" then
 							key = tostring(k)

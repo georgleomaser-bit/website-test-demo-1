@@ -21,7 +21,22 @@
 --  Öffentliche API (§C7.5):
 --    Terminal.Open()   Terminal.OpenAt(instId)   Terminal.IsOpen()
 --  Zusätzlich: Terminal.OpenTicket(instId, side) · Terminal.ShowTab(tab) · Terminal.OpenPractice() ·
---    Terminal.Selected(): number? · Terminal.Frame(dt) · Terminal.Init(ctx) · Terminal.Start()
+--    Terminal.CancelPractice() · Terminal.Selected(): number? · Terminal.Frame(dt) · Terminal.Init(ctx) · Terminal.Start()
+--
+--  Runde 3 / W20-P0 (aky3_trading_spec.md §4.4.7–§4.4.11, §11.1–§11.3; Perf #2, #3, #15, V3):
+--    · Markt-Status aus MarketClient.Status(): Pille im Kopf (LIVE/LOKAL/NUR ANSICHT/STARTET/VERBINDUNG/GESTÖRT/
+--      HANDEL AUS) + Status-Overlay über Chart und Ticket (Liste/News bleiben bedienbar); Order-Knöpfe gesperrt mit Grund.
+--    · Übung ACAD deckt das Terminal nie mehr dauerhaft zu: an den Server-Zustand gekoppelt (12 s Warten auf den Start,
+--      „None“ beendet), Knopf „✕ Übung beenden“ (Request TutorialTrade { Action = "Skip" }), Kauf/Verkauf-Leiste kommt
+--      immer zurück.
+--    · Aufbau nie halb: builtKey erst nach erfolgreichem Aufbau (pcall), sonst Abriss + Toast + Fehler weiterwerfen;
+--      Charts im Frame nach dem Skelett.
+--    · SPIELGELD-Chip + Disclaimer im Handy-Layout (Compliance), Untertitel „Aktien kaufen & verkaufen · Spielgeld“ (PC).
+--    · Kauf/Verkauf zeigen bis zur Server-Antwort „Wird gesendet …“ – Erfolg erst nach Ok (Server-Meldung).
+--    · Chat /trade und /terminal (TextChatCommand „AT_TradeCmd“, einmal angelegt), Prompt-Attribut Inst, einmaliger
+--      Hinweis nach 75 s, Hud.TradeOpened() beim ersten Öffnen.
+--    · Watchlist virtualisiert (sichtbare + 2 Zeilen-Objekte), Sparkline = ein Path2D (Rückfall 12 Segmente);
+--      Wertwechsel verwendet die ChartViews weiter; Kerzen/Flächen-Stufe (Flow.ChartKey) baut nur die Charts neu.
 -- =====================================================================
 
 local ContextActionService = game:GetService("ContextActionService")
@@ -72,6 +87,16 @@ local ANALYSIS_EVERY = 1
 local OPEN_INFO = TweenInfo.new(0.26, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local SHEET_INFO = TweenInfo.new(0.32, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 local CLOSE_INFO = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local PRACTICE_START_WAIT = 12 -- so lange wartet die Übung auf die Start-Antwort des Servers (§4.4.8)
+local PRACTICE_DONE_SHOW = 5 -- „Gut gemacht“ bleibt so lange stehen
+local HINT_AFTER = 75 -- einmaliger Hinweis „Die Börse ist offen“ nach so vielen Sekunden (§4.4.11)
+local STATUS_EVERY = 1 -- Status-Pille/Overlay/Sekunden-Zähler je Sekunde
+local SPIN_SPEED = 180 -- Grad je Sekunde (Status-Ring)
+local SPARK_POINTS = 24 -- Sparkline-Stützpunkte (Path2D)
+local SPARK_SEGMENTS = 12 -- Rückfall ohne Path2D: so viele gedrehte Segment-Frames
+local ROW_GAP = 6 -- Abstand der Watchlist-Zeilen
+local ROW_POOL_EXTRA = 2 -- Zeilen-Objekte über die sichtbaren hinaus (virtualisierte Liste)
+local CHAT_COMMAND = "AT_TradeCmd"
 
 local ctx: any = nil
 
@@ -98,6 +123,7 @@ local ticket = {
 	Protect = true,
 	Exp = "24H",
 	Busy = false,
+	BusySide = nil :: string?,
 }
 
 -- Oberfläche (wird bei jedem Neuaufbau ersetzt)
@@ -117,9 +143,40 @@ local analysisClock = 0
 local profileCache: { [number]: { At: number, Profile: any } } = {}
 local profileBusy: { [number]: boolean } = {}
 local tape: { { T: number, C: number, V: number, Up: boolean } } = {}
-local practiceWanted = false
-local practiceBought = false
-local practiceDoneAt = -math.huge
+-- Übungs-/Status-/Aufbau-Zustand in EINER Tabelle, die Runde-3-Helfer in drei Namensräumen (Status, Kit, Flow):
+-- der Modul-Chunk liegt am Luau-Limit von 200 lokalen Registern (Zahl-/Text-Konstanten zählen nicht,
+-- Tabellen, Funktionen und veränderliche Werte schon) – neue Helfer gehören in diese Tabellen, nicht in Locals
+local St = {
+	PracticeWanted = false,
+	PracticeWantedAt = -math.huge,
+	PracticeBought = false,
+	PracticeDoneAt = -math.huge,
+	PracticeCancelled = false, -- „Übung beenden“ gedrückt: Replay-Nachläufer zeigen das Overlay nicht wieder
+	BuiltChartKey = "",
+	ChartSig = "", -- Modus/Kerzen/Fläche/Layout der gebauten ChartViews (Wiederverwendung beim Wertwechsel)
+	ChartsPending = false, -- Charts kommen im Frame nach dem Skelett (§4.4.9)
+	BuildToken = 0,
+	StatusClock = 0,
+	SpinAngle = 0,
+	BootSeenAt = -math.huge, -- Client-Uhr, seit der „startet“ zu sehen ist (Rückfall ohne State.Market.Since)
+	PillPulse = nil :: Tween?,
+	PillPulseOn = false,
+	OpenedThisSession = false,
+	HintShown = false,
+	HintClock = 0,
+	ChatReady = false,
+	StartedAt = os.clock(),
+	LastBlock = "",
+}
+local Status: { [string]: any } = {
+	-- Status-Pille: Punkt pulsiert 1,2 s je Takt (§4.4.7)
+	PULSE_INFO = TweenInfo.new(0.6, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+	OVERLAY = { Booting = true, Connecting = true, Stalled = true, Failed = true },
+}
+local Kit: { [string]: any } = {}
+-- selene: allow(undefined_variable)
+Kit.Path2DPoint = Path2DControlPoint
+local Flow: { [string]: any } = {}
 local pendingConfirm: { [string]: any }? = nil
 local sheetSide: string? = nil
 local correlation: { I: number, Ref: number, Value: number?, At: number }? = nil
@@ -359,6 +416,82 @@ local function heldIds(): { number }
 	end
 	table.sort(out)
 	return out
+end
+
+-- ---------------------------------------------------------------------
+-- MARKT-STATUS (§4.4.7, Korrektur §11.1) – nur Anzeige; der Server lehnt jede Order selbst ab
+-- ---------------------------------------------------------------------
+function Status.Get(): { [string]: any }
+	local ok, st = call("MarketClient", "Status")
+	if ok and type(st) == "table" and type(st.Status) == "string" then
+		return st
+	end
+	-- MarketClient ohne Status (älterer Stand): laufende Kurse = live
+	local okFrame, lastFrame = call("MarketClient", "Frame")
+	local live = okFrame and lastFrame ~= nil
+	return {
+		Status = if live then "Live" else "Connecting",
+		Ready = live,
+		Attempt = 0,
+		Since = 0,
+		FrameAge = 0,
+		ViewOnly = false,
+	}
+end
+
+-- Live oder (in Studio) lokaler Testmarkt; ein Ersatzmarkt auf einem Live-Server ist nur Ansicht
+function Status.CanTrade(st: { [string]: any }): boolean
+	return (st.Status == "Live" or st.Status == "Local") and st.ViewOnly ~= true
+end
+
+-- marktweiter Halt (State.Market.Halts["0"] > aktueller Tick)
+function Status.HaltedAll(): boolean
+	local market = state().Market
+	if type(market) ~= "table" or type(market.Halts) ~= "table" then
+		return false
+	end
+	local all = market.Halts["0"]
+	local okTick, tick = call("MarketClient", "Tick")
+	return type(all) == "number" and okTick and type(tick) == "number" and all > tick
+end
+
+-- Grund, warum gerade nicht gehandelt werden kann (Markt-Status, Depot-Abgleich) – nil = frei
+function Status.Block(): string?
+	local st = Status.Get()
+	if not Status.CanTrade(st) then
+		if st.Status == "Local" and st.ViewOnly == true then
+			return T("term.status.btnLocal")
+		elseif st.Status == "Failed" then
+			return T("term.status.failedTitle")
+		end
+		return T("term.status.btnBooting")
+	end
+	local d = depot()
+	if d.Syncing == true then
+		local pctDone = d.SyncPct
+		if type(pctDone) == "number" and pctDone == pctDone then
+			return T("term.status.sync", math.floor(math.clamp(pctDone, 0, 1) * 100))
+		end
+		return T("trade.syncing") -- Server ohne SyncPct
+	end
+	return nil
+end
+
+-- Grund für gesperrte Order-Knöpfe inkl. Auswahl/Halt/Lizenz (§4.4.5 Submit-Texte)
+function Status.Reason(): string?
+	local reason = Status.Block()
+	if reason then
+		return reason
+	end
+	local i = sel
+	if not i then
+		return T("term.t.blocked.none")
+	elseif halted(i) then
+		return T("term.t.blocked.halt")
+	elseif not allowed(i) then
+		return T("term.t.blocked.licence")
+	end
+	return nil
 end
 
 -- ---------------------------------------------------------------------
@@ -641,11 +774,59 @@ local function panel(props: { [string]: any }): Frame
 	return UI.Create("Frame", base, { UI.Corner(12), UI.Stroke(nil, 1) })
 end
 
-local function logo(parent: Instance, i: number, size: number, at: UDim2?): Frame
+-- Logo-Inhalt (Form, Sektorfarbe, Buchstabe) setzen – vorhandene Teile werden wiederverwendet, damit die
+-- virtualisierte Watchlist beim Scrollen keine Instanzen erzeugt/zerstört
+function Kit.PaintLogo(holder: Frame, i: number, size: number)
 	local inst = instOf(i)
 	local ok, sector = call("MarketClient", "Sector", i)
 	local color = if ok and type(sector) == "table" then sector.Color else Theme.Accent
 	local shape = if type(inst) == "table" and type(inst.Logo) == "table" then inst.Logo.Shape else "Circle"
+	local body = holder:FindFirstChild("Shape") :: Frame?
+	if not body then
+		local newBody = frame({
+			Name = "Shape",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			BackgroundTransparency = 0,
+			Parent = holder,
+		})
+		UI.Create("UICorner", { Name = "Corner", Parent = newBody })
+		UI.Create("UIGradient", { Name = "Gradient", Rotation = 90, Parent = newBody })
+		text({
+			Name = "Letter",
+			Size = UDim2.fromScale(1, 1),
+			FontFace = UI.Faces.Display,
+			TextColor3 = WHITE,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 2,
+			Parent = holder,
+		})
+		body = newBody
+	end
+	local shapeFrame = body :: Frame
+	local diamond = shape == "Diamond"
+	shapeFrame.Size = UDim2.fromScale(if diamond then 0.72 else 1, if diamond then 0.72 else 1)
+	shapeFrame.Rotation = if diamond then 45 else 0
+	shapeFrame.BackgroundColor3 = color
+	local corner = shapeFrame:FindFirstChild("Corner")
+	if corner and corner:IsA("UICorner") then
+		corner.CornerRadius = if shape == "Circle"
+			then UDim.new(0.5, 0)
+			elseif shape == "Hex" then UDim.new(0.3, 0)
+			else UDim.new(0.2, 0)
+	end
+	local gradient = shapeFrame:FindFirstChild("Gradient")
+	if gradient and gradient:IsA("UIGradient") then
+		gradient.Color = ColorSequence.new(color:Lerp(WHITE, 0.18), color:Lerp(Color3.new(0, 0, 0), 0.22))
+	end
+	local letter = holder:FindFirstChild("Letter")
+	if letter and letter:IsA("TextLabel") then
+		letter.TextSize = math.floor(size * 0.45)
+		letter.Text = if type(inst) == "table" and type(inst.Logo) == "table" then tostring(inst.Logo.Letter) else "?"
+	end
+end
+
+local function logo(parent: Instance, i: number, size: number, at: UDim2?): Frame
 	local holder = frame({
 		Name = "Logo",
 		AnchorPoint = Vector2.new(0, 0.5),
@@ -653,38 +834,7 @@ local function logo(parent: Instance, i: number, size: number, at: UDim2?): Fram
 		Size = UDim2.fromOffset(size, size),
 		Parent = parent,
 	})
-	local body = frame({
-		Name = "Shape",
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(if shape == "Diamond" then 0.72 else 1, if shape == "Diamond" then 0.72 else 1),
-		Rotation = if shape == "Diamond" then 45 else 0,
-		BackgroundTransparency = 0,
-		BackgroundColor3 = color,
-		Parent = holder,
-	})
-	UI.Create("UICorner", {
-		CornerRadius = if shape == "Circle"
-			then UDim.new(0.5, 0)
-			elseif shape == "Hex" then UDim.new(0.3, 0)
-			else UDim.new(0.2, 0),
-		Parent = body,
-	})
-	UI.Create("UIGradient", {
-		Rotation = 90,
-		Color = ColorSequence.new(color:Lerp(WHITE, 0.18), color:Lerp(Color3.new(0, 0, 0), 0.22)),
-		Parent = body,
-	})
-	text({
-		Size = UDim2.fromScale(1, 1),
-		FontFace = UI.Faces.Display,
-		TextSize = math.floor(size * 0.45),
-		TextColor3 = WHITE,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Text = if type(inst) == "table" and type(inst.Logo) == "table" then tostring(inst.Logo.Letter) else "?",
-		ZIndex = 2,
-		Parent = holder,
-	})
+	Kit.PaintLogo(holder, i, size)
 	return holder
 end
 
@@ -742,10 +892,14 @@ local function send(arg: { [string]: any })
 	if ticket.Busy then
 		return
 	end
+	-- Lade-Zustand bis zur Server-Antwort (Flagship A2): kein „✓“ vorab, die Erfolgs-/Fehlermeldung kommt vom Server
 	ticket.Busy = true
+	ticket.BusySide = if arg.Side == "S" then "S" else "B"
+	refreshAll()
 	task.spawn(function()
 		local reply = ctx.RequestFull("TradePlace", arg)
 		ticket.Busy = false
+		ticket.BusySide = nil
 		if reply.Ok then
 			local fill = reply.Fill
 			if type(fill) == "table" then
@@ -783,6 +937,11 @@ local function showConfirm(arg: { [string]: any }, weight: number)
 end
 
 local function buildArg(side: string): ({ [string]: any }?, { [string]: any }?)
+	local blocked = Status.Block()
+	if blocked then
+		ctx.Toast(blocked, "Info")
+		return nil, nil
+	end
 	local i = sel
 	if not i then
 		ctx.Toast(T("term.selectInst"), "Info")
@@ -1119,66 +1278,98 @@ local function isWatched(i: number): boolean
 	return false
 end
 
-local function buildList(parent: Instance, onPick: ((i: number) -> ())?): { [string]: any }
-	local simple = layer() == "Simple"
-	local rowH = if simple then 64 else 52
-	local holder = frame({ Name = "List", Size = UDim2.fromScale(1, 1), Parent = parent })
-	local modes = UI.Segmented(holder, {
-		{ Key = "All", Text = T("term.list.all") },
-		{ Key = "Watch", Text = T("term.list.watchShort") },
-		{ Key = "Depot", Text = T("term.list.depot") },
-	}, function(key: string)
-		listMode = key
-		refreshAll()
-	end)
-	modes.Set(listMode)
-	modes.Frame.Size = UDim2.new(1, 0, 0, 32)
-	local watchCycler = UI.Button({
-		Name = "WatchIndex",
-		Position = UDim2.fromOffset(0, 38),
-		Size = UDim2.new(1, 0, 0, 28),
-		Text = "",
-		Variant = "Ghost",
-		MaxText = 13,
-		Corner = 8,
-		Parent = holder,
-	}, function()
-		local count = math.max(1, math.floor(num(perks().Watchlists, 1)))
-		watchIndex = (watchIndex % count) + 1
-		refreshAll()
-	end)
-	local list = scroller(holder, {
-		Position = UDim2.fromOffset(0, 40),
-		Size = UDim2.new(1, 0, 1, -40),
-	})
-	rowList(list, 6)
-	UI.Create("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6), Parent = list })
-	local empty = text({
-		Name = "Empty",
-		Size = UDim2.new(1, 0, 0, 40),
-		TextWrapped = true,
-		TextSize = 13,
-		TextColor3 = Theme.Muted,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		LayoutOrder = 0,
-		Visible = false,
-		Parent = list,
-	})
-	return {
-		Holder = holder,
-		Modes = modes,
-		WatchCycler = watchCycler,
-		List = list,
-		Empty = empty,
-		Rows = {},
-		RowH = rowH,
-		Simple = simple,
-		OnPick = onPick,
-		SparkClock = 0,
-	}
+-- Mini-Kurve einer Zeile (Perf #3/#15): EIN Path2D statt 29 Segment-Frames; ohne Path2D 12 gedrehte Segmente
+function Kit.Path2DReady(): boolean
+	if Kit.Path2DPoint == nil then
+		return false
+	end
+	local lib = ctx.Modules and ctx.Modules.ChartView
+	if not lib or type(lib.HasPath2D) ~= "function" then
+		return false
+	end
+	local ok, value = pcall(lib.HasPath2D)
+	return ok and value == true
 end
 
-local function listRow(view: { [string]: any }, index: number): { [string]: any }
+-- gleichmäßig verteilte Stichprobe (erster und letzter Punkt bleiben)
+function Kit.Sample(points: { number }, n: number): { number }
+	local count = #points
+	if count <= n then
+		return points
+	end
+	local out = table.create(n)
+	for k = 1, n do
+		out[k] = points[1 + math.floor((k - 1) * (count - 1) / (n - 1) + 0.5)]
+	end
+	return out
+end
+
+function Kit.NewSpark(parent: Instance): { [string]: any }
+	local holder = frame({ Name = "Sparkline", Size = UDim2.fromScale(1, 1), Parent = parent })
+	local spark: { [string]: any } = { Frame = holder, Path = nil, Segs = nil }
+	if Kit.Path2DReady() then
+		local ok, path = pcall(Instance.new, "Path2D")
+		if ok and path then
+			path.Thickness = 1.5
+			path.Color3 = Theme.Muted
+			path.ZIndex = 2
+			path.Visible = false
+			path.Parent = holder
+			spark.Path = path
+		end
+	end
+	if not spark.Path then
+		spark.Segs = UI.Sparkline(holder, SPARK_SEGMENTS + 1)
+	end
+	return spark
+end
+
+function Kit.SetSpark(spark: { [string]: any }, points: { number })
+	local segs = spark.Segs
+	if segs then
+		segs.Set(Kit.Sample(points, SPARK_SEGMENTS + 1))
+		return
+	end
+	local path = spark.Path
+	if not path then
+		return
+	end
+	local pts = Kit.Sample(points, SPARK_POINTS)
+	local m = #pts
+	if m < 2 then
+		if path.Visible then
+			path.Visible = false
+		end
+		return
+	end
+	local lo, hi = math.huge, -math.huge
+	for k = 1, m do
+		local v = pts[k]
+		if v < lo then
+			lo = v
+		end
+		if v > hi then
+			hi = v
+		end
+	end
+	local range = hi - lo
+	local cps = table.create(m)
+	for k = 1, m do
+		local y = if range > 0 then 0.92 - (pts[k] - lo) / range * 0.84 else 0.5
+		cps[k] = Kit.Path2DPoint.new(UDim2.fromScale((k - 1) / (m - 1), y))
+	end
+	pcall(path.SetControlPoints, path, cps)
+	local color = if pts[m] >= pts[1] then UI.UpColor() else UI.DownColor()
+	if path.Color3 ~= color then
+		path.Color3 = color
+	end
+	if not path.Visible then
+		path.Visible = true
+	end
+end
+
+-- Zeilen-Objekt (ohne Wert) – die Liste hält nur sichtbare + ROW_POOL_EXTRA davon
+function Kit.ListRow(view: { [string]: any }): { [string]: any }
 	local rowH = view.RowH
 	local button: TextButton = UI.Create("TextButton", {
 		Name = "Row",
@@ -1187,7 +1378,7 @@ local function listRow(view: { [string]: any }, index: number): { [string]: any 
 		BackgroundTransparency = 0.15,
 		AutoButtonColor = false,
 		Text = "",
-		LayoutOrder = index,
+		Visible = false,
 		Parent = view.List,
 	}, { UI.Corner(10) })
 	local stroke = UI.Create("UIStroke", {
@@ -1245,7 +1436,7 @@ local function listRow(view: { [string]: any }, index: number): { [string]: any 
 		Size = UDim2.new(0.18, 0, 0, 22),
 		Parent = button,
 	})
-	local spark = UI.Sparkline(sparkHolder, 30)
+	local spark = Kit.NewSpark(sparkHolder)
 	local mood = frame({
 		Name = "Mood",
 		AnchorPoint = Vector2.new(0, 1),
@@ -1292,6 +1483,8 @@ local function listRow(view: { [string]: any }, index: number): { [string]: any 
 		Star = star,
 		Logo = nil :: Frame?,
 		I = 0,
+		Y = -1,
+		Stamp = 0,
 	}
 	button.Activated:Connect(function()
 		if row.I > 0 then
@@ -1311,11 +1504,229 @@ local function listRow(view: { [string]: any }, index: number): { [string]: any 
 	return row
 end
 
-local function updateList(view: { [string]: any }?, sparks: boolean)
+-- Inhalt einer Zeile für Wert i schreiben (nur Änderungen; Logo/Sparkline neu nur bei Wertwechsel bzw. sparks)
+function Kit.BindRow(view: { [string]: any }, row: { [string]: any }, i: number, sparks: boolean)
+	local inst = instOf(i)
+	if row.I ~= i then
+		row.I = i
+		local size = if view.Simple then 34 else 30
+		if row.Logo then
+			Kit.PaintLogo(row.Logo, i, size)
+		else
+			row.Logo = logo(row.Button, i, size, UDim2.new(0, 8, 0.5, 0))
+		end
+		local ok, sector = call("MarketClient", "Sector", i)
+		row.Stripe.BackgroundColor3 = if ok and type(sector) == "table" then sector.Color else Theme.Accent
+		Kit.SetSpark(row.Spark, {})
+		sparks = true
+	end
+	setText(row.Ticker, if type(inst) == "table" then inst.Ticker else "?")
+	setText(row.Name, if type(inst) == "table" then inst.Name else "")
+	local close, change = quote(i)
+	setText(row.Price, if close then price(close) else "–")
+	if change then
+		setText(
+			row.Change,
+			string.format(
+				'<font color="%s">%s %s</font>',
+				UI.ColorHex(UI.TrendColor(change)),
+				UI.TrendArrow(change),
+				pct(change)
+			)
+		)
+	else
+		setText(row.Change, "")
+	end
+	if sparks then
+		local okSpark, points = call("MarketClient", "Spark", i)
+		if okSpark and type(points) == "table" then
+			Kit.SetSpark(row.Spark, points)
+		end
+	end
+	if view.Simple then
+		-- Stimmungspunkt: Tiko-Ampel der letzten Meldung, sonst Tagestrend
+		local okNews, item = call("NewsFeed", "LatestFor", i, true)
+		local stateName = "none"
+		if okNews and item then
+			local okAmpel, value = call("NewsFeed", "Ampel", item)
+			if okAmpel and type(value) == "string" then
+				stateName = value
+			end
+		end
+		local moodColor = Theme.Muted
+		local moodKey = "term.mood.flat"
+		if stateName == "up" or (stateName == "none" and change and change > 0.002) then
+			moodColor, moodKey = UI.UpColor(), "term.mood.up"
+		elseif stateName == "down" or (stateName == "none" and change and change < -0.002) then
+			moodColor, moodKey = UI.DownColor(), "term.mood.down"
+		elseif stateName == "rumor" or stateName == "expected" then
+			moodColor, moodKey = Theme.Warn, "term.mood.unclear"
+		end
+		if row.Mood.BackgroundColor3 ~= moodColor then
+			row.Mood.BackgroundColor3 = moodColor
+		end
+		setText(row.MoodText, T(moodKey))
+	end
+	local watchedNow = isWatched(i)
+	setText(row.Star, if watchedNow then "★" else "☆")
+	local starColor = if watchedNow then Theme.Gold else Theme.Muted
+	if row.Star.TextColor3 ~= starColor then
+		row.Star.TextColor3 = starColor
+	end
+	local active = i == sel
+	local strokeColor = if active then Theme.Accent else Theme.Border
+	if row.Stroke.Color ~= strokeColor then
+		row.Stroke.Color = strokeColor
+	end
+	local fill = if active then Theme.Hover else Theme.Surface2
+	if row.Button.BackgroundColor3 ~= fill then
+		row.Button.BackgroundColor3 = fill
+	end
+end
+
+-- Virtualisierte Liste: Canvas so hoch wie alle Werte, aber nur die sichtbaren Zeilen (+ ROW_POOL_EXTRA) als
+-- Objekte; Ring-Zuordnung Index -> Objekt, damit beim Scrollen um eine Zeile nur ein Objekt neu belegt wird.
+-- refresh = Inhalte aller sichtbaren Zeilen neu schreiben (Kurse/Auswahl); sonst nur neu belegte Zeilen.
+function Kit.LayoutRows(view: { [string]: any }, refresh: boolean, sparks: boolean)
+	local list: ScrollingFrame = view.List
+	local ids: { number } = view.Ids
+	local n = #ids
+	local pitch = view.Pitch
+	local canvasH = n * pitch
+	if view.CanvasH ~= canvasH then
+		view.CanvasH = canvasH
+		list.CanvasSize = UDim2.fromOffset(0, canvasH)
+	end
+	-- Absolute-Pixel (nach UIScale) -> GUI-Einheiten der Zeilen
+	local ratio = 0
+	if canvasH > 0 and list.AbsoluteCanvasSize.Y > 0 then
+		ratio = list.AbsoluteCanvasSize.Y / canvasH
+	end
+	if ratio <= 0 or ratio ~= ratio then
+		ratio = UI.ScaleOf(list)
+	end
+	local windowH = list.AbsoluteWindowSize.Y / ratio
+	if windowH <= 0 then
+		windowH = 10 * pitch -- noch nicht ausgelegt: grob 10 Zeilen, die nächste Größen-Änderung korrigiert
+	end
+	local want = math.max(1, math.ceil(windowH / pitch) + ROW_POOL_EXTRA)
+	local first =
+		math.clamp(math.floor(math.max(0, list.CanvasPosition.Y / ratio) / pitch) + 1, 1, math.max(1, n - want + 1))
+	if not refresh and first == view.First and want == view.Want and n == view.N then
+		return -- nur gescrollt, keine Zeilengrenze überschritten: die Zeilen liegen im Canvas und scrollen von selbst
+	end
+	if want ~= view.Want then
+		refresh = true
+	end
+	view.First, view.Want, view.N = first, want, n
+	view.Stamp += 1
+	local stamp = view.Stamp
+	local last = math.min(n, first + want - 1)
+	for index = first, last do
+		local slot = ((index - 1) % want) + 1
+		local row = view.Rows[slot]
+		if not row then
+			row = Kit.ListRow(view)
+			view.Rows[slot] = row
+		end
+		local y = (index - 1) * pitch
+		if row.Y ~= y then
+			row.Y = y
+			row.Button.Position = UDim2.fromOffset(0, y)
+		end
+		local i = ids[index]
+		if refresh or row.I ~= i or not row.Button.Visible then
+			Kit.BindRow(view, row, i, sparks)
+		end
+		row.Stamp = stamp
+		if not row.Button.Visible then
+			row.Button.Visible = true
+		end
+	end
+	for _, row in pairs(view.Rows) do
+		if row.Stamp ~= stamp and row.Button.Visible then
+			row.Button.Visible = false
+		end
+	end
+end
+
+function Kit.BuildList(parent: Instance, onPick: ((i: number) -> ())?): { [string]: any }
+	local simple = layer() == "Simple"
+	local rowH = if simple then 64 else 52
+	local holder = frame({ Name = "List", Size = UDim2.fromScale(1, 1), Parent = parent })
+	local modes = UI.Segmented(holder, {
+		{ Key = "All", Text = T("term.list.all") },
+		{ Key = "Watch", Text = T("term.list.watchShort") },
+		{ Key = "Depot", Text = T("term.list.depot") },
+	}, function(key: string)
+		listMode = key
+		refreshAll()
+	end)
+	modes.Set(listMode)
+	modes.Frame.Size = UDim2.new(1, 0, 0, 32)
+	local watchCycler = UI.Button({
+		Name = "WatchIndex",
+		Position = UDim2.fromOffset(0, 38),
+		Size = UDim2.new(1, 0, 0, 28),
+		Text = "",
+		Variant = "Ghost",
+		MaxText = 13,
+		Corner = 8,
+		Parent = holder,
+	}, function()
+		local count = math.max(1, math.floor(num(perks().Watchlists, 1)))
+		watchIndex = (watchIndex % count) + 1
+		refreshAll()
+	end)
+	local list = scroller(holder, {
+		Position = UDim2.fromOffset(0, 40),
+		Size = UDim2.new(1, 0, 1, -40),
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+	})
+	UI.Create("UIPadding", { PaddingRight = UDim.new(0, 6), Parent = list })
+	local empty = text({
+		Name = "Empty",
+		Size = UDim2.new(1, 0, 0, 40),
+		TextWrapped = true,
+		TextSize = 13,
+		TextColor3 = Theme.Muted,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Visible = false,
+		Parent = list,
+	})
+	local view: { [string]: any } = {
+		Holder = holder,
+		Modes = modes,
+		WatchCycler = watchCycler,
+		List = list,
+		Empty = empty,
+		Rows = {},
+		RowH = rowH,
+		Pitch = rowH + ROW_GAP,
+		Simple = simple,
+		OnPick = onPick,
+		Ids = {},
+		CanvasH = -1,
+		First = 0,
+		Want = 0,
+		N = -1,
+		Stamp = 0,
+	}
+	list:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+		Kit.LayoutRows(view, false, false)
+	end)
+	list:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		Kit.LayoutRows(view, false, false)
+	end)
+	return view
+end
+
+function Kit.UpdateList(view: { [string]: any }?, sparks: boolean)
 	if not view then
 		return
 	end
 	local ids = listIds()
+	view.Ids = ids
 	local watchCount = math.max(1, math.floor(num(perks().Watchlists, 1)))
 	view.WatchCycler.Frame.Visible = listMode == "Watch" and watchCount > 1
 	view.WatchCycler.SetText(T("term.list.watch", math.clamp(watchIndex, 1, watchCount)) .. "  ▸")
@@ -1332,81 +1743,7 @@ local function updateList(view: { [string]: any }?, sparks: boolean)
 			elseif listMode == "Depot" then T("term.pos.empty")
 			else T("mkt.notReady") -- noch kein Kurs-Frame (Beitritt, Markt startet)
 	)
-	for index, i in ipairs(ids) do
-		local row = view.Rows[index]
-		if not row then
-			row = listRow(view, index)
-			view.Rows[index] = row
-		end
-		local inst = instOf(i)
-		if row.I ~= i then
-			row.I = i
-			if row.Logo then
-				row.Logo:Destroy()
-			end
-			row.Logo = logo(row.Button, i, if view.Simple then 34 else 30, UDim2.new(0, 8, 0.5, 0))
-			local ok, sector = call("MarketClient", "Sector", i)
-			row.Stripe.BackgroundColor3 = if ok and type(sector) == "table" then sector.Color else Theme.Accent
-			row.Spark.Set(table.create(0))
-			sparks = true
-		end
-		setText(row.Ticker, if type(inst) == "table" then inst.Ticker else "?")
-		setText(row.Name, if type(inst) == "table" then inst.Name else "")
-		local close, change = quote(i)
-		setText(row.Price, if close then price(close) else "–")
-		if change then
-			setText(
-				row.Change,
-				string.format(
-					'<font color="%s">%s %s</font>',
-					UI.ColorHex(UI.TrendColor(change)),
-					UI.TrendArrow(change),
-					pct(change)
-				)
-			)
-		else
-			setText(row.Change, "")
-		end
-		if sparks then
-			local okSpark, points = call("MarketClient", "Spark", i)
-			if okSpark and type(points) == "table" then
-				row.Spark.Set(points)
-			end
-		end
-		if view.Simple then
-			-- Stimmungspunkt: Tiko-Ampel der letzten Meldung, sonst Tagestrend
-			local okNews, item = call("NewsFeed", "LatestFor", i, true)
-			local stateName = "none"
-			if okNews and item then
-				local okAmpel, value = call("NewsFeed", "Ampel", item)
-				if okAmpel and type(value) == "string" then
-					stateName = value
-				end
-			end
-			local moodColor = Theme.Muted
-			local moodKey = "term.mood.flat"
-			if stateName == "up" or (stateName == "none" and change and change > 0.002) then
-				moodColor, moodKey = UI.UpColor(), "term.mood.up"
-			elseif stateName == "down" or (stateName == "none" and change and change < -0.002) then
-				moodColor, moodKey = UI.DownColor(), "term.mood.down"
-			elseif stateName == "rumor" or stateName == "expected" then
-				moodColor, moodKey = Theme.Warn, "term.mood.unclear"
-			end
-			row.Mood.BackgroundColor3 = moodColor
-			setText(row.MoodText, T(moodKey))
-		end
-		local watchedNow = isWatched(i)
-		row.Star.Text = if watchedNow then "★" else "☆"
-		row.Star.TextColor3 = if watchedNow then Theme.Gold else Theme.Muted
-		local active = i == sel
-		row.Stroke.Color = if active then Theme.Accent else Theme.Border
-		row.Button.BackgroundColor3 = if active then Theme.Hover else Theme.Surface2
-		row.Button.Visible = true
-	end
-	for index = #ids + 1, #view.Rows do
-		local row = view.Rows[index]
-		row.Button.Visible = false
-	end
+	Kit.LayoutRows(view, true, sparks)
 end
 
 -- ---------------------------------------------------------------------
@@ -1695,8 +2032,36 @@ local function multiIds(): { number }
 	return out
 end
 
+-- wirksame Kerzenzahl: Handy immer 60, PC aus der Grafikstufe (Perf V3 – Handy Low↔Medium ändert nichts)
+function Flow.Candles(kind: string): number
+	return if kind == "Phone" then 60 else math.clamp(quality("Candles", 90), 60, 120)
+end
+
+-- Kerzen-/Flächen-Stufe der Charts: ändert sie sich, werden NUR die Charts neu gebaut (nicht das ganze Terminal)
+function Flow.ChartKey(): string
+	return tostring(Flow.Candles(layoutKind)) .. "|" .. tostring(areaFill())
+end
+
+function Flow.Mode(): string
+	local mode = chartMode
+	if layoutKind == "Phone" or licence() < traderFrom() then
+		mode = "Single"
+	end
+	if mode == "Multi" and not perks().MultiChart then
+		mode = "Single"
+	end
+	return mode
+end
+
+-- was die gebauten ChartViews festlegt (Pool-Größe, Fläche, Kachel-Anordnung)
+function Flow.Signature(): string
+	return Flow.Mode() .. "|" .. Flow.ChartKey() .. "|" .. layoutKind
+end
+
 local function buildCharts()
+	St.ChartsPending = false
 	untrackAll()
+	St.ChartSig = ""
 	local host: Frame? = ui.ChartHost
 	local lib = chartLib()
 	if not host or not lib or not sel then
@@ -1707,17 +2072,11 @@ local function buildCharts()
 			child:Destroy()
 		end
 	end
-	local mode = chartMode
-	if layoutKind == "Phone" or licence() < traderFrom() then
-		mode = "Single"
-	end
-	if mode == "Multi" and not perks().MultiChart then
-		mode = "Single"
-	end
+	local mode = Flow.Mode()
 	local style = currentStyle()
 	local tf = currentTf()
 	local indicators = indicatorMap()
-	local candles = if layoutKind == "Phone" then 60 else math.clamp(quality("Candles", 90), 60, 120)
+	local candles = Flow.Candles(layoutKind)
 	local function add(
 		slot: Frame,
 		i: number,
@@ -1770,7 +2129,67 @@ local function buildCharts()
 			add(slot, i, tf, 60, true, index == 1)
 		end
 	end
+	St.BuiltChartKey = Flow.ChartKey()
+	St.ChartSig = Flow.Signature()
 	chartMarks()
+end
+
+-- Wertwechsel ohne Neuaufbau (Perf #2): dieselben gepoolten ChartViews behalten und nur die Reihe neu verfolgen
+-- (wie beim Zeitrahmen-Wechsel). false = Modus/Kerzen/Fläche/Layout anders -> buildCharts nötig.
+function Flow.Retarget(): boolean
+	local i = sel
+	if not i or St.ChartsPending or #views == 0 or St.ChartSig ~= Flow.Signature() then
+		return false
+	end
+	if Flow.Mode() == "Multi" then
+		local ids = multiIds()
+		if #ids ~= #views then
+			return false
+		end
+		for index, entry in ipairs(views) do
+			local want = ids[index]
+			if entry.I ~= want then
+				entry.I = want
+				entry.Stale = false
+				trackView(entry)
+			end
+		end
+	else
+		for _, entry in ipairs(views) do
+			if entry.I ~= i then
+				entry.I = i
+				entry.Stale = false
+				trackView(entry)
+			end
+		end
+	end
+	local main = views[1]
+	if main then
+		main.View:SetIndicators(indicatorMap())
+		main.View:SetPickMode(alarmMode)
+	end
+	chartMarks()
+	return true
+end
+
+-- Chart-Typ-Segment (neu, sobald sich die erlaubten Typen ändern: Fläche = Grafikstufe, Kerzen = Lizenz) – so muss
+-- ein Stufenwechsel nicht das ganze Terminal neu bauen (Perf V3)
+function Flow.StyleSeg(tb: { [string]: any })
+	local styles = allowedStyles()
+	if tb.Style then
+		tb.Style.Frame:Destroy()
+	end
+	local styleOptions: { any } = {}
+	for _, style in ipairs(styles) do
+		table.insert(styleOptions, { Key = style, Text = T("term.style." .. style) })
+	end
+	local styleSeg = UI.Segmented(tb.StyleHolder, styleOptions, function(key: string)
+		call("Settings", "Set", "ChartType", key)
+	end)
+	styleSeg.Frame.Size = UDim2.fromScale(1, 1)
+	styleSeg.Set(currentStyle())
+	tb.Style = styleSeg
+	tb.StyleKey = table.concat(styles, ",")
 end
 
 local function buildToolbar(parent: Instance, compact: boolean): { [string]: any }
@@ -1790,15 +2209,6 @@ local function buildToolbar(parent: Instance, compact: boolean): { [string]: any
 		Size = if compact then UDim2.new(1, 0, 0, 30) else UDim2.new(0.42, -4, 0, 32),
 		Parent = holder,
 	})
-	local styleOptions: { any } = {}
-	for _, style in ipairs(allowedStyles()) do
-		table.insert(styleOptions, { Key = style, Text = T("term.style." .. style) })
-	end
-	local styleSeg = UI.Segmented(styleHolder, styleOptions, function(key: string)
-		call("Settings", "Set", "ChartType", key)
-	end)
-	styleSeg.Frame.Size = UDim2.fromScale(1, 1)
-	styleSeg.Set(currentStyle())
 	-- Indikatoren + Alarm + Split/Multi
 	local indRow = scroller(holder, {
 		Position = UDim2.fromOffset(0, if compact then 70 else 38),
@@ -1899,15 +2309,19 @@ local function buildToolbar(parent: Instance, compact: boolean): { [string]: any
 			refreshAll()
 		end)
 	end
-	return {
+	local tb: { [string]: any } = {
 		Holder = holder,
 		Tf = tfSeg,
-		Style = styleSeg,
+		StyleHolder = styleHolder,
+		Style = nil,
+		StyleKey = "",
 		Chips = chips,
 		ChipColors = chipColors,
 		Alarm = alarm,
 		Split = split,
 	}
+	Flow.StyleSeg(tb)
+	return tb
 end
 
 local function updateToolbar(tb: { [string]: any }?)
@@ -1915,7 +2329,11 @@ local function updateToolbar(tb: { [string]: any }?)
 		return
 	end
 	tb.Tf.Set(currentTf())
-	tb.Style.Set(currentStyle())
+	if tb.StyleKey ~= table.concat(allowedStyles(), ",") then
+		Flow.StyleSeg(tb)
+	else
+		tb.Style.Set(currentStyle())
+	end
 	local active = indicatorMap()
 	for name, b in pairs(tb.Chips) do
 		b.SetVariant(if active[name] then "Primary" else "Secondary")
@@ -1942,10 +2360,15 @@ end
 -- ---------------------------------------------------------------------
 -- ORDER-TICKET
 -- ---------------------------------------------------------------------
-local function buildTicket(parent: Instance, withButtons: boolean): { [string]: any }
+-- footnote: Hinweiszeile unter der Zusammenfassung (Handy: Spielgeld-Disclaimer, §11.2)
+local function buildTicket(parent: Instance, withButtons: boolean, footnote: string?): { [string]: any }
 	local list = scroller(parent)
 	rowList(list, 8)
 	UI.Create("UIPadding", { PaddingRight = UDim.new(0, 6), PaddingBottom = UDim.new(0, 8), Parent = list })
+	-- Depot-Abgleich: schmaler Fortschrittsbalken oben im Ticket (§4.4.7, Depot.SyncPct)
+	local syncBar = UI.Bar({ Size = UDim2.new(1, 0, 0, 4), Color = Theme.Accent, LayoutOrder = 0, Parent = list })
+	syncBar.Frame.Name = "SyncBar"
+	syncBar.Frame.Visible = false
 	local holding = text({
 		Name = "Holding",
 		Size = UDim2.new(1, 0, 0, 34),
@@ -2103,6 +2526,19 @@ local function buildTicket(parent: Instance, withButtons: boolean): { [string]: 
 	})
 	local buy: any = nil
 	local sell: any = nil
+	if footnote then
+		text({
+			Name = "Disclaimer",
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			TextWrapped = true,
+			TextSize = 11,
+			TextColor3 = Theme.Muted,
+			Text = footnote,
+			LayoutOrder = 16, -- direkt unter Vorschau/Klumpen-Warnung (Handy hat keine Knöpfe im Ticket)
+			Parent = list,
+		})
+	end
 	if withButtons then
 		local buttons = frame({ Name = "Buttons", Size = UDim2.new(1, 0, 0, 50), LayoutOrder = 16, Parent = list })
 		buy = UI.Button({
@@ -2188,6 +2624,7 @@ local function buildTicket(parent: Instance, withButtons: boolean): { [string]: 
 	})
 	return {
 		List = list,
+		SyncBar = syncBar,
 		Holding = holding,
 		Type = typeButton,
 		Explain = explain,
@@ -2212,6 +2649,34 @@ local function buildTicket(parent: Instance, withButtons: boolean): { [string]: 
 		AmpelToggle = ampelToggle,
 		Gloss = gloss,
 	}
+end
+
+-- Kauf/Verkauf-Knöpfe (PC-Ticket und Handy-Leiste): gesperrt = EIN breiter Muted-Knopf mit dem Grund (§4.4.5,
+-- Klick erklärt per Toast); während TradePlace zeigt die gedrückte Seite „Wird gesendet …“ (Flagship A2)
+function Status.PaintButtons(buy: any, sell: any, reason: string?, otype: string)
+	local half: UDim2 = buy.HalfSize or buy.Frame.Size
+	buy.HalfSize = half
+	local wide = reason ~= nil and not ticket.Busy
+	local size = if wide then UDim2.new(1, 0, half.Y.Scale, half.Y.Offset) else half
+	if buy.Frame.Size ~= size then
+		buy.Frame.Size = size
+	end
+	sell.Frame.Visible = not wide
+	if ticket.Busy then
+		local sending = T("term.t.sending")
+		buy.SetText(if ticket.BusySide == "B" then sending else T("trade.buy"))
+		sell.SetText(if ticket.BusySide == "S" then sending else T("trade.sell"))
+		buy.SetVariant("Muted")
+		sell.SetVariant("Muted")
+	elseif reason then
+		buy.SetText(reason)
+		buy.SetVariant("Muted")
+	else
+		buy.SetText(T("trade.buy"))
+		sell.SetText(T("trade.sell"))
+		buy.SetVariant(if SELL_ONLY[otype] then "Muted" else "Success")
+		sell.SetVariant("Danger")
+	end
 end
 
 local function updateAmpel(t: { [string]: any })
@@ -2257,6 +2722,14 @@ local function updateTicket(t: { [string]: any }?)
 	local i = sel
 	local l = layer()
 	local trader = licence() >= traderFrom()
+	-- Abgleich-Fortschritt (nur wenn der Server SyncPct liefert)
+	local d = depot()
+	local syncPct = d.SyncPct
+	local syncing = d.Syncing == true and type(syncPct) == "number" and syncPct == syncPct
+	t.SyncBar.Frame.Visible = syncing
+	if syncing then
+		UI.SetBar(t.SyncBar, math.clamp(syncPct, 0, 1))
+	end
 	-- Bestand
 	if i then
 		local q, avg = position(i)
@@ -2360,13 +2833,9 @@ local function updateTicket(t: { [string]: any }?)
 	else
 		t.Cluster.Visible = false
 	end
-	-- Knöpfe
-	local blocked = i == nil or halted(i) or not allowed(i)
+	-- Knöpfe (gesperrt mit Grund, Lade-Zustand bis zur Antwort)
 	if t.Buy then
-		t.Buy.SetText(T("trade.buy"))
-		t.Sell.SetText(T("trade.sell"))
-		t.Buy.SetVariant(if blocked or SELL_ONLY[otype] then "Muted" else "Success")
-		t.Sell.SetVariant(if blocked then "Muted" else "Danger")
+		Status.PaintButtons(t.Buy, t.Sell, Status.Reason(), otype)
 	end
 	updateAmpel(t)
 	t.Gloss.Visible = l == "Simple"
@@ -2984,14 +3453,40 @@ local function practice(): any
 	return if ok then p else nil
 end
 
+-- Übung sichtbar? An den Server-Zustand gekoppelt (§4.4.8): „Done“ beendet (Erfolg bleibt kurz stehen), „Running“
+-- hält sie, und nach dem Start-Wunsch wartet sie höchstens PRACTICE_START_WAIT s auf den Server – meldet er dann
+-- „None“ (Zeitlimit, nie gekauft, Tutorial übersprungen), ist sie vorbei. Nie mehr für die ganze Sitzung zugedeckt.
 local function practiceActive(): boolean
+	if St.PracticeCancelled then
+		return false
+	end
+	local tut = depot().Tutorial
+	if tut == "Done" then
+		if St.PracticeWanted then
+			-- Server hat beendet (z. B. automatischer Verkauf): „Gut gemacht“ noch kurz zeigen
+			St.PracticeWanted = false
+			if os.clock() - St.PracticeDoneAt >= PRACTICE_DONE_SHOW then
+				St.PracticeDoneAt = os.clock()
+			end
+		end
+		return os.clock() - St.PracticeDoneAt < PRACTICE_DONE_SHOW
+	end
 	if practice() ~= nil then
+		return true -- Replay-Pakete der letzten Sekunden
+	end
+	if os.clock() - St.PracticeDoneAt < PRACTICE_DONE_SHOW then
 		return true
 	end
-	if os.clock() - practiceDoneAt < 5 then
-		return true
+	if St.PracticeWanted then
+		if tut == "Running" then
+			return true
+		end
+		if os.clock() - St.PracticeWantedAt < PRACTICE_START_WAIT then
+			return true -- wartet auf die Start-Antwort
+		end
+		St.PracticeWanted = false -- Server sagt „None“: Übung ist vorbei
 	end
-	return practiceWanted and depot().Tutorial ~= "Done"
+	return false
 end
 
 -- Übungs-Kauf/-Verkauf der ACAD (Knopf und Controller-A); blockiert bis zur Server-Antwort
@@ -3008,15 +3503,15 @@ local function practiceTrade(action: string)
 		return
 	end
 	if action == "Buy" then
-		practiceBought = true
+		St.PracticeBought = true
 		sfx("Buy")
 	else
 		sfx("Sell")
 		if type(reply.Pnl) == "number" then
 			call("EffectsMarket", "TradeTick", reply.Pnl, nil)
 		end
-		practiceWanted = false
-		practiceDoneAt = os.clock()
+		St.PracticeWanted = false
+		St.PracticeDoneAt = os.clock()
 	end
 	refreshAll()
 end
@@ -3041,9 +3536,27 @@ local function buildPractice(parent: Instance): { [string]: any }
 		ZIndex = 51,
 		Parent = root,
 	})
+	-- „✕ Übung beenden“ oben rechts (§4.4.8) – das echte Terminal ist immer einen Tipp entfernt
+	local skipW = 190
+	local skipH = math.max(36, math.floor(touchMin() * 0.6))
+	local skip = UI.Button({
+		Name = "Skip",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -14, 0, 10),
+		Size = UDim2.fromOffset(skipW, skipH),
+		Text = T("term.acad.skip"),
+		Variant = "Ghost",
+		MaxText = 14,
+		Corner = 10,
+		ZIndex = 53,
+		Parent = root,
+	}, function()
+		Terminal.CancelPractice()
+	end)
+	skip.Stroke.Transparency = 0.2
 	local label = UI.Chip(root, "", Theme.Warn, {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -20, 0, 18),
+		Position = UDim2.new(1, -(skipW + 26), 0, 18),
 		ZIndex = 51,
 	})
 	local news = panel({
@@ -3144,6 +3657,7 @@ local function buildPractice(parent: Instance): { [string]: any }
 		Root = root,
 		Title = title,
 		Label = label,
+		Skip = skip,
 		NewsText = newsText,
 		BarFill = barFill,
 		BarText = barText,
@@ -3165,14 +3679,17 @@ local function updatePractice(pr: { [string]: any }?)
 	local active = practiceActive()
 	if pr.Root.Visible ~= active then
 		pr.Root.Visible = active
-		if ui.BottomBar then
-			ui.BottomBar.Visible = not active
-		end
+	end
+	-- Kauf/Verkauf-Leiste (Handy) immer passend – auch nach einem Neuaufbau während der Übung
+	local bar: Frame? = ui.BottomBar
+	if bar and bar.Visible == active then
+		bar.Visible = not active
 	end
 	if not active then
 		return
 	end
 	setText(pr.Title, T("term.acad.title"))
+	pr.Skip.SetText(T("term.acad.skip"))
 	local labelText = pr.Label:FindFirstChild("Text")
 	if labelText and labelText:IsA("TextLabel") then
 		labelText.Text = UI.Upper(T("trade.tutLabel"))
@@ -3182,7 +3699,7 @@ local function updatePractice(pr: { [string]: any }?)
 	pr.Sell.SetText(T("term.acad.sell"))
 	local p = practice()
 	local phase = if p then num(p.Phase, 0) else 0
-	local done = depot().Tutorial == "Done" or os.clock() - practiceDoneAt < 5
+	local done = depot().Tutorial == "Done" or os.clock() - St.PracticeDoneAt < 5
 	-- Chart der Übungsaktie (1s-Kerzen aus dem Replay-Strom)
 	local lib = chartLib()
 	if lib and not pr.View then
@@ -3233,11 +3750,11 @@ local function updatePractice(pr: { [string]: any }?)
 		pr.BarFill.Size = UDim2.fromScale(1, 1)
 		setText(pr.BarText, T("trade.marketReacts"))
 	end
-	local step = if done then 4 elseif practiceBought then 3 elseif phase >= 1 then 2 else 1
+	local step = if done then 4 elseif St.PracticeBought then 3 elseif phase >= 1 then 2 else 1
 	setText(pr.Tiko, "Tiko: " .. T("term.acad.step" .. step))
-	setText(pr.Hint, if practiceBought then T("term.acad.auto") else T("term.acad.protect"))
-	pr.Buy.SetVariant(if practiceBought or done then "Muted" else "Success")
-	pr.Sell.SetVariant(if practiceBought and not done then "Danger" else "Muted")
+	setText(pr.Hint, if St.PracticeBought then T("term.acad.auto") else T("term.acad.protect"))
+	pr.Buy.SetVariant(if St.PracticeBought or done then "Muted" else "Success")
+	pr.Sell.SetVariant(if St.PracticeBought and not done then "Danger" else "Muted")
 end
 
 -- ---------------------------------------------------------------------
@@ -3320,12 +3837,57 @@ end
 -- ---------------------------------------------------------------------
 -- LAYOUT PC
 -- ---------------------------------------------------------------------
+-- Status-Pille (§4.4.7): Punkt + Text, Farbe je Zustand; bleibt beim Neuzeichnen der Kopf-Chips stehen
+function Status.BuildPill(parent: Instance, order: number): { [string]: any }
+	local stroke = UI.Create("UIStroke", {
+		Color = Theme.Warn,
+		Thickness = 1,
+		Transparency = 0.45,
+		ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	})
+	local pill: Frame = UI.Create("Frame", {
+		Name = "StatusPill",
+		Size = UDim2.fromOffset(0, 24),
+		AutomaticSize = Enum.AutomaticSize.X,
+		BackgroundColor3 = Theme.Warn,
+		BackgroundTransparency = 0.84,
+		BorderSizePixel = 0,
+		LayoutOrder = order,
+		Parent = parent,
+	}, {
+		UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+		stroke,
+		UI.Create("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 10) }),
+	})
+	rowList(pill, 6, true)
+	local dot = frame({
+		Name = "Dot",
+		Size = UDim2.fromOffset(8, 8),
+		BackgroundTransparency = 0,
+		BackgroundColor3 = Theme.Warn,
+		LayoutOrder = 1,
+		Parent = pill,
+	})
+	UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = dot })
+	local label = text({
+		Name = "Text",
+		Size = UDim2.fromOffset(0, 24),
+		AutomaticSize = Enum.AutomaticSize.X,
+		FontFace = UI.Faces.BodyBold,
+		TextSize = 11,
+		TextColor3 = Theme.Warn,
+		LayoutOrder = 2,
+		Parent = pill,
+	})
+	return { Frame = pill, Stroke = stroke, Dot = dot, Label = label, Key = "" }
+end
+
 local function buildHeader(root: Frame, compact: boolean)
 	local header = frame({ Name = "Header", Size = UDim2.new(1, 0, 0, 48), Parent = root })
 	ui.Header = header
 	local title = text({
-		Position = UDim2.fromOffset(18, 0),
-		Size = UDim2.fromOffset(if compact then 160 else 210, 48),
+		Position = UDim2.fromOffset(18, if compact then 0 else 4),
+		Size = UDim2.fromOffset(if compact then 160 else 210, if compact then 48 else 26),
 		FontFace = UI.Faces.Display,
 		TextSize = if compact then 15 else 18,
 		Text = T("term.title"),
@@ -3335,14 +3897,60 @@ local function buildHeader(root: Frame, compact: boolean)
 		Color = ColorSequence.new(Theme.LogoLetters, Theme.LogoRing),
 		Parent = title,
 	})
+	if not compact then
+		-- Untertitel mit Spielgeld-Hinweis (Flagship A4)
+		text({
+			Name = "Tagline",
+			Position = UDim2.fromOffset(18, 29),
+			Size = UDim2.fromOffset(212, 14),
+			TextSize = 11,
+			TextColor3 = Theme.Muted,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Text = T("term.brand.tagline"),
+			Parent = header,
+		})
+	end
+	local closeSize = math.max(38, if compact then touchMin() * 0.7 else 38)
 	local chips = frame({
 		Position = UDim2.fromOffset(if compact then 180 else 236, 0),
-		Size = UDim2.new(0, 340, 1, 0),
+		Size = if compact then UDim2.new(1, -(180 + closeSize + 24), 1, 0) else UDim2.new(0, 340, 1, 0),
+		ClipsDescendants = true,
 		Parent = header,
 	})
 	rowList(chips, 6, true)
 	ui.HeaderChips = chips
 	ui.HeaderChipKey = ""
+	if compact then
+		-- Handy: SPIELGELD-Chip im Kopf, Tippen = voller Hinweis (Compliance P0, §11.2)
+		local money: TextButton = UI.Create("TextButton", {
+			Name = "PlayMoney",
+			Size = UDim2.fromOffset(0, 22),
+			AutomaticSize = Enum.AutomaticSize.X,
+			BackgroundColor3 = Theme.Warn,
+			BackgroundTransparency = 0.88,
+			AutoButtonColor = false,
+			FontFace = UI.Faces.BodyBold,
+			TextSize = 11,
+			TextColor3 = Theme.Warn,
+			Text = T("term.playMoney"),
+			LayoutOrder = -3,
+			Parent = chips,
+		}, {
+			UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0) }),
+			UI.Create("UIStroke", {
+				Color = Theme.Warn,
+				Thickness = 1,
+				Transparency = 0.2,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+			}),
+			UI.Create("UIPadding", { PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 9) }),
+		})
+		money.Activated:Connect(function()
+			ctx.Toast(T("core.disclaimer"), "Info")
+		end)
+		ui.PlayMoney = money
+	end
+	ui.StatusPill = Status.BuildPill(chips, -2)
 	if not compact then
 		local band = frame({
 			Position = UDim2.new(0, 590, 0, 10),
@@ -3362,10 +3970,7 @@ local function buildHeader(root: Frame, compact: boolean)
 		Name = "Close",
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -10, 0.5, 0),
-		Size = UDim2.fromOffset(
-			math.max(38, if compact then touchMin() * 0.7 else 38),
-			math.max(38, if compact then touchMin() * 0.7 else 38)
-		),
+		Size = UDim2.fromOffset(closeSize, closeSize),
 		Text = "✕",
 		Variant = "Ghost",
 		MaxText = 18,
@@ -3400,8 +4005,10 @@ local function updateHeader()
 		return
 	end
 	ui.HeaderChipKey = key
+	-- nur die Info-Chips neu (Status-Pille und SPIELGELD-Chip bleiben stehen; der frühere Chip „Markt offen“ ist
+	-- durch die Status-Pille ersetzt – er zeigte „offen“, auch wenn der Markt nie gestartet war)
 	for _, child in ipairs(chips:GetChildren()) do
-		if child:IsA("GuiObject") then
+		if child:IsA("GuiObject") and child.Name == "Chip" then
 			child:Destroy()
 		end
 	end
@@ -3415,14 +4022,6 @@ local function updateHeader()
 		T("term.layer." .. layer()) .. " · " .. (if okLic and type(licName) == "string" then licName else ""),
 		Theme.Accent
 	)
-	local marketHalted = false
-	local market = state().Market
-	if type(market) == "table" and type(market.Halts) == "table" then
-		local all = market.Halts["0"]
-		local okTick, tick = call("MarketClient", "Tick")
-		marketHalted = type(all) == "number" and okTick and type(tick) == "number" and all > tick
-	end
-	add(if marketHalted then T("mkt.halted") else T("mkt.open"), if marketHalted then UI.DownColor() else UI.UpColor())
 	add(T("mkt.regime." .. weatherKey), Theme.Text2)
 	if okFlags and type(flags) == "table" then
 		if flags.Crash then
@@ -3439,6 +4038,245 @@ local function updateHeader()
 	end
 end
 
+-- ---------------------------------------------------------------------
+-- MARKT-STATUS: Pille, Overlay über Chart + Ticket, Hinweis-Zeile (§4.4.7)
+-- ---------------------------------------------------------------------
+-- Overlay-Fläche (Surface 0,08, Corner 12) – sperrt nur Chart/Ticket, Liste und News bleiben bedienbar
+function Status.Cover(parent: Instance, name: string): Frame
+	local cover = frame({
+		Name = name,
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 0.08,
+		BackgroundColor3 = Theme.Surface,
+		Visible = false,
+		Active = true,
+		ZIndex = 45,
+		Parent = parent,
+	})
+	UI.Create("UICorner", { CornerRadius = UDim.new(0, 12), Parent = cover })
+	return cover
+end
+
+function Status.BuildOverlay(chartParent: Instance, ticketParent: Instance?): { [string]: any }
+	local main = Status.Cover(chartParent, "StatusOverlay")
+	local ring = frame({
+		Name = "Ring",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 0.5, -26),
+		Size = UDim2.fromOffset(44, 44),
+		ZIndex = 46,
+		Parent = main,
+	})
+	UI.Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = ring })
+	local ringStroke = UI.Create("UIStroke", { Color = Theme.Accent, Thickness = 4, Parent = ring })
+	-- halber Ring über den Verlauf des Strichs; gedreht wird nur der Verlauf (kein Neu-Auslegen)
+	local ringGradient = UI.Create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 0),
+			NumberSequenceKeypoint.new(0.5, 0.1),
+			NumberSequenceKeypoint.new(0.62, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = ringStroke,
+	})
+	local title = text({
+		Name = "Title",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, -12),
+		Size = UDim2.new(1, -48, 0, 28),
+		FontFace = UI.Faces.Display,
+		TextSize = 20,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = true,
+		ZIndex = 46,
+		Parent = main,
+	})
+	local body = text({
+		Name = "Body",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.5, 22),
+		Size = UDim2.new(1, -64, 0, 44),
+		TextSize = 14,
+		TextColor3 = Theme.Text2,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextWrapped = true,
+		ZIndex = 46,
+		Parent = main,
+	})
+	local ticketCover: Frame? = nil
+	local ticketText: TextLabel? = nil
+	if ticketParent then
+		local cover = Status.Cover(ticketParent, "StatusOverlayTicket")
+		ticketText = text({
+			Name = "Reason",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(1, -32, 0, 44),
+			FontFace = UI.Faces.BodyBold,
+			TextSize = 14,
+			TextColor3 = Theme.Text2,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = true,
+			ZIndex = 46,
+			Parent = cover,
+		})
+		ticketCover = cover
+	end
+	return {
+		Main = main,
+		Ring = ring,
+		RingStroke = ringStroke,
+		RingGradient = ringGradient,
+		Title = title,
+		Body = body,
+		Ticket = ticketCover,
+		TicketText = ticketText,
+		Spinning = false,
+	}
+end
+
+-- Hinweis-Zeile oben im Chart (Ersatzmarkt: Kurse weichen ab / nur Ansicht)
+function Status.BuildHint(parent: Instance)
+	local hint = text({
+		Name = "StatusHint",
+		Position = UDim2.fromOffset(10, 6),
+		Size = UDim2.new(1, -20, 0, 20),
+		BackgroundTransparency = 0.15,
+		BackgroundColor3 = Theme.Bg2,
+		TextSize = 12,
+		TextColor3 = Theme.Warn,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Visible = false,
+		ZIndex = 20,
+		Parent = parent,
+	})
+	UI.Create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = hint })
+	UI.Create("UICorner", { CornerRadius = UDim.new(0, 6), Parent = hint })
+	ui.StatusHint = hint
+end
+
+function Status.ServerNow(): number
+	local clock = ctx.Clock
+	if clock and type(clock.Now) == "function" then
+		local ok, now = pcall(clock.Now)
+		if ok and type(now) == "number" then
+			return now
+		end
+	end
+	return workspace:GetServerTimeNow()
+end
+
+function Status.SetPulse(on: boolean)
+	local pill = ui.StatusPill
+	local want = on and not reducedFx()
+	if want == St.PillPulseOn and (not want or St.PillPulse ~= nil) then
+		return
+	end
+	St.PillPulseOn = want
+	if St.PillPulse then
+		St.PillPulse:Cancel()
+		St.PillPulse = nil
+	end
+	if not pill then
+		return
+	end
+	pill.Dot.BackgroundTransparency = 0
+	if want then
+		local tween = TweenService:Create(pill.Dot, Status.PULSE_INFO, { BackgroundTransparency = 0.75 })
+		tween:Play()
+		St.PillPulse = tween
+	end
+end
+
+function Status.Update()
+	local st = Status.Get()
+	local status: string = tostring(st.Status)
+	local waiting = Status.OVERLAY[status] == true and status ~= "Failed"
+	if waiting then
+		if St.BootSeenAt == -math.huge then
+			St.BootSeenAt = os.clock()
+		end
+	elseif status == "Live" or status == "Local" then
+		St.BootSeenAt = -math.huge
+	end
+	-- Pille
+	local pill = ui.StatusPill
+	if pill then
+		local key, color, pulse = "term.status.connecting", Theme.Warn, false
+		if Status.CanTrade(st) and Status.HaltedAll() then
+			key, color = "term.status.halt", UI.DownColor()
+		elseif status == "Live" then
+			key, color = "term.status.live", UI.UpColor()
+		elseif status == "Local" then
+			key = if st.ViewOnly == true then "term.status.localView" else "term.status.local"
+		elseif status == "Booting" then
+			key, pulse = "term.status.booting", true
+		elseif status == "Failed" then
+			key, color = "term.status.failed", UI.DownColor()
+		end
+		local pillKey = key .. lang() .. tostring(color)
+		if pill.Key ~= pillKey then
+			pill.Key = pillKey
+			setText(pill.Label, T(key))
+			pill.Label.TextColor3 = color:Lerp(WHITE, 0.2)
+			pill.Dot.BackgroundColor3 = color
+			pill.Stroke.Color = color
+			pill.Frame.BackgroundColor3 = color
+		end
+		Status.SetPulse(pulse)
+	end
+	-- Hinweis-Zeile (Ersatzmarkt)
+	local hint: TextLabel? = ui.StatusHint
+	if hint then
+		local hintText = if status == "Local"
+			then T(if st.ViewOnly == true then "term.status.localViewHint" else "term.status.localHint")
+			else ""
+		setText(hint, hintText)
+		hint.Visible = hintText ~= ""
+	end
+	-- Overlay über Chart + Ticket
+	local ov = ui.StatusOverlay
+	if not ov then
+		return
+	end
+	local show = Status.OVERLAY[status] == true
+	if layoutKind == "Phone" then
+		show = show and (phoneTab == "Chart" or phoneTab == "Order") -- Depot/News bleiben bedienbar
+	end
+	ov.Main.Visible = show
+	if ov.Ticket then
+		ov.Ticket.Visible = show
+	end
+	ov.Spinning = show and status ~= "Failed" and not reducedFx()
+	if not show then
+		return
+	end
+	local failed = status == "Failed"
+	ov.RingStroke.Color = if failed then UI.DownColor() else Theme.Accent
+	if failed then
+		setText(ov.Title, T("term.status.failedTitle"))
+		setText(ov.Body, T("term.status.failedBody"))
+	elseif status == "Stalled" then
+		setText(ov.Title, T("term.status.stalled"))
+		setText(ov.Body, "")
+	else
+		local since = num(st.Since, 0)
+		local elapsed = if since > 0 then Status.ServerNow() - since else os.clock() - St.BootSeenAt
+		elapsed = math.clamp(math.floor(num(elapsed, 0)), 0, 86400)
+		local bodyText = T("term.status.bootBody", elapsed)
+		local attempt = math.floor(num(st.Attempt, 0))
+		if attempt > 1 then
+			bodyText ..= "\n" .. T("term.status.retry", attempt)
+		end
+		setText(ov.Title, T("term.status.bootTitle"))
+		setText(ov.Body, bodyText)
+	end
+	if ov.TicketText then
+		setText(ov.TicketText, Status.Block() or "")
+	end
+end
+
 local function buildPC(root: Frame)
 	buildHeader(root, false)
 	local body =
@@ -3446,7 +4284,7 @@ local function buildPC(root: Frame)
 	-- links: Watchlist / Firmen-Karten
 	local left =
 		frame({ Name = "Left", Position = UDim2.fromOffset(12, 8), Size = UDim2.new(0, 236, 1, -12), Parent = body })
-	ui.List = buildList(left, nil)
+	ui.List = Kit.BuildList(left, nil)
 	-- Mitte: Instrument, Werkzeuge, Chart
 	local center = frame({
 		Name = "Center",
@@ -3464,6 +4302,7 @@ local function buildPC(root: Frame)
 		Parent = center,
 	})
 	ui.ChartHost = frame({ Position = UDim2.fromOffset(8, 8), Size = UDim2.new(1, -16, 1, -16), Parent = chartPanel })
+	Status.BuildHint(chartPanel)
 	-- unten: Tabs
 	local bottom = frame({
 		Name = "Bottom",
@@ -3491,6 +4330,8 @@ local function buildPC(root: Frame)
 	local ticketInner =
 		frame({ Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -14, 1, -16), Parent = ticketPanel })
 	ui.Ticket = buildTicket(ticketInner, true)
+	-- Status-Overlay über Instrument/Chart (Mitte) und Ticket – Liste, News und Tabs bleiben bedienbar
+	ui.StatusOverlay = Status.BuildOverlay(center, ticketPanel)
 	local newsPanel = panel({ Position = UDim2.new(0, 0, 0.64, 4), Size = UDim2.new(1, 0, 0.36, -4), Parent = right })
 	text({
 		Position = UDim2.fromOffset(12, 6),
@@ -3584,7 +4425,7 @@ local function buildPicker(root: Frame)
 		overlay.Visible = false
 	end)
 	ui.Picker = overlay
-	ui.PickerList = buildList(inner, function(i: number)
+	ui.PickerList = Kit.BuildList(inner, function(i: number)
 		overlay.Visible = false
 		selectInst(i)
 	end)
@@ -3616,7 +4457,7 @@ local function buildPhone(root: Frame)
 	pick.Activated:Connect(function()
 		if ui.Picker then
 			ui.Picker.Visible = true
-			updateList(ui.PickerList, true)
+			Kit.UpdateList(ui.PickerList, true)
 		end
 	end)
 	local tabsHolder = frame({ Position = UDim2.fromOffset(12, 114), Size = UDim2.new(1, -24, 0, 40), Parent = root })
@@ -3649,9 +4490,11 @@ local function buildPhone(root: Frame)
 		Parent = chartTab,
 	})
 	ui.ChartHost = frame({ Position = UDim2.fromOffset(6, 6), Size = UDim2.new(1, -12, 1, -12), Parent = chartPanel })
+	Status.BuildHint(chartPanel)
 	-- Order-Tab
 	local orderTab = frame({ Name = "PTab_Order", Size = UDim2.fromScale(1, 1), Visible = false, Parent = content })
-	ui.Ticket = buildTicket(orderTab, false)
+	-- Spielgeld-Hinweis unter der Zusammenfassung (Compliance P0, §11.2 – der PC hat die Fußzeile)
+	ui.Ticket = buildTicket(orderTab, false, T("core.disclaimer"))
 	-- Depot-Tab
 	local depotTab = frame({ Name = "PTab_Depot", Size = UDim2.fromScale(1, 1), Visible = false, Parent = content })
 	local depotContent =
@@ -3700,6 +4543,8 @@ local function buildPhone(root: Frame)
 		showTab(newsContent, key)
 	end)
 	showTab(newsContent, phoneNewsTab)
+	-- Status-Overlay über dem Inhalt (nur auf Chart/Order sichtbar, siehe Status.Update)
+	ui.StatusOverlay = Status.BuildOverlay(content, nil)
 	-- feste Kauf/Verkauf-Leiste im Daumenbereich (Knöpfe ≥ 64 echte Pixel)
 	local bar = frame({
 		Name = "TradeBar",
@@ -3776,7 +4621,7 @@ local function updatePhone()
 		return
 	end
 	for _, child in ipairs(content:GetChildren()) do
-		if child:IsA("Frame") then
+		if child:IsA("Frame") and string.sub(child.Name, 1, 5) == "PTab_" then
 			child.Visible = child.Name == "PTab_" .. phoneTab
 		end
 	end
@@ -3800,10 +4645,8 @@ local function updatePhone()
 				else ""
 		)
 	end
-	local blocked = sel == nil or (sel ~= nil and (halted(sel) or not allowed(sel)))
-	if ui.BuyButton then
-		ui.BuyButton.SetVariant(if blocked or SELL_ONLY[otype] then "Muted" else "Success")
-		ui.SellButton.SetVariant(if blocked then "Muted" else "Danger")
+	if ui.BuyButton and ui.SellButton then
+		Status.PaintButtons(ui.BuyButton, ui.SellButton, Status.Reason(), otype)
 	end
 end
 
@@ -3852,7 +4695,9 @@ selectInst = function(i: number)
 			ticket.Tp = price(math.ceil(bid * (1 + num(protect.Tp, 0.15))))
 		end
 		ctx.Hooks.Fire("Terminal:Instrument", i)
-		if isOpen then
+		-- Perf #2: gleiche Charts weiterverwenden (nur neu verfolgen); kommen die Charts gerade erst (Aufbau-Frame 2),
+		-- nehmen sie die neue Auswahl ohnehin mit
+		if isOpen and not St.ChartsPending and not Flow.Retarget() then
 			buildCharts()
 		end
 	end
@@ -3867,12 +4712,13 @@ refreshAll = function()
 	updateInstHeader(ui.InstHeader)
 	updateToolbar(ui.Toolbar)
 	updateTicket(ui.Ticket)
-	updateList(ui.List, false)
+	Kit.UpdateList(ui.List, false)
 	if ui.Picker and ui.Picker.Visible then
-		updateList(ui.PickerList, false)
+		Kit.UpdateList(ui.PickerList, false)
 	end
 	updatePhone()
 	updatePractice(ui.Practice)
+	Status.Update()
 	chartMarks()
 	if ui.BottomTabs then
 		ui.BottomTabs.Set(bottomTab)
@@ -3905,9 +4751,9 @@ local function onQuotes(frameData: any)
 	updateHeader()
 	updateInstHeader(ui.InstHeader)
 	updateTicket(ui.Ticket)
-	updateList(ui.List, tick % 5 == 0)
+	Kit.UpdateList(ui.List, tick % 5 == 0)
 	if ui.Picker and ui.Picker.Visible then
-		updateList(ui.PickerList, tick % 5 == 0)
+		Kit.UpdateList(ui.PickerList, tick % 5 == 0)
 	end
 	updatePhone()
 end
@@ -3925,13 +4771,13 @@ local function decideLayout(): string
 	return "PC"
 end
 
+-- Was einen VOLLEN Neuaufbau braucht (Layout, Schicht, Tabs, Sprache). Kerzenzahl/Fläche stehen bewusst NICHT hier,
+-- sondern im Flow.ChartKey (wirksame Kerzenzahl: Handy immer 60) – ein Stufenwechsel baut nur die Charts neu (Perf V3)
 local function buildKey(): string
 	return table.concat({
 		decideLayout(),
 		layer(),
 		tostring(licence() >= traderFrom()),
-		tostring(math.floor(quality("Candles", 90))),
-		tostring(areaFill()),
 		tostring(num(perks().BotSlots, 0) > 0),
 		tostring(perks().MultiChart == true),
 		lang(),
@@ -3939,6 +4785,14 @@ local function buildKey(): string
 end
 
 local function destroyUi()
+	St.BuildToken += 1 -- ausstehenden Chart-Aufbau verwerfen
+	St.ChartsPending = false
+	St.ChartSig = ""
+	if St.PillPulse then
+		St.PillPulse:Cancel()
+		St.PillPulse = nil
+	end
+	St.PillPulseOn = false
 	untrackAll()
 	if ui.Practice and ui.Practice.View then
 		ui.Practice.View:Destroy()
@@ -3957,11 +4811,35 @@ local function destroyUi()
 	ui = {}
 end
 
-rebuild = function()
-	local wasVisible = ui.Root ~= nil and ui.Root.Visible
+-- Abbruch nach einem Fehler: nichts Halbes stehen lassen (§4.4.9)
+function Flow.Failed(err: any)
 	destroyUi()
+	builtKey = ""
+	warn("[Terminal] Aufbau: " .. tostring(err))
+	ctx.Toast(T("term.openFailed"), "Error")
+end
+
+-- Charts im Frame NACH dem Skelett (Aufbau-Spitze halbieren, §4.4.9/§6); scheitern sie, wird abgerissen und zu gemacht
+function Flow.ScheduleCharts()
+	St.ChartsPending = true
+	local token = St.BuildToken
+	task.delay(0, function()
+		if token ~= St.BuildToken or not St.ChartsPending or not ui.Root or not isOpen then
+			return -- verworfen, schon gebaut oder geschlossen (showRoot plant neu)
+		end
+		local ok, err = pcall(buildCharts)
+		if not ok then
+			Flow.Failed(err)
+			ctx.Windows.Close("Terminal")
+			return
+		end
+		refreshAll()
+	end)
+end
+
+-- Skelett + aktuelle Ansicht ohne Charts
+function Flow.BuildAll(wasVisible: boolean)
 	layoutKind = decideLayout()
-	builtKey = buildKey()
 	local phone = layoutKind == "Phone"
 	local root = UI.Create("Frame", {
 		Name = "Terminal",
@@ -3992,7 +4870,31 @@ rebuild = function()
 			sel = i
 		end
 	end
-	buildCharts()
+end
+
+-- builtKey erst nach erfolgreichem Aufbau; bei Fehler Abriss + Toast + Fehler weiterwerfen, damit Windows.Open das
+-- Fenster nicht als offen markiert und das nächste Öffnen neu baut (nie ein halb gebautes Terminal)
+rebuild = function()
+	local wasVisible = ui.Root ~= nil and ui.Root.Visible
+	destroyUi()
+	builtKey = ""
+	local key = buildKey()
+	local ok, err = pcall(Flow.BuildAll, wasVisible)
+	if not ok then
+		Flow.Failed(err)
+		error(tostring(err), 0)
+	end
+	builtKey = key
+	Flow.ScheduleCharts()
+end
+
+-- Neuaufbau bei offenem Terminal (Sprache, Lizenz, Layout): scheitert er, Fenster sauber schließen
+function Flow.RebuildOpen()
+	if pcall(rebuild) then
+		refreshAll()
+	else
+		ctx.Windows.Close("Terminal")
+	end
 end
 
 local function bindPad()
@@ -4019,7 +4921,7 @@ local function bindPad()
 				if sheetOpen then
 					confirmSheet()
 				elseif practiceActive() then
-					task.spawn(practiceTrade, if practiceBought then "Sell" else "Buy")
+					task.spawn(practiceTrade, if St.PracticeBought then "Sell" else "Buy")
 				else
 					openSheet("B")
 				end
@@ -4036,6 +4938,8 @@ local function bindPad()
 					closeSheet()
 				elseif ui.Picker and ui.Picker.Visible then
 					ui.Picker.Visible = false
+				elseif practiceActive() then
+					Terminal.CancelPractice()
 				else
 					ctx.Windows.Close("Terminal")
 				end
@@ -4078,11 +4982,19 @@ end
 
 local function showRoot()
 	if builtKey ~= buildKey() or not ui.Root then
-		rebuild()
+		rebuild() -- wirft bei Fehler (Windows.Open markiert dann nicht als offen)
+	elseif St.ChartsPending or St.BuiltChartKey ~= Flow.ChartKey() then
+		-- beim letzten Mal vor dem Chart-Frame geschlossen, oder nur die Kerzen-/Flächen-Stufe hat sich geändert
+		-- (Perf V3): nur die Charts neu
+		Flow.ScheduleCharts()
 	end
 	local root: Frame = ui.Root
 	isOpen = true
 	openToken += 1
+	if not St.OpenedThisSession then
+		St.OpenedThisSession = true
+		call("Hud", "TradeOpened") -- HUD-Puls stoppt (§4.4.11)
+	end
 	root.Visible = true
 	local phone = layoutKind == "Phone"
 	local rest = UDim2.fromScale(0.5, 0.5)
@@ -4163,6 +5075,69 @@ local function hideRoot()
 	tween:Play()
 end
 
+-- einmaliger Hinweis nach HINT_AFTER s (§4.4.11): nur wenn gehandelt werden kann, das Terminal noch nie offen war,
+-- noch kein echter Trade, kein Tutorial und kein Fenster offen
+function Flow.Hint()
+	if St.HintShown or St.OpenedThisSession or not ctx or os.clock() - St.StartedAt < HINT_AFTER then
+		return
+	end
+	local flags = state().Flags
+	if type(flags) == "table" and flags.FirstLiveTrade == true then
+		St.HintShown = true -- Spieler kennt das Terminal
+		return
+	end
+	if not Status.CanTrade(Status.Get()) then
+		return
+	end
+	local okTut, tutActive = call("Tutorial", "IsActive")
+	if okTut and tutActive == true then
+		return
+	end
+	local windows = ctx.Windows
+	if windows and type(windows.IsOpen) == "function" and windows.IsOpen() then
+		return
+	end
+	St.HintShown = true
+	local kind = inputKind()
+	if kind == "Touch" then
+		ctx.Toast(T("term.hud.hintTouch"), "Event")
+	else
+		ctx.Toast(T("term.hud.hint", if kind == "Gamepad" then "Y" else "T"), "Event")
+	end
+end
+
+-- Chat /trade und /terminal (§4.4.11): ein lokaler TextChatCommand, genau einmal angelegt (W19 reserviert die Namen)
+function Flow.Chat()
+	if St.ChatReady then
+		return
+	end
+	St.ChatReady = true
+	local ok, err = pcall(function()
+		local TextChatService = game:GetService("TextChatService")
+		local player = game:GetService("Players").LocalPlayer
+		if TextChatService.ChatVersion ~= Enum.ChatVersion.TextChatService then
+			return -- altes Chat-System: keine TextChatCommands
+		end
+		local parent: Instance = TextChatService:FindFirstChild("TextChatCommands") or TextChatService
+		local existing = parent:FindFirstChild(CHAT_COMMAND)
+		local command: TextChatCommand = if existing and existing:IsA("TextChatCommand")
+			then existing
+			else Instance.new("TextChatCommand")
+		command.Name = CHAT_COMMAND
+		command.PrimaryAlias = "/trade"
+		command.SecondaryAlias = "/terminal"
+		command.Parent = parent
+		command.Triggered:Connect(function(source: TextSource)
+			if source and source.UserId == player.UserId then
+				Terminal.Open()
+			end
+		end)
+	end)
+	if not ok then
+		warn("[Terminal] Chat-Befehl /trade: " .. tostring(err))
+	end
+end
+
 -- ---------------------------------------------------------------------
 -- ÖFFENTLICH
 -- ---------------------------------------------------------------------
@@ -4230,18 +5205,36 @@ end
 
 -- Übung mit der Übungsaktie ACAD (Tutorial §B2/§B8.6)
 function Terminal.OpenPractice()
-	practiceWanted = true
-	practiceBought = false
+	St.PracticeCancelled = false
+	St.PracticeBought = false
+	if depot().Tutorial == "Done" then
+		St.PracticeWanted = false -- schon erledigt: einfach das echte Terminal
+		Terminal.Open()
+		return
+	end
+	St.PracticeWanted = true
+	St.PracticeWantedAt = os.clock()
 	Terminal.Open()
 	if depot().Tutorial ~= "Running" then
 		task.spawn(function()
 			local reply = ctx.RequestFull("TutorialTrade", { Action = "Start" })
 			if not reply.Ok then
-				practiceWanted = false
+				St.PracticeWanted = false
 			end
 			refreshAll()
 		end)
 	end
+	refreshAll()
+end
+
+-- Übung beenden (Knopf „✕ Übung beenden“, Controller B): Overlay sofort weg, Kauf/Verkauf-Leiste zurück; der Server
+-- schließt die Sitzung (TutorialTrade { Action = "Skip" }, idempotent – ein älterer Server lehnt still ab)
+function Terminal.CancelPractice()
+	St.PracticeWanted = false
+	St.PracticeBought = false
+	St.PracticeCancelled = true
+	St.PracticeDoneAt = -math.huge
+	task.spawn(ctx.RequestFull, "TutorialTrade", { Action = "Skip" }, true)
 	refreshAll()
 end
 
@@ -4250,8 +5243,30 @@ function Terminal.Selected(): number?
 end
 
 function Terminal.Frame(dt: number)
+	-- Hinweis-Takt (1 s) läuft auch bei geschlossenem Terminal
+	St.HintClock += dt
+	if St.HintClock >= 1 then
+		St.HintClock = 0
+		Flow.Hint()
+	end
 	if not isOpen then
 		return
+	end
+	local ov = ui.StatusOverlay
+	if ov and ov.Spinning then
+		St.SpinAngle = (St.SpinAngle + SPIN_SPEED * dt) % 360
+		ov.RingGradient.Rotation = St.SpinAngle
+	end
+	St.StatusClock += dt
+	if St.StatusClock >= STATUS_EVERY then
+		St.StatusClock = 0
+		Status.Update()
+		-- Sperr-Grund kann ohne State-Änderung wechseln (Frames bleiben aus/kommen wieder, Sekunden-Zähler)
+		local reason = Status.Reason() or ""
+		if reason ~= St.LastBlock then
+			St.LastBlock = reason
+			refreshAll()
+		end
 	end
 	for _, entry in ipairs(views) do
 		entry.View:Step(dt)
@@ -4316,7 +5331,10 @@ function Terminal.Init(context: any)
 		end
 		if changed.Prog then
 			if builtKey ~= buildKey() then
-				rebuild()
+				Flow.RebuildOpen()
+				if not isOpen then
+					return
+				end
 			end
 			if sel and not allowed(sel) then
 				local i = defaultSelection()
@@ -4334,8 +5352,7 @@ function Terminal.Init(context: any)
 			return
 		end
 		if builtKey ~= buildKey() then
-			rebuild()
-			refreshAll()
+			Flow.RebuildOpen()
 			return
 		end
 		local style = currentStyle()
@@ -4366,15 +5383,20 @@ function Terminal.Init(context: any)
 		refreshAll()
 	end)
 	hooks.On("Quality", function()
-		if isOpen and builtKey ~= buildKey() then
-			rebuild()
+		if not isOpen then
+			return -- geschlossen: showRoot vergleicht builtKey/Flow.ChartKey beim nächsten Öffnen
+		end
+		if builtKey ~= buildKey() then
+			Flow.RebuildOpen()
+		elseif not St.ChartsPending and St.BuiltChartKey ~= Flow.ChartKey() then
+			-- nur Kerzenzahl/Fläche geändert: Charts neu (≈ 470–830 Objekte) statt des ganzen Terminals (Perf V3)
+			Flow.ScheduleCharts()
 			refreshAll()
 		end
 	end)
 	hooks.On("Input", function()
 		if isOpen and decideLayout() ~= layoutKind then
-			rebuild()
-			refreshAll()
+			Flow.RebuildOpen()
 		end
 	end)
 	hooks.On("Market:News", function()
@@ -4434,11 +5456,37 @@ function Terminal.Start()
 	if camera then
 		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
 			if isOpen and decideLayout() ~= layoutKind then
-				rebuild()
-				refreshAll()
+				Flow.RebuildOpen()
 			end
 		end)
 	end
+	St.StartedAt = os.clock()
+	Flow.Chat()
+	-- Welt-Pulte mit Attribut Window = "Terminal": optional Inst (Wert vorwählen) bzw. TerminalView (Bereich) – das
+	-- Fenster selbst öffnet UI (§4.12); wir wählen danach nur aus
+	local player = game:GetService("Players").LocalPlayer
+	game:GetService("ProximityPromptService").PromptTriggered:Connect(function(prompt: ProximityPrompt, who: Player)
+		if who ~= player or prompt:GetAttribute("Window") ~= "Terminal" then
+			return
+		end
+		local inst = prompt:GetAttribute("Inst")
+		local view = prompt:GetAttribute("TerminalView")
+		task.defer(function()
+			if type(inst) == "number" and inst == inst then
+				Terminal.OpenAt(math.floor(inst))
+			elseif type(view) == "string" then
+				if not Terminal.IsOpen() then
+					Terminal.Open()
+				end
+				-- bis zu den Ansichten der Stufe 2 (Terminal.ShowView) auf die vorhandenen Tabs abgebildet
+				if view == "Depot" then
+					Terminal.ShowTab("Overview")
+				elseif layoutKind == "Phone" and (view == "News" or view == "Chart") then
+					Terminal.ShowTab(view)
+				end
+			end
+		end)
+	end)
 end
 
 return Terminal

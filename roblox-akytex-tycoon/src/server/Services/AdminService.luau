@@ -7,15 +7,22 @@
 --  (me/all/others/Name/Präfix/UserId), Bann-Regeln, Ansage (gefiltert), publishGlobal/handleGlobal mit oberer Zeitgrenze
 --  und Dedupe. Shooter-Teile sind entfernt; Markt-Aktionen laufen NUR über MarketService.Admin (GlobalBus, Admin-Fenster).
 --
---  NUR DER BESITZER IST ADMIN (§B15.1, exakt):
+--  BESITZER = ROLLE OWNER (§B15.1, Regel unverändert):
 --    Live, Nutzer-Spiel:   game.CreatorType == User and p.UserId == game.CreatorId and game.CreatorId ~= 0
 --    Live, Gruppen-Spiel:  GroupService:GetGroupInfoAsync(game.CreatorId).Owner.Id == p.UserId (pcall, 10 min Cache,
---                          Fehler = kein Admin)
+--                          Fehler = kein Besitzer, nur 30 s gecacht)
 --    Studio:               Config.Admin.StudioIsAdmin and (UserId > 0 or UserId == -1); Player2 (-2) NIE.
---  Niemand kann Admin kaufen. JEDE Aktion prüft den Besitzer erneut (Attribut IsAdmin ist nur Anzeige/Client-Start).
+--  IsAdmin / Attribut IsAdmin = NUR der Besitzer (MarketService, OrderService, OwnerTradeBlocked, PlotService fragen das).
+--  TEAM-ROLLEN (W19/W26): Admin und Moderator kommen von StaffService (gespeichert, Gruppen-Rang); Rollen kann man NIE
+--  kaufen. JEDE Aktion – Panel und Chat – läuft durch AdminService.Run: Rang ≥ 1 -> Core.PermFor(Aktion, args) -> Recht
+--  aus Config.Security.Staff.Perms (Shared/Staff.Can) -> Besitzer bekannt? (strafende Rechte) -> Abstand schwerer
+--  Lese-Aktionen -> Aktion. Fehlt StaffService, gilt die alte Regel: nur der Besitzer (Rolle Owner).
+--  Rang-Regel: strafende Aktionen nur gegen niedrigere Ränge (Kick, Bann, Stumm, Verwarnen, Einfrieren, Herholen,
+--  Respawn, Zuschauen, TpTo, CR abziehen); Aufheben (Unfreeze/Unmute) nach Staff.CanUndo; Listen mit > 3 Zielen = Masse.
 --
---  Remote "Admin": (action, args) -> { Ok, Message, Data }  – Reihenfolge: p.Parent -> Rate 12/s -> Besitzer -> Aktion.
---  Jede Aktion -> Admin-Log (AT_Mod_v1 "AdminLog", letzte 500, Kopie AT_Global "AdminLog_W<w>").
+--  Remote "Admin": (action, args) -> { Ok, Message, Data }  – Reihenfolge: p.Parent -> Rate 12/s -> Run (Rang, Recht,
+--  Besitzer bekannt, Schwer-Abstand) -> Aktion. Chat-Befehle (StaffService) rufen Run(p, action, args, "Chat").
+--  Jede Aktion -> Admin-Log (AT_Mod_v1 "AdminLog", letzte 500, Kopie AT_Global "AdminLog_W<w>") mit Via/Role/Target.
 --  Markt-Aktionen: MarketService.Admin (3 s Abklingzeit dort), Besitzer hat in den letzten 120 s gehandelt -> abgelehnt;
 --  danach sind Besitzer-Trades bis 120 s nach dem Event-Start gesperrt (OwnerTradeBlocked, OrderService fragt).
 --  Globale Nachrichten (MessagingService Config.Tech.MessagingTopic, Sender empfängt selbst): Announce {Text, UserId,
@@ -23,11 +30,15 @@
 --  Until ≤ now + Config.Events.MaxGlobalSeconds, Dedupe per Id (letzte 200). Fehler beim Senden -> nur dieser Server.
 --
 --  Öffentliche API (§C5.10):
---    AdminService.IsAdmin(p): boolean                 AdminService.Power(p, name): any   (nil, wenn kein Admin)
+--    AdminService.IsAdmin(p): boolean  (= Besitzer)   AdminService.Power(p, name): any   (nil ohne das Recht der Kraft)
 --    AdminService.IsServerLocked(): boolean           AdminService.OwnerTradeBlocked(p): boolean   (±120 s)
---  Ergänzungen (WP11-intern):
+--  Ergänzungen (WP11-intern, W19/W26):
+--    AdminService.Run(p, action, args, via?): (ok, message?, data?)   einziges Tor für Panel ("Panel") und Chat ("Chat")
+--    AdminService.IsOwnerId(userId): boolean          AdminService.OwnerKnown(): boolean   (Gruppen-Besitzer geladen?)
+--    AdminService.SyncPowers(p)                       Kräfte-Attribute ohne passendes Recht löschen (StaffService.Refresh)
 --    AdminService.PublishAbuse(kind, args, by): (boolean, "global" | "local")   globales Nicht-Markt-Event senden
---    AdminService.Core: { OwnerRule, MarketArgs, ValidateGlobal, NewDedupe, TradeBlocked, TradeLockBefore }  (rein)
+--    AdminService.Core: { OwnerRule, MarketArgs, ValidateGlobal, NewDedupe, TradeBlocked, TradeLockBefore, PermFor,
+--      ActionNames, IsMassList, OwnerBlocks, GapOk, GiftTargets, CreditCaps, HEAVY, PUNITIVE }  (rein, AdminTests/StaffTests)
 -- =====================================================================
 
 local DataStoreService = game:GetService("DataStoreService")
@@ -47,6 +58,7 @@ local Types = require(Shared:WaitForChild("Types"))
 local Util = require(Shared:WaitForChild("Util"))
 local Clock = require(Shared:WaitForChild("Clock"))
 local Format = require(Shared:WaitForChild("Format"))
+local Staff = require(Shared:WaitForChild("Staff"))
 local Remotes = require(script.Parent:WaitForChild("Remotes"))
 local Scheduler = require(script.Parent.Parent:WaitForChild("Lib"):WaitForChild("Scheduler"))
 
@@ -54,14 +66,16 @@ local AdminService = {}
 local Services: any = nil
 
 type Plain = { [string]: any }
-type Action = (admin: Player, args: Plain) -> (boolean, string, any?)
+-- ctx (von Run): { Via = "Panel" | "Chat", Target = Log-Ziel (die Aktion darf es genauer setzen) }
+type Ctx = { Via: string, Target: string? }
+type Action = (admin: Player, args: Plain, ctx: Ctx) -> (boolean, string, any?)
 
 local SEC: any = Config.Security
+local STAFF: any = if type(SEC.Staff) == "table" then SEC.Staff else {}
 local EV: any = Config.Events
 local MAX_NAME = 40
 local MAX_REASON = 200
 local MAX_LIST = 100
-local MAX_TARGET_TEXT = 60
 local MAX_ACTION_LEN = 40
 local MAX_GIVE_CREDITS = 1e12
 local MAX_GIVE_AKY = 1e9 -- ganze AKY je Gabe (× 100 = Cent)
@@ -83,6 +97,10 @@ local GIFT_SPEED = "GiftSpeed"
 local GIFT_JUMP = "GiftJump"
 local GIFT_UNTIL = "GiftUntil"
 local DEFAULT_JUMP = 7.2
+local MASS_LIST = 3 -- Komma-Listen mit mehr aufgelösten Zielen gelten als Masse (§16.2 Nr. 8)
+local DENIED_LOG_GAP = 60 -- Teammitglieder: Ablehnung je Aktion höchstens 1× pro Minute ins Log
+local GROUP_FAIL_CACHE = 30 -- Gruppen-Besitzer: Fehlschlag nur so lange cachen (§16.2 Nr. 1)
+local UNBAN_NAME_MIN, UNBAN_NAME_MAX = 3, 20 -- Roblox-Benutzernamen
 
 -- Kräfte (§B15.2 "Kräfte"): "bool" = an/aus, sonst { Min, Max } aus Config.Security.Powers
 local POWERS: { [string]: string } = {
@@ -92,6 +110,15 @@ local POWERS: { [string]: string } = {
 	AdminJump = "Jump",
 	AdminInvisible = "bool",
 	AdminESP = "bool",
+}
+-- Kraft -> Recht (Shared/Staff.PERMS): ohne das Recht wird das Attribut gelöscht (SyncPowers) und nie geehrt (Power)
+local POWER_PERM: { [string]: string } = {
+	CanFly = "Fly",
+	AdminNoclip = "Noclip",
+	AdminSpeed = "GiveSpeed",
+	AdminJump = "GiveSpeed",
+	AdminInvisible = "Invisible",
+	AdminESP = "Esp",
 }
 
 -- Aktionen, die nicht ins Output geloggt werden (Abfragen; F8-Anzeige pollt jede Sekunde)
@@ -109,6 +136,92 @@ local QUIET: { [string]: boolean } = {
 	AdminLog = true,
 	LiveGet = true,
 	MarketLog = true,
+	StaffList = true,
+	Bans = true,
+}
+
+-- Schwere Lese-Aktionen (§16.2 Nr. 7): je (Handelnder, Aktion) höchstens ein Aufruf je STAFF.HeavyGap Sekunden
+local HEAVY: { [string]: boolean } = {
+	Dashboard = true,
+	ServerInfo = true,
+	Flags = true,
+	Reports = true,
+	BanList = true,
+	Bans = true,
+	BanHistory = true,
+	AdminLog = true,
+	StaffList = true,
+	Stats = true,
+	PlayerData = true,
+	Receipts = true,
+	MarketLog = true,
+	LiveGet = true,
+}
+
+-- Strafende Rechte: bei unbekanntem Gruppen-Besitzer nur für den Besitzer selbst (§16.2 Nr. 1)
+local PUNITIVE: { [string]: boolean } = {
+	Kick = true,
+	TempBan = true,
+	Ban = true,
+	Mute = true,
+	Warn = true,
+	Freeze = true,
+	Bring = true,
+	Respawn = true,
+	Spectate = true,
+	ManageMods = true,
+	ManageAdmins = true,
+}
+
+-- Aktion -> Recht (feste Einträge, §5.2 + §16.1); Aktionen mit Argument-abhängigem Recht stehen in Core.PermFor
+local STATIC_PERMS: { [string]: string } = {
+	Dashboard = "Panel",
+	ServerInfo = "Panel",
+	GetPlayers = "PlayerList",
+	Kick = "Kick",
+	Unban = "UnbanOwn", -- der Handler setzt die strengere Regel durch (Staff.CanUnban)
+	Bans = "BanView",
+	BanList = "Logs",
+	BanHistory = "Ban",
+	Warn = "Warn",
+	Freeze = "Freeze",
+	Bring = "Bring",
+	Goto = "Teleport",
+	Visit = "Teleport",
+	PlayerData = "PlayerData",
+	Receipts = "Purchases",
+	Regrant = "Purchases",
+	ResetData = "Purchases",
+	GiveSpeed = "GiveSpeed",
+	Spectate = "Spectate",
+	GiveAllItems = "GiveItems",
+	GiveAky = "GiveAky",
+	SetLicence = "GiveItems",
+	SetFloors = "GiveItems",
+	LockServer = "LockServer",
+	KickAll = "KickAll",
+	Market = "MarketEvents",
+	MarketLog = "MarketEvents",
+	LiveGet = "LiveConfig",
+	LiveSet = "LiveConfig",
+	LiveBanner = "LiveConfig",
+	Stats = "Stats",
+	Flags = "Reports",
+	DismissFlag = "Reports",
+	Reports = "Reports",
+	AdminLog = "Logs",
+	SimulatePurchase = "Debug",
+	SimulatePolicy = "Debug",
+	SkipDay = "Debug",
+	SetDebug = "Debug",
+	RunSelfTest = "Debug",
+	Mute = "Mute",
+	Unmute = "Mute",
+	Respawn = "Respawn",
+	TpTo = "Bring",
+	Shutdown = "Shutdown",
+	StaffList = "TeamView",
+	ResolveReport = "Reports",
 }
 
 -- Katalog-Schlüssel -> MarketService.Admin-Aktion (Types.MarketEvent.Kind)
@@ -138,10 +251,19 @@ local invisConn: { [Player]: RBXScriptConnection } = {}
 local ownerEvents: { [Player]: { { Issued: number, Start: number } } } = {}
 local ownerLastTrade: { [Player]: number } = {}
 local purchaseSeen: { [Player]: { Robux: number, Receipts: number } } = {}
+-- Team-Rollen (W19): Ablehnungen je Aktion, Schwer-Abstand, Ansage-Abstände, Einfrierer (Undo-Regel)
+local deniedAt: { [Player]: { [string]: number } } = {}
+local heavyAt: { [Player]: { [string]: number } } = {}
+local announceBy: { [Player]: { [string]: number } } = {} -- ["Local"] / ["Global"] = os.clock() der letzten Ansage
+local frozenBy: { [Player]: number } = {}
+local lookupRate = if type(STAFF.LookupLimit) == "table" then STAFF.LookupLimit else { 10, 60 }
+local lookupLimiter = Util.RateLimiter(tonumber(lookupRate[1]) or 10, tonumber(lookupRate[2]) or 60)
+local funEventAt: { [string]: number } = {} -- ["Server"] = os.clock() des letzten Spaß-Events (je Server)
+local shuttingDown = false
 
 local serverLocked = false
 local startedAt = os.clock()
-local groupOwner: { Id: number, At: number }? = nil
+local groupOwner: { Id: number, At: number, Failed: boolean? }? = nil
 local groupLoading = false
 local heartbeatOff = false
 local heartbeatCache: { At: number, Players: number, Servers: number }? = nil
@@ -325,6 +447,17 @@ function Core.MarketArgs(kind: string, args: any, limits: Plain?): (string?, Pla
 	return action, out, nil
 end
 
+-- Rolle in globalen Nachrichten: fehlt = "Owner" (ältere Server), sonst nur Staff.ROLES; alles andere -> ungültig
+local function globalRole(role: any): string?
+	if role == nil then
+		return "Owner"
+	end
+	if type(role) == "string" and Staff.RANK[role] ~= nil then
+		return role
+	end
+	return nil
+end
+
 -- Globale Nachricht feldweise prüfen (obere Zeitgrenze!). Gibt eine saubere Kopie oder nil.
 function Core.ValidateGlobal(msg: any, now: number, maxSeconds: number): Plain?
 	if type(msg) ~= "table" then
@@ -339,10 +472,11 @@ function Core.ValidateGlobal(msg: any, now: number, maxSeconds: number): Plain?
 		local text = cleanText(msg.Text, ((tonumber(SEC.AnnounceMax) or 200) * 3))
 		local name = cleanText(msg.Name, MAX_NAME)
 		local userId = msg.UserId
-		if not text or not name or not isInt(userId) then
+		local role = globalRole(msg.Role)
+		if not text or not name or not isInt(userId) or not role then
 			return nil
 		end
-		return { Kind = "Announce", Id = id, Text = text, Name = name, UserId = userId }
+		return { Kind = "Announce", Id = id, Text = text, Name = name, UserId = userId, Role = role }
 	elseif kind == "AdminAbuse" then
 		if type(msg.Event) ~= "string" or #msg.Event > 40 then
 			return nil
@@ -389,10 +523,11 @@ function Core.ValidateGlobal(msg: any, now: number, maxSeconds: number): Plain?
 		if type(event) ~= "string" or #event < 1 or #event > 40 or not string.match(event, "^%w+$") then
 			return nil
 		end
-		if not name or not isInt(msg.UserId) then
+		local role = globalRole(msg.Role)
+		if not name or not isInt(msg.UserId) or not role then
 			return nil
 		end
-		return { Kind = "AbuseNote", Id = id, Event = event, UserId = msg.UserId, Name = name }
+		return { Kind = "AbuseNote", Id = id, Event = event, UserId = msg.UserId, Name = name, Role = role }
 	end
 	return nil
 end
@@ -437,6 +572,152 @@ end
 function Core.TradeLockBefore(lastTrade: number?, now: number, seconds: number): boolean
 	return lastTrade ~= nil and now - lastTrade < seconds
 end
+
+-- ---------------------------------------------------------------------
+-- TEAM-ROLLEN (W19/W26) – reine Hilfen für Run und die Aktionen (StaffTests/AdminTests)
+-- ---------------------------------------------------------------------
+-- Bann-Dauer: Duration ("30m", "1d", "perm", Preset-Schlüssel) oder Seconds (endlich, -1 = dauerhaft). nil = ungültig.
+function Core.BanSeconds(args: any): number?
+	local a: Plain = if type(args) == "table" then args else {}
+	local seconds = Staff.ParseDuration(a.Duration)
+	if seconds == nil and type(a.Duration) == "string" then
+		local presets = SEC.BanPresets
+		local preset = if type(presets) == "table" then presets[a.Duration] else nil
+		if Util.IsFinite(preset) then
+			seconds = math.floor(preset)
+		end
+	end
+	if seconds == nil and Util.IsFinite(a.Seconds) then
+		seconds = if a.Seconds == -1 then -1 else math.floor(a.Seconds)
+	end
+	return seconds
+end
+
+local function eventPerm(cfg: Plain, event: any, default: string): string
+	local perms = cfg.EventPerms
+	local value = if type(perms) == "table" and type(event) == "string" then perms[event] else nil
+	return if type(value) == "string" then value else default
+end
+
+-- Recht für eine Aktion (§5.2 + §16.1). nil = unbekannte Aktion -> ablehnen. cfg = Config.Security.Staff.
+function Core.PermFor(action: any, args: any, cfg: any): string?
+	if type(action) ~= "string" then
+		return nil
+	end
+	local a: Plain = if type(args) == "table" then args else {}
+	local c: Plain = if type(cfg) == "table" then cfg else {}
+	local fixed = STATIC_PERMS[action]
+	if fixed then
+		return fixed
+	end
+	if action == "Ban" then
+		if a.UserId ~= nil or a.Name ~= nil then
+			return "Ban" -- offline per UserId/Name: nur mit vollem Bann-Recht
+		end
+		local seconds = Core.BanSeconds(a)
+		if seconds == nil then
+			return "TempBan" -- der Handler meldet die ungültige Dauer
+		end
+		local max = if type(c.TempBanMax) == "table" then c.TempBanMax.Moderator else nil
+		if seconds ~= -1 and (max == -1 or (Util.IsFinite(max) and seconds <= max)) then
+			return "TempBan"
+		end
+		return "Ban"
+	elseif action == "SetPower" then
+		local name = a.Name
+		return if type(name) == "string" and POWER_PERM[name] then POWER_PERM[name] else "Debug"
+	elseif action == "Give" then
+		local grant = a.Grant
+		if type(grant) == "table" then
+			for key in pairs(grant) do
+				if key ~= "Credits" then
+					return "GiveItems"
+				end
+			end
+			if Util.IsFinite(grant.Credits) and grant.Credits < 0 then
+				return "TakeCredits"
+			end
+		end
+		return "GiveCredits"
+	elseif action == "Announce" then
+		return if a.Global == true then "AnnounceGlobal" else "Announce"
+	elseif action == "Abuse" then
+		if type(a.Event) == "string" and MARKET_ACTIONS[a.Event] then
+			return "MarketEvents"
+		end
+		return eventPerm(c, a.Event, "EconomyEvents")
+	elseif action == "AbuseStop" then
+		return eventPerm(c, a.Event, "EconomyEvents")
+	elseif action == "WorldEvent" then
+		return eventPerm(c, a.Event, "WorldEvents")
+	elseif action == "SetRole" then
+		return if a.Role == "Admin" then "ManageAdmins" else "ManageMods"
+	end
+	return nil
+end
+
+-- Alle Admin-Aktionen (sortiert) – StaffTests: jede braucht einen PermFor-Eintrag
+function Core.ActionNames(): { string }
+	local list: { string } = {}
+	for name in pairs(Actions) do
+		table.insert(list, name)
+	end
+	table.sort(list)
+	return list
+end
+
+-- Masse: all/others oder eine Liste mit mehr als MASS_LIST aufgelösten Zielen (§16.2 Nr. 8)
+function Core.IsMassList(text: any, count: number): boolean
+	return Staff.IsMass(text) or (Util.IsFinite(count) and count > MASS_LIST)
+end
+
+-- Unbekannter Gruppen-Besitzer: strafende Rechte nur für den Besitzer selbst (§16.2 Nr. 1). true = ablehnen.
+function Core.OwnerBlocks(perm: any, actorIsOwner: boolean, ownerKnown: boolean): boolean
+	return type(perm) == "string" and PUNITIVE[perm] == true and actorIsOwner ~= true and ownerKnown ~= true
+end
+
+-- Mindest-Abstand je Schlüssel: (true, 0) und Zeit merken – oder (false, Restsekunden)
+function Core.GapOk(store: { [string]: number }, key: string, t: number, gap: number): (boolean, number)
+	local last = store[key]
+	if last ~= nil and Util.IsFinite(gap) and t - last < gap then
+		return false, gap - (t - last)
+	end
+	store[key] = t
+	return true, 0
+end
+
+-- Keine Selbstgeschenke für Nicht-Besitzer (§16.2 Nr. 6; auch über me/all/Listen)
+function Core.GiftTargets(list: { any }, actor: any, actorIsOwner: boolean): { any }
+	if actorIsOwner == true then
+		return list
+	end
+	local out: { any } = {}
+	for _, p in ipairs(list) do
+		if p ~= actor then
+			table.insert(out, p)
+		end
+	end
+	return out
+end
+
+-- CR-Deckel für Nicht-Besitzer (Config.Security.Staff.Credits): (true) oder (false, Lang-Schlüssel, Betrag für den Text)
+function Core.CreditCaps(amount: number, count: number, givenToday: number, credits: any): (boolean, string?, number?)
+	local caps: Plain = if type(credits) == "table" then credits else {}
+	local perAction = tonumber(caps.PerAction) or 0
+	local perDay = tonumber(caps.PerDay) or 0
+	local total = amount * count
+	if total > perAction then
+		return false, "admin.cmd.capAction", perAction
+	end
+	local left = math.max(0, perDay - math.max(0, tonumber(givenToday) or 0))
+	if total > left then
+		return false, "admin.cmd.capDay", left
+	end
+	return true, nil, nil
+end
+
+Core.HEAVY = table.freeze(HEAVY)
+Core.PUNITIVE = table.freeze(PUNITIVE)
 
 AdminService.Core = Core
 
@@ -604,13 +885,16 @@ local function creatorTypeName(): string
 	return "User"
 end
 
--- Gruppen-Besitzer im Hintergrund laden (yieldet; Ergebnis 10 min gecacht, Fehler = kein Admin)
+-- Gruppen-Besitzer im Hintergrund laden (yieldet; Ergebnis 10 min gecacht, Fehler = kein Besitzer und nur 30 s
+-- gecacht – solange gilt der Besitzer als unbekannt und strafende Team-Rechte sind gesperrt, §16.2 Nr. 1)
 local function refreshGroupOwner()
 	if groupLoading or creatorTypeName() ~= "Group" or game.CreatorId == 0 then
 		return
 	end
-	local cacheSeconds = tonumber(SEC.GroupOwnerCacheSeconds) or 600
 	local cached = groupOwner
+	local cacheSeconds = if cached and cached.Failed
+		then GROUP_FAIL_CACHE
+		else tonumber(SEC.GroupOwnerCacheSeconds) or 600
 	if cached and os.clock() - cached.At < cacheSeconds then
 		return
 	end
@@ -624,10 +908,15 @@ local function refreshGroupOwner()
 		if ok and type(info) == "table" and type(info.Owner) == "table" and isInt(info.Owner.Id) then
 			ownerId = info.Owner.Id
 		elseif not ok then
-			warn("[Admin] GetGroupInfoAsync fehlgeschlagen (kein Admin bis zum nächsten Versuch): " .. tostring(info))
+			-- schon einmal sicher geladen: diesen Besitzer behalten (ein Aussetzer stuft ihn nicht herab), bald neu fragen
+			local previous = groupOwner
+			if previous and previous.Id ~= 0 then
+				ownerId = previous.Id
+			end
+			warn("[Admin] GetGroupInfoAsync fehlgeschlagen (nächster Versuch in 30 s): " .. tostring(info))
 		end
-		groupOwner = { Id = ownerId, At = os.clock() }
-		-- Spieler neu bewerten (Attribut IsAdmin nachziehen)
+		groupOwner = { Id = ownerId, At = os.clock(), Failed = not ok }
+		-- Spieler neu bewerten (Attribut IsAdmin = Besitzer nachziehen, Team-Rolle neu berechnen)
 		for _, p in ipairs(Players:GetPlayers()) do
 			adminCache[p] = nil
 			local isAdmin = AdminService.IsAdmin(p)
@@ -635,6 +924,7 @@ local function refreshGroupOwner()
 			if isAdmin and p:GetAttribute("CanFly") == nil then
 				p:SetAttribute("CanFly", true)
 			end
+			call("StaffService", "Refresh", p)
 		end
 	end)
 end
@@ -666,8 +956,199 @@ function AdminService.IsAdmin(p: Player): boolean
 	return cached == true
 end
 
+-- Besitzer-Id (Nutzer-Spiel: CreatorId; Gruppen-Spiel: geladener Gruppen-Besitzer) – nie yieldend
+local function isOwnerId(userId: number): boolean
+	if creatorTypeName() == "User" then
+		return game.CreatorId ~= 0 and userId == game.CreatorId
+	end
+	local owner = groupOwner
+	return owner ~= nil and owner.Id ~= 0 and owner.Id == userId
+end
+
+function AdminService.IsOwnerId(userId: number): boolean
+	return isInt(userId) and isOwnerId(userId)
+end
+
+-- Besitzer bekannt? Nutzer-Spiel immer; Gruppen-Spiel erst, wenn GetGroupInfoAsync einen Besitzer geliefert hat.
+-- Solange unbekannt, lehnt Run strafende Team-Rechte ab (sonst könnte ein Admin den echten Besitzer bannen, §16.2 Nr. 1).
+function AdminService.OwnerKnown(): boolean
+	if creatorTypeName() == "User" then
+		return true
+	end
+	local owner = groupOwner
+	return owner ~= nil and owner.Id ~= 0
+end
+
+-- =====================================================================
+-- ROLLEN & RECHTE (W19) – StaffService liefert Admin/Moderator; fehlt er, gilt die alte Regel: nur der Besitzer
+-- =====================================================================
+-- Besitzer immer "Owner" (aus IsAdmin, nie aus StaffService); sonst StaffService.RoleOf (nie yieldend)
+local function roleOf(p: Player): string?
+	if AdminService.IsAdmin(p) then
+		return "Owner"
+	end
+	local ok, role = call("StaffService", "RoleOf", p)
+	if ok and type(role) == "string" and role ~= "Owner" and Staff.RANK[role] ~= nil then
+		return role
+	end
+	return nil
+end
+
+local function can(p: Player, perm: string): boolean
+	return Staff.Can(roleOf(p), perm, STAFF)
+end
+
+local function rankOf(p: Player): number
+	return Staff.Rank(roleOf(p))
+end
+
+-- Rang-Regel: nur gegen niedrigere Ränge (Besitzer gegen Besitzer im Studio = gleich = geschützt)
+local function canActOn(actor: Player, target: Player): boolean
+	return Staff.CanActOn(rankOf(actor), rankOf(target))
+end
+
+local function groupEnabled(): boolean
+	local group = STAFF.Group
+	return type(group) == "table" and Util.IsFinite(group.Id) and group.Id > 0
+end
+
+-- Rang einer (auch offline) UserId: (Rang, bekannt). Unbekannt = geschützt (§16.2 Nr. 2). Yieldet (Gruppen-Abfrage).
+local function rankOfUserIdAsync(userId: number): (number, boolean)
+	local online = Players:GetPlayerByUserId(userId)
+	if online then
+		return rankOf(online), true
+	end
+	if isOwnerId(userId) then
+		return Staff.RANK.Owner, true
+	end
+	if has("StaffService", "RankOfUserIdAsync") then
+		local ok, rank, known = call("StaffService", "RankOfUserIdAsync", userId)
+		if ok and Util.IsFinite(rank) then
+			return rank, known ~= false
+		end
+		return Staff.RANK.Owner, false
+	end
+	if has("StaffService", "RankOfUserId") then
+		local ok, rank = call("StaffService", "RankOfUserId", userId)
+		if ok and Util.IsFinite(rank) then
+			return rank, not groupEnabled() -- ohne Gruppen-Abfrage ist ein Gruppen-Rang unbekannt
+		end
+		return Staff.RANK.Owner, false
+	end
+	return 0, true -- ohne StaffService handelt nur der Besitzer; jedes andere Ziel hat Rang 0
+end
+
+-- Rang eines Bestrafenden (Undo-Regel): online -> Rolle, offline -> gespeicherte Rolle (nie yieldend), unbekannt -> 0
+local function punisherRank(userId: any): number
+	if not isInt(userId) then
+		return 0
+	end
+	local online = Players:GetPlayerByUserId(userId)
+	if online then
+		return rankOf(online)
+	end
+	if isOwnerId(userId) then
+		return Staff.RANK.Owner
+	end
+	local ok, rank = call("StaffService", "RankOfUserId", userId)
+	return if ok and Util.IsFinite(rank) then rank else 0
+end
+
+-- =====================================================================
+-- ZIELE (Shared/Staff.MatchTargets: me, all, others, a,b,c, @Anzeigename, UserId, Name, Präfix – nur eindeutig)
+-- =====================================================================
+local function targetError(admin: Player, errKey: string?, errArg: string?): string
+	if errKey == nil then
+		return L(admin, "admin.noTarget")
+	end
+	local arg = errArg or ""
+	if errKey == "admin.cmd.ambiguous" then
+		local text, list = string.match(arg, "^(.-)|(.*)$")
+		return L(admin, errKey, text or arg, list or "")
+	end
+	return L(admin, errKey, arg)
+end
+
+-- (Liste, Fehlertext): leere Liste -> Fehlertext (kein Spieler, mehrdeutig mit Namen)
+local function resolveTargets(admin: Player, text: any): ({ Player }, string?)
+	local list, errKey, errArg = Staff.MatchTargets(text, Players:GetPlayers(), admin)
+	local out: { Player } = {}
+	for _, p in ipairs(list) do
+		if typeof(p) == "Instance" and p:IsA("Player") then
+			table.insert(out, p)
+		end
+	end
+	if #out == 0 then
+		return out, targetError(admin, errKey, errArg)
+	end
+	return out, nil
+end
+
+local function resolveOne(admin: Player, text: any): (Player?, string?)
+	local list, err = resolveTargets(admin, text)
+	if #list == 0 then
+		return nil, err or L(admin, "admin.noTarget")
+	elseif #list > 1 then
+		return nil, L(admin, "admin.oneTarget")
+	end
+	return list[1], nil
+end
+
+-- Rang-Filter für strafende Aktionen: (erlaubt, wegen Rang übersprungen, war man selbst dabei?)
+local function filterRank(admin: Player, list: { Player }, allowSelf: boolean): ({ Player }, { Player }, boolean)
+	local kept: { Player } = {}
+	local skipped: { Player } = {}
+	local hadSelf = false
+	local myRank = rankOf(admin)
+	for _, p in ipairs(list) do
+		if p == admin then
+			hadSelf = true
+			if allowSelf then
+				table.insert(kept, p)
+			end
+		elseif Staff.CanActOn(myRank, rankOf(p)) then
+			table.insert(kept, p)
+		else
+			table.insert(skipped, p)
+		end
+	end
+	return kept, skipped, hadSelf
+end
+
+-- Fehlertext, wenn nach dem Rang-Filter niemand übrig ist
+local function rankError(admin: Player, skipped: { Player }, hadSelf: boolean): string
+	if #skipped > 0 then
+		return L(admin, "admin.cmd.rank", names(skipped))
+	end
+	return L(admin, if hadSelf then "admin.notSelf" else "admin.noTarget")
+end
+
+-- Antwort + "· n übersprungen (gleicher oder höherer Rang)"
+local function withSkipped(admin: Player, text: string, skipped: number): string
+	if skipped <= 0 then
+		return text
+	end
+	return text .. " · " .. L(admin, "admin.cmd.skipped", skipped)
+end
+
+-- Masse (all/others oder > 3 Ziele) ohne MassTarget -> Fehlertext, sonst nil
+local function massError(admin: Player, text: any, count: number, key: string?): string?
+	if Core.IsMassList(text, count) and not can(admin, "MassTarget") then
+		return L(admin, key or "admin.cmd.mass")
+	end
+	return nil
+end
+
+-- Kraft-Attribut nur mit dem passenden Recht (Fliegen, Noclip, Tempo, Sprung, Unsichtbar, ESP); sonst nil
 function AdminService.Power(p: Player, name: string): any
-	if type(name) ~= "string" or not AdminService.IsAdmin(p) then
+	if typeof(p) ~= "Instance" or not p:IsA("Player") or type(name) ~= "string" then
+		return nil
+	end
+	local perm = POWER_PERM[name]
+	if perm == nil then
+		return if AdminService.IsAdmin(p) then p:GetAttribute(name) else nil
+	end
+	if not can(p, perm) then
 		return nil
 	end
 	return p:GetAttribute(name)
@@ -689,84 +1170,10 @@ function AdminService.OwnerTradeBlocked(p: Player): boolean
 end
 
 -- =====================================================================
--- ZIELE ("me", "all", "others", Name, Präfix, UserId)
--- =====================================================================
-local function resolveTargets(admin: Player, text: any): { Player }
-	if type(text) == "number" then
-		text = tostring(text)
-	end
-	if type(text) ~= "string" then
-		return { admin }
-	end
-	text = string.sub(text, 1, MAX_TARGET_TEXT)
-	text = string.gsub(text, "^%s+", "")
-	text = string.gsub(text, "%s+$", "")
-	local lower = string.lower(text)
-	if lower == "" or lower == "me" then
-		return { admin }
-	end
-	if lower == "all" then
-		return Players:GetPlayers()
-	end
-	if lower == "others" then
-		local list: { Player } = {}
-		for _, p in ipairs(Players:GetPlayers()) do
-			if p ~= admin then
-				table.insert(list, p)
-			end
-		end
-		return list
-	end
-	local userId = tonumber(text)
-	if userId and userId % 1 == 0 then
-		local byId = Players:GetPlayerByUserId(userId)
-		if byId then
-			return { byId }
-		end
-	end
-	for _, p in ipairs(Players:GetPlayers()) do
-		if string.lower(p.Name) == lower or string.lower(p.DisplayName) == lower then
-			return { p }
-		end
-	end
-	for _, p in ipairs(Players:GetPlayers()) do
-		if
-			string.sub(string.lower(p.Name), 1, #lower) == lower
-			or string.sub(string.lower(p.DisplayName), 1, #lower) == lower
-		then
-			return { p }
-		end
-	end
-	return {}
-end
-
-local function resolveOne(admin: Player, text: any): (Player?, string?)
-	local list = resolveTargets(admin, text)
-	if #list == 0 then
-		return nil, L(admin, "admin.noTarget")
-	elseif #list > 1 then
-		return nil, L(admin, "admin.oneTarget")
-	end
-	return list[1], nil
-end
-
-local function isOwnerId(userId: number): boolean
-	if creatorTypeName() == "User" then
-		return game.CreatorId ~= 0 and userId == game.CreatorId
-	end
-	local owner = groupOwner
-	return owner ~= nil and owner.Id ~= 0 and owner.Id == userId
-end
-
--- Andere Admins/Besitzer sind vor Kick/Bann geschützt
-local function protectedPlayer(p: Player): boolean
-	return isOwnerId(p.UserId) or AdminService.IsAdmin(p)
-end
-
--- =====================================================================
 -- ADMIN-LOG (AT_Mod_v1 "AdminLog", letzte 500 + Wochen-Kopie AT_Global "AdminLog_W<w>")
 -- =====================================================================
-local function logAction(p: Player, action: string, ok: boolean, message: string?)
+-- via = "Panel" | "Chat"; Role = O/A/M/- (Rolle beim Handeln); Target = Ziel-Text (nie Chat-Rohtext)
+local function logAction(p: Player, action: string, ok: boolean, message: string?, via: string?, target: string?)
 	local entry = {
 		T = os.time(),
 		By = p.UserId,
@@ -775,6 +1182,9 @@ local function logAction(p: Player, action: string, ok: boolean, message: string
 		Ok = ok,
 		Msg = truncate(tostring(message or ""), LOG_MSG_MAX),
 		Job = string.sub(if game.JobId ~= "" then game.JobId else "Studio", 1, 12),
+		Via = if via == "Chat" then "Chat" else "Panel",
+		Role = string.sub(roleOf(p) or "-", 1, 1),
+		Target = if type(target) == "string" and target ~= "" then truncate(target, MAX_NAME) else nil,
 	}
 	table.insert(adminLog, entry)
 	local max = math.floor(tonumber(SEC.AdminLogMax) or 500)
@@ -874,12 +1284,13 @@ local dedupe = Core.NewDedupe(tonumber(EV.GlobalDedupe) or tonumber(SEC.GlobalDe
 local applyLiveDoc: (doc: any) -> number
 local loadLive: () -> ()
 
-local function showAnnouncement(text: string, userId: number, name: string)
-	effectAll("Announce", 0, { Text = text, UserId = userId, Name = name })
+-- role = Rolle des Absenders ("Owner" | "Admin" | "Moderator") – der Client zeigt sie an der Ansage (Effects)
+local function showAnnouncement(text: string, userId: number, name: string, role: string?)
+	effectAll("Announce", 0, { Text = text, UserId = userId, Name = name, Role = role or "Owner" })
 end
 
 -- Admin-Abuse-Ansage im Besitzer-Stil (Avatar + blauer Haken, ohne Kasten), je Empfänger in seiner Sprache
-local function showAbuseNote(event: string, userId: number, name: string)
+local function showAbuseNote(event: string, userId: number, name: string, role: string?)
 	local key = "admin.note." .. event
 	local known = Lang.Has(key)
 	for _, p in ipairs(Players:GetPlayers()) do
@@ -887,7 +1298,7 @@ local function showAbuseNote(event: string, userId: number, name: string)
 		local text = if known
 			then Lang.T(lang, key)
 			else Lang.T(lang, "admin.note.Generic", Lang.T(lang, "admin.ev." .. event))
-		effect(p, "Announce", 0, { Text = text, UserId = userId, Name = name })
+		effect(p, "Announce", 0, { Text = text, UserId = userId, Name = name, Role = role or "Owner" })
 	end
 end
 
@@ -900,9 +1311,9 @@ local function handleGlobal(message: any)
 		return
 	end
 	if clean.Kind == "Announce" then
-		showAnnouncement(clean.Text, clean.UserId, clean.Name)
+		showAnnouncement(clean.Text, clean.UserId, clean.Name, clean.Role)
 	elseif clean.Kind == "AbuseNote" then
-		showAbuseNote(clean.Event, clean.UserId, clean.Name)
+		showAbuseNote(clean.Event, clean.UserId, clean.Name, clean.Role)
 	elseif clean.Kind == "AdminAbuse" then
 		call("EventService", "ApplyGlobal", clean)
 	elseif clean.Kind == "Live" then
@@ -935,6 +1346,7 @@ local function announceAbuse(admin: Player, event: string, global: boolean)
 		Event = event,
 		UserId = admin.UserId,
 		Name = string.sub(admin.DisplayName, 1, MAX_NAME),
+		Role = roleOf(admin) or "Owner",
 	}
 	if global then
 		publishGlobal(message)
@@ -962,7 +1374,7 @@ local function abuseSeconds(kind: string, args: Plain): number
 end
 
 function AdminService.PublishAbuse(kind: string, args: Plain, by: Player): (boolean, string)
-	if typeof(by) ~= "Instance" or not AdminService.IsAdmin(by) or type(kind) ~= "string" then
+	if typeof(by) ~= "Instance" or not by:IsA("Player") or type(kind) ~= "string" or not can(by, "GlobalEvents") then
 		return false, "denied"
 	end
 	local t = now()
@@ -1102,6 +1514,22 @@ local function setInvisible(p: Player, invisible: boolean)
 		invisConn[p] = character.DescendantAdded:Connect(function(d)
 			setPartInvisible(d, true)
 		end)
+	end
+end
+
+-- Kräfte, die die (neue) Rolle nicht hat, löschen – StaffService.Refresh ruft das bei jeder Rollen-Änderung (auch beim
+-- Herabstufen). Der Besitzer bleibt unverändert.
+function AdminService.SyncPowers(p: Player)
+	if typeof(p) ~= "Instance" or not p:IsA("Player") or AdminService.IsAdmin(p) then
+		return
+	end
+	for name, perm in pairs(POWER_PERM) do
+		if p:GetAttribute(name) ~= nil and not can(p, perm) then
+			p:SetAttribute(name, nil)
+			if name == "AdminInvisible" then
+				setInvisible(p, false)
+			end
+		end
 	end
 end
 
@@ -1487,6 +1915,15 @@ Actions.Dashboard = function(admin, _args)
 		end
 	end
 	local okAbuse, abuse = call("EventService", "IsAdminAbuse")
+	-- Markt-Kennzahlen + Start-Zustand (W20: MarketService.Status = "Booting" | "Live" | "Local" | "Failed", Versuch)
+	local marketData: Plain? = if okMarket and type(market) == "table" then table.clone(market) else nil
+	local okStatus, status, attempt = call("MarketService", "Status")
+	if okStatus and type(status) == "string" then
+		local info: Plain = marketData or {}
+		info.Status = string.sub(status, 1, 16)
+		info.Attempt = if isInt(attempt) then attempt else 0
+		marketData = info
+	end
 	local data = {
 		Players = #Players:GetPlayers(),
 		MaxPlayers = Players.MaxPlayers,
@@ -1494,7 +1931,7 @@ Actions.Dashboard = function(admin, _args)
 		Servers = servers,
 		Events = kinds,
 		AdminAbuse = okAbuse and abuse == true,
-		Market = if okMarket and type(market) == "table" then market else nil,
+		Market = marketData,
 		LocalMarket = okLocal and localMarket == true,
 		HeartbeatMs = avg,
 		HeartbeatMaxMs = max,
@@ -1553,6 +1990,9 @@ Actions.GetPlayers = function(_admin, _args)
 		local okScore, score = call("AntiCheatService", "Score", p)
 		local okLic, licence = call("ProgressionService", "Licence", p)
 		local okFloors, floors = call("TowerService", "Floors", p)
+		local okData, data = call("DataService", "Get", p)
+		local mod = if okData and type(data) == "table" and type(data.Mod) == "table" then data.Mod else nil
+		local muted = p:GetAttribute("MutedUntil")
 		table.insert(list, {
 			UserId = p.UserId,
 			Name = p.Name,
@@ -1562,6 +2002,9 @@ Actions.GetPlayers = function(_admin, _args)
 			PingMs = p:GetAttribute("PingMs") or 0,
 			Suspicion = if okScore and Util.IsFinite(score) then score else 0,
 			IsAdmin = AdminService.IsAdmin(p),
+			Role = roleOf(p),
+			MutedUntil = if type(muted) == "number" then muted else nil,
+			Warnings = if mod and Util.IsFinite(mod.Warnings) then mod.Warnings else 0,
 			Frozen = p:GetAttribute("AdminFrozen") == true,
 			Minutes = math.floor((os.clock() - (joinedAt[p] or os.clock())) / 60),
 		})
@@ -1569,70 +2012,207 @@ Actions.GetPlayers = function(_admin, _args)
 	return true, "OK", list
 end
 
-Actions.Kick = function(admin, args)
-	local targets = resolveTargets(admin, args.Target)
+Actions.Kick = function(admin, args, ctx)
+	-- all/others = alle kicken: nur mit KickAll (Besitzer), sonst gesperrt
+	if Staff.IsMass(args.Target) then
+		if not can(admin, "KickAll") then
+			return false, L(admin, "admin.cmd.mass")
+		end
+		return Actions.KickAll(admin, { Reason = args.Reason }, ctx)
+	end
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local mass = massError(admin, args.Target, #targets)
+	if mass then
+		return false, mass
+	end
+	local kept, skipped, hadSelf = filterRank(admin, targets, false)
+	if #kept == 0 then
+		return false, rankError(admin, skipped, hadSelf)
+	end
 	local raw = cleanText(args.Reason, MAX_REASON)
 	local filtered = if raw then filterBroadcast(raw, admin.UserId) else nil
-	local kicked: { Player } = {}
-	for _, p in ipairs(targets) do
-		if p ~= admin and not protectedPlayer(p) then
-			table.insert(kicked, p)
+	for _, p in ipairs(kept) do
+		if p.Parent == Players then
 			p:Kick(filtered or L(p, "admin.kickDefault"))
 		end
 	end
-	if #kicked == 0 then
-		return false, L(admin, if #targets > 0 then "admin.notSelf" else "admin.noTarget")
-	end
-	return true, L(admin, "admin.kicked", names(kicked))
+	return true, withSkipped(admin, L(admin, "admin.kicked", names(kept)), #skipped)
 end
 
-Actions.Ban = function(admin, args)
-	local presets = SEC.BanPresets or {}
-	local seconds = if type(args.Duration) == "string" then presets[args.Duration] else nil
-	if not Util.IsFinite(seconds) then
+-- Sperr-Dauer für den Kick-Text: "dauerhaft" oder "noch 2 h 5 min"
+local function banUntilText(p: Player, untilT: number): string
+	if untilT == -1 then
+		return L(p, "admin.ban2.forever")
+	end
+	return L(p, "admin.ban2.left", Format.Duration(math.max(0, untilT - os.time()), langOf(p)))
+end
+
+-- Benutzername -> UserId (online ohne Abfrage; sonst Lookup-Limiter je Handelndem, pcall). Yieldet.
+local function userIdFromName(admin: Player, name: any): (number?, string?)
+	if
+		type(name) ~= "string"
+		or #name < UNBAN_NAME_MIN
+		or #name > UNBAN_NAME_MAX
+		or not string.match(name, "^[%w_]+$")
+	then
+		return nil, L(admin, "core.invalid")
+	end
+	local lower = string.lower(name)
+	for _, p in ipairs(Players:GetPlayers()) do
+		if string.lower(p.Name) == lower then
+			return p.UserId, nil
+		end
+	end
+	if not lookupLimiter.Check(admin) then
+		return nil, L(admin, "admin.cmd.tooFast")
+	end
+	local ok, id = pcall(function()
+		return Players:GetUserIdFromNameAsync(name)
+	end)
+	if not ok or not isInt(id) or id <= 0 then
+		return nil, L(admin, "admin.role.notFound", name)
+	end
+	return id, nil
+end
+
+-- UserId -> Benutzername (online direkt; sonst Lookup-Limiter, pcall; Fehler -> nil). Yieldet.
+local function nameFromUserId(admin: Player, userId: number): string?
+	local online = Players:GetPlayerByUserId(userId)
+	if online then
+		return online.Name
+	end
+	if userId <= 0 or not lookupLimiter.Check(admin) then
+		return nil
+	end
+	local ok, name = pcall(function()
+		return Players:GetNameFromUserIdAsync(userId)
+	end)
+	if ok and type(name) == "string" and name ~= "" then
+		return string.sub(name, 1, MAX_NAME)
+	end
+	return nil
+end
+
+-- Bann: online per Ziel (TempBan bis TempBanMax der Rolle) oder offline per UserId/Name (Recht Ban). Rang-Regel mit
+-- Offline-Rang (Gruppe!), Grund gefiltert, Roblox-Bann + eigene Liste (StaffService.AddBan); fällt BanAsync aus, gilt
+-- die eigene Liste und Online-Ziele werden gekickt (kein Abbruch).
+Actions.Ban = function(admin, args, ctx)
+	local seconds = Core.BanSeconds(args)
+	if seconds == nil or (seconds ~= -1 and seconds < 60) then
 		return false, L(admin, "admin.banDuration")
+	end
+	local maxTable = STAFF.TempBanMax
+	local role = roleOf(admin)
+	local max = if type(maxTable) == "table" and role then maxTable[role] else nil
+	if Util.IsFinite(max) and max ~= -1 and (seconds == -1 or seconds > max) then
+		return false, L(admin, "admin.cmd.maxDuration", Format.Duration(max, langOf(admin)))
 	end
 	local ids: { number } = {}
 	local namesById: { [number]: string } = {}
 	local onlineById: { [number]: Player } = {}
-	if args.UserId ~= nil then
-		local id = tonumber(args.UserId)
-		if not id or id % 1 ~= 0 then
-			return false, L(admin, "core.invalid")
+	if args.UserId ~= nil or args.Name ~= nil then
+		if not can(admin, "Ban") then
+			return false, L(admin, "admin.ban2.onlineOnly")
 		end
-		table.insert(ids, id)
-		local online = Players:GetPlayerByUserId(id)
-		namesById[id] = if online then online.Name else tostring(id)
+		local id: number? = nil
+		local typedName: string? = nil
+		if args.UserId ~= nil then
+			local n = tonumber(args.UserId)
+			if not n or n % 1 ~= 0 then
+				return false, L(admin, "core.invalid")
+			end
+			id = n
+		else
+			local found, err = userIdFromName(admin, args.Name)
+			if not found then
+				return false, err or L(admin, "core.invalid")
+			end
+			id = found
+			typedName = args.Name
+		end
+		local uid = id :: number
+		table.insert(ids, uid)
+		local online = Players:GetPlayerByUserId(uid)
 		if online then
-			onlineById[id] = online
+			onlineById[uid] = online
+			namesById[uid] = online.Name
+		elseif typedName then
+			namesById[uid] = typedName
+		else
+			namesById[uid] = (if uid > 0 then nameFromUserId(admin, uid) else nil) or tostring(uid)
 		end
 	else
-		for _, p in ipairs(resolveTargets(admin, args.Target)) do
+		if Staff.IsMass(args.Target) then
+			return false, L(admin, "admin.cmd.massBan") -- alle auf einmal sperren geht nie
+		end
+		local targets, err = resolveTargets(admin, args.Target)
+		if #targets == 0 then
+			return false, err or L(admin, "admin.noTarget")
+		end
+		local mass = massError(admin, args.Target, #targets, "admin.cmd.massBan")
+		if mass then
+			return false, mass
+		end
+		for _, p in ipairs(targets) do
 			table.insert(ids, p.UserId)
 			namesById[p.UserId] = p.Name
 			onlineById[p.UserId] = p
 		end
 	end
+	-- Rang-Regel (offline: gespeicherte Rolle + Gruppen-Rang; unbekannt = geschützt)
+	local myRank = rankOf(admin)
 	local valid: { number } = {}
+	local skipped = 0
 	local lastError = L(admin, "admin.noTarget")
 	for _, id in ipairs(ids) do
 		local online = onlineById[id]
+		local name = namesById[id] or tostring(id)
 		if id == admin.UserId then
 			lastError = L(admin, "admin.notSelf")
-		elseif isOwnerId(id) or (online and AdminService.IsAdmin(online)) then
-			lastError = L(admin, "admin.notOwner")
 		elseif id <= 0 then
 			lastError = L(admin, "admin.studioUser")
-		elseif #valid < 50 then
-			table.insert(valid, id)
+		else
+			local rank, known = 0, true
+			if online then
+				rank = rankOf(online)
+			else
+				if groupEnabled() and not lookupLimiter.Check(admin) then
+					return false, L(admin, "admin.cmd.tooFast")
+				end
+				rank, known = rankOfUserIdAsync(id)
+			end
+			if not known then
+				skipped += 1
+				lastError = L(admin, "admin.cmd.rankUnknown", name)
+			elseif not Staff.CanActOn(myRank, rank) then
+				skipped += 1
+				lastError = L(admin, "admin.cmd.rank", name)
+			elseif #valid < 50 then
+				table.insert(valid, id)
+			end
 		end
 	end
 	if #valid == 0 then
 		return false, lastError
 	end
-	local reason = cleanText(args.Reason, SEC.BanDisplayMax or 400) or L(admin, "admin.banDefault")
-	local evidence: { string } =
-		{ ("Gebannt von %s (%d), %s"):format(admin.Name, admin.UserId, tostring(args.Duration)) }
+	-- Grund: für Spieler sichtbar -> gefiltert (Fehler = Standard-Grund); der Rohtext steht nur im privaten Beweis
+	local displayMax = tonumber(SEC.BanDisplayMax) or 400
+	local raw = cleanText(args.Reason, displayMax)
+	local filtered = if raw then filterBroadcast(raw, admin.UserId) else nil
+	local reason = truncate(if filtered and filtered ~= "" then filtered else L(admin, "admin.banDefault"), displayMax)
+	local label = if seconds == -1
+		then L(admin, "admin.ban2.forever")
+		elseif type(args.Duration) == "string" and #args.Duration <= 12 then args.Duration
+		else Format.Duration(seconds, langOf(admin))
+	local evidence: { string } = {
+		("Gebannt von %s (%d, %s), %s"):format(admin.Name, admin.UserId, role or "-", label),
+	}
+	if raw and raw ~= reason then
+		table.insert(evidence, "Grund: " .. raw)
+	end
 	local privateNote = cleanText(args.Private, SEC.BanPrivateMax or 1000)
 	if privateNote then
 		table.insert(evidence, privateNote)
@@ -1662,53 +2242,124 @@ Actions.Ban = function(admin, args)
 		end
 	end
 	local duration = if seconds == -1 then -1 else math.max(60, math.floor(seconds))
-	local ok, err = pcall(function()
+	local okBan, banErr = pcall(function()
 		Players:BanAsync({
 			UserIds = valid,
 			Duration = duration,
-			DisplayReason = truncate(reason, SEC.BanDisplayMax or 400),
+			DisplayReason = reason,
 			PrivateReason = truncate(table.concat(evidence, " | "), SEC.BanPrivateMax or 1000),
 			ApplyToUniverse = true,
 			ExcludeAltAccounts = false,
 		})
 	end)
-	if not ok then
-		return false, L(admin, "admin.banFailed", tostring(err))
-	end
+	local untilT = if duration == -1 then -1 else os.time() + duration
+	local src = if ctx and ctx.Via == "Chat" then "Chat" else "Panel"
 	local bannedNames: { string } = {}
+	local ownSaved = false
 	for _, id in ipairs(valid) do
-		table.insert(bannedNames, namesById[id] or tostring(id))
-		call("AntiCheatService", "LogBan", {
+		local name = namesById[id] or tostring(id)
+		table.insert(bannedNames, name)
+		-- eigene Liste (Ban_<id> + BanIndex) und Kick-Nachricht an alle Server
+		local okAdd, added = call("StaffService", "AddBan", {
 			UserId = id,
-			Name = namesById[id] or tostring(id),
+			Until = untilT,
 			Reason = reason,
-			Duration = duration,
 			By = admin.UserId,
 			ByName = admin.Name,
-			T = os.time(),
-			Active = true,
-			Auto = false,
+			Name = name,
+			Src = src,
 		})
+		local saved = okAdd and added == true
+		ownSaved = ownSaved or saved
+		if okBan or saved then
+			call("AntiCheatService", "LogBan", {
+				UserId = id,
+				Name = name,
+				Reason = reason,
+				Duration = duration,
+				By = admin.UserId,
+				ByName = admin.Name,
+				T = os.time(),
+				Active = true,
+				Auto = false,
+			})
+		end
 	end
-	return true, L(admin, "admin.banned", tostring(args.Duration), table.concat(bannedNames, ", "))
+	local nameList = table.concat(bannedNames, ", ")
+	if ctx then
+		ctx.Target = nameList
+	end
+	if not okBan then
+		-- Roblox-Bann nicht erreichbar: kein Abbruch – Online-Ziele jetzt kicken, die eigene Liste sperrt beim Beitritt
+		warn("[Admin] BanAsync fehlgeschlagen: " .. tostring(banErr))
+		for _, id in ipairs(valid) do
+			local p = onlineById[id] or Players:GetPlayerByUserId(id)
+			if p and p.Parent == Players then
+				p:Kick(L(p, "admin.ban2.kick", banUntilText(p, untilT), reason))
+			end
+		end
+		if ownSaved then
+			return false, L(admin, "admin.ban2.fallback", nameList)
+		end
+		return false, L(admin, "admin.banFailed", tostring(banErr))
+	end
+	return true, withSkipped(admin, L(admin, "admin.banned", label, nameList), skipped)
 end
 
-Actions.Unban = function(admin, args)
-	local id = tonumber(args.UserId)
-	if not id or id % 1 ~= 0 then
-		return false, L(admin, "core.invalid")
+-- W26: Entbannen per UserId ODER Name (auch offline), optionaler Grund (gefiltert). Moderatoren nur eigene Zeit-Banns
+-- (Staff.CanUnban mit dem Eintrag aus BanIndex/Ban_<id>). Roblox-Fehler wird toleriert, wenn ein eigener Eintrag bestand.
+Actions.Unban = function(admin, args, ctx)
+	local hasId, hasName = args.UserId ~= nil, args.Name ~= nil
+	if hasId == hasName then
+		return false, L(admin, "core.invalid") -- genau eins von UserId/Name
 	end
-	if id <= 0 then
+	local id: number? = nil
+	if hasId then
+		local n = tonumber(args.UserId)
+		if not n or n % 1 ~= 0 then
+			return false, L(admin, "core.invalid")
+		end
+		id = n
+	else
+		local found, err = userIdFromName(admin, args.Name)
+		if not found then
+			return false, err or L(admin, "core.invalid")
+		end
+		id = found
+	end
+	local uid = id :: number
+	if uid <= 0 then
 		return false, L(admin, "admin.studioUser")
 	end
-	local ok, err = pcall(function()
-		Players:UnbanAsync({ UserIds = { id }, ApplyToUniverse = true })
+	local okEntry, rawEntry = call("StaffService", "BanEntry", uid)
+	local entry: Plain? = if okEntry and type(rawEntry) == "table" then rawEntry else nil
+	local allowed, key = Staff.CanUnban(roleOf(admin), admin.UserId, entry, STAFF)
+	if not allowed then
+		return false, L(admin, key or "admin.cmd.denied")
+	end
+	local raw = cleanText(args.Reason, tonumber(STAFF.UnbanReasonMax) or 120)
+	local reason = if raw then filterBroadcast(raw, admin.UserId) else nil
+	local okRoblox, err = pcall(function()
+		Players:UnbanAsync({ UserIds = { uid }, ApplyToUniverse = true })
 	end)
-	if not ok then
+	call("StaffService", "RemoveBan", uid, "Unban")
+	call("AntiCheatService", "MarkUnbanned", uid)
+	local entryName = if entry and type(entry.Name) == "string" and entry.Name ~= "" then entry.Name else nil
+	local name = entryName or (if hasName then args.Name else nil) or nameFromUserId(admin, uid) or tostring(uid)
+	if ctx then
+		ctx.Target = name
+	end
+	if not okRoblox and entry == nil then
 		return false, L(admin, "admin.unbanFailed", tostring(err))
 	end
-	call("AntiCheatService", "MarkUnbanned", id)
-	return true, L(admin, "admin.unbanned", id)
+	local text = L(admin, "admin.bans.done", name)
+	if not okRoblox then
+		text ..= " " .. L(admin, "admin.bans.robloxFailed")
+	end
+	if reason and reason ~= "" then
+		text ..= " · " .. reason
+	end
+	return true, text, { UserId = uid, Name = name }
 end
 
 Actions.BanList = function(admin, _args)
@@ -1759,20 +2410,98 @@ Actions.BanHistory = function(admin, args)
 	return true, L(admin, "admin.banHistory", #out), out
 end
 
+-- W26 Tab „Banns“: aktive Banns aus der eigenen Liste (StaffService.BanList) mit Suche/Seiten; je Eintrag, ob DIESER
+-- Handelnde entbannen darf. Danach im Hintergrund Abgleich der Seite mit Roblox (Zustände beim nächsten Laden).
+local BAN_STATES: { [string]: boolean } = { Active = true, Unbanned = true, Expired = true, Unknown = true }
+
+Actions.Bans = function(admin, args)
+	local query: string? = nil
+	if type(args.Query) == "string" then
+		local clean = string.gsub(string.gsub(string.sub(args.Query, 1, 30), "^%s+", ""), "%s+$", "")
+		query = if clean ~= "" and utf8.len(clean) ~= nil then clean else nil
+	end
+	local page = if isInt(args.Page) then math.clamp(args.Page, 1, 100) else 1
+	if not has("StaffService", "BanList") then
+		return false, L(admin, "admin.unavailable", "StaffService")
+	end
+	local ok, result = call("StaffService", "BanList", { Query = query, Page = page })
+	if not ok or type(result) ~= "table" then
+		return false, L(admin, "core.error")
+	end
+	local role = roleOf(admin)
+	local t = os.time()
+	local entries: { Plain } = {}
+	local ids: { number } = {}
+	if type(result.Entries) == "table" then
+		for _, e in ipairs(result.Entries) do
+			if type(e) == "table" and isInt(e.UserId) and Util.IsFinite(e.Until) then
+				local untilT = e.Until
+				local canUnban = Staff.CanUnban(role, admin.UserId, e, STAFF)
+				table.insert(entries, {
+					UserId = e.UserId,
+					Name = string.sub(tostring(e.Name or e.UserId), 1, MAX_NAME),
+					Reason = truncate(tostring(e.Reason or ""), 400),
+					By = if isInt(e.By) then e.By else 0,
+					ByName = string.sub(tostring(e.ByName or ""), 1, MAX_NAME),
+					T = if Util.IsFinite(e.T) then e.T else 0,
+					Until = untilT,
+					Left = if untilT == -1 then -1 else math.max(0, untilT - t),
+					State = if type(e.State) == "string" and BAN_STATES[e.State] then e.State else "Active",
+					Src = if type(e.Src) == "string" then string.sub(e.Src, 1, 12) else nil,
+					CanUnban = canUnban == true,
+				})
+				table.insert(ids, e.UserId)
+			end
+			if #entries >= MAX_LIST then
+				break
+			end
+		end
+	end
+	local total = if isInt(result.Total) then result.Total else #entries
+	local pages = if isInt(result.Pages) then math.max(1, result.Pages) else 1
+	if #ids > 0 and has("StaffService", "Reconcile") then
+		task.spawn(function()
+			call("StaffService", "Reconcile", ids)
+		end)
+	end
+	return true,
+		L(admin, "admin.bans.loaded", total),
+		{
+			Entries = entries,
+			Total = total,
+			Page = if isInt(result.Page) then result.Page else page,
+			Pages = pages,
+			Reconciled = result.Reconciled == true,
+			CanAll = can(admin, "Unban"),
+		}
+end
+
 Actions.Warn = function(admin, args)
 	local max = SEC.WarnMax or 150
 	local text = cleanText(args.Text, max)
 	if not text then
 		return false, L(admin, "admin.textLen", max)
 	end
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local mass = massError(admin, args.Target, #targets)
+	if mass then
+		return false, mass
+	end
+	-- sich selbst nur als einziges Ziel (zum Ausprobieren), sonst Rang-Regel
+	local kept, skipped, hadSelf = filterRank(admin, targets, #targets == 1)
+	if #kept == 0 then
+		return false, rankError(admin, skipped, hadSelf)
+	end
 	local filtered = filterBroadcast(text, admin.UserId)
 	if not filtered then
 		return false, L(admin, "admin.filterDown")
 	end
 	local warned: { Player } = {}
-	local targets = resolveTargets(admin, args.Target)
-	for _, p in ipairs(targets) do
-		if p ~= admin or #targets == 1 then
+	for _, p in ipairs(kept) do
+		if p.Parent == Players then
 			effect(p, "AdminWarn", 1, { Text = filtered })
 			table.insert(warned, p)
 			local okData, data = call("DataService", "Get", p)
@@ -1787,23 +2516,62 @@ Actions.Warn = function(admin, args)
 	if #warned == 0 then
 		return false, L(admin, "admin.noTarget")
 	end
-	return true, L(admin, "admin.warned", names(warned))
+	return true, withSkipped(admin, L(admin, "admin.warned", names(warned)), #skipped)
 end
 
+-- Einfrieren: Rang-Regel, Masse nur mit MassTarget, Einfrierer gemerkt (frozenBy). Auftauen: Staff.CanUndo (nicht für
+-- sich selbst außer Besitzer; nur mit Rang ≥ dem des Einfrierers, §16.2 Nr. 5).
 Actions.Freeze = function(admin, args)
 	local on = args.On ~= false
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local myRank = rankOf(admin)
+	if on then
+		local mass = massError(admin, args.Target, #targets)
+		if mass then
+			return false, mass
+		end
+		local kept, skipped, hadSelf = filterRank(admin, targets, false)
+		if #kept == 0 then
+			return false, rankError(admin, skipped, hadSelf)
+		end
+		for _, p in ipairs(kept) do
+			freeze(p, true)
+			p:SetAttribute("AdminFrozen", true)
+			-- ein ranghöherer Einfrierer bleibt eingetragen (sonst könnte ein niedrigerer Rang ihn "übernehmen")
+			local previous = frozenBy[p]
+			if previous == nil or punisherRank(previous) <= myRank then
+				frozenBy[p] = admin.UserId
+			end
+			call("PlayerStateService", "Notify", p, "admin.cmd.youFrozen", nil, "Alarm")
+		end
+		return true, withSkipped(admin, L(admin, "admin.frozen", names(kept)), #skipped)
+	end
+	local isOwner = AdminService.IsAdmin(admin)
 	local done: { Player } = {}
-	for _, p in ipairs(resolveTargets(admin, args.Target)) do
-		if not (on and p == admin) then
-			freeze(p, on)
-			p:SetAttribute("AdminFrozen", if on then true else nil)
+	local skipped: { Player } = {}
+	for _, p in ipairs(targets) do
+		if Staff.CanUndo(myRank, punisherRank(frozenBy[p]), p == admin, isOwner) then
+			freeze(p, false)
+			p:SetAttribute("AdminFrozen", nil)
+			frozenBy[p] = nil
+			if p ~= admin then
+				call("PlayerStateService", "Notify", p, "admin.cmd.youUnfrozen", nil, "Success")
+			end
 			table.insert(done, p)
+		else
+			table.insert(skipped, p)
 		end
 	end
 	if #done == 0 then
-		return false, L(admin, "admin.noTarget")
+		if #skipped == 1 and skipped[1] == admin then
+			return false, L(admin, "admin.notSelf")
+		end
+		return false, L(admin, "admin.cmd.rank", names(skipped))
 	end
-	return true, L(admin, if on then "admin.frozen" else "admin.unfrozen", names(done))
+	return true, withSkipped(admin, L(admin, "admin.unfrozen", names(done)), #skipped)
 end
 
 Actions.Bring = function(admin, args)
@@ -1811,9 +2579,21 @@ Actions.Bring = function(admin, args)
 	if not base then
 		return false, L(admin, "admin.noCharacter")
 	end
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local mass = massError(admin, args.Target, #targets)
+	if mass then
+		return false, mass
+	end
+	local kept, skipped, hadSelf = filterRank(admin, targets, false)
+	if #kept == 0 then
+		return false, rankError(admin, skipped, hadSelf)
+	end
 	local done: { Player } = {}
-	for _, p in ipairs(resolveTargets(admin, args.Target)) do
-		if p ~= admin and p.Character then
+	for _, p in ipairs(kept) do
+		if p.Character then
 			local i = #done
 			local offset = CFrame.new(((i % 5) - 2) * 3, 0, -5 - math.floor(i / 5) * 3)
 			if teleport(p, base * offset) then
@@ -1824,7 +2604,7 @@ Actions.Bring = function(admin, args)
 	if #done == 0 then
 		return false, L(admin, "admin.noTarget")
 	end
-	return true, L(admin, "admin.brought", names(done))
+	return true, withSkipped(admin, L(admin, "admin.brought", names(done)), #skipped)
 end
 
 Actions.Goto = function(admin, args)
@@ -2025,11 +2805,12 @@ Actions.SetPower = function(admin, args)
 	return true, L(admin, "admin.powerSet", name, shown), { Name = name, Value = value }
 end
 
--- Speed/Sprung schenken (Ziel-Feld me/all/others/Name): { Target, Speed?, Jump?, Minutes? (0 = bis Reset), Reset? }
+-- Speed/Sprung schenken (Ziel-Feld me/all/others/Name): { Target, Speed?, Jump?, Seconds? | Minutes? (0 = bis Reset),
+-- Reset? } – Seconds (Chat "/speed Name 50 90") hat Vorrang vor Minutes (Panel). Geschenke prüfen keinen Rang.
 Actions.GiveSpeed = function(admin, args)
-	local targets = resolveTargets(admin, args.Target)
+	local targets, err = resolveTargets(admin, args.Target)
 	if #targets == 0 then
-		return false, L(admin, "admin.noTarget")
+		return false, err or L(admin, "admin.noTarget")
 	end
 	if args.Reset == true then
 		local cleared: { Player } = {}
@@ -2066,8 +2847,15 @@ Actions.GiveSpeed = function(admin, args)
 		return false, L(admin, "admin.giftEmpty")
 	end
 	local maxMinutes = math.max(1, math.floor(tonumber(powers.GiftMaxMinutes) or 120))
-	local minutes = if Util.IsFinite(args.Minutes) then math.clamp(math.floor(args.Minutes), 0, maxMinutes) else 0
-	local untilT: number? = if minutes > 0 then now() + minutes * 60 else nil
+	local seconds = 0
+	if Util.IsFinite(args.Seconds) then
+		local wanted = math.floor(args.Seconds)
+		seconds = if wanted <= 0 then 0 else math.clamp(wanted, 10, maxMinutes * 60)
+	elseif Util.IsFinite(args.Minutes) then
+		seconds = math.clamp(math.floor(args.Minutes), 0, maxMinutes) * 60
+	end
+	local minutes = math.ceil(seconds / 60)
+	local untilT: number? = if seconds > 0 then now() + seconds else nil
 	local shownSpeed = speed or defaultWalk()
 	local shownJump = jump or DEFAULT_JUMP
 	for _, p in ipairs(targets) do
@@ -2108,8 +2896,14 @@ Actions.Spectate = function(admin, args)
 	if not target then
 		return false, err or ""
 	end
+	if target == admin then
+		return false, L(admin, "admin.notSelf")
+	end
+	if not canActOn(admin, target) then
+		return false, L(admin, "admin.cmd.rank", target.DisplayName)
+	end
 	local root = rootOf(target)
-	if target == admin or not root then
+	if not root then
 		return false, L(admin, "admin.noTarget")
 	end
 	admin.ReplicationFocus = root
@@ -2127,9 +2921,18 @@ Actions.Give = function(admin, args)
 			return false, L(admin, "admin.unavailable", "ShopService")
 		end
 		local want = math.floor(math.min(-raw.Credits, MAX_GIVE_CREDITS))
+		local targets, err = resolveTargets(admin, args.Target)
+		if #targets == 0 then
+			return false, err or L(admin, "admin.noTarget")
+		end
+		-- Abziehen ist strafend: nur bei niedrigerem Rang (Besitzer gegen Besitzer im Studio geschützt)
+		local kept, skipped, hadSelf = filterRank(admin, targets, false)
+		if #kept == 0 then
+			return false, rankError(admin, skipped, hadSelf)
+		end
 		local taken: { Player } = {}
 		local total = 0 -- tatsächlich abgezogen (höchstens das jeweilige Guthaben)
-		for _, p in ipairs(resolveTargets(admin, args.Target)) do
+		for _, p in ipairs(kept) do
 			local okBal, balance = call("ShopService", "Balance", p)
 			local amount = math.min(want, if okBal and Util.IsFinite(balance) then math.floor(balance) else 0)
 			if amount >= 1 then
@@ -2143,7 +2946,7 @@ Actions.Give = function(admin, args)
 		if #taken == 0 then
 			return false, L(admin, "admin.giveFailed")
 		end
-		return true, L(admin, "admin.taken", total, names(taken))
+		return true, withSkipped(admin, L(admin, "admin.taken", total, names(taken)), #skipped)
 	end
 	local grant = sanitizeGrant(args.Grant)
 	if not grant then
@@ -2152,10 +2955,48 @@ Actions.Give = function(admin, args)
 	if not has("ShopService", "Grant") then
 		return false, L(admin, "admin.unavailable", "ShopService")
 	end
-	local targets = resolveTargets(admin, args.Target)
+	local all, err = resolveTargets(admin, args.Target)
+	if #all == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	-- Nicht-Besitzer beschenken sich nie selbst (auch nicht über me/all/Listen, §16.2 Nr. 6)
+	local isOwner = AdminService.IsAdmin(admin)
+	local targets = Core.GiftTargets(all, admin, isOwner) :: { Player }
+	if #targets == 0 then
+		return false, L(admin, "admin.cmd.noSelfGive")
+	end
+	-- CR-Deckel für Nicht-Besitzer: je Befehl und je Tag (Tageszähler im eigenen Spielstand, serverübergreifend)
+	local mod: Plain? = nil
+	local reserved = 0
+	if grant.Credits and not isOwner then
+		local okData, data = call("DataService", "Get", admin)
+		if not okData or type(data) ~= "table" then
+			return false, L(admin, "core.loading")
+		end
+		if type(data.Mod) ~= "table" then
+			data.Mod = {}
+		end
+		local m: Plain = data.Mod
+		if m.GiveDay ~= utcDay() then
+			m.GiveDay = utcDay()
+			m.GiveCredits = 0
+		end
+		local given = if Util.IsFinite(m.GiveCredits) then m.GiveCredits else 0
+		local okCap, capKey, capValue = Core.CreditCaps(grant.Credits, #targets, given, STAFF.Credits)
+		if not okCap then
+			return false, L(admin, capKey or "core.invalid", Format.Credits(capValue or 0, langOf(admin)))
+		end
+		reserved = grant.Credits * #targets
+		m.GiveCredits = given + reserved -- vorab reservieren (parallele Aufrufe), unten auf das Gewährte korrigiert
+		mod = m
+	end
 	local done = grantTo(targets, grant)
+	if mod then
+		local granted = (grant.Credits or 0) * #done
+		mod.GiveCredits = math.max(0, (tonumber(mod.GiveCredits) or 0) - reserved + granted)
+	end
 	if #done == 0 then
-		return false, L(admin, if #targets > 0 then "admin.giveFailed" else "admin.noTarget")
+		return false, L(admin, "admin.giveFailed")
 	end
 	local lower = if type(args.Target) == "string" then string.lower(args.Target) else ""
 	if grant.Credits and (lower == "all" or lower == "others") then
@@ -2186,10 +3027,17 @@ Actions.GiveAllItems = function(admin, args)
 	if not clean then
 		return false, L(admin, "admin.giveEmpty")
 	end
-	local targets = resolveTargets(admin, args.Target)
+	local all, err = resolveTargets(admin, args.Target)
+	if #all == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local targets = Core.GiftTargets(all, admin, AdminService.IsAdmin(admin)) :: { Player }
+	if #targets == 0 then
+		return false, L(admin, "admin.cmd.noSelfGive")
+	end
 	local done = grantTo(targets, clean)
 	if #done == 0 then
-		return false, L(admin, if #targets > 0 then "admin.giveFailed" else "admin.noTarget")
+		return false, L(admin, "admin.giveFailed")
 	end
 	return true, L(admin, "admin.given", names(done))
 end
@@ -2202,7 +3050,24 @@ Actions.GiveAky = function(admin, args)
 	-- negativ = abziehen (Besitzer-Wunsch "geben oder abziehen"; OrderService.AdminCredit zieht höchstens freies AKY ab)
 	local cents = math.sign(aky) * math.floor(math.min(math.abs(aky), MAX_GIVE_AKY)) * 100
 	local done: { Player } = {}
-	local targets = resolveTargets(admin, args.Target)
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local skipped: { Player } = {}
+	if cents < 0 then
+		-- Abziehen ist strafend: Rang-Regel (Besitzer gegen Besitzer im Studio geschützt)
+		local kept, rankSkipped, hadSelf = filterRank(admin, targets, false)
+		if #kept == 0 then
+			return false, rankError(admin, rankSkipped, hadSelf)
+		end
+		targets, skipped = kept, rankSkipped
+	else
+		targets = Core.GiftTargets(targets, admin, AdminService.IsAdmin(admin)) :: { Player }
+		if #targets == 0 then
+			return false, L(admin, "admin.cmd.noSelfGive")
+		end
+	end
 	local taken = 0 -- beim Abziehen tatsächlich gebucht (Cent; höchstens das jeweils freie AKY)
 	for _, p in ipairs(targets) do
 		local okDepot, depot = call("OrderService", "Depot", p)
@@ -2223,13 +3088,11 @@ Actions.GiveAky = function(admin, args)
 		end
 	end
 	if #done == 0 then
-		if #targets == 0 then
-			return false, L(admin, "admin.noTarget")
-		end
 		return false, L(admin, if cents < 0 then "admin.akyNoneFree" else "admin.giveFailed")
 	end
 	if cents < 0 then
-		return true, L(admin, "admin.akyTaken", Format.Aky(taken, langOf(admin)), names(done))
+		return true,
+			withSkipped(admin, L(admin, "admin.akyTaken", Format.Aky(taken, langOf(admin)), names(done)), #skipped)
 	end
 	return true, L(admin, "admin.akyGiven", math.floor(cents / 100), names(done))
 end
@@ -2240,8 +3103,12 @@ Actions.SetLicence = function(admin, args)
 	if not idx or idx % 1 ~= 0 or idx < 1 or idx > #licences then
 		return false, L(admin, "core.invalid")
 	end
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
 	local done: { Player } = {}
-	for _, p in ipairs(resolveTargets(admin, args.Target)) do
+	for _, p in ipairs(targets) do
 		local ok, result = call("ProgressionService", "AdminSetLicence", p, idx)
 		if ok and result == true then
 			table.insert(done, p)
@@ -2259,8 +3126,12 @@ Actions.SetFloors = function(admin, args)
 	if not n or n % 1 ~= 0 or n < 0 or n > maxFloors then
 		return false, L(admin, "core.invalid")
 	end
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
 	local done: { Player } = {}
-	for _, p in ipairs(resolveTargets(admin, args.Target)) do
+	for _, p in ipairs(targets) do
 		local ok, result = call("TowerService", "AdminSetFloors", p, n)
 		if ok and result == true then
 			table.insert(done, p)
@@ -2284,14 +3155,18 @@ end
 Actions.KickAll = function(admin, args)
 	local raw = cleanText(args.Reason, MAX_REASON)
 	local filtered = if raw then filterBroadcast(raw, admin.UserId) else nil
-	local count = 0
+	local count, skipped = 0, 0
 	for _, p in ipairs(Players:GetPlayers()) do
-		if p ~= admin and not protectedPlayer(p) then
-			count += 1
-			p:Kick(filtered or L(p, "admin.kickAllDefault"))
+		if p ~= admin then
+			if canActOn(admin, p) then
+				count += 1
+				p:Kick(filtered or L(p, "admin.kickAllDefault"))
+			else
+				skipped += 1 -- gleicher oder höherer Rang bleibt (Teammitglieder ab dem eigenen Rang)
+			end
 		end
 	end
-	return true, L(admin, "admin.kickedAll", count)
+	return true, withSkipped(admin, L(admin, "admin.kickedAll", count), skipped)
 end
 
 -- =====================================================================
@@ -2400,6 +3275,21 @@ Actions.Announce = function(admin, args)
 	if os.clock() - announceAt < (tonumber(EV.AnnounceGap) or 1) then
 		return false, L(admin, "core.tooFast")
 	end
+	-- Nicht-Besitzer: eigener Abstand je Handelndem (lokal 10 s, global 60 s; §16.2 Nr. 9)
+	if not AdminService.IsAdmin(admin) then
+		local scope = if args.Global == true then "Global" else "Local"
+		local gap = if scope == "Global"
+			then tonumber(STAFF.AnnounceGlobalGap) or 60
+			else tonumber(STAFF.AnnounceGap) or 10
+		local store = announceBy[admin]
+		if not store then
+			store = {}
+			announceBy[admin] = store
+		end
+		if not Core.GapOk(store, scope, os.clock(), gap) then
+			return false, L(admin, "core.tooFast")
+		end
+	end
 	announceAt = os.clock()
 	local filtered = filterBroadcast(text, admin.UserId)
 	if not filtered then
@@ -2411,6 +3301,7 @@ Actions.Announce = function(admin, args)
 		Text = filtered,
 		UserId = admin.UserId,
 		Name = string.sub(admin.DisplayName, 1, MAX_NAME),
+		Role = roleOf(admin) or "Owner",
 	}
 	if args.Global == true then
 		if publishGlobal(message) then
@@ -2487,6 +3378,20 @@ Actions.Abuse = function(admin, args)
 		-- die Auto-Show wird im GlobalBus für ALLE Server abgesagt -> die Show läuft auch auf allen Servern (§B15.3)
 		return saturdayShow(admin, true)
 	end
+	-- Nicht-Markt-Events auf allen Servern nur mit GlobalEvents (Besitzer)
+	if args.Global == true and not can(admin, "GlobalEvents") then
+		return false, L(admin, "admin.cmd.denied")
+	end
+	-- Spaß-Events: höchstens eins je FunEventGap Sekunden pro Server, wenn kein Besitzer startet (§16.2 Nr. 9)
+	local isFun = eventPerm(STAFF, kind, "EconomyEvents") == "FunEvents"
+	local isOwner = AdminService.IsAdmin(admin)
+	if isFun and not isOwner then
+		local gap = tonumber(STAFF.FunEventGap) or 300
+		local last = funEventAt.Server
+		if last ~= nil and os.clock() - last < gap then
+			return false, L(admin, "admin.cmd.eventGap", Format.Duration(gap - (os.clock() - last), langOf(admin)))
+		end
+	end
 	local eventKind = if kind == "BuildBoom" then "AdminBuildBoom" else kind
 	local ok, started, key = call(
 		"EventService",
@@ -2500,6 +3405,9 @@ Actions.Abuse = function(admin, args)
 		return false, L(admin, "admin.unavailable", "EventService")
 	end
 	if started == true then
+		if isFun then
+			funEventAt.Server = os.clock() -- auch Besitzer-Starts zählen (kein Stapeln direkt danach)
+		end
 		announceAbuse(admin, kind, args.Global == true and kind ~= "AllToHall")
 	end
 	return started == true, L(admin, if type(key) == "string" then key else "core.error")
@@ -2709,7 +3617,16 @@ Actions.Reports = function(admin, _args)
 	if not ok or type(list) ~= "table" then
 		return false, L(admin, "admin.unavailable", "AntiCheatService")
 	end
-	return true, L(admin, "admin.reports", #list), list
+	-- Kopien (die Listen gehören AntiCheatService) + "Ziel ist gerade auf diesem Server"
+	local out: { Plain } = {}
+	for _, entry in ipairs(list) do
+		if type(entry) == "table" then
+			local copy: Plain = table.clone(entry)
+			copy.Online = isInt(entry.UserId) and Players:GetPlayerByUserId(entry.UserId) ~= nil
+			table.insert(out, copy)
+		end
+	end
+	return true, L(admin, "admin.reports", #out), out
 end
 
 Actions.AdminLog = function(admin, _args)
@@ -2717,6 +3634,154 @@ Actions.AdminLog = function(admin, _args)
 	local list = readLog()
 	local shown: { Plain } = table.move(list, 1, math.min(#list, MAX_LIST), 1, {})
 	return true, L(admin, "admin.logLoaded", #shown), shown
+end
+
+-- =====================================================================
+-- AKTIONEN – TEAM (W19/W26): Stumm, Rollen, Team-Liste, Meldungen, Respawn, TpTo, Neustart
+-- =====================================================================
+-- Stummschalten führt StaffService aus (Chat-Kanäle, Sprachchat, Spielstand, Undo-Regel); die Masse prüft das Tor hier
+local function staffDelegate(admin: Player, fnName: string, ...: any): (boolean, string, any?)
+	local ok, success, message, data = call("StaffService", fnName, admin, ...)
+	if not ok then
+		return false, L(admin, "admin.unavailable", "StaffService")
+	end
+	return success == true, tostring(message or ""), data
+end
+
+Actions.Mute = function(admin, args)
+	local targets = resolveTargets(admin, args.Target)
+	local mass = massError(admin, args.Target, #targets)
+	if mass then
+		return false, mass
+	end
+	local ok, message = staffDelegate(admin, "Mute", args)
+	return ok, message
+end
+
+Actions.Unmute = function(admin, args)
+	local ok, message = staffDelegate(admin, "Unmute", args)
+	return ok, message
+end
+
+-- Rolle setzen/entfernen: { Target? | UserId? | Name?, Role = "Admin" | "Moderator" | "" } – Prüfung in StaffService
+-- (Staff.CanSetRole, im UpdateAsync-Transform mit dem frischen Dokument wiederholt)
+Actions.SetRole = function(admin, args)
+	return staffDelegate(admin, "SetRole", args)
+end
+
+Actions.StaffList = function(admin, _args)
+	return staffDelegate(admin, "List")
+end
+
+-- Meldung erledigen: { Id ≤ 80 } -> AntiCheatService.Dismiss (gibt den Eintrag zurück); der Melder bekommt Bescheid
+Actions.ResolveReport = function(admin, args)
+	local id = args.Id
+	if type(id) ~= "string" or #id < 1 or #id > 80 then
+		return false, L(admin, "core.invalid")
+	end
+	local ok, done, entry = call("AntiCheatService", "Dismiss", id)
+	if not ok or done ~= true then
+		return false, L(admin, "core.error")
+	end
+	local reporter = if type(entry) == "table" and isInt(entry.From) then Players:GetPlayerByUserId(entry.From) else nil
+	if reporter and reporter ~= admin then
+		call("StaffService", "SayKey", reporter, "admin.rep.yours", { tostring(entry.Name or "?") }, "Ok")
+	end
+	return true, L(admin, "admin.rep.resolved")
+end
+
+-- Neu spawnen: sich selbst erlaubt, andere nur bei niedrigerem Rang, Masse nur mit MassTarget
+Actions.Respawn = function(admin, args)
+	local targets, err = resolveTargets(admin, args.Target)
+	if #targets == 0 then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local mass = massError(admin, args.Target, #targets)
+	if mass then
+		return false, mass
+	end
+	local kept, skipped, hadSelf = filterRank(admin, targets, true)
+	if #kept == 0 then
+		return false, rankError(admin, skipped, hadSelf)
+	end
+	for _, p in ipairs(kept) do
+		task.spawn(function()
+			unseat(p) -- erst aus dem Auto (sonst reißt der neue Character den Sitz mit)
+			if p.Parent ~= Players then
+				return
+			end
+			local okLoad, loadErr = pcall(function()
+				p:LoadCharacter()
+			end)
+			if not okLoad then
+				warn(("[Admin] Respawn %s fehlgeschlagen: %s"):format(p.Name, tostring(loadErr)))
+			end
+		end)
+	end
+	return true, withSkipped(admin, L(admin, "admin.cmd.respawned", names(kept)), #skipped)
+end
+
+-- Spieler A zu Spieler B: { Target = A, To = B }; A wird bewegt -> Rang-Regel (außer A = man selbst)
+Actions.TpTo = function(admin, args)
+	local target, err = resolveOne(admin, args.Target)
+	if not target then
+		return false, err or L(admin, "admin.noTarget")
+	end
+	local to, errTo = resolveOne(admin, args.To)
+	if not to then
+		return false, errTo or L(admin, "admin.noTarget")
+	end
+	if target == to then
+		return false, L(admin, "admin.noTarget")
+	end
+	if target ~= admin and not canActOn(admin, target) then
+		return false, L(admin, "admin.cmd.rank", target.DisplayName)
+	end
+	local base = footOf(to)
+	if not base or not target.Character then
+		return false, L(admin, "admin.noCharacter")
+	end
+	if not teleport(target, base * CFrame.new(0, 0, 4)) then
+		return false, L(admin, "admin.noCharacter")
+	end
+	return true, L(admin, "admin.cmd.tpOther", target.DisplayName, to.DisplayName)
+end
+
+-- Server neu starten (nur dieser Server): { Confirm = true, Reason? } – sperren, Vorwarnung an alle (in ihrer Sprache),
+-- nach ShutdownDelay alle kicken (der Auslöser zuletzt). Roblox schließt den leeren Server; neue Beitritte fliegen raus.
+Actions.Shutdown = function(admin, args)
+	if args.Confirm ~= true then
+		return false, L(admin, "admin.confirmNeeded")
+	end
+	local seconds = math.clamp(math.floor(tonumber(STAFF.ShutdownDelay) or 10), 1, 120)
+	if shuttingDown then
+		return true, L(admin, "admin.cmd.shutdown", seconds)
+	end
+	shuttingDown = true
+	serverLocked = true
+	workspace:SetAttribute("ServerLocked", true)
+	local raw = cleanText(args.Reason, MAX_REASON)
+	local reason = if raw then filterBroadcast(raw, admin.UserId) else nil
+	local role = roleOf(admin) or "Owner"
+	local shownName = string.sub(admin.DisplayName, 1, MAX_NAME)
+	for _, p in ipairs(Players:GetPlayers()) do
+		local note = L(p, "admin.cmd.shutdownNote")
+		if reason and reason ~= "" then
+			note ..= " – " .. reason
+		end
+		effect(p, "Announce", 0, { Text = note, UserId = admin.UserId, Name = shownName, Role = role })
+	end
+	task.delay(seconds, function()
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p ~= admin then
+				p:Kick(L(p, "admin.cmd.shutdownKick"))
+			end
+		end
+		if admin.Parent == Players then
+			admin:Kick(L(admin, "admin.cmd.shutdownKick"))
+		end
+	end)
+	return true, L(admin, "admin.cmd.shutdown", seconds)
 end
 
 -- =====================================================================
@@ -2798,15 +3863,60 @@ end
 -- =====================================================================
 -- LEBENSZYKLUS
 -- =====================================================================
-local function dispatch(p: Player, action: any, args: any): { Ok: boolean, Message: string?, Data: any? }
-	if p.Parent ~= Players then
-		return { Ok = false } -- schon gegangen (sonst bliebe ein Limiter-Eintrag nach PlayerRemoving liegen)
+-- Log-Ziel aus den Argumenten (Target / To / Name / UserId) – nie Freitext oder Chat-Rohtext
+local function targetText(args: Plain): string?
+	local function one(value: any): string?
+		if type(value) == "string" and value ~= "" then
+			return truncate(value, MAX_NAME)
+		elseif isInt(value) then
+			return tostring(value)
+		end
+		return nil
 	end
-	-- Spam-Bremse ZUERST (auch für Nicht-Admins, sonst fluten Exploiter das Server-Log)
-	if not limiter.Check(p) then
-		return { Ok = false, Message = L(p, "core.tooFast") }
+	local target = one(args.Target) or one(args.Name) or one(args.UserId)
+	local to = one(args.To)
+	if target and to then
+		return truncate(target .. " -> " .. to, MAX_NAME)
 	end
-	if not AdminService.IsAdmin(p) then
+	return target
+end
+
+-- Ablehnung: Teammitglieder, die eine schwächere Variante dürfen, bekommen den passenden Hinweis statt "keine Berechtigung"
+local function deniedText(p: Player, action: string, args: Plain): string
+	if action == "Ban" and can(p, "TempBan") then
+		if args.UserId ~= nil or args.Name ~= nil then
+			return L(p, "admin.ban2.onlineOnly")
+		end
+		local maxTable = STAFF.TempBanMax
+		local role = roleOf(p)
+		local max = if type(maxTable) == "table" and role then maxTable[role] else nil
+		if Util.IsFinite(max) and max > 0 then
+			return L(p, "admin.cmd.maxDuration", Format.Duration(max, langOf(p)))
+		end
+	end
+	return L(p, "admin.denied")
+end
+
+-- Teammitglieder: Ablehnung je Aktion höchstens einmal pro Minute ins Admin-Log
+local function noteDenied(p: Player, action: string, via: string)
+	local map = deniedAt[p]
+	if not map then
+		map = {}
+		deniedAt[p] = map
+	end
+	if Core.GapOk(map, action, os.clock(), DENIED_LOG_GAP) then
+		logAction(p, "Denied", false, action, via)
+	end
+end
+
+-- DAS Tor für jede Admin-Aktion (Panel und Chat): Rang ≥ 1 -> Recht (Core.PermFor + Staff.Can) -> Besitzer bekannt
+-- (strafende Rechte) -> Schwer-Abstand -> Aktion (pcall) -> Admin-Log mit Via/Role/Target. Gibt (ok, Meldung?, Daten?).
+function AdminService.Run(p: Player, action: any, args: any, via: string?): (boolean, string?, any?)
+	if typeof(p) ~= "Instance" or not p:IsA("Player") or p.Parent ~= Players then
+		return false, nil, nil
+	end
+	local viaName = if via == "Chat" then "Chat" else "Panel"
+	if rankOf(p) < 1 then
 		if not warnedDenied[p] then
 			warnedDenied[p] = true
 			warn(("[Admin] Unerlaubter Zugriff von %s (%d)"):format(p.Name, p.UserId))
@@ -2814,43 +3924,92 @@ local function dispatch(p: Player, action: any, args: any): { Ok: boolean, Messa
 				p,
 				"Denied",
 				false,
-				if type(action) == "string" then string.sub(action, 1, MAX_ACTION_LEN) else "?"
+				if type(action) == "string" then string.sub(action, 1, MAX_ACTION_LEN) else "?",
+				viaName
 			)
 		end
-		return { Ok = false, Message = L(p, "admin.denied") }
+		return false, L(p, "admin.denied"), nil
 	end
 	if type(action) ~= "string" or #action > MAX_ACTION_LEN or not Actions[action] then
-		return { Ok = false, Message = L(p, "core.unknownAction") }
+		return false, L(p, "core.unknownAction"), nil
 	end
 	local cleanArgs: Plain = if type(args) == "table" then args else {}
-	local ok, success, message, data = pcall(Actions[action], p, cleanArgs)
+	local perm = Core.PermFor(action, cleanArgs, STAFF)
+	if perm == nil or not can(p, perm) then
+		noteDenied(p, action, viaName)
+		return false, deniedText(p, action, cleanArgs), nil
+	end
+	-- Gruppen-Spiel mit (noch) unbekanntem Besitzer: strafende Rechte nur für den Besitzer selbst
+	if Core.OwnerBlocks(perm, AdminService.IsAdmin(p), AdminService.OwnerKnown()) then
+		refreshGroupOwner()
+		return false, L(p, "admin.ownerUnknown"), nil
+	end
+	if HEAVY[action] then
+		local map = heavyAt[p]
+		if not map then
+			map = {}
+			heavyAt[p] = map
+		end
+		if not Core.GapOk(map, action, os.clock(), tonumber(STAFF.HeavyGap) or 3) then
+			return false, L(p, "core.tooFast"), nil
+		end
+	end
+	local ctx: Ctx = { Via = viaName, Target = targetText(cleanArgs) }
+	local ok, success, message, data = pcall(Actions[action], p, cleanArgs, ctx)
 	if not ok then
 		warn(("[Admin] Fehler bei %s: %s"):format(action, tostring(success)))
-		logAction(p, action, false, tostring(success))
-		return { Ok = false, Message = L(p, "admin.error", tostring(success)) }
+		logAction(p, action, false, tostring(success), viaName, ctx.Target)
+		return false, L(p, "admin.error", tostring(success)), nil
 	end
+	local text = if type(message) == "string" then message else nil
 	if not QUIET[action] then
-		print(("[Admin] %s -> %s: %s"):format(p.Name, action, tostring(message)))
-		logAction(p, action, success == true, if type(message) == "string" then message else nil)
+		print(("[Admin] %s -> %s (%s): %s"):format(p.Name, action, viaName, tostring(text)))
+		logAction(p, action, success == true, text, viaName, ctx.Target)
 	end
-	return { Ok = success == true, Message = if type(message) == "string" then message else nil, Data = data }
+	return success == true, text, data
+end
+
+-- Remote "Admin": Spam-Bremse ZUERST (auch für Nicht-Teammitglieder, sonst fluten Exploiter das Log), dann nur Run
+local function dispatch(p: Player, action: any, args: any): { Ok: boolean, Message: string?, Data: any? }
+	if p.Parent ~= Players then
+		return { Ok = false } -- schon gegangen (sonst bliebe ein Limiter-Eintrag nach PlayerRemoving liegen)
+	end
+	if not limiter.Check(p) then
+		return { Ok = false, Message = L(p, "core.tooFast") }
+	end
+	local ok, message, data = AdminService.Run(p, action, args, "Panel")
+	return { Ok = ok, Message = message, Data = data }
 end
 
 local function onPlayer(p: Player)
 	joinedAt[p] = joinedAt[p] or os.clock()
 	refreshGroupOwner()
+	if shuttingDown then
+		p:Kick(L(p, "admin.cmd.shutdownKick")) -- Server startet gerade neu
+		return
+	end
 	if AdminService.IsAdmin(p) then
-		p:SetAttribute("IsAdmin", true)
+		p:SetAttribute("IsAdmin", true) -- nur der Besitzer (Team-Rollen setzen nur "Role", StaffService)
 		p:SetAttribute("CanFly", true)
 	else
 		p:SetAttribute("IsAdmin", nil)
 		if serverLocked then
-			p:Kick(L(p, "admin.lockedKick"))
-			return
+			-- gesperrter Server: Teammitglieder dürfen rein – erst die Rolle abwarten (Team-Dokument + Gruppen-Rang,
+			-- §16.2 Nr. 10), sonst flögen Gruppen-Moderatoren raus, bevor ihr Rang geladen ist
+			task.spawn(function()
+				if has("StaffService", "WaitRole") then
+					call("StaffService", "WaitRole", p, 6)
+				else
+					call("StaffService", "WaitReady", 5)
+				end
+				if p.Parent == Players and serverLocked and rankOf(p) < 1 then
+					p:Kick(L(p, "admin.lockedKick"))
+				end
+			end)
 		end
 	end
 	p.CharacterAdded:Connect(function(character)
-		if AdminService.IsAdmin(p) and p:GetAttribute("AdminInvisible") == true then
+		if p:GetAttribute("AdminInvisible") == true and can(p, "Invisible") then
 			task.defer(setInvisible, p, true)
 		end
 		if p:GetAttribute("AdminFrozen") == true or giftActive(p) then
@@ -2883,8 +4042,13 @@ function AdminService.Start()
 	end
 	Players.PlayerRemoving:Connect(function(p)
 		limiter.Clear(p)
+		lookupLimiter.Clear(p)
 		adminCache[p] = nil
 		warnedDenied[p] = nil
+		deniedAt[p] = nil
+		heavyAt[p] = nil
+		announceBy[p] = nil
+		frozenBy[p] = nil
 		joinedAt[p] = nil
 		ownerEvents[p] = nil
 		ownerLastTrade[p] = nil
@@ -2917,7 +4081,7 @@ function AdminService.Start()
 		1 / math.max(60, tonumber(Config.Tech.StatsFlushSeconds) or 600),
 		flushPurchaseStats
 	)
-	Scheduler.Every("AdminGroupOwner", 1 / 120, refreshGroupOwner)
+	Scheduler.Every("AdminGroupOwner", 1 / GROUP_FAIL_CACHE, refreshGroupOwner) -- prüft nur den Cache (Fehler: 30 s)
 	Scheduler.Every("AdminGifts", 1, expireGifts)
 
 	-- Global: Ansagen, Admin-Abuse, Live-Config (Sender empfängt auch selbst)

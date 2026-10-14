@@ -13,7 +13,9 @@
 --    5) Moderation & Banns                Melden, Bann-Dauern, Speicher-Grenzen
 --    6) Admin-Panel (§B15)                Text-Längen, Kräfte, Abklingzeiten, Log
 --    7) Sozial (§C11.2 Alt-Farming)       Kontoalter, Mindest-Sitzung
---  Validate(Config): { string }           prüft alle Zahlen (SelfTest / Boot-warn)
+--    8) Team-Rollen & Moderation (W19)   Rechte-Matrix, Deckel, Gruppe, Banns-Liste (W26), Abstände
+--  Validate(Config, staffLib?): { string } prüft alle Zahlen (SelfTest / Boot-warn); staffLib = Shared/Staff
+--                                       (sonst per require geladen – Luau-CLI-Tests geben es direkt mit)
 -- =====================================================================
 
 local Security = {
@@ -79,7 +81,8 @@ local Security = {
 	-- -----------------------------------------------------------------
 	-- 4) SPAM-BREMSEN – { Aufrufe, Sekunden }
 	-- -----------------------------------------------------------------
-	Rates = { Request = { 8, 1 }, Admin = { 12, 1 } },
+	-- Command = Chat-Befehle je Spieler (alle drei Wege), Role = Rollen-Änderungen je Handelndem (W19)
+	Rates = { Request = { 8, 1 }, Admin = { 12, 1 }, Command = { 6, 10 }, Role = { 6, 60 } },
 
 	-- -----------------------------------------------------------------
 	-- 5) MODERATION & BANNS
@@ -124,6 +127,112 @@ local Security = {
 	-- -----------------------------------------------------------------
 	AccountAgeMin = 3, -- Respekt/Bau-Hilfe erst ab 3 Tagen Kontoalter (Studio: Config.Studio.SkipAccountAge)
 	SessionMinForSocial = 600, -- … und ab 10 min Sitzung
+
+	-- -----------------------------------------------------------------
+	-- 8) TEAM-ROLLEN & MODERATION (W19) – Besitzer (fest) > Admin > Moderator. Rollen kann man NIE kaufen.
+	--    Perms: Recht -> MINDEST-Rolle ("Moderator" | "Admin" | "Owner"). Der Server prüft JEDE Aktion neu.
+	--    Gesperrt auf "Owner" (Validate): ManageAdmins, GiveAky, MarketEvents, LockServer, Shutdown, LiveConfig,
+	--    Purchases, Debug.
+	--    Team vergeben: im Spiel Panel (P) → Team oder Chat /mod Name, /admin Name (Rechte-Liste: Shared/Staff).
+	-- -----------------------------------------------------------------
+	Staff = {
+		Group = { Id = 0, AdminRank = 254, ModeratorRank = 200 }, -- Roblox-Gruppe: Id 0 = aus
+		AdminCanManageMods = true, -- Admins dürfen Moderatoren vergeben/entziehen
+		MaxMembers = 100, -- höchstens so viele gespeicherte Teammitglieder (AT_Mod_v1 "Staff")
+		DocRefreshSeconds = 120, -- Team-Liste so oft neu lesen (zusätzlich sofort per MessagingService)
+		TempBanMax = { Moderator = 86400, Admin = -1, Owner = -1 }, -- längster Bann je Rolle in s (-1 = dauerhaft erlaubt)
+		MuteMax = { Moderator = 86400, Admin = 604800, Owner = -1 }, -- längste Stummschaltung je Rolle in s
+		DefaultBan = "1d", -- /ban ohne Dauer (auf das Rollen-Maximum gekürzt)
+		DefaultMute = "10m", -- /mute ohne Dauer
+		MuteVoice = true, -- Stummschalten trifft auch den Sprachchat (best effort)
+		Credits = { PerAction = 1000000, PerDay = 10000000 }, -- CR-Deckel für Nicht-Besitzer (Besitzer: ohne Deckel)
+		AnnounceGlobalGap = 60, -- Sekunden zwischen zwei globalen Ansagen je Nicht-Besitzer
+		AnnounceGap = 10, -- Sekunden zwischen zwei lokalen Ansagen je Nicht-Besitzer (§16.2 Nr. 9)
+		FunEventGap = 300, -- Sekunden zwischen zwei Spaß-Events je Server, wenn kein Besitzer startet (§16.2 Nr. 9)
+		HeavyGap = 3, -- schwere Lese-Aktionen (Listen, Logs, Statistik): höchstens 1× je Aktion in so vielen s
+		LookupLimit = { 10, 60 }, -- Namens-/Gruppen-Abfragen je Handelndem { Aufrufe, Sekunden }
+		ReportNoteMax = 120, -- Zeichen Freitext bei /report (gefiltert gespeichert)
+		ReportNotifyGap = 15, -- höchstens eine Meldungs-Benachrichtigung je Teammitglied in so vielen Sekunden
+		ConfirmSeconds = 15, -- "/shutdown confirm", "/kick all confirm" innerhalb von so vielen Sekunden
+		ShutdownDelay = 10, -- Sekunden Vorwarnung bei /shutdown
+		-- Tab „Banns“ & /unban (W26)
+		BanIndexMax = 500, -- so viele aktive Banns stehen höchstens in der Liste (AT_Mod_v1 "BanIndex")
+		BanPageSize = 25, -- Einträge je Seite im Tab „Banns“
+		UnbanReasonMax = 120, -- Zeichen Grund beim Entbannen (gefiltert)
+		BanReconcile = { PerRequest = 5, CacheSeconds = 600 }, -- Abgleich mit Roblox: Ids je Seite, Ergebnis-Cache in s
+		Perms = {
+			-- Moderator
+			Panel = "Moderator", -- Admin-Panel öffnen, Dashboard, F8-Overlay
+			PlayerList = "Moderator",
+			Kick = "Moderator",
+			Mute = "Moderator", -- Text-Chat (+ Sprachchat, wenn MuteVoice) inkl. Aufheben
+			Warn = "Moderator",
+			TempBan = "Moderator", -- bis TempBanMax[Rolle], nur Spieler auf diesem Server
+			Teleport = "Moderator", -- /tp zu Spieler, Goto, Tower besuchen
+			Bring = "Moderator",
+			Freeze = "Moderator",
+			Spectate = "Moderator",
+			Respawn = "Moderator",
+			Reports = "Moderator", -- Meldungen + Anti-Cheat-Flags ansehen/erledigen
+			Logs = "Moderator", -- Admin-Log, Bann-Log
+			TeamView = "Moderator", -- Tab Team ansehen
+			UnbanOwn = "Moderator", -- eigene Zeit-Banns aufheben (W26)
+			BanView = "Moderator", -- Tab „Banns“ + Liste (W26)
+			-- Admin
+			Ban = "Admin", -- jede Dauer bis dauerhaft, auch offline per Name/UserId
+			Unban = "Admin", -- jede Sperre aufheben (auch dauerhaft und von anderen)
+			MassTarget = "Admin", -- all/others (und Listen mit > 3 Spielern) bei Mute/Warn/Freeze/Bring/Respawn
+			Fly = "Admin", -- für sich selbst
+			Noclip = "Admin", -- für sich selbst
+			GiveSpeed = "Admin", -- Speed/Sprung schenken (auch AdminSpeed/AdminJump für sich)
+			GiveCredits = "Admin", -- CR geben (Deckel Credits.PerAction/PerDay für Nicht-Besitzer, nie an sich selbst)
+			Announce = "Admin",
+			AnnounceGlobal = "Admin", -- alle Server (Abstand AnnounceGlobalGap für Nicht-Besitzer)
+			FunEvents = "Admin", -- Spaß-Events (keine Markt-Manipulation), nur dieser Server
+			WorldEvents = "Admin", -- Welt-Events jetzt starten (dieser Server)
+			ManageMods = "Admin", -- Moderatoren vergeben/entziehen (nur mit AdminCanManageMods)
+			ShowCam = "Admin", -- Show-Kamera (nur lokal)
+			-- Owner
+			ManageAdmins = "Owner",
+			TakeCredits = "Owner", -- negative CR
+			GiveItems = "Owner", -- Items, Deko, Autos, Uhren, Lizenz, Etagen, Tokens
+			GiveAky = "Owner",
+			PlayerData = "Owner", -- Spielstand-Zusammenfassung ansehen
+			Purchases = "Owner", -- Belege, Nachgewähren, Daten zurücksetzen
+			MarketEvents = "Owner",
+			EconomyEvents = "Owner", -- Golden Hour, Bau-Boom
+			GlobalEvents = "Owner", -- Nicht-Markt-Events auf allen Servern
+			LockServer = "Owner",
+			Shutdown = "Owner",
+			KickAll = "Owner", -- Kick all/others
+			LiveConfig = "Owner",
+			Stats = "Owner",
+			Debug = "Owner",
+			Invisible = "Owner",
+			Esp = "Owner",
+		},
+		-- Event-Schlüssel -> Recht (Tab Events/Welt, /event). Markt-Events sind immer MarketEvents.
+		EventPerms = {
+			Lightshow = "FunEvents",
+			Fireworks = "FunEvents",
+			Confetti = "FunEvents",
+			BellShow = "FunEvents",
+			Boss = "FunEvents",
+			AllToHall = "FunEvents",
+			XpRush = "FunEvents",
+			MoneyRain = "FunEvents",
+			GoldenHour = "EconomyEvents",
+			BuildBoom = "EconomyEvents", -- Admin-Bau-Boom UND Welt-Bau-Boom (Kostenrabatt)
+			SaturdayShow = "MarketEvents", -- enthält eine Markt-Rally
+			Truck = "WorldEvents",
+			Drones = "WorldEvents",
+			Press = "WorldEvents",
+			SkyShow = "WorldEvents",
+			Bear = "WorldEvents",
+			GoldenBull = "WorldEvents",
+			BellMoment = "WorldEvents",
+		},
+	},
 }
 
 -- ---------------------------------------------------------------------
@@ -133,7 +242,20 @@ local function isNumber(value: any): boolean
 	return typeof(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
-function Security.Validate(_config: any): { string }
+-- Shared/Staff (reines Modul, kein Config-require -> keine Schleife); erst beim Prüfen geladen
+local function loadStaff(): any
+	local shared = script.Parent and script.Parent.Parent
+	local module = shared and (shared:FindFirstChild("Staff") or shared:WaitForChild("Staff", 5))
+	if module and module:IsA("ModuleScript") then
+		local ok, result = pcall(require, module)
+		if ok and type(result) == "table" then
+			return result
+		end
+	end
+	return nil
+end
+
+function Security.Validate(_config: any, staffLib: any?): { string }
 	local errors: { string } = {}
 	local function positive(path: string, value: any)
 		if not isNumber(value) or value <= 0 then
@@ -258,6 +380,106 @@ function Security.Validate(_config: any): { string }
 	positive("Config.Security.Powers.EspMax", Security.Powers.EspMax)
 	if isNumber(Security.Powers.EspMax) and Security.Powers.EspMax > 31 then
 		table.insert(errors, "Config.Security.Powers.EspMax: höchstens 31 (Highlight-Budget)")
+	end
+
+	-- 8) Team-Rollen & Moderation (W19/W26)
+	local function wholePositive(path: string, value: any, max: number?)
+		if not isNumber(value) or value < 1 or value % 1 ~= 0 then
+			table.insert(errors, path .. ": ganze Zahl > 0 erwartet")
+		elseif max and value > max then
+			table.insert(errors, ("%s: höchstens %d"):format(path, max))
+		end
+	end
+	local staff = (Security :: any).Staff
+	local Staff = staffLib or loadStaff()
+	if type(staff) ~= "table" then
+		table.insert(errors, "Config.Security.Staff: Tabelle erwartet")
+	elseif type(Staff) ~= "table" then
+		table.insert(errors, "Config.Security.Staff: Shared/Staff nicht ladbar – Rechte nicht prüfbar")
+	else
+		local group = staff.Group
+		if type(group) ~= "table" or not isNumber(group.Id) or group.Id < 0 or group.Id % 1 ~= 0 then
+			table.insert(errors, "Config.Security.Staff.Group.Id: ganze Zahl ≥ 0 erwartet (0 = aus)")
+		elseif
+			not (
+				isNumber(group.AdminRank)
+				and isNumber(group.ModeratorRank)
+				and group.ModeratorRank >= 1
+				and group.AdminRank <= 255
+				and group.AdminRank > group.ModeratorRank
+			)
+		then
+			table.insert(errors, "Config.Security.Staff.Group: 1 ≤ ModeratorRank < AdminRank ≤ 255 erwartet")
+		end
+		for _, key in ipairs({ "AdminCanManageMods", "MuteVoice" }) do
+			if type(staff[key]) ~= "boolean" then
+				table.insert(errors, "Config.Security.Staff." .. key .. ": true/false erwartet")
+			end
+		end
+		for _, key in ipairs({
+			"DocRefreshSeconds",
+			"AnnounceGlobalGap",
+			"AnnounceGap",
+			"FunEventGap",
+			"HeavyGap",
+			"ReportNotifyGap",
+			"ConfirmSeconds",
+			"ShutdownDelay",
+		}) do
+			positive("Config.Security.Staff." .. key, staff[key])
+		end
+		wholePositive("Config.Security.Staff.MaxMembers", staff.MaxMembers, 1000)
+		wholePositive("Config.Security.Staff.ReportNoteMax", staff.ReportNoteMax, 200)
+		wholePositive("Config.Security.Staff.BanIndexMax", staff.BanIndexMax, 2000) -- Index bleibt weit unter 4 MB
+		wholePositive("Config.Security.Staff.BanPageSize", staff.BanPageSize, 100)
+		wholePositive("Config.Security.Staff.UnbanReasonMax", staff.UnbanReasonMax, Security.BanDisplayMax)
+		local reconcile = staff.BanReconcile
+		wholePositive(
+			"Config.Security.Staff.BanReconcile.PerRequest",
+			type(reconcile) == "table" and reconcile.PerRequest,
+			25
+		)
+		wholePositive(
+			"Config.Security.Staff.BanReconcile.CacheSeconds",
+			type(reconcile) == "table" and reconcile.CacheSeconds
+		)
+		if isNumber(staff.BanPageSize) and isNumber(staff.BanIndexMax) and staff.BanPageSize > staff.BanIndexMax then
+			table.insert(errors, "Config.Security.Staff.BanPageSize: höchstens BanIndexMax")
+		end
+		pair("Config.Security.Staff.LookupLimit", staff.LookupLimit)
+		for _, tableName in ipairs({ "TempBanMax", "MuteMax" }) do
+			local limits = staff[tableName]
+			for _, role in ipairs(Staff.ROLES) do
+				local value = type(limits) == "table" and limits[role]
+				if not isNumber(value) or (value ~= -1 and value < 60) then
+					table.insert(
+						errors,
+						("Config.Security.Staff.%s.%s: Sekunden ≥ 60 oder -1"):format(tableName, role)
+					)
+				end
+			end
+		end
+		if Staff.ParseDuration(staff.DefaultBan) == nil then
+			table.insert(errors, 'Config.Security.Staff.DefaultBan: Dauer wie "1d" erwartet')
+		end
+		if Staff.ParseDuration(staff.DefaultMute) == nil then
+			table.insert(errors, 'Config.Security.Staff.DefaultMute: Dauer wie "10m" erwartet')
+		end
+		local credits = staff.Credits
+		positive("Config.Security.Staff.Credits.PerAction", type(credits) == "table" and credits.PerAction)
+		positive("Config.Security.Staff.Credits.PerDay", type(credits) == "table" and credits.PerDay)
+		if
+			type(credits) == "table"
+			and isNumber(credits.PerDay)
+			and isNumber(credits.PerAction)
+			and credits.PerDay < credits.PerAction
+		then
+			table.insert(errors, "Config.Security.Staff.Credits.PerDay: muss ≥ PerAction sein")
+		end
+		-- unbekannte/fehlende Rechte, Rollen-Werte, gesperrte Besitzer-Rechte, Event-Rechte
+		for _, problem in ipairs(Staff.CheckPerms(staff.Perms, staff.EventPerms)) do
+			table.insert(errors, "Config.Security.Staff." .. problem)
+		end
 	end
 	return errors
 end

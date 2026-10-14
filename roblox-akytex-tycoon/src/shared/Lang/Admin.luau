@@ -1,5 +1,5 @@
 -- =====================================================================
---  AKYTEX TYCOON – Texte "admin." (Shared/Lang/Admin)
+--  AKYTEX TYCOON – Texte "admin." (Shared/Lang/Admin) · Rollen-/Befehlstexte stehen in Lang/Team (W19)
 --  Besitzer: WP11 (Admin, Events, Anti-Cheat). Nur Schlüssel mit Präfix "admin.". Vertrag: DESIGN.md §C15, §B15.
 --  Admin-Panel, Debug-Overlay, Admin-Werkzeuge, Server-Antworten der Admin-Aktionen, Anti-Cheat-Kick/Bann-Texte, Meldungen.
 --  Platzhalter wie string.format (%d Zahl, %s Text); ein Prozentzeichen steht immer als "%%" (Lang.T formatiert).
@@ -21,7 +21,7 @@ return {
 		["admin.denied"] = "Keine Berechtigung",
 		["admin.confirm"] = "Zum Bestätigen nochmal tippen: %s",
 		["admin.confirmNeeded"] = "Bitte zuerst bestätigen",
-		["admin.targetHint"] = "Ziel: Name, UserId, me, all oder others",
+		["admin.targetHint"] = "Ziel: Name, @Anzeigename, UserId, me, all oder others",
 		["admin.targetSet"] = "Ziel: %s",
 		["admin.moduleMissing"] = "Modul %s ist nicht geladen",
 		["admin.unavailable"] = "%s ist gerade nicht erreichbar",
@@ -139,7 +139,7 @@ return {
 		["admin.noTarget"] = "Kein passender Spieler gefunden",
 		["admin.oneTarget"] = "Bitte genau einen Spieler wählen",
 		["admin.notSelf"] = "Nicht auf dich selbst",
-		["admin.notOwner"] = "Besitzer und Admins sind davon ausgenommen",
+		["admin.notOwner"] = "Gleicher oder höherer Rang ist geschützt",
 		["admin.studioUser"] = "Studio-Testspieler können nicht gebannt werden",
 		["admin.noCharacter"] = "Kein Charakter geladen",
 		["admin.noPlot"] = "Dieser Spieler hat kein Grundstück",
@@ -490,7 +490,7 @@ return {
 		["admin.denied"] = "No permission",
 		["admin.confirm"] = "Tap again to confirm: %s",
 		["admin.confirmNeeded"] = "Please confirm first",
-		["admin.targetHint"] = "Target: name, UserId, me, all or others",
+		["admin.targetHint"] = "Target: name, @displayname, UserId, me, all or others",
 		["admin.targetSet"] = "Target: %s",
 		["admin.moduleMissing"] = "Module %s is not loaded",
 		["admin.unavailable"] = "%s is not reachable right now",
@@ -608,7 +608,7 @@ return {
 		["admin.noTarget"] = "No matching player found",
 		["admin.oneTarget"] = "Please pick exactly one player",
 		["admin.notSelf"] = "Not on yourself",
-		["admin.notOwner"] = "Owner and admins are exempt",
+		["admin.notOwner"] = "Same or higher rank is protected",
 		["admin.studioUser"] = "Studio test players can't be banned",
 		["admin.noCharacter"] = "No character loaded",
 		["admin.noPlot"] = "This player has no plot",

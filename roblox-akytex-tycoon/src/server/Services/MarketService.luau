@@ -19,13 +19,24 @@
 --    AdminWindowActive(t?) · AdminWindowsBetween(t0, t1) · AutoShowCancelled(week) · IsLocalMarket()
 --    OnTick(cb) · OnNews(cb) · OnDayClose(cb) · Admin(action, args, by) · Stats()
 --    zusätzlich: IsReady(): boolean (Seed geladen, Plan gebaut) · AuditStats() (Admin-Statistik Fill-Audit) ·
---    TestContext(seed, week, bases?, cancelled?) (nur SelfTests: isolierter Wochen-Kontext; cancelled = true | Tick)
+--    TestContext(seed, week, bases?, cancelled?) (nur SelfTests: isolierter Wochen-Kontext; cancelled = true | Tick) ·
+--    Status(): (Status, Attempt) · Tradeable(): boolean (W20 §4.1.1 + Korrektur §11.1)
+--  Markt-Start (W20 §4.1.1, Korrektur §11.1): Start() startet bootLoop – bis Config.Market.Boot.Attempts Versuche mit
+--  Backoff (resetForRetry behält Callbacks und Bus-Events, die im neuen Kontext wieder angewendet werden), danach
+--  der lokale Ersatzmarkt. Auf einem LIVE-Server ist der Ersatzmarkt NUR ANSICHT (Tradeable() = false, State
+--  ViewOnly) und die Schleife prüft alle Boot.LocalRetrySeconds im Hintergrund den echten Seed -> Neustart -> Live.
+--  Nie Live -> Local: ein Live-Markt nimmt nie einen Fallback-Seed (Wochenwechsel wartet auf den echten Seed).
+--  Jeder DataStore-/Bus-Zugriff beim Live-Start ist pcall-sicher; ein Lesefehler (Seed, Wochenschluss, IPOs, Tune,
+--  Admin-Log) ist ein Fehlversuch (Wiederholung) statt eines handelbaren Markts mit falschen Daten.
+--  Status: "Booting" (Versuch läuft/wartet) · "Live" · "Local" (Studio-Testmarkt bzw. Ersatzmarkt) · "Failed" (auch der
+--  Ersatzmarkt scheiterte; die Schleife versucht es weiter).
 --  Hinweise für WP4: vor IsReady() liefern Quote/Candle1s nil und PriceAt den Startkurs – den Offline-Abgleich erst
 --  starten, wenn IsReady() true ist. Zeitpunkte > Tick() werden auf Tick() begrenzt (nie Zukunft). Nach einem
 --  Server-Stillstand > 60 s springt der Markt auf jetzt (OnTick feuert für die übersprungenen Ticks NICHT, nur die
 --  verpassten OnDayClose) – Orders dieser Lücke gleicht WP4 wie offline über PriceAt/NewCursor ab.
 --  State "Market" = { Week, Day, Regime, Halts = { ["<Id>"] = Until, ["0"] = ganzer Markt }, AdminWindow,
---  AutoShowCancelled } (String-Schlüssel wegen Remote-Serialisierung; nie der Seed).
+--  AutoShowCancelled, Ready, Status, Attempt, Since (Unix-Sekunden seit Beginn des laufenden Starts), ViewOnly }
+--  (String-Schlüssel wegen Remote-Serialisierung; nie der Seed).
 -- =====================================================================
 
 local Players = game:GetService("Players")
@@ -64,6 +75,7 @@ type Ctx = {
 	Director: any,
 	Engine: any,
 	Bases: { [number]: number },
+	Applied: { [string]: boolean }, -- schon angewendete Bus-Event-Ids (jedes Event genau einmal je Kontext)
 }
 
 local cfg: any = Config.Market
@@ -75,6 +87,7 @@ local MAX_CALLBACKS = 64
 local DAYCLOSE_WAIT = 3 -- s: so lange wartet der Tagesschluss auf die Tagesrendite (OrderService.OnDayResult)
 local MAX_SKIPPED_DAYS = 72 -- nach einem Stillstand höchstens so viele Tagesschlüsse nachholen
 local ERROR_LOG_EVERY = 10
+local MAX_LOOP_RESTARTS = 50 -- Schutznetz der Start-Schleife (je Neustart LocalRetrySeconds Pause)
 
 -- Zustand -------------------------------------------------------------
 local ready = false
@@ -101,6 +114,10 @@ local tickMs = 0
 local busPolling = false
 local stateSig = ""
 local errorAt: { [string]: number } = {}
+-- Markt-Start (W20 §4.1.1): Status für State/Stats/OrderService; bootGen verwirft Ergebnisse alter Hintergrund-Threads
+local bootInfo = { Status = "Booting", Attempt = 0, Since = 0, Error = "" }
+local bootGen = 0
+local loopStarted = false
 
 -- ---------------------------------------------------------------------
 -- HILFEN
@@ -218,6 +235,20 @@ local function contextFor(t: number): Ctx?
 		return prev
 	end
 	return nil
+end
+
+-- vorhandene Wochen-Kontexte, Vorwoche zuerst (dicht: ipairs über { ctxPrev, ctxCur } bräche bei fehlender
+-- Vorwoche sofort ab und übersähe die laufende Woche)
+local function contexts(): { Ctx }
+	local out: { Ctx } = {}
+	local prev, cur = ctxPrev, ctxCur
+	if prev then
+		table.insert(out, prev)
+	end
+	if cur then
+		table.insert(out, cur)
+	end
+	return out
 end
 
 local function ensureBuilt(ctx: Ctx, t: number)
@@ -376,7 +407,7 @@ local function newContext(
 			return cancelledWeeks[w]
 		end,
 	})
-	local ctx: Ctx = { Week = week, Seed = seed, Director = director, Engine = nil :: any, Bases = bases }
+	local ctx: Ctx = { Week = week, Seed = seed, Director = director, Engine = nil :: any, Bases = bases, Applied = {} }
 	local specs: { Plain } = {}
 	for _, slot in ipairs(slots) do
 		if slot.Origin ~= math.huge then
@@ -435,13 +466,15 @@ local function newContext(
 		end
 		if not isolated and listings[i] == nil then
 			listings[i] = { Tick = rec.T0, Issue = rec.Issue, Open = rec.Open, By = rec.By or 0 }
-			local s = seasonOfWeek(MarketClock.WeekIndex(rec.T0))
-			task.spawn(
-				MarketSeed.SaveIpo,
-				s,
-				i,
-				{ Tick = rec.T0, Issue = rec.Issue, Open = rec.Open, By = rec.By or 0 }
-			)
+			if not localMarket then -- ein Ersatzmarkt schreibt nie in den globalen Speicher
+				local s = seasonOfWeek(MarketClock.WeekIndex(rec.T0))
+				task.spawn(
+					MarketSeed.SaveIpo,
+					s,
+					i,
+					{ Tick = rec.T0, Issue = rec.Issue, Open = rec.Open, By = rec.By or 0 }
+				)
+			end
 		end
 	end)
 	for id, rec in pairs(weekListings) do
@@ -465,15 +498,29 @@ local function buildDays(ctx: Ctx, day: number, yielding: boolean)
 	end
 end
 
--- externe Events (Bus/Log) in einen Kontext übernehmen; carry = Event der Vorwoche, das hineinreicht
+-- externe Events (Bus/Log) in einen Kontext übernehmen; carry = Event der Vorwoche, das hineinreicht.
+-- Jedes Event höchstens einmal je Kontext (Neustart wendet die behaltenen Bus-Events erneut an, Bus-Ankünfte während
+-- des Starts kommen zusätzlich über onBusEvent). Der Live-Mid-Ring kennt das Event noch nicht -> verwerfen.
 local function applyToContext(ctx: Ctx, ev: Plain): { number }
-	local weekStart = MarketClock.WeekStart(ctx.Week)
-	if ev.StartTick >= weekStart and ev.StartTick <= MarketClock.WeekEnd(ctx.Week) then
-		return ctx.Director:AddExternal(ev, false)
-	elseif ev.StartTick < weekStart and ev.Until >= weekStart then
-		return ctx.Director:AddExternal(ev, true)
+	local id = ev.Id
+	if type(id) == "string" and ctx.Applied[id] then
+		return {}
 	end
-	return {}
+	local weekStart = MarketClock.WeekStart(ctx.Week)
+	local carry: boolean
+	if ev.StartTick >= weekStart and ev.StartTick <= MarketClock.WeekEnd(ctx.Week) then
+		carry = false
+	elseif ev.StartTick < weekStart and ev.Until >= weekStart then
+		carry = true
+	else
+		return {}
+	end
+	if type(id) == "string" then
+		ctx.Applied[id] = true
+	end
+	local affected = ctx.Director:AddExternal(ev, carry)
+	ctx.Engine:ClearRing()
+	return affected
 end
 
 -- Wochenschluss einer Woche aus ihrem Kontext (alle Instrumente, Cent)
@@ -598,6 +645,10 @@ local function onBusEvent(ev: Plain, late: boolean)
 		if show and ev.StartTick <= show - cancelLead() and (existing == nil or ev.StartTick < existing) then
 			-- gilt ab dem Start-Tick (alle Server gleich); die Warn-Volatilität blendet der EventDirector aus
 			cancelledWeeks[week] = ev.StartTick
+			-- verspätet angekommen, ändert sie schon live gerechnete Kurse: Live-Mid-Ringe verwerfen
+			for _, ctx in ipairs(contexts()) do
+				ctx.Engine:ClearRing()
+			end
 			markAllDirty()
 			local now = lastTick
 			local warnAt = show + (cfg.Weekly[autoShowIndex()].Offset or 0) - cfg.CrashRally.WarnSeconds
@@ -685,11 +736,41 @@ local function onBusEvent(ev: Plain, late: boolean)
 	markAllDirty()
 end
 
+-- behaltene Bus-Events (seit dem Serverstart dedupliziert) in einen neuen Kontext übernehmen – Neustart und
+-- Wochenwechsel; applyToContext wendet jedes Event höchstens einmal je Kontext an
+local function reapplyBus(ctx: Ctx)
+	for _, id in ipairs(busOrder) do
+		local ev = busEvents[id]
+		if ev and ev.Kind ~= "CancelAutoShow" then
+			applyToContext(ctx, ev)
+		end
+	end
+end
+
 -- ---------------------------------------------------------------------
 -- ÖFFENTLICHE API (§C5.3)
 -- ---------------------------------------------------------------------
 function MarketService.IsReady(): boolean
 	return ready
+end
+
+-- handelbar = bereit und kein Ersatzmarkt auf einem Live-Server (W20 Korrektur §11.1; Studio-Testmarkt handelbar)
+local function tradeableFor(isReady: boolean, isLocal: boolean, studio: boolean): boolean
+	return isReady and (not isLocal or studio)
+end
+
+-- nur Ansicht = bereit, aber Ersatzmarkt auf einem Live-Server (Kurse weichen von den anderen Servern ab)
+local function viewOnlyFor(isReady: boolean, isLocal: boolean, studio: boolean): boolean
+	return isReady and isLocal and not studio
+end
+
+function MarketService.Tradeable(): boolean
+	return tradeableFor(ready, localMarket, RunService:IsStudio())
+end
+
+-- (Status, Versuch): "Booting" | "Live" | "Local" | "Failed" (W20 §4.1.1)
+function MarketService.Status(): (string, number)
+	return bootInfo.Status, bootInfo.Attempt
 end
 
 function MarketService.Tick(): number
@@ -849,15 +930,13 @@ function MarketService.Dividends(t0: number, t1: number): { { I: number, Tick: n
 		return out
 	end
 	local a, b = math.floor(t0), clampTick(t1)
-	for _, ctx in ipairs({ ctxPrev, ctxCur } :: { Ctx? }) do
-		if ctx then
-			local ws, we = MarketClock.WeekStart(ctx.Week), MarketClock.WeekEnd(ctx.Week)
-			local lo, hi = math.max(a, ws), math.min(b, we)
-			if lo <= hi then
-				ensureBuilt(ctx, hi)
-				for _, d in ipairs(ctx.Director:Dividends(lo, hi)) do
-					table.insert(out, { I = d.I, Tick = d.Tick, Cents = d.Cents })
-				end
+	for _, ctx in ipairs(contexts()) do
+		local ws, we = MarketClock.WeekStart(ctx.Week), MarketClock.WeekEnd(ctx.Week)
+		local lo, hi = math.max(a, ws), math.min(b, we)
+		if lo <= hi then
+			ensureBuilt(ctx, hi)
+			for _, d in ipairs(ctx.Director:Dividends(lo, hi)) do
+				table.insert(out, { I = d.I, Tick = d.Tick, Cents = d.Cents })
 			end
 		end
 	end
@@ -1022,6 +1101,10 @@ function MarketService.Stats(): {
 	Instruments: number,
 	Ready: boolean,
 	Local: boolean,
+	ViewOnly: boolean,
+	BootStatus: string,
+	BootAttempt: number,
+	BootError: string,
 	Week: number,
 	Day: number,
 	Regime: number,
@@ -1038,6 +1121,10 @@ function MarketService.Stats(): {
 		Instruments = #MarketService.ActiveIds(),
 		Ready = ready,
 		Local = localMarket,
+		ViewOnly = viewOnlyFor(ready, localMarket, RunService:IsStudio()),
+		BootStatus = bootInfo.Status,
+		BootAttempt = bootInfo.Attempt,
+		BootError = bootInfo.Error,
 		Week = MarketClock.WeekIndex(lastTick),
 		Day = MarketClock.DayIndex(lastTick),
 		Regime = MarketService.Regime(),
@@ -1083,7 +1170,9 @@ function MarketService.Admin(action: string, args: { [string]: any }, by: Player
 	if by:GetAttribute("IsAdmin") ~= true then
 		return false, Lang.T(lang, "mkt.admin.denied")
 	end
-	if not ready then
+	-- Ersatzmarkt auf einem Live-Server (nur Ansicht): Admin-Events wirkten nur hier und kämen nach der Rückkehr zum
+	-- echten Markt mit -> ablehnen wie "läuft noch nicht"
+	if not ready or viewOnlyFor(ready, localMarket, RunService:IsStudio()) then
 		return false, Lang.T(lang, "mkt.admin.notReady")
 	end
 	if type(action) ~= "string" then
@@ -1192,6 +1281,10 @@ local function marketState(): Plain
 		AdminWindow = MarketService.AdminWindowActive(),
 		AutoShowCancelled = autoShowCancelled(week),
 		Ready = ready,
+		Status = bootInfo.Status,
+		Attempt = bootInfo.Attempt,
+		Since = bootInfo.Since,
+		ViewOnly = viewOnlyFor(ready, localMarket, RunService:IsStudio()),
 	}
 end
 
@@ -1202,6 +1295,8 @@ local function checkStateChange()
 		tostring(weatherBucket(s.Regime)),
 		tostring(s.AdminWindow),
 		tostring(s.AutoShowCancelled),
+		tostring(s.Status),
+		tostring(s.ViewOnly),
 	}
 	local keys: { string } = {}
 	for key, untilTick in pairs(s.Halts) do
@@ -1261,26 +1356,49 @@ local function pushRecent(item: Types.NewsItem)
 	end
 end
 
+-- Seed/Tune/IPOs der nächsten Woche im Hintergrund. Ein Live-Markt nimmt NIE einen Fallback-Seed (nie Live ->
+-- Local): ist der DataStore nicht erreichbar, bleibt nextSeed leer und der nächste Tick versucht es erneut (der
+-- Wochenwechsel wartet dann, Clients sehen "Verbindung …"). Ergebnisse eines inzwischen neu gestarteten Markts
+-- (bootGen) werden verworfen.
 local function prefetchNext(week: number)
 	if prefetching then
 		return
 	end
 	prefetching = true
+	local gen = bootGen
+	local isLocal = localMarket
 	task.spawn(function()
 		local ok, err = pcall(function()
-			local seed = MarketSeed.Load(week)
-			local tune = MarketSeed.LoadTune(week, cfg.NewsMeanGap)
-			for id, rec in pairs(MarketSeed.LoadIpos(seasonOfWeek(week))) do
+			local seed: number?
+			if isLocal then
+				seed = (MarketSeed.Load(week))
+			else
+				seed = MarketSeed.TryLoad(week)
+			end
+			if seed == nil then
+				error("Seed der Woche " .. week .. " nicht erreichbar", 0)
+			end
+			local tune, okTune = MarketSeed.LoadTune(week, cfg.NewsMeanGap)
+			local ipos, okIpos = MarketSeed.LoadIpos(seasonOfWeek(week))
+			if not isLocal and not (okTune and okIpos) then
+				error("Tune/IPOs der Woche " .. week .. " nicht erreichbar", 0)
+			end
+			if gen ~= bootGen then
+				return -- Markt inzwischen neu gestartet
+			end
+			for id, rec in pairs(ipos) do
 				if listings[id] == nil then
 					listings[id] = rec
 				end
 			end
-			nextSeed = { Week = week, Seed = seed, Tune = tune }
+			nextSeed = { Week = week, Seed = seed :: number, Tune = tune }
 		end)
 		if not ok then
 			logError("Prefetch", err)
 		end
-		prefetching = false
+		if gen == bootGen then
+			prefetching = false
+		end
 	end)
 end
 
@@ -1300,15 +1418,12 @@ local function rollover(t: number): boolean
 		return false
 	end
 	local closes = closesOf(cur)
-	task.spawn(MarketSeed.SaveClose, cur.Week, closes)
+	if not localMarket then -- ein Ersatzmarkt schreibt nie in den globalen Speicher
+		task.spawn(MarketSeed.SaveClose, cur.Week, closes)
+	end
 	local fresh = newContext(week, pre.Seed, closes, pre.Tune)
 	fresh.Director:EnsureBuilt(MarketClock.DayIndex(t))
-	for _, id in ipairs(busOrder) do
-		local ev = busEvents[id]
-		if ev and ev.Kind ~= "CancelAutoShow" then
-			applyToContext(fresh, ev)
-		end
-	end
+	reapplyBus(fresh)
 	ctxPrev = cur
 	ctxCur = fresh
 	nextSeed = nil
@@ -1495,13 +1610,47 @@ end
 -- ---------------------------------------------------------------------
 -- START (Hintergrund-Thread): Seed, Wochenbasis, Plan, Bus, Backfill
 -- ---------------------------------------------------------------------
+-- Live-Start: ein Lesefehler ist ein Fehlversuch (bootLoop wiederholt) – nie mit falschen Daten handelbar
+local function need(ok: boolean, what: string)
+	if not ok then
+		error("DataStore nicht erreichbar: " .. what, 0)
+	end
+end
+
 local function loadListings(week: number)
 	local season = seasonOfWeek(week)
 	for s = 1, season do
-		for id, rec in pairs(MarketSeed.LoadIpos(s)) do
+		local ipos, ok = MarketSeed.LoadIpos(s)
+		need(ok, "Ipo_S" .. s)
+		for id, rec in pairs(ipos) do
 			listings[id] = rec
 		end
 	end
+end
+
+-- Admin-Log der Woche (Admin-Fenster älter als der Bus, Show-Absagen): wie GlobalBus.LoadLog, aber ein Lesefehler
+-- wird gemeldet (sonst liefe dieser Server nach der Samstags-Show mit anderen Kursen als die übrigen)
+local function loadAdminLog(week: number): { Plain }
+	local out: { Plain } = {}
+	local raw, ok = MarketSeed.LoadAdminLog(week)
+	need(ok, "AdminLog_W" .. week)
+	if type(raw) ~= "table" then
+		return out
+	end
+	local limit = cfg.Bus.LogMax or 200
+	for index, entry in ipairs(raw) do
+		if index > limit then
+			break
+		end
+		-- Log-Einträge sind älter als der Bus: nur Form prüfen (Zeitgrenze relativ zum eigenen Start)
+		if type(entry) == "table" and Util.IsFinite(entry.StartTick) then
+			local ev = GlobalBus.Validate(entry, math.floor(entry.StartTick))
+			if ev then
+				table.insert(out, ev :: any)
+			end
+		end
+	end
+	return out
 end
 
 local function boot()
@@ -1514,18 +1663,24 @@ local function boot()
 		task.spawn(MarketSeed.EnsureNext, week)
 		loadListings(week)
 	end
-	local tune = MarketSeed.LoadTune(week, cfg.NewsMeanGap)
+	local tune, okTune = MarketSeed.LoadTune(week, cfg.NewsMeanGap)
+	need(okTune, "Tune_W" .. week)
 	local weekStart = MarketClock.WeekStart(week)
-	local bases = MarketSeed.LoadClose(week - 1)
+	local bases, okClose = MarketSeed.LoadClose(week - 1)
+	need(okClose, "Close_W" .. (week - 1))
 	local needPrev = not isLocal and (bases == nil or now - weekStart < cfg.Bus.ExpirySeconds)
 	if needPrev then
-		local prevSeed = MarketSeed.Peek(week - 1)
+		local prevSeed, okPeek = MarketSeed.Peek(week - 1)
+		need(okPeek, "Seed_W" .. (week - 1))
 		if prevSeed then
-			local prevBases = MarketSeed.LoadClose(week - 2) or {}
-			local prevTune = MarketSeed.LoadTune(week - 1, cfg.NewsMeanGap)
-			local prev = newContext(week - 1, prevSeed, prevBases, prevTune)
+			local prevBases, okPrevClose = MarketSeed.LoadClose(week - 2)
+			need(okPrevClose, "Close_W" .. (week - 2))
+			local prevTune, okPrevTune = MarketSeed.LoadTune(week - 1, cfg.NewsMeanGap)
+			need(okPrevTune, "Tune_W" .. (week - 1))
+			local prev = newContext(week - 1, prevSeed, prevBases or {}, prevTune)
 			buildDays(prev, MarketClock.DayIndex(MarketClock.WeekEnd(week - 1)), true)
 			ctxPrev = prev
+			reapplyBus(prev) -- Neustart: schon empfangene Bus-Events der Vorwoche
 			if bases == nil then
 				bases = closesOf(prev)
 				task.spawn(MarketSeed.SaveClose, week - 1, bases :: { [number]: number })
@@ -1534,9 +1689,11 @@ local function boot()
 	end
 	local cur = newContext(week, seed, bases or {}, tune)
 	ctxCur = cur
+	-- Neustart: schon empfangene Bus-Events übernehmen (GlobalBus liefert gesehene Events nicht noch einmal)
+	reapplyBus(cur)
 	-- Admin-Log der Woche (Admin-Fenster älter als der Bus) + Bus starten (liefert Events der letzten 26 h)
 	if not isLocal then
-		for _, ev in ipairs(GlobalBus.LoadLog(week)) do
+		for _, ev in ipairs(loadAdminLog(week)) do
 			addWindow(ev)
 			if ev.Kind == "CancelAutoShow" then
 				onBusEvent(ev, false)
@@ -1579,13 +1736,145 @@ local function boot()
 	ready = true
 	booting = false
 	markAllDirty()
-	print(
-		("[MarketService] Markt läuft – Woche %d, %d Instrumente%s"):format(
-			week,
-			#ids,
-			if isLocal then " (Lokaler Testmarkt)" else ""
-		)
-	)
+	local suffix = ""
+	if isLocal then
+		suffix = if RunService:IsStudio() then " (Lokaler Testmarkt)" else " (Ersatzmarkt – nur Ansicht)"
+	end
+	print(("[MarketService] Markt läuft – Woche %d, %d Instrumente%s"):format(week, #ids, suffix))
+end
+
+-- ---------------------------------------------------------------------
+-- START-SCHLEIFE (W20 §4.1.1 + Korrektur §11.1): Versuche mit Backoff, Ersatzmarkt, Rückkehr zum Live-Markt
+-- ---------------------------------------------------------------------
+-- Zustand für einen neuen Startversuch. Bleibt: Callbacks, Bus-Events (+ Reihenfolge, Show-Absagen, Admin-Fenster
+-- – alle aus echten Bus-/Log-Events, werden im neuen Kontext wieder angewendet), Admin-Cooldowns, lastTick (Tick()
+-- bleibt monoton; "ready" ist false, bis boot ihn neu setzt).
+local function resetForRetry()
+	bootGen += 1
+	ready = false
+	ctxCur = nil
+	ctxPrev = nil
+	nextSeed = nil
+	prefetching = false
+	localMarket = false
+	listings = {}
+	recent = {}
+	store = CandleStore.new(cfg)
+	stateSig = ""
+	pendingDay = nil
+	-- Bus neu starten lassen (neues Messaging-Abo; ein gescheitertes Abo des letzten Versuchs wird so wiederholt)
+	local okStop, errStop = pcall(GlobalBus.Stop)
+	if not okStop then
+		logError("Bus-Stop", errStop)
+	end
+end
+
+local function setStatus(status: string)
+	bootInfo.Status = status
+	markAllDirty()
+end
+
+-- ein Startversuch (forceLocal = Ersatzmarkt); true = Markt läuft (Live oder Local)
+local function tryBoot(forceLocal: boolean): boolean
+	if bootInfo.Attempt > 0 then
+		resetForRetry()
+	end
+	bootInfo.Attempt += 1
+	MarketSeed.ForceLocal(forceLocal)
+	setStatus("Booting")
+	booting = true
+	local ok, err = xpcall(boot, debug.traceback)
+	booting = false
+	if ok and ready then
+		if localMarket then
+			MarketSeed.ForceLocal(true) -- Ersatzmarkt (auch nach Seed-Rückfall): nie in den globalen Speicher
+		end
+		bootInfo.Error = ""
+		setStatus(if localMarket then "Local" else "Live")
+		return true
+	end
+	ready = false
+	bootInfo.Error = string.sub(tostring(err), 1, 300)
+	warn(("[MarketService] Start-Versuch %d fehlgeschlagen: %s"):format(bootInfo.Attempt, tostring(err)))
+	return false
+end
+
+local function bootWait(attempt: number): number
+	local bootCfg = cfg.Boot or {}
+	local base = math.max(0.5, tonumber(bootCfg.RetryBase) or 5)
+	return math.min(math.max(base, tonumber(bootCfg.RetryMax) or 60), base * 2 ^ (attempt - 1))
+end
+
+local function retrySeconds(): number
+	local bootCfg = cfg.Boot or {}
+	return math.clamp(tonumber(bootCfg.LocalRetrySeconds) or 120, 30, 900)
+end
+
+-- resume = Neustart der Schleife nach einem Fehler: ein laufender (Ersatz-)Markt bleibt stehen, nur Phase 2
+local function bootLoop(resume: boolean)
+	local bootCfg = cfg.Boot or {}
+	local attempts = math.clamp(math.floor(tonumber(bootCfg.Attempts) or 3), 1, 10)
+	local probeSeconds = math.clamp(tonumber(bootCfg.ProbeSeconds) or 10, 2, 60)
+	local studio = RunService:IsStudio()
+	if ready and (not localMarket or studio) then
+		return -- Live (oder Studio-Testmarkt) läuft: nie anfassen
+	end
+	if not (resume and ready) then
+		bootInfo.Since = os.time()
+		-- 1) bis zu "attempts" normale Versuche, dann der Ersatzmarkt
+		for n = 1, attempts + 1 do
+			local final = n > attempts
+			if tryBoot(final) then
+				break
+			end
+			if not final then
+				task.wait(bootWait(n))
+			end
+		end
+		if not ready then
+			setStatus("Failed")
+		end
+	end
+	-- 2) Ersatzmarkt auf einem Live-Server (nur Ansicht) oder gestört: im Hintergrund weiter, bis der echte Markt läuft.
+	--    Gebunden (≈ 4 Monate bei 120 s); Live und der Studio-Testmarkt beenden die Schleife sofort.
+	for _ = 1, 100000 do
+		if ready and (not localMarket or studio) then
+			return
+		end
+		task.wait(retrySeconds())
+		local week = MarketClock.WeekIndex(Clock.Tick())
+		if not studio and MarketSeed.TryLoad(week, probeSeconds) ~= nil then
+			bootInfo.Since = os.time()
+			if tryBoot(false) and not localMarket then
+				print("[MarketService] Börse verbunden – Ersatzmarkt beendet, Handel frei")
+				return
+			end
+		end
+		if not ready then
+			-- echter Versuch gescheitert bzw. weiter gestört: Ersatzmarkt (nur Ansicht) wiederherstellen
+			bootInfo.Since = os.time()
+			if not tryBoot(true) then
+				setStatus("Failed")
+			end
+		end
+	end
+end
+
+-- Schutznetz: auch ein Fehler der Schleife selbst endet nie in einem toten Markt – Status "Failed", neuer Anlauf
+local function runBootLoop(restarts: number)
+	local ok, err = xpcall(bootLoop, debug.traceback, restarts > 0)
+	if ok then
+		return
+	end
+	booting = false
+	bootInfo.Error = string.sub(tostring(err), 1, 300)
+	if not ready then
+		setStatus("Failed")
+	end
+	warn("[MarketService] Start-Schleife abgebrochen: " .. tostring(err))
+	if restarts < MAX_LOOP_RESTARTS then
+		task.delay(retrySeconds(), runBootLoop, restarts + 1)
+	end
 end
 
 -- ---------------------------------------------------------------------
@@ -1749,16 +2038,19 @@ function MarketService.Start()
 	Scheduler.Every("Market", 1, marketJob)
 	Scheduler.EveryFrame("MarketBackfill", frameJob)
 	Scheduler.Every("MarketBus", 1 / math.max(1, cfg.Bus.PollSeconds), busJob)
-	if not booting and not ready then
-		task.spawn(function()
-			local ok, err = xpcall(boot, debug.traceback)
-			if not ok then
-				booting = false
-				warn("[MarketService] Start fehlgeschlagen: " .. tostring(err))
-			end
-		end)
+	if not booting and not ready and not loopStarted then
+		loopStarted = true
+		task.spawn(runBootLoop, 0)
 	end
-	local _ = RunService
 end
+
+-- Nur für Selbsttests (MarketTests): State-Form und die reinen Regeln Handelbar/Nur-Ansicht (Test-Doubles)
+MarketService._Test = {
+	State = function(): Plain
+		return marketState()
+	end,
+	TradeableFor = tradeableFor,
+	ViewOnlyFor = viewOnlyFor,
+}
 
 return MarketService

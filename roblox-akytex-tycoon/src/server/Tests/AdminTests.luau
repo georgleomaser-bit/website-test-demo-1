@@ -4,8 +4,12 @@
 --  Modul). Gibt { [testName]: (Services) -> () } zurück; jeder Fehler = FAIL.
 --  Prüft: Owner-Regel in allen Varianten (Nutzer-/Gruppen-Spiel, Studio, Player2 nie), Klemmen ALLER Katalog-Parameter
 --  (Markt + Nicht-Markt), globale Nachricht mit zu großem Until verworfen (AdminService.Core + EventService.ApplyGlobal),
---  Dedupe per Id, Besitzer-Handelssperre/Taint-Fenster ±120 s, Katalog = 21 Events mit Texten, Event-Belohnungs-Quellen
---  in der CR-Whitelist, Config.Events.Validate leer, Anti-Cheat-Guards (present) ohne Spieler.
+--  Rolle in Ansage/AbuseNote (W19: fehlt = Owner, unbekannt = verworfen), Dedupe per Id, Besitzer-Handelssperre/
+--  Taint-Fenster ±120 s, Katalog = 21 Events mit Texten, Event-Belohnungs-Quellen in der CR-Whitelist,
+--  Config.Events.Validate leer, Anti-Cheat-Guards (present) ohne Spieler.
+--  Team-Rollen (W19/W26): jede Admin-Aktion hat ein Recht aus Shared/Staff.PERMS (Core.PermFor, Spot-Checks §5.2/§16.1),
+--  Tor-Hilfen rein (Masse > 3 Ziele, unbekannter Besitzer sperrt strafende Rechte, Schwer-Abstand, keine Selbstgeschenke,
+--  CR-Deckel, Bann-Dauer), Run/SubmitReport/Dismiss ohne echten Spieler abgelehnt.
 -- =====================================================================
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -14,6 +18,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Lang = require(Shared:WaitForChild("Lang"))
 local Clock = require(Shared:WaitForChild("Clock"))
+local Staff = require(Shared:WaitForChild("Staff"))
 
 local EV: any = Config.Events
 
@@ -317,6 +322,24 @@ Tests["Admin: globale Nachricht mit zu großem Until verworfen, Felder geprüft"
 		Core.ValidateGlobal({ Kind = "AbuseNote", Id = "B1234", Event = "MegaCrash", UserId = 1 }, now, max),
 		"AbuseNote ohne Name"
 	)
+	-- W19: Rolle des Absenders (fehlt = "Owner" für ältere Server, nur Staff.ROLES, sonst verworfen)
+	local announce = { Kind = "Announce", Id = "N1234", Text = "Hallo", Name = "Team", UserId = 1 }
+	local withRole: { [string]: any } = table.clone(announce)
+	withRole.Role = "Admin"
+	eq((Core.ValidateGlobal(withRole, now, max) or {}).Role, "Admin", "Ansage mit Rolle Admin")
+	eq((Core.ValidateGlobal(announce, now, max) or {}).Role, "Owner", "Ansage ohne Rolle = Owner")
+	local badRole: { [string]: any } = table.clone(announce)
+	badRole.Role = "Boss"
+	falsy(Core.ValidateGlobal(badRole, now, max), "Ansage mit unbekannter Rolle verworfen")
+	badRole.Role = 3
+	falsy(Core.ValidateGlobal(badRole, now, max), "Ansage mit Zahl als Rolle verworfen")
+	local note = { Kind = "AbuseNote", Id = "B1234", Event = "Fireworks", UserId = 1, Name = "Team" }
+	local noteMod: { [string]: any } = table.clone(note)
+	noteMod.Role = "Moderator"
+	eq((Core.ValidateGlobal(noteMod, now, max) or {}).Role, "Moderator", "AbuseNote mit Rolle")
+	eq((Core.ValidateGlobal(note, now, max) or {}).Role, "Owner", "AbuseNote ohne Rolle = Owner")
+	noteMod.Role = "Boss"
+	falsy(Core.ValidateGlobal(noteMod, now, max), "AbuseNote mit unbekannter Rolle verworfen")
 	-- EventService prüft selbst noch einmal (auch für Werte aus dem Speicher)
 	local EventService = serviceOf(services, "EventService")
 	local t = Clock.Now()
@@ -451,6 +474,152 @@ Tests["Events: Rotation, nächstes Welt-Event und Wochen-Termine deterministisch
 	local show = Clock.NextBerlin(6, 18, 15, after)
 	eq(Clock.Weekday(show + Clock.BerlinOffset(show)), 6, "Samstag (Berlin)")
 	eq(((show + Clock.BerlinOffset(show)) % 86400), 18 * 3600 + 15 * 60, "18:15 Berlin")
+end
+
+-- ---------------------------------------------------------------------
+-- 5b) TEAM-ROLLEN (W19/W26): ein Tor, ein Recht je Aktion, reine Tor-Hilfen
+-- ---------------------------------------------------------------------
+Tests["Admin: jede Aktion hat ein Recht aus Staff.PERMS (Core.PermFor, §5.2/§16.1)"] = function(services: any)
+	local Core = serviceOf(services, "AdminService").Core
+	local cfg = Config.Security.Staff
+	local perms: { [string]: boolean } = {}
+	for _, perm in ipairs(Staff.PERMS) do
+		perms[perm] = true
+	end
+	local names = Core.ActionNames()
+	truthy(#names >= 55, "mindestens 55 Admin-Aktionen")
+	for _, name in ipairs(names) do
+		local perm = Core.PermFor(name, {}, cfg)
+		truthy(perm ~= nil and perms[perm], "Recht für Aktion " .. name)
+	end
+	for _, name in ipairs({ "Mute", "Unmute", "SetRole", "StaffList", "ResolveReport", "Respawn", "TpTo", "Shutdown" }) do
+		truthy(table.find(names, name), "neue Aktion " .. name)
+	end
+	local function perm(action: string, args: { [string]: any }?): string?
+		return Core.PermFor(action, args or {}, cfg)
+	end
+	eq(perm("Unban"), "UnbanOwn", "Unban -> UnbanOwn (Handler prüft Staff.CanUnban)")
+	eq(perm("Bans"), "BanView", "Bans -> BanView")
+	eq(perm("Ban", { Duration = "1d" }), "TempBan", "Bann 1 Tag = Zeit-Bann")
+	eq(perm("Ban", { Duration = "30m" }), "TempBan", "Bann 30 min = Zeit-Bann")
+	eq(perm("Ban", { Seconds = 3600 }), "TempBan", "Bann per Sekunden")
+	eq(perm("Ban", { Duration = "7d" }), "Ban", "Bann 7 Tage = volles Bann-Recht")
+	eq(perm("Ban", { Duration = "perm" }), "Ban", "Dauer-Bann = volles Bann-Recht")
+	eq(perm("Ban", { UserId = 5, Duration = "1h" }), "Ban", "offline per UserId = volles Bann-Recht")
+	eq(perm("Ban", { Name = "Someone", Duration = "1h" }), "Ban", "offline per Name = volles Bann-Recht")
+	eq(perm("Give", { Grant = { Credits = 5 } }), "GiveCredits", "CR geben")
+	eq(perm("Give", { Grant = { Credits = -5 } }), "TakeCredits", "CR abziehen")
+	eq(perm("Give", { Grant = { Cars = { "x" } } }), "GiveItems", "Items")
+	eq(perm("Give", { Grant = { Credits = 5, Junk = true } }), "GiveItems", "unbekannte Felder = Besitzer-Recht")
+	eq(perm("Abuse", { Event = "MegaRally" }), "MarketEvents", "Markt-Event")
+	eq(perm("Abuse", { Event = "Fireworks" }), "FunEvents", "Spaß-Event")
+	eq(perm("Abuse", { Event = "GoldenHour" }), "EconomyEvents", "Wirtschafts-Event")
+	eq(perm("Abuse", { Event = "SaturdayShow" }), "MarketEvents", "Samstags-Show (mit Markt-Rally)")
+	eq(perm("Abuse", { Event = "Gibtsnicht" }), "EconomyEvents", "unbekanntes Event = Besitzer-Recht")
+	eq(perm("WorldEvent", { Event = "Truck" }), "WorldEvents", "Welt-Event")
+	eq(perm("WorldEvent", { Event = "BuildBoom" }), "EconomyEvents", "Welt-Bau-Boom = Wirtschaft")
+	eq(perm("SetPower", { Name = "AdminESP" }), "Esp", "ESP")
+	eq(perm("SetPower", { Name = "CanFly" }), "Fly", "Fliegen")
+	eq(perm("SetPower", { Name = "Gibtsnicht" }), "Debug", "unbekannte Kraft = Debug")
+	eq(perm("SetRole", { Role = "Admin" }), "ManageAdmins", "Admin vergeben")
+	eq(perm("SetRole", { Role = "Moderator" }), "ManageMods", "Moderator vergeben")
+	eq(perm("SetRole", { Role = "" }), "ManageMods", "Rolle entfernen")
+	eq(perm("Announce", { Global = true }), "AnnounceGlobal", "globale Ansage")
+	eq(perm("Announce"), "Announce", "lokale Ansage")
+	eq(perm("TpTo"), "Bring", "TpTo = Herholen")
+	eq(perm("Gibtsnicht"), nil, "unbekannte Aktion = kein Recht")
+	eq(Core.PermFor(nil, {}, cfg), nil, "keine Aktion = kein Recht")
+	-- Matrix gegen die echte Config (Moderator: Zeit-Bann ja, 7 Tage nein; Admin: kein Abziehen, keine Markt-Events)
+	truthy(Staff.Can("Moderator", perm("Ban", { Duration = "1d" }) :: string, cfg), "Moderator: Zeit-Bann")
+	falsy(Staff.Can("Moderator", perm("Ban", { Duration = "7d" }) :: string, cfg), "Moderator: 7 Tage nie")
+	truthy(Staff.Can("Moderator", perm("Unban") :: string, cfg), "Moderator: /unban (nur eigene, Handler)")
+	falsy(Staff.Can("Admin", perm("Give", { Grant = { Credits = -5 } }) :: string, cfg), "Admin: CR abziehen nie")
+	falsy(Staff.Can("Admin", perm("Market") :: string, cfg), "Admin: Markt-Events nie")
+	falsy(Staff.Can("Admin", perm("LiveSet") :: string, cfg), "Admin: Live-Config nie")
+	truthy(Staff.Can("Owner", perm("Shutdown") :: string, cfg), "Besitzer: Neustart")
+	-- Schwere Lese-Aktionen und strafende Rechte zeigen auf echte Aktionen/Rechte
+	for action in pairs(Core.HEAVY) do
+		truthy(table.find(names, action), "HEAVY-Aktion existiert: " .. action)
+	end
+	for permName in pairs(Core.PUNITIVE) do
+		truthy(perms[permName], "strafendes Recht existiert: " .. permName)
+	end
+end
+
+Tests["Admin: Tor-Hilfen rein (Masse, Besitzer unbekannt, Abstand, Selbstgeschenk, CR-Deckel, Bann-Dauer)"] = function(
+	services: any
+)
+	local Core = serviceOf(services, "AdminService").Core
+	-- Masse: all/others oder mehr als 3 aufgelöste Ziele (§16.2 Nr. 8)
+	truthy(Core.IsMassList("all", 1), "all = Masse")
+	truthy(Core.IsMassList(" Others ", 0), "others = Masse")
+	falsy(Core.IsMassList("a,b,c", 3), "3 Ziele sind keine Masse")
+	truthy(Core.IsMassList("a,b,c,d", 4), "4 Ziele = Masse")
+	falsy(Core.IsMassList("bob", 1), "ein Ziel")
+	-- Unbekannter Gruppen-Besitzer sperrt strafende Rechte für alle außer dem Besitzer (§16.2 Nr. 1)
+	truthy(Core.OwnerBlocks("Kick", false, false), "Kick bei unbekanntem Besitzer gesperrt")
+	truthy(Core.OwnerBlocks("TempBan", false, false), "Zeit-Bann gesperrt")
+	truthy(Core.OwnerBlocks("ManageAdmins", false, false), "Rollen gesperrt")
+	falsy(Core.OwnerBlocks("Kick", true, false), "Besitzer selbst darf")
+	falsy(Core.OwnerBlocks("Kick", false, true), "bekannter Besitzer: frei")
+	falsy(Core.OwnerBlocks("Teleport", false, false), "nicht strafend: frei")
+	falsy(Core.OwnerBlocks(nil, false, false), "kein Recht: nichts")
+	-- Abstand je Schlüssel (Schwer-Aktionen 3 s, Ansagen, Ablehnungs-Log)
+	local store: { [string]: number } = {}
+	local ok, left = Core.GapOk(store, "AdminLog", 100, 3)
+	truthy(ok, "erster Aufruf frei")
+	eq(left, 0, "kein Rest")
+	ok, left = Core.GapOk(store, "AdminLog", 100.5, 3)
+	falsy(ok, "zweiter Aufruf < 3 s abgelehnt")
+	eq(left, 2.5, "Restzeit")
+	truthy((Core.GapOk(store, "Reports", 100.5, 3)), "andere Aktion unabhängig")
+	truthy((Core.GapOk(store, "AdminLog", 103, 3)), "nach 3 s wieder frei")
+	-- Keine Selbstgeschenke für Nicht-Besitzer (§16.2 Nr. 6)
+	local a, b = { Name = "A" }, { Name = "B" }
+	eq(#Core.GiftTargets({ a, b }, a, false), 1, "sich selbst übersprungen")
+	eq(Core.GiftTargets({ a, b }, a, false)[1], b, "nur der andere bleibt")
+	eq(#Core.GiftTargets({ a }, a, false), 0, "nur sich selbst -> niemand")
+	eq(#Core.GiftTargets({ a, b }, a, true), 2, "Besitzer unverändert")
+	-- CR-Deckel je Befehl und Tag (Werte aus der Config)
+	local credits = Config.Security.Staff.Credits
+	truthy((Core.CreditCaps(credits.PerAction, 1, 0, credits)), "genau der Befehls-Deckel")
+	local okCap, key, value = Core.CreditCaps(credits.PerAction, 2, 0, credits)
+	falsy(okCap, "zwei Ziele über dem Befehls-Deckel")
+	eq(key, "admin.cmd.capAction", "Schlüssel Befehls-Deckel")
+	eq(value, credits.PerAction, "Betrag Befehls-Deckel")
+	okCap, key, value = Core.CreditCaps(credits.PerAction, 1, credits.PerDay - credits.PerAction + 1, credits)
+	falsy(okCap, "Tageslimit")
+	eq(key, "admin.cmd.capDay", "Schlüssel Tageslimit")
+	eq(value, credits.PerAction - 1, "noch übrig heute")
+	-- Bann-Dauer: Text, Presets, Sekunden; ungültig -> nil
+	eq(Core.BanSeconds({ Duration = "30d" }), 2592000, "30 Tage")
+	eq(Core.BanSeconds({ Duration = "perm" }), -1, "dauerhaft")
+	eq(Core.BanSeconds({ Duration = "2h" }), 7200, "2 Stunden")
+	eq(Core.BanSeconds({ Seconds = -1 }), -1, "Sekunden -1 = dauerhaft")
+	eq(Core.BanSeconds({ Seconds = 90.7 }), 90, "Sekunden ganzzahlig")
+	eq(Core.BanSeconds({ Duration = "bald" }), nil, "Unsinn")
+	eq(Core.BanSeconds({ Seconds = 0 / 0 }), nil, "NaN")
+end
+
+Tests["Admin: Run, Kräfte und Meldungen ohne echten Spieler abgelehnt"] = function(services: any)
+	local AdminService = serviceOf(services, "AdminService")
+	local fake: any = { Name = "Fake", UserId = 1 }
+	local ok, message = AdminService.Run(fake, "Kick", { Target = "all" }, "Chat")
+	eq(ok, false, "Run mit Nicht-Spieler")
+	eq(message, nil, "keine Meldung an Nicht-Spieler")
+	eq((AdminService.Run(nil, "Dashboard", {}, "Panel")), false, "Run ohne Spieler")
+	eq(AdminService.IsOwnerId(1.5), false, "IsOwnerId nur ganze Zahlen")
+	eq(type(AdminService.OwnerKnown()), "boolean", "OwnerKnown")
+	eq(AdminService.Power(fake, "CanFly"), nil, "Power ohne Spieler")
+	AdminService.SyncPowers(fake) -- darf ohne Spieler nicht scheitern
+	local AntiCheat = serviceOf(services, "AntiCheatService")
+	local reply = AntiCheat.SubmitReport(fake, 2, "Speed", "Notiz", "Chat")
+	eq(type(reply), "table", "SubmitReport antwortet")
+	eq(reply.Ok, false, "SubmitReport ohne Spieler abgelehnt")
+	eq((AntiCheat.Dismiss(123 :: any)), false, "Dismiss nur mit Text-Id")
+	local done, entry = AntiCheat.Dismiss("Test_gibtsnicht")
+	eq(done, true, "Dismiss unbekannter Id")
+	eq(entry, nil, "kein Eintrag entfernt")
 end
 
 -- ---------------------------------------------------------------------
