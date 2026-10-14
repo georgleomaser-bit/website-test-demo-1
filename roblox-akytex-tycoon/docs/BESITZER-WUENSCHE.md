@@ -162,3 +162,6 @@ Fahrstühle, und die Welt wirkt verbuggt. Klau einfach alles von AKYTEX.“
     Headless-Test (`tools/headless/`), der Server + Client ohne Studio ausführt, die UI durchklickt und die Welt rendert.
 23. **Higgsfield für besseres Design:** gewünscht (Bilder, Icons, Texturen, Sounds, Trailer). Die Higgsfield-Server sind in der
     Cloud-Umgebung noch gesperrt; der Besitzer muss sie in den Netzwerk-Einstellungen freigeben.
+24. **„Mache alles 100 mal besser“:** Flagship-Runde über alles – Welt/Licht/Materialien/Stadtleben/Interiors, jede Oberfläche
+    auf AKYTEX-Website-Niveau (Glas, Typo, Bewegung, Leer-/Lade-/Fehlerzustände, Sounds, Handy), Spielgefühl (Feedback,
+    Belohnungen, erste 10 Minuten, Ziele, Events), 60 FPS, null Laufzeitfehler. Compliance und Sicherheit bleiben streng.
