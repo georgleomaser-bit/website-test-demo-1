@@ -79,6 +79,8 @@ local function groundOffset(character: Model, hrp: BasePart): number
 	return hrp.Size.Y / 2 + hip
 end
 
+local MAX_CARRY_HEIGHT = 9
+
 local function attach(player: Player, item): boolean
 	local character = player.Character
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
@@ -86,6 +88,13 @@ local function attach(player: Player, item): boolean
 		return false
 	end
 	local model = item.Model
+	-- chibi pets get huge at high rarities; keep carried ones a handy size
+	if item.Kind ~= "Egg" then
+		local _, size = model:GetBoundingBox()
+		if size.Y > MAX_CARRY_HEIGHT then
+			model:ScaleTo(model:GetScale() * MAX_CARRY_HEIGHT / size.Y)
+		end
+	end
 	local ground = groundOffset(character, hrp :: BasePart)
 	-- if the player rides a mount, the character stands higher
 	local mountHeight = player:GetAttribute("MountHeight") or 0

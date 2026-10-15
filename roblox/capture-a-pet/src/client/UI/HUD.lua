@@ -36,11 +36,11 @@ local function iconButton(parent, order: number, icon: string, caption: string, 
 	local b = Kit.button({
 		Text = icon,
 		Color = color,
-		Size = UDim2.fromOffset(64, 64),
+		Size = UDim2.fromOffset(56, 56),
 		Order = order,
 		Radius = 16,
 		Parent = parent,
-		MaxTextSize = 34,
+		MaxTextSize = 30,
 	}, onClick)
 	Kit.label({
 		Text = caption,
@@ -144,6 +144,7 @@ function HUD.init()
 	refs.Boosts.TextScaled = false
 	refs.Speed = Kit.label({ Name = "Speed", Text = "⚡ 0", Size = UDim2.new(1, 0, 0, 44), XAlign = Enum.TextXAlignment.Left, Color = Color3.fromRGB(255, 236, 120), Order = 2, StrokeThickness = 3.5, Parent = stats })
 	refs.Cash = Kit.label({ Name = "Cash", Text = "💵 $0", Size = UDim2.new(1, 0, 0, 48), XAlign = Enum.TextXAlignment.Left, Color = Kit.Colors.Money, Order = 3, StrokeThickness = 3.5, Parent = stats })
+	refs.Friend = Kit.label({ Name = "Friend", Text = "", Size = UDim2.new(1, 0, 0, 22), XAlign = Enum.TextXAlignment.Left, Color = Color3.fromRGB(255, 255, 255), Order = 4, Parent = stats })
 
 	-- left buttons -----------------------------------------------------------------------
 	local left = Kit.new("Frame", {
@@ -186,21 +187,17 @@ function HUD.init()
 	end)
 
 	-- right buttons ----------------------------------------------------------------------
+	-- one column of square icon buttons on the right edge, like the reference
 	local right = Kit.new("Frame", {
 		Name = "RightButtons",
 		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(150, 460),
-		Position = UDim2.new(1, -12, 0.5, -20),
+		Size = UDim2.fromOffset(56, 560),
+		Position = UDim2.new(1, -14, 0.5, 10),
 		AnchorPoint = Vector2.new(1, 0.5),
 		Parent = screen,
 	})
-	Kit.new("UIGridLayout", {
-		CellSize = UDim2.fromOffset(64, 64),
-		CellPadding = UDim2.fromOffset(12, 26),
-		SortOrder = Enum.SortOrder.LayoutOrder,
-		HorizontalAlignment = Enum.HorizontalAlignment.Right,
-		Parent = right,
-	})
+	local rightLayout = Kit.list(right, 26)
+	rightLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 	iconButton(right, 1, "🥚", "Nests", Kit.Colors.Yellow, function()
 		Windows.show("Pets")
 		local pets = Windows.get("Pets")
@@ -249,7 +246,7 @@ function HUD.init()
 	refs.Carry = Kit.panel({
 		Name = "Carry",
 		Size = UDim2.fromOffset(440, 58),
-		Position = UDim2.new(0.5, 0, 0, 44),
+		Position = UDim2.new(0.5, 0, 0, 68),
 		Anchor = Vector2.new(0.5, 0),
 		Color = Kit.Colors.Panel,
 		Transparency = 0.15,
@@ -260,10 +257,9 @@ function HUD.init()
 	refs.Expedition = Kit.label({
 		Name = "Expedition",
 		Text = "",
-		Size = UDim2.fromOffset(300, 24),
-		Position = UDim2.new(1, -12, 0, 8),
-		Anchor = Vector2.new(1, 0),
-		XAlign = Enum.TextXAlignment.Right,
+		Size = UDim2.fromOffset(300, 22),
+		Position = UDim2.new(0.5, 0, 0, 40),
+		Anchor = Vector2.new(0.5, 0),
 		Parent = screen,
 	})
 
@@ -336,8 +332,8 @@ function HUD.refreshStats()
 		return
 	end
 	local d = State.Derived
-	refs.Speed.Text = string.format("⚡ %s <font size=\"26\">(%s)</font>", Format.number(State.Data.Speed), Format.multiplier(d.TrainingMult))
-	refs.Cash.Text = string.format("💵 $%s <font size=\"24\" color=\"#D8FFD0\">+$%s/s</font>", Format.number(State.Data.Cash), Format.number(d.Income))
+	refs.Speed.Text = string.format("⚡ %s <font size=\"30\">(%s)</font>", Format.number(State.Data.Speed, true), Format.multiplier(d.TrainingMult))
+	refs.Cash.Text = string.format("💵 $%s", Format.number(State.Data.Cash, true))
 end
 
 function HUD.refresh()
@@ -388,9 +384,7 @@ function HUD.tick()
 	if d.ServerLuckUntil > now then
 		table.insert(lines, string.format('<font color="#7CFFEA">Server Luck x2 (%s)</font>', Format.time(d.ServerLuckUntil - now)))
 	end
-	if d.FriendBoost > 0 then
-		table.insert(lines, string.format('<font color="#FFE27A">Friend Boost: +%d%%</font>', math.floor(d.FriendBoost * 100 + 0.5)))
-	end
+	refs.Friend.Text = string.format("Friend Boost: +%d%%", math.floor(d.FriendBoost * 100 + 0.5))
 	refs.Boosts.Text = table.concat(lines, "\n")
 
 	if d.LairOpenUntil > now then

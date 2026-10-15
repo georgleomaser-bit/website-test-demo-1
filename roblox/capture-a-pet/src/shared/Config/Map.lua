@@ -9,24 +9,25 @@ local Map = {}
 Map.GroundY = 0
 
 Map.Hub = {
-	Center = Vector3.new(0, 0, -300),
-	Size = Vector3.new(560, 1, 640),
+	Center = Vector3.new(0, 0, -430),
+	Size = Vector3.new(600, 1, 860),
 	Spawn = Vector3.new(0, 3, -40),
 }
 
+-- bases are big because the pets are huge (a Secret is ~40 studs tall)
 Map.Plot = {
-	Size = Vector3.new(170, 1, 180),
+	Size = Vector3.new(230, 1, 250),
 	-- centers; plots face the avenue (x = 0)
 	Centers = {
-		Vector3.new(-125, 0, -120),
-		Vector3.new(125, 0, -120),
-		Vector3.new(-125, 0, -310),
-		Vector3.new(125, 0, -310),
-		Vector3.new(-125, 0, -500),
-		Vector3.new(125, 0, -500),
+		Vector3.new(-152, 0, -160),
+		Vector3.new(152, 0, -160),
+		Vector3.new(-152, 0, -430),
+		Vector3.new(152, 0, -430),
+		Vector3.new(-152, 0, -700),
+		Vector3.new(152, 0, -700),
 	},
 	PenColumns = 6,
-	PenSpacing = 22,
+	PenSpacing = 32,
 	MaxPenSlots = 36,
 }
 
@@ -34,7 +35,7 @@ Map.Lane = {
 	StartZ = 20,
 	ZoneLength = 700,
 	Width = 110,
-	WallHeight = 70,
+	WallHeight = 50,
 }
 
 function Map.zoneStartZ(zone: number): number

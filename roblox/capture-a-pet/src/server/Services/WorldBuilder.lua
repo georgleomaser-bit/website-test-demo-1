@@ -16,10 +16,13 @@ local WorldBuilder = {}
 WorldBuilder.World = {}
 
 local FONT = Enum.Font.FredokaOne
-local GRASS_A = Color3.fromRGB(118, 214, 72)
-local GRASS_B = Color3.fromRGB(104, 200, 62)
-local PLOT_A = Color3.fromRGB(134, 226, 84)
-local PLOT_B = Color3.fromRGB(120, 214, 74)
+local GRASS_A = Color3.fromRGB(102, 200, 66)
+local GRASS_B = Color3.fromRGB(90, 186, 58)
+local PLOT_A = Color3.fromRGB(172, 232, 76)
+local PLOT_B = Color3.fromRGB(158, 220, 68)
+local WALL_A = Color3.fromRGB(204, 130, 102)
+local WALL_B = Color3.fromRGB(188, 116, 92)
+local STUD_FACES = { "TopSurface", "BottomSurface", "FrontSurface", "BackSurface", "LeftSurface", "RightSurface" }
 local WOOD = Color3.fromRGB(176, 104, 60)
 local WOOD_DARK = Color3.fromRGB(140, 80, 45)
 
@@ -92,6 +95,32 @@ local function checker(parent: Instance, cf: CFrame, sizeX: number, sizeZ: numbe
 				Material = Enum.Material.SmoothPlastic,
 			})
 		end
+	end
+end
+
+-- Studded wall in big two-tone squares (the canyon walls of the reference). The wall runs
+-- along the local Z axis of cf, which sits at the wall's bottom center.
+local function wallChecker(parent: Instance, cf: CFrame, length: number, height: number, thickness: number, tile: number, colorA: Color3, colorB: Color3, rim: Color3?)
+	local nz = math.max(1, math.floor(length / tile + 0.5))
+	local ny = math.max(1, math.floor(height / tile + 0.5))
+	local tz = length / nz
+	local ty = height / ny
+	for iz = 0, nz - 1 do
+		for iy = 0, ny - 1 do
+			local p = part(parent, {
+				Name = "Wall",
+				Size = Vector3.new(thickness, ty, tz),
+				CFrame = cf * CFrame.new(0, ty * (iy + 0.5), -length / 2 + tz * (iz + 0.5)),
+				Color = ((iz + iy) % 2 == 0) and colorA or colorB,
+				Material = Enum.Material.Plastic,
+			})
+			for _, face in ipairs(STUD_FACES) do
+				(p :: any)[face] = Enum.SurfaceType.Studs
+			end
+		end
+	end
+	if rim then
+		part(parent, { Name = "WallTop", Size = Vector3.new(thickness + 2, 3, length + 2), CFrame = cf * CFrame.new(0, height + 1.5, 0), Color = rim })
 	end
 end
 
@@ -265,9 +294,9 @@ local function buildPlot(parent: Instance, index: number, center: Vector3)
 
 	-- entrance arch + owner sign
 	for _, sx in ipairs({ -1, 1 }) do
-		part(model, { Name = "ArchPost", Size = Vector3.new(2, 14, 2), CFrame = cf * CFrame.new(sx * 15, 7, -hz), Color = WOOD_DARK })
+		part(model, { Name = "ArchPost", Size = Vector3.new(2, 30, 2), CFrame = cf * CFrame.new(sx * 15, 15, -hz), Color = WOOD_DARK })
 	end
-	local board, ownerLabel = sign(model, cf * CFrame.new(0, 15, -hz) * CFrame.Angles(0, math.pi, 0), "Empty Base", Color3.fromRGB(255, 255, 255), 30)
+	local board, ownerLabel = sign(model, cf * CFrame.new(0, 31, -hz) * CFrame.Angles(0, math.pi, 0), "Empty Base", Color3.fromRGB(255, 255, 255), 30)
 	board.Name = "OwnerSign"
 
 	-- treadmills along the back edge (8 tiers + VIP)
@@ -367,22 +396,13 @@ local function buildLane(parent: Instance)
 		local len = Map.Lane.ZoneLength
 		local zf = folder(lane, "Zone" .. zoneIndex)
 		checker(zf, CFrame.new(0, 0.02, z0 + len / 2), width, len, 27.5, zone.Floor, zone.FloorAlt, 1)
-		-- walls built from panels in two shades, with a grass/snow/lava rim on top
+		-- studded checker walls with a grass/sand/snow/lava rim on top
 		for _, sx in ipairs({ -1, 1 }) do
-			local panels = math.floor(len / 50)
-			for i = 0, panels - 1 do
-				local pz = z0 + 25 + i * 50
-				part(zf, {
-					Name = "Wall",
-					Size = Vector3.new(12, wallH, 50),
-					CFrame = CFrame.new(sx * (width / 2 + 6), wallH / 2, pz),
-					Color = (i % 2 == 0) and zone.Wall or zone.Wall:Lerp(Color3.new(0, 0, 0), 0.07),
-				})
-			end
+			wallChecker(zf, CFrame.new(sx * (width / 2 + 6), 0, z0 + len / 2), len, wallH, 12, 17.5, zone.Wall, zone.Wall:Lerp(Color3.new(0, 0, 0), 0.08), nil)
 			part(zf, {
 				Name = "WallTop",
-				Size = Vector3.new(14, 3, len),
-				CFrame = CFrame.new(sx * (width / 2 + 6), wallH + 1.5, z0 + len / 2),
+				Size = Vector3.new(16, 3, len),
+				CFrame = CFrame.new(sx * (width / 2 + 7), wallH + 1.5, z0 + len / 2),
 				Color = zone.WallTop,
 				Material = zoneIndex == 4 and Enum.Material.Neon or Enum.Material.SmoothPlastic,
 			})
@@ -441,7 +461,7 @@ local function buildLane(parent: Instance)
 	end
 	-- end wall
 	local endZ = Map.zoneStartZ(5)
-	part(lane, { Name = "EndWall", Size = Vector3.new(width + 24, wallH, 12), CFrame = CFrame.new(0, wallH / 2, endZ + 6), Color = Zones[4].Wall })
+	wallChecker(lane, CFrame.new(0, 0, endZ + 6) * CFrame.Angles(0, math.pi / 2, 0), width + 24, wallH, 12, 17.5, Zones[4].Wall, Zones[4].Wall:Lerp(Color3.new(0, 0, 0), 0.08), Zones[4].WallTop)
 	return nests
 end
 
@@ -577,27 +597,22 @@ function WorldBuilder.Init(_services)
 	-- hub border walls (the reference has terracotta walls with grass on top)
 	local hs = Map.Hub.Size
 	local hc = Map.Hub.Center
-	for _, data in ipairs({
-		{ Vector3.new(hs.X / 2 + 6, 20, 0), Vector3.new(12, 40, hs.Z) },
-		{ Vector3.new(-hs.X / 2 - 6, 20, 0), Vector3.new(12, 40, hs.Z) },
-		{ Vector3.new(0, 20, -hs.Z / 2 - 6), Vector3.new(hs.X + 24, 40, 12) },
-	}) do
-		part(hub, { Name = "HubWall", Size = data[2], CFrame = CFrame.new(hc + data[1]), Color = Color3.fromRGB(205, 120, 95) })
-		part(hub, { Name = "HubWallTop", Size = data[2] + Vector3.new(2, -38, 2), CFrame = CFrame.new(hc + data[1] + Vector3.new(0, 21, 0)), Color = GRASS_A })
-	end
+	local hubWallH = 42
+	wallChecker(hub, CFrame.new(hc + Vector3.new(hs.X / 2 + 6, 0, 0)), hs.Z, hubWallH, 12, 14, WALL_A, WALL_B, GRASS_A)
+	wallChecker(hub, CFrame.new(hc + Vector3.new(-hs.X / 2 - 6, 0, 0)), hs.Z, hubWallH, 12, 14, WALL_A, WALL_B, GRASS_A)
+	wallChecker(hub, CFrame.new(hc + Vector3.new(0, 0, -hs.Z / 2 - 6)) * CFrame.Angles(0, math.pi / 2, 0), hs.X + 24, hubWallH, 12, 14, WALL_A, WALL_B, GRASS_A)
 	-- front wall pieces left and right of the lane entrance
 	local frontZ = hc.Z + hs.Z / 2 + 6
 	local sideWidth = (hs.X - Map.Lane.Width) / 2
 	for _, sx in ipairs({ -1, 1 }) do
-		local x = sx * (Map.Lane.Width / 2 + sideWidth / 2)
-		part(hub, { Name = "HubWall", Size = Vector3.new(sideWidth + 12, 40, 12), CFrame = CFrame.new(x, 20, frontZ), Color = Color3.fromRGB(205, 120, 95) })
-		part(hub, { Name = "HubWallTop", Size = Vector3.new(sideWidth + 14, 2, 14), CFrame = CFrame.new(x, 41, frontZ), Color = GRASS_A })
+		local x = sx * (Map.Lane.Width / 2 + 12 + sideWidth / 2)
+		wallChecker(hub, CFrame.new(x, 0, frontZ) * CFrame.Angles(0, math.pi / 2, 0), sideWidth, hubWallH, 12, 14, WALL_A, WALL_B, GRASS_A)
 	end
 	-- bushes along the hub edges, kept out of the bases and the avenue
 	for _ = 1, 30 do
 		local x = rng:NextNumber(-hs.X / 2 + 10, hs.X / 2 - 10)
 		local z = rng:NextNumber(hc.Z - hs.Z / 2 + 10, hc.Z + hs.Z / 2 - 10)
-		if math.abs(x) > 225 or (math.abs(x) > 32 and math.abs(x) < 38) then
+		if math.abs(x) > 272 or (math.abs(x) > 31 and math.abs(x) < 35) then
 			bush(hub, Vector3.new(x, 0, z), rng:NextNumber(3, 6))
 		end
 	end
@@ -636,8 +651,8 @@ function WorldBuilder.Init(_services)
 
 	-- leaderboards near the lane entrance
 	local boards = {
-		Cash = buildBoard(hub, CFrame.new(-75, 0, hc.Z + hs.Z / 2 - 40) * CFrame.Angles(0, math.pi, 0), "Top Cash"),
-		Speed = buildBoard(hub, CFrame.new(75, 0, hc.Z + hs.Z / 2 - 40) * CFrame.Angles(0, math.pi, 0), "Top Speed"),
+		Cash = buildBoard(hub, CFrame.new(-75, 0, hc.Z + hs.Z / 2 - 16) * CFrame.Angles(0, math.pi, 0), "Top Cash"),
+		Speed = buildBoard(hub, CFrame.new(75, 0, hc.Z + hs.Z / 2 - 16) * CFrame.Angles(0, math.pi, 0), "Top Speed"),
 	}
 
 	WorldBuilder.World = {

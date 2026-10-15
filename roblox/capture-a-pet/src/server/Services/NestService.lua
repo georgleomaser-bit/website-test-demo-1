@@ -15,6 +15,7 @@ local Zones = require(Shared.Config.Zones)
 local Map = require(Shared.Config.Map)
 local Formulas = require(Shared.Formulas)
 local EggModel = require(Shared.EggModel)
+local AnimalModel = require(Shared.AnimalModel)
 
 local NestService = {}
 
@@ -36,46 +37,67 @@ function NestService.Init(services)
 	guardFolder.Parent = Workspace
 end
 
--- Blocky golem guard.
-local function buildGolem(color: Color3, scale: number): Model
-	local model = Instance.new("Model")
+-- Cute chibi dragon guarding the nests, colored per zone.
+local function buildGuardModel(zone: number): Model
+	local z = Zones[zone]
+	local model = AnimalModel.buildCreature({
+		Body = z.GuardColor,
+		Accent = z.GuardLight or z.GuardColor:Lerp(Color3.new(1, 1, 1), 0.55),
+		HornColor = z.GuardLight,
+		Ears = "none",
+		Horns = "small",
+		Tail = "spiked",
+		Snout = "short",
+		Wings = true,
+		Bulky = true,
+	}, 2.4 + zone * 0.35)
 	model.Name = "Guard"
-	local function b(name, size, pos, col, mat)
-		local p = Instance.new("Part")
-		p.Name = name
-		p.Size = size * scale
-		p.CFrame = CFrame.new(pos * scale)
-		p.Color = col
-		p.Material = mat or Enum.Material.SmoothPlastic
-		p.Anchored = true
-		p.CanCollide = false
-		p.CanQuery = false
-		p.CanTouch = false
-		p.Parent = model
-		return p
-	end
-	local root = b("Root", Vector3.new(1, 1, 1), Vector3.new(0, 0.5, 0), color)
-	root.Transparency = 1
-	model.PrimaryPart = root
-	local dark = color:Lerp(Color3.new(0, 0, 0), 0.35)
-	b("LegL", Vector3.new(1.4, 2.4, 1.4), Vector3.new(-0.9, 1.2, 0), dark)
-	b("LegR", Vector3.new(1.4, 2.4, 1.4), Vector3.new(0.9, 1.2, 0), dark)
-	b("Body", Vector3.new(3.6, 3.2, 2.4), Vector3.new(0, 4, 0), color)
-	b("Belt", Vector3.new(3.7, 0.5, 2.5), Vector3.new(0, 2.7, 0), dark)
-	b("ArmL", Vector3.new(1.2, 3.2, 1.2), Vector3.new(-2.5, 3.8, 0), dark)
-	b("ArmR", Vector3.new(1.2, 3.2, 1.2), Vector3.new(2.5, 3.8, 0), dark)
-	b("Head", Vector3.new(2.2, 1.9, 2.0), Vector3.new(0, 6.5, -0.1), color)
-	b("EyeL", Vector3.new(0.5, 0.35, 0.1), Vector3.new(-0.5, 6.7, -1.12), Color3.fromRGB(255, 60, 40), Enum.Material.Neon)
-	b("EyeR", Vector3.new(0.5, 0.35, 0.1), Vector3.new(0.5, 6.7, -1.12), Color3.fromRGB(255, 60, 40), Enum.Material.Neon)
-	b("Brow", Vector3.new(2.3, 0.35, 0.3), Vector3.new(0, 7.1, -1.05), dark)
-	model.WorldPivot = CFrame.new(0, 0, 0)
 	return model
 end
 
 function NestService.addGuard(model: Model, home: Vector3, speed: number, options)
 	options = options or {}
 	model:PivotTo(CFrame.new(home))
+	-- physics driven (server owned) so clients interpolate the movement smoothly instead of
+	-- seeing an anchored model jump at the replication rate
+	local root = model.PrimaryPart :: BasePart
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+			p.CanCollide = false
+			p.CanQuery = false
+			p.CanTouch = false
+			p.Massless = p ~= root
+			if p ~= root then
+				local w = Instance.new("WeldConstraint")
+				w.Part0 = root
+				w.Part1 = p
+				w.Parent = p
+			end
+		end
+	end
+	local attachment = Instance.new("Attachment")
+	attachment.Name = "Drive"
+	attachment.Parent = root
+	local align = Instance.new("AlignPosition")
+	align.Mode = Enum.PositionAlignmentMode.OneAttachment
+	align.Attachment0 = attachment
+	align.MaxForce = math.huge
+	align.Responsiveness = 120
+	align.Position = root.Position
+	align.Parent = root
+	local orient = Instance.new("AlignOrientation")
+	orient.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	orient.Attachment0 = attachment
+	orient.MaxTorque = math.huge
+	orient.Responsiveness = 40
+	orient.CFrame = CFrame.new()
+	orient.Parent = root
+	local rootOffset = root.Position - home
 	model.Parent = guardFolder
+	pcall(function()
+		root:SetNetworkOwner(nil)
+	end)
 	local guard = {
 		Model = model,
 		Home = home,
@@ -90,6 +112,11 @@ function NestService.addGuard(model: Model, home: Vector3, speed: number, option
 		BaitUntil = 0,
 		BaitPos = nil,
 		Nest = options.Nest,
+		Align = align,
+		Orient = orient,
+		RootOffset = rootOffset,
+		Hop = (model:GetAttribute("Height") or 10) * 0.06,
+		Phase = math.random() * 6,
 	}
 	table.insert(guards, guard)
 	return guard
@@ -324,7 +351,11 @@ local function moveGuard(guard, target: Vector3, dt: number, speedMult: number)
 	end
 	local step = math.min(dist, guard.Speed * speedMult * dt)
 	guard.Pos += delta.Unit * step
-	guard.Model:PivotTo(CFrame.lookAt(guard.Pos, guard.Pos + delta.Unit))
+	-- little hops while walking
+	guard.Phase += dt * 9
+	local hop = math.abs(math.sin(guard.Phase)) * guard.Hop
+	guard.Align.Position = guard.Pos + guard.RootOffset + Vector3.new(0, hop, 0)
+	guard.Orient.CFrame = CFrame.lookAt(Vector3.zero, delta.Unit)
 	return dist - step
 end
 
@@ -470,7 +501,7 @@ function NestService.Start()
 		for _, cf in ipairs(list) do
 			local nest = { Zone = zone, CFrame = cf, Taken = false }
 			table.insert(nests, nest)
-			local guardModel = buildGolem(Zones[zone].GuardColor, 1.6 + zone * 0.25)
+			local guardModel = buildGuardModel(zone)
 			local home = (cf * CFrame.new(cf.Position.X < 0 and 12 or -12, 0, 0)).Position
 			local guard = NestService.addGuard(guardModel, home, Zones[zone].GuardSpeed, { Nest = nest })
 			guard.LaneOnly = true

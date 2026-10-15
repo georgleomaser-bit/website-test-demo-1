@@ -9,7 +9,7 @@
 --   Weight      {min, max} in kg; heavier = more income
 --   Look        block-model recipe (colors and body features)
 
-local RARITY_SCALE = { 1, 1.2, 1.45, 1.8, 2.3, 3.0, 3.6 }
+local RARITY_SCALE = { 1.4, 1.8, 2.4, 3.2, 4.4, 6.0, 8.0 }
 local WILD_WEIGHT = { 50, 28, 13, 6, 2.2, 0.6, 0.08 } -- spawn weight per rarity on the lane
 local EGG_WEIGHT = { 45, 28, 15, 8, 3, 0.9, 0.12 } -- rarity weights of eggs in guarded nests
 local LAIR_EGG_WEIGHT = { 0, 0, 40, 30, 18, 9, 3 } -- rarity weights of eggs in the Dragon Lair event

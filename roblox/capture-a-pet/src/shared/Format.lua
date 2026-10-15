@@ -18,8 +18,8 @@ local SUFFIXES = {
 	"Ud", "Dd", "Td", "Qad", "Qid", "Sxd", "Spd", "Ocd", "Nod", "Vg",
 }
 
--- 1234 -> "1.23K", 15300000 -> "15.3M"
-function Format.number(n: number): string
+-- 1234 -> "1.23K", 15300000 -> "15.3M"; precise keeps one decimal above 100 ("390.6T")
+function Format.number(n: number, precise: boolean?): string
 	if n ~= n then
 		return "0"
 	end
@@ -44,7 +44,7 @@ function Format.number(n: number): string
 	local scaled = n / (1000 ^ index)
 	local s
 	if scaled >= 100 then
-		s = string.format("%.0f", math.floor(scaled))
+		s = precise and string.format("%.1f", math.floor(scaled * 10) / 10) or string.format("%.0f", math.floor(scaled))
 	elseif scaled >= 10 then
 		s = string.format("%.1f", math.floor(scaled * 10) / 10)
 	else
