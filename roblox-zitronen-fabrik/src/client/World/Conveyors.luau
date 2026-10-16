@@ -168,6 +168,7 @@ local function getLane(plot: Model, index: number)
 		State = state,
 		Key = nil :: number?,
 		LastN = 0,
+		ManualItem = nil :: any,
 		Slats = nil :: { BasePart }?,
 		SlatPhase = 0,
 		LastPopup = 0,
@@ -223,6 +224,7 @@ local function spawnItem(vis, laneCFrame: CFrame, laneCfg, fruit, spawnTime: num
 		Spin = math.random() * math.pi * 2,
 	}
 	table.insert(items, item)
+	return item
 end
 
 local function sell(item)
@@ -352,8 +354,24 @@ local function update(dt: number)
 			-- Neue Früchte planen
 			local travel = travelFor(cycle, manager)
 			if vis.Key ~= start then
+				local firstLook = vis.Key == nil
 				vis.Key = start
-				vis.LastN = manager and math.floor((now - start) / cycle) or 0
+				if manager then
+					-- Früchte, die schon fahren, gehören zum alten Takt: keine doppelten erzeugen.
+					-- Beim allerersten Blick (Beitritt) das Band dagegen gleich füllen.
+					vis.LastN = firstLook and math.floor((now - start) / cycle) or math.floor((now + travel - start) / cycle)
+				else
+					local current = vis.ManualItem
+					if current and now < current.SaleTime and start < current.SaleTime - 0.05 and table.find(items, current) then
+						-- Zyklus wurde nur umgerechnet (z. B. Level gekauft): vorhandene Frucht neu takten
+						current.SaleTime = start + cycle
+						current.SpawnTime = current.SaleTime - travel
+						current.Value = revenue
+						vis.LastN = 1
+					else
+						vis.LastN = 0
+					end
+				end
 			end
 			if manager then
 				local nNow = math.floor((now + travel - start) / cycle)
@@ -374,7 +392,7 @@ local function update(dt: number)
 				vis.LastN = 1
 				local saleTime = start + cycle
 				if saleTime > now then
-					spawnItem(vis, laneCFrame, laneCfg, fruit, saleTime - travel, saleTime, revenue, isOwn)
+					vis.ManualItem = spawnItem(vis, laneCFrame, laneCfg, fruit, saleTime - travel, saleTime, revenue, isOwn)
 				end
 			end
 		end

@@ -10,6 +10,8 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 > **Arbeitstaschen** – der persönliche Projektmanager für alle Projekte: digitale Arbeitstaschen mit Aufgaben, Notizen, Links, Dateien und Meilensteinen, Tagesbriefing mit Erinnerungen und verschlüsseltem Sync auf iPhone, iPad und Mac: [`taschen/TASCHEN.md`](taschen/TASCHEN.md) · App: `…/website-test-demo-1/taschen/`
 
+> **Roblox-Spiel: Zitronen-Fabrik Tycoon** – ein Förderband-Tycoon im klassischen Roblox-Block-Stil (inspiriert von Sell Lemons) mit 6 Linien, Managern, Rebirth bei Zorp dem Alien, Frucht-Evolution, Events und Geheimnissen. Fertige Place-Datei für Roblox Studio und Anleitung: [`roblox-zitronen-fabrik/README.md`](roblox-zitronen-fabrik/README.md)
+
 ## Funktionen
 
 **Charts (TradingView Lightweight Charts)**
