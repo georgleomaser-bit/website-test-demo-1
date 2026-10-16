@@ -80,7 +80,7 @@ function RewardService.Init()
 	table.insert(Core.SyncExtras, function(session, payload)
 		local profile = session.Profile
 		local streak = nextStreak(profile)
-		local stats = session.Stats or baseStats(session)
+		local stats = baseStats(session)
 		payload.Daily = {
 			Available = dailyAvailable(profile),
 			Streak = streak,

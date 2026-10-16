@@ -54,8 +54,10 @@ local function onPlayerAdded(player: Player)
 
 	MonetizationService.LoadPasses(session)
 	ProductionService.InitLanes(session)
-	Core.RecomputeStats(session)
+	-- Erst bauen (setzt die Linien-Attribute zurück), dann Werte schreiben
 	PlotService.BuildFromProfile(session)
+	Core.RecomputeStats(session)
+	PlotService.RefreshPads(session)
 	session.Loaded = true
 	RewardService.GrantOffline(session)
 	Core.SyncNow(session)
@@ -75,16 +77,35 @@ local function onPlayerAdded(player: Player)
 	PlotService.TeleportHome(session)
 end
 
+-- Eine frei gewordene Fabrik an jemanden ohne Fabrik geben
+local function assignWaitingPlayers()
+	for _, waiting in pairs(Core.Sessions) do
+		if waiting.Loaded and not waiting.Plot and waiting.Player.Parent then
+			if not PlotService.Assign(waiting) then
+				return
+			end
+			ProductionService.InitLanes(waiting)
+			PlotService.BuildFromProfile(waiting)
+			Core.RecomputeStats(waiting)
+			PlotService.RefreshPads(waiting)
+			PlotService.TeleportHome(waiting)
+			Core.Notify(waiting.Player, "🍋 Eine Fabrik ist frei geworden – sie gehört jetzt dir!", "gold")
+		end
+	end
+end
+
 local function onPlayerRemoving(player: Player)
 	local session = Core.Get(player)
 	if not session then
 		return
 	end
-	if session.Loaded then
-		DataService.Save(session)
-	end
-	PlotService.Release(session)
 	Core.RemoveSession(player)
+	-- Fabrik sofort freigeben (Speichern braucht nur das Profil)
+	PlotService.Release(session)
+	assignWaitingPlayers()
+	if session.Loaded then
+		DataService.SaveOnLeave(session)
+	end
 end
 
 function PlayerService.Init()

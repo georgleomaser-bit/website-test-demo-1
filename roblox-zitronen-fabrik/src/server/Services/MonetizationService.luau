@@ -10,6 +10,7 @@ local Config = require(ReplicatedStorage.Shared.Config)
 local Economy = require(ReplicatedStorage.Shared.Economy)
 local Format = require(ReplicatedStorage.Shared.Format)
 local Core = require(script.Parent.Core)
+local DataService = require(script.Parent.DataService)
 
 local MonetizationService = {}
 
@@ -62,10 +63,12 @@ function MonetizationService.Init()
 	MarketplaceService.ProcessReceipt = function(receipt)
 		local player = Players:GetPlayerByUserId(receipt.PlayerId)
 		local session = player and Core.Get(player)
-		if not session or not session.Loaded then
+		-- Ohne funktionierendes Speichern lieber später nochmal (Roblox fragt erneut)
+		if not session or not session.Loaded or not session.CanSave then
 			return Enum.ProductPurchaseDecision.NotProcessedYet
 		end
-		if session.Receipts[receipt.PurchaseId] then
+		local receipts = session.Profile.Receipts
+		if table.find(receipts, receipt.PurchaseId) then
 			return Enum.ProductPurchaseDecision.PurchaseGranted
 		end
 		local key, product = productById(receipt.ProductId)
@@ -75,7 +78,19 @@ function MonetizationService.Init()
 		local stats = session.Stats or Economy.ComputeStats(session.Profile, Core.Context(session))
 		local amount = Economy.IncomeReward(stats, product.Minutes, 1000)
 		Core.AddEarnings(session, amount)
-		session.Receipts[receipt.PurchaseId] = true
+		table.insert(receipts, receipt.PurchaseId)
+		while #receipts > 50 do
+			table.remove(receipts, 1)
+		end
+		-- Erst wenn der Kauf gespeichert ist, bestätigen wir ihn
+		if not DataService.Save(session) then
+			Core.RevertEarnings(session, amount)
+			local index = table.find(receipts, receipt.PurchaseId)
+			if index then
+				table.remove(receipts, index)
+			end
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
 		Core.Notify(session.Player, "Danke! " .. product.Emoji .. " +" .. Format.Cash(amount), "gold")
 		Core.Effect(session.Player, "Reward", { Amount = amount, Title = product.Name })
 		return Enum.ProductPurchaseDecision.PurchaseGranted

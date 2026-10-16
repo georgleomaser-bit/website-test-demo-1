@@ -36,7 +36,8 @@ Ein **Förderband-Tycoon** im **klassischen Roblox-Block-Stil** (Plastik-Blöcke
 - **Kanalisation** 🕳️ unter dem Kanaldeckel: Labyrinth mit 4 farbigen Hebeln, Hinweis auf dem Wandbild (Reihenfolge wird pro Server ausgewürfelt) → Tresor → **UFO-Schlüssel** → zu Zorp bringen = Investoren für immer 50 % stärker
 - **Server-Events** alle 6–9 Minuten: ⚡ Turbo-Zeit, 💸 Geldregen (×3), 🍋 Zitronen-Regen (goldene Zitronen einsammeln)
 - **Bestenliste** „Reichste Fabriken“ auf dem Platz, **tägliche Belohnung** mit 7-Tage-Serie, **Offline-Geld**
-- Speichern mit DataStores, Gamepässe/Dev-Produkte vorbereitet
+- Speichern mit DataStores (mit Sitzungs-Sperre gegen Datenverlust beim schnellen Wiederbeitritt), Gamepässe/Dev-Produkte vorbereitet
+- Wird eine Fabrik frei, bekommt sie automatisch ein Spieler, der noch keine hatte
 
 ## Anpassen
 
@@ -49,7 +50,7 @@ Fast alles steht in **`src/shared/Config.luau`** (in Studio: `ReplicatedStorage 
 | Upgrades, Deko, Alien-Kräfte | `Config.CashUpgradeSettings`, `Config.Decor`, `Config.Powers` |
 | Rebirth & Evolution | `Config.Rebirth`, `Config.Evolution` |
 | Events | `Config.Events` |
-| Gamepässe / Dev-Produkte | `Config.GamePasses`, `Config.DevProducts` – **ID eintragen** (0 = aus, dann ist der Shop versteckt) |
+| Gamepässe / Dev-Produkte | `Config.GamePasses`, `Config.DevProducts` – **ID eintragen** (0 = aus, dann ist der Shop versteckt). Robux-Käufe werden erst bestätigt, wenn sie gespeichert sind |
 | Sounds & Musik | `Config.Sounds` (eingebaute Roblox-Sounds, durch Creator-Store-IDs ersetzbar; Musik ist leer) |
 | Admins fürs Test-Menü | `Config.AdminUserIds` |
 

@@ -53,7 +53,6 @@ function Core.CreateSession(player: Player)
 		ActionBudget = 30,
 		SewerProgress = {},
 		SewerSolved = false,
-		Receipts = {},
 		JoinedAt = os.time(),
 	}
 	Core.Sessions[player] = session
@@ -86,8 +85,9 @@ end
 --------------------------------------------------------------------------
 -- Geld
 --------------------------------------------------------------------------
--- Verdientes Geld (zählt für Investoren und Bestenliste)
-function Core.AddEarnings(session, amount: number)
+-- Verdientes Geld (zählt für Investoren und Bestenliste).
+-- fromProduction = true nur für Verkäufe (fließt in die "pro Sekunde"-Anzeige)
+function Core.AddEarnings(session, amount: number, fromProduction: boolean?)
 	if type(amount) ~= "number" or amount ~= amount or amount <= 0 then
 		return
 	end
@@ -98,8 +98,19 @@ function Core.AddEarnings(session, amount: number)
 	profile.Cash = math.min(profile.Cash + amount, 1e300)
 	profile.EvoEarnings = math.min(profile.EvoEarnings + amount, 1e300)
 	profile.AllTimeEarnings = math.min(profile.AllTimeEarnings + amount, 1e300)
-	local idx = session.IncomeBucketIndex
-	session.IncomeBuckets[idx] += amount
+	if fromProduction then
+		local idx = session.IncomeBucketIndex
+		session.IncomeBuckets[idx] += amount
+	end
+	session.CashDirty = true
+end
+
+-- Gutschrift rückgängig machen (z. B. wenn ein Robux-Kauf nicht gespeichert werden konnte)
+function Core.RevertEarnings(session, amount: number)
+	local profile = session.Profile
+	profile.Cash = math.max(0, profile.Cash - amount)
+	profile.EvoEarnings = math.max(0, profile.EvoEarnings - amount)
+	profile.AllTimeEarnings = math.max(0, profile.AllTimeEarnings - amount)
 	session.CashDirty = true
 end
 

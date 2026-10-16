@@ -85,7 +85,7 @@ local function credit(session, laneIndex: number, cycles: number)
 			total *= 1 + 9 * chance
 		end
 	end
-	Core.AddEarnings(session, total)
+	Core.AddEarnings(session, total, true)
 end
 
 function ProductionService.Init()

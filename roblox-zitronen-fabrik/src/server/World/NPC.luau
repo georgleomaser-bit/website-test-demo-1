@@ -228,22 +228,35 @@ function NPC.Create(parent: Instance, name: string, opts): Model
 	return npc
 end
 
--- Kurze Jubel-/Wink-Animation abspielen
+-- Kurze Jubel-/Wink-Animation abspielen (Tracks werden wiederverwendet)
+local trackCache: { [Instance]: { [string]: AnimationTrack } } = setmetatable({}, { __mode = "k" }) :: any
+
 function NPC.PlayOnce(npc: Model, kind: string)
 	local humanoid = npc:FindFirstChildOfClass("Humanoid")
 	local animator = humanoid and humanoid:FindFirstChildOfClass("Animator")
 	if not animator then
 		return
 	end
-	local anim = Instance.new("Animation")
-	anim.AnimationId = kind == "wave" and ANIM_WAVE or ANIM_CHEER
-	local ok, track = pcall(function()
-		return animator:LoadAnimation(anim)
-	end)
-	if ok and track then
-		track.Priority = Enum.AnimationPriority.Action
-		track:Play()
+	local cache = trackCache[animator]
+	if not cache then
+		cache = {}
+		trackCache[animator] = cache
 	end
+	local track = cache[kind]
+	if not track then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = kind == "wave" and ANIM_WAVE or ANIM_CHEER
+		local ok, loaded = pcall(function()
+			return animator:LoadAnimation(anim)
+		end)
+		if not ok or not loaded then
+			return
+		end
+		loaded.Priority = Enum.AnimationPriority.Action
+		cache[kind] = loaded
+		track = loaded
+	end
+	track:Play()
 end
 
 return NPC

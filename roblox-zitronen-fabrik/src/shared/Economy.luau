@@ -32,6 +32,7 @@ function Economy.NewProfile()
 		ObbyLast = 0,
 		Stats = { Rebirths = 0, Evolutions = 0, PlayTime = 0, Presses = 0, Golden = 0, Pickups = 0 },
 		Settings = { Music = true, Sfx = true, OtherItems = true, Guide = true },
+		Receipts = {}, -- zuletzt verarbeitete Robux-Käufe (gegen doppelte Gutschrift)
 		LastOnline = 0,
 	}
 end

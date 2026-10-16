@@ -168,6 +168,7 @@ local function getLane(plot: Model, index: number)
 		State = state,
 		Key = nil :: number?,
 		LastN = 0,
+		LastSale = 0,
 		ManualItem = nil :: any,
 		Slats = nil :: { BasePart }?,
 		SlatPhase = 0,
@@ -286,6 +287,8 @@ local moveParts: { BasePart } = {}
 local moveCFrames: { CFrame } = {}
 
 local function update(dt: number)
+	table.clear(moveParts)
+	table.clear(moveCFrames)
 	local world = workspace:FindFirstChild("World")
 	local plots = world and world:FindFirstChild("Plots")
 	if not plots then
@@ -335,7 +338,8 @@ local function update(dt: number)
 			if isOwn and unlocked then
 				ensureSlats(vis, laneCFrame)
 				if running then
-					local speed = (BELT_LENGTH * BELT_SHARE) / travelFor(cycle, manager)
+					-- gleiche Geschwindigkeit wie die Früchte auf dem Band
+					local speed = (BELT_LENGTH - 1.5) / (BELT_SHARE * travelFor(cycle, manager))
 					vis.SlatPhase = (vis.SlatPhase + speed * dt) % SLAT_SPACING
 				end
 				for k, part in ipairs(vis.Slats) do
@@ -357,9 +361,10 @@ local function update(dt: number)
 				local firstLook = vis.Key == nil
 				vis.Key = start
 				if manager then
-					-- Früchte, die schon fahren, gehören zum alten Takt: keine doppelten erzeugen.
-					-- Beim allerersten Blick (Beitritt) das Band dagegen gleich füllen.
-					vis.LastN = firstLook and math.floor((now - start) / cycle) or math.floor((now + travel - start) / cycle)
+					-- Beim allerersten Blick (Beitritt) das Band gleich füllen. Danach direkt
+					-- hinter der letzten schon geplanten Frucht weitermachen (keine doppelten).
+					local from = firstLook and now or math.max(now, vis.LastSale)
+					vis.LastN = math.floor((from - start) / cycle + 1e-6)
 				else
 					local current = vis.ManualItem
 					if current and now < current.SaleTime and start < current.SaleTime - 0.05 and table.find(items, current) then
@@ -381,8 +386,9 @@ local function update(dt: number)
 					for n = first, nNow do
 						if n % step == 0 then
 							local saleTime = start + n * cycle
-							if saleTime > now then
+							if saleTime > now and saleTime > vis.LastSale + 1e-3 then
 								spawnItem(vis, laneCFrame, laneCfg, fruit, saleTime - travel, saleTime, revenue * step, isOwn)
+								vis.LastSale = saleTime
 							end
 						end
 					end
@@ -393,6 +399,7 @@ local function update(dt: number)
 				local saleTime = start + cycle
 				if saleTime > now then
 					vis.ManualItem = spawnItem(vis, laneCFrame, laneCfg, fruit, saleTime - travel, saleTime, revenue, isOwn)
+					vis.LastSale = saleTime
 				end
 			end
 		end
@@ -413,8 +420,10 @@ local function update(dt: number)
 		local travel = item.SaleTime - item.SpawnTime
 		local progress = travel > 0 and (now - item.SpawnTime) / travel or 1
 		local vis = item.Vis
-		if progress >= 1 or lanesVis[laneKey(vis.Plot, vis.Index)] ~= vis then
-			if progress >= 1 then
+		local gone = lanesVis[laneKey(vis.Plot, vis.Index)] ~= vis or vis.State:GetAttribute("Unlocked") ~= true
+		if progress >= 1 or gone then
+			-- Nach Rebirth/Evolution keine "Phantom-Verkäufe" anzeigen
+			if progress >= 1 and not gone then
 				sell(item)
 			end
 			if item.Part then

@@ -360,7 +360,9 @@ end
 function PlotVisuals.Start()
 	startedAt = os.clock()
 	State.Changed.Event:Connect(updateKey)
+	updateKey()
 	local acc = 0
+	local keyTimer = 0
 	RunService.RenderStepped:Connect(function(dt)
 		local plot = State.Plot()
 		watchPlot(plot)
@@ -371,6 +373,11 @@ function PlotVisuals.Start()
 			return
 		end
 		updateBillboards(plot)
+		keyTimer += dt
+		if keyTimer >= 2 then
+			keyTimer = 0
+			updateKey()
+		end
 		acc += dt
 		if acc >= 0.2 then
 			acc = 0

@@ -25,16 +25,18 @@ local STYLE_COLORS = {
 
 function Popups.Init(root: Frame)
 	Popups.Root = root
+	-- unten rechts, über dem Sprung-Knopf am Handy; neue Meldungen kommen unten dazu
 	toastHolder = Ui.Frame(root, {
 		Name = "Toasts",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -12, 0, 250),
-		Size = UDim2.fromOffset(380, 400),
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -12, 1, -150),
+		Size = UDim2.fromOffset(380, 330),
 		BackgroundTransparency = 1,
 		ZIndex = 40,
 	})
 	local layout = Ui.List(toastHolder, 6)
 	layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
 	centerHolder = Ui.Frame(root, {
 		Name = "Center",
 		Size = UDim2.fromScale(1, 1),
@@ -71,7 +73,7 @@ function Popups.Toast(text: string, style: string?)
 	scale.Parent = frame
 	Ui.Tween(scale, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
 	table.insert(toasts, frame)
-	while #toasts > 5 do
+	while #toasts > 4 do
 		local old = table.remove(toasts, 1)
 		if old then
 			old:Destroy()

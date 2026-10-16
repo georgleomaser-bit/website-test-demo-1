@@ -48,6 +48,7 @@ function commands.reset(session)
 	ProductionService.ResetLanes(session)
 	PlotService.BuildFromProfile(session)
 	Core.RecomputeStats(session)
+	PlotService.RefreshPads(session)
 	PlotService.TeleportHome(session)
 	Core.Notify(session.Player, "🛠️ Spielstand zurückgesetzt", "info")
 end

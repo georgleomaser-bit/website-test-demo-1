@@ -28,28 +28,71 @@ local function isNoAccessError(err: any): boolean
 		or string.find(text, "not allowed") ~= nil
 end
 
+-- Sitzungs-Sperre: Ein Spielstand gehört immer nur einem Server. So kann ein
+-- schneller Wiederbeitritt (oder ein zweiter Server) keine alten Daten laden
+-- und danach die neuen überschreiben. Autosave erneuert die Sperre.
+local LOCK_TIMEOUT = 150
+local LOAD_ATTEMPTS = 8
+local pendingLeave: { [number]: boolean } = {}
+
+local function lockedByOther(data: any): boolean
+	if type(data) ~= "table" or type(data.Lock) ~= "table" then
+		return false
+	end
+	if data.Lock.JobId == game.JobId then
+		return false
+	end
+	return os.time() - (tonumber(data.Lock.Time) or 0) < LOCK_TIMEOUT
+end
+
 -- Lädt das Profil. Gibt (profil, darfSpeichern) zurück.
 function DataService.Load(player: Player)
 	if not store then
 		return Economy.NewProfile(), false
 	end
-	for attempt = 1, 3 do
-		local ok, data = pcall(function()
-			return (store :: DataStore):GetAsync(keyFor(player.UserId))
+	-- Gleicher Server: erst das Speichern vom letzten Verlassen abwarten
+	local waited = 0
+	while pendingLeave[player.UserId] and waited < 20 do
+		task.wait(0.5)
+		waited += 0.5
+	end
+	local key = keyFor(player.UserId)
+	for attempt = 1, LOAD_ATTEMPTS do
+		local result = nil
+		local blocked = false
+		local ok, err = pcall(function()
+			(store :: DataStore):UpdateAsync(key, function(old)
+				blocked = false
+				result = nil
+				-- Beim letzten Versuch übernehmen wir die Sperre trotzdem (Server abgestürzt?)
+				if lockedByOther(old) and attempt < LOAD_ATTEMPTS then
+					blocked = true
+					return nil
+				end
+				local profile = if old ~= nil then Economy.Reconcile(old) else Economy.NewProfile()
+				profile.Lock = { JobId = game.JobId, Time = os.time() }
+				result = profile
+				return profile
+			end)
 		end)
-		if ok then
-			if data == nil then
-				return Economy.NewProfile(), true
-			end
-			return Economy.Reconcile(data), true
+		if ok and result and not blocked then
+			return result, true
 		end
-		warn("[ZitronenFabrik] Laden fehlgeschlagen (Versuch " .. attempt .. "): " .. tostring(data))
-		if isNoAccessError(data) or not player.Parent then
+		if not player.Parent then
 			break
 		end
-		task.wait(attempt * 2)
+		if not ok then
+			warn("[ZitronenFabrik] Laden fehlgeschlagen (Versuch " .. attempt .. "): " .. tostring(err))
+			if isNoAccessError(err) then
+				break
+			end
+			task.wait(math.min(attempt * 2, 6))
+		else
+			-- Ein anderer Server speichert gerade noch – kurz warten
+			task.wait(4)
+		end
 	end
-	-- Lieber nicht speichern als einen alten Spielstand zu überschreiben
+	-- Lieber nicht speichern als einen Spielstand zu überschreiben
 	return Economy.NewProfile(), false
 end
 
@@ -69,22 +112,51 @@ local function cleanNumbers(t)
 	end
 end
 
-function DataService.Save(session): boolean
+-- Speichert das Profil. releaseLock = true beim Verlassen (Sperre freigeben).
+function DataService.Save(session, releaseLock: boolean?): boolean
 	if not store or not session.CanSave or not session.Loaded then
 		return false
 	end
 	local profile = session.Profile
 	profile.LastOnline = os.time()
+	profile.Lock = if releaseLock then nil else { JobId = game.JobId, Time = os.time() }
 	cleanNumbers(profile)
+	local lost = false
 	local ok, err = pcall(function()
-		(store :: DataStore):UpdateAsync(keyFor(session.Player.UserId), function()
+		(store :: DataStore):UpdateAsync(keyFor(session.Player.UserId), function(old)
+			lost = false
+			if lockedByOther(old) then
+				lost = true
+				return nil
+			end
 			return profile
 		end)
 	end)
 	if not ok then
 		warn("[ZitronenFabrik] Speichern fehlgeschlagen: " .. tostring(err))
 	end
-	return ok
+	if lost then
+		-- Ein anderer Server hat den Spielstand übernommen: nicht mehr überschreiben
+		session.CanSave = false
+		warn("[ZitronenFabrik] Spielstand wird auf einem anderen Server benutzt – Speichern hier gestoppt.")
+	end
+	return ok and not lost
+end
+
+-- Beim Verlassen: mit Wiederholungen speichern und Sperre freigeben
+function DataService.SaveOnLeave(session)
+	local userId = session.Player.UserId
+	if pendingLeave[userId] then
+		return -- wird schon gespeichert (z. B. Server fährt herunter)
+	end
+	pendingLeave[userId] = true
+	for attempt = 1, 3 do
+		if DataService.Save(session, true) or not session.CanSave then
+			break
+		end
+		task.wait(attempt * 2)
+	end
+	pendingLeave[userId] = nil
 end
 
 function DataService.Init()
@@ -111,16 +183,12 @@ function DataService.Start()
 
 	-- Beim Herunterfahren alle speichern
 	game:BindToClose(function()
-		local pending = 0
 		for _, session in pairs(Core.Sessions) do
-			pending += 1
-			task.spawn(function()
-				DataService.Save(session)
-				pending -= 1
-			end)
+			task.spawn(DataService.SaveOnLeave, session)
 		end
+		task.wait(0.1)
 		local started = os.clock()
-		while pending > 0 and os.clock() - started < 25 do
+		while next(pendingLeave) ~= nil and os.clock() - started < 25 do
 			task.wait(0.2)
 		end
 	end)

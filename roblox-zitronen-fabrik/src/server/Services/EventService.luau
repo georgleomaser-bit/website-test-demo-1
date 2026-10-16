@@ -161,7 +161,9 @@ function EventService.Start()
 			if #Players:GetPlayers() > 0 and not active then
 				Core.NotifyAll("⏰ In 10 Sekunden startet ein Event!", "event")
 				task.wait(10)
-				EventService.Begin(nil)
+				if not active then
+					EventService.Begin(nil)
+				end
 			end
 		end
 	end)
