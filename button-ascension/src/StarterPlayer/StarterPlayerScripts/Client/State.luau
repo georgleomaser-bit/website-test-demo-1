@@ -111,6 +111,8 @@ function State.view()
 		Equipped = d.Equipped or {},
 		Discovered = d.Discovered or {},
 		Stats = d.Stats or {},
+		Passes = d.Passes or {},
+		Boosts = d.Boosts or {},
 		Rebirths = progress.Rebirths,
 		Level = progress.Level,
 	}

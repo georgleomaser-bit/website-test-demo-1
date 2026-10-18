@@ -22,6 +22,7 @@ local Items = require(Config.Items)
 local Chests = require(Config.Chests)
 local Achievements = require(Config.Achievements)
 local GameConfig = require(Config.GameConfig)
+local GamePasses = require(Config.GamePasses)
 
 local C = Theme.Colors
 local F = Theme.Fonts
@@ -33,6 +34,7 @@ local bannerHolder: Frame
 local bannerQueue = {}
 local bannerBusy = false
 local layer: Frame
+local context: any = nil
 
 function Notifications.describeReward(reward): string
 	if type(reward) ~= "table" then
@@ -66,6 +68,7 @@ function Notifications.describeReward(reward): string
 end
 
 function Notifications.init(ctx)
+	context = ctx
 	layer = ctx.Layers.Notifications
 	local inset = GuiService:GetGuiInset()
 	toastList = UI.frame({
@@ -392,6 +395,38 @@ end
 HANDLERS.Reward = function(data)
 	SoundPlayer.play("Purchase")
 	Notifications.toast(`<b>{data.Title or "Reward"}</b>: {data.Text or ""}`, { Icon = "🎁", Color = C.Success })
+end
+
+HANDLERS.Pass = function(data)
+	local pass = GamePasses.ByKey[data.Key]
+	if pass then
+		Notifications.banner({
+			Kicker = "GAME PASS UNLOCKED",
+			Title = `{pass.Icon} {pass.Name}`,
+			Text = pass.EffectText,
+			Color = pass.Color,
+			Sound = "Unlock",
+			Duration = 5,
+			Flash = true,
+		})
+	end
+end
+
+-- A Robux crate the server already opened and applied: play the opening for it
+-- (after any opening that is still on screen).
+HANDLERS.CrateOpened = function(data)
+	local chest = Chests.RobuxById[data.Chest]
+	if not chest or type(data.Results) ~= "table" or #data.Results == 0 then
+		return
+	end
+	task.spawn(function()
+		local ChestOpening = require(script.Parent.Screens.ChestOpening)
+		local deadline = os.clock() + 60
+		while ChestOpening.isActive() and os.clock() < deadline do
+			task.wait(0.25)
+		end
+		ChestOpening.play(context, chest, data.Results)
+	end)
 end
 
 HANDLERS.Stage = function(data)

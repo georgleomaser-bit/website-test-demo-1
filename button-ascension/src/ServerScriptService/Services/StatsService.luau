@@ -59,9 +59,10 @@ function StatsService:Get(profile): Formulas.Stats
 	return profile.Stats
 end
 
--- Stats without temporary boosts (used for offline earnings).
+-- Stats without temporary boosts (used for offline earnings and quest targets).
+-- Game passes are permanent and count; timed boosts bought with Robux do not.
 function StatsService:GetBase(profile): Formulas.Stats
-	return Formulas.computeStats(profile.Data, { Events = {} })
+	return Formulas.computeStats(profile.Data, { Events = {}, ExcludeTimedBoosts = true })
 end
 
 function StatsService:Invalidate(profile)
@@ -89,11 +90,21 @@ function StatsService:BuildDerived(profile)
 	local stats = self:Get(profile)
 	local data = profile.Data
 	local rt = profile.Runtime
+	-- Bought timed boosts only tick while playing, so the client gets an end time
+	-- from "now + seconds left"; it is refreshed whenever Derived is rebuilt.
+	local boostEndsAt = {}
+	local now = workspace:GetServerTimeNow()
+	for key, left in pairs(data.Boosts or {}) do
+		if type(left) == "number" and left > 0 then
+			boostEndsAt[key] = now + left
+		end
+	end
 	return {
 		Stats = stats,
 		RebirthRequirement = Formulas.rebirthRequirement(data.Rebirths),
 		FrenzyEndsAt = rt.FrenzyEndsAt,
 		FrenzyMultiplier = rt.FrenzyMultiplier,
+		BoostEndsAt = boostEndsAt,
 		Persistent = not profile.Temporary,
 	}
 end

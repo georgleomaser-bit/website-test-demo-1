@@ -7,7 +7,7 @@
 	Always-visible interface:
 	  * Top bar: Sparks (per press / per second), Gems, Prisms, level + XP.
 	  * Navigation rail: Shop, Crates, Inventory, Skills, Collection, Quests,
-	    Ascend, Stats, Settings — with notification badges.
+	    Ascend, Stats, Store (Robux), Settings — with notification badges.
 	  * Centre: the big button, combo meter and live stat chips.
 	  * Right column: ascension progress, current goal, active boosts.
 	Layout scales with the viewport and the UI Scale setting; small screens
@@ -34,6 +34,7 @@ local Quests = require(Config.Quests)
 local Rewards = require(Config.Rewards)
 local Items = require(Config.Items)
 local Ascension = require(Config.Ascension)
+local DevProducts = require(Config.DevProducts)
 
 local State = require(script.Parent.State)
 local ClientNet = require(script.Parent.ClientNet)
@@ -54,6 +55,7 @@ local NAV = {
 	{ Id = "Quests", Icon = "📜", Text = "Quests" },
 	{ Id = "Ascend", Icon = "🔷", Text = "Ascend" },
 	{ Id = "Stats", Icon = "🏆", Text = "Stats" },
+	{ Id = "Store", Icon = "💰", Text = "Store" },
 	{ Id = "Settings", Icon = "⚙️", Text = "Settings" },
 }
 
@@ -588,6 +590,13 @@ function Hud.refreshBoosts()
 	local derived = State.get("Derived")
 	if derived and derived.FrenzyEndsAt and derived.FrenzyEndsAt > now then
 		table.insert(lines, { `🔥 Frenzy ×{derived.FrenzyMultiplier or 1}`, derived.FrenzyEndsAt - now, C.Gold })
+	end
+	-- Boosts bought with Robux (their timer only runs while playing).
+	for _, product in ipairs(DevProducts.List) do
+		local endsAt = derived and derived.BoostEndsAt and derived.BoostEndsAt[product.Key]
+		if product.Boost and type(endsAt) == "number" and endsAt > now then
+			table.insert(lines, { `{product.Icon} {product.Name} ×{product.Boost.Mult}`, endsAt - now, product.Color })
+		end
 	end
 	local serverState = ReplicatedStorage:FindFirstChild("ServerState")
 	if serverState then

@@ -305,6 +305,36 @@ Instance.define("Players", {
 		GetUserThumbnailAsync = function(_, userId)
 			return string.format("rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150", userId or 0), true
 		end,
+		-- Ban API: recorded on the shared backend (set backend.banApiError to make it fail).
+		BanAsync = function(self, config)
+			local st = svc(self, "BanAsync")
+			if st.world.role ~= "server" then
+				error("BanAsync can only be called from the server", 2)
+			end
+			local backend = st.world.backend
+			if backend and backend.banApiError then
+				error(backend.banApiError, 2)
+			end
+			if type(config) ~= "table" or type(config.UserIds) ~= "table" or type(config.Duration) ~= "number" or type(config.DisplayReason) ~= "string" then
+				error("Players:BanAsync() invalid config", 2)
+			end
+			if backend then
+				table.insert(backend.banApiCalls, { Kind = "ban", Config = config })
+			end
+		end,
+		UnbanAsync = function(self, config)
+			local st = svc(self, "UnbanAsync")
+			local backend = st.world.backend
+			if backend and backend.banApiError then
+				error(backend.banApiError, 2)
+			end
+			if type(config) ~= "table" or type(config.UserIds) ~= "table" then
+				error("Players:UnbanAsync() invalid config", 2)
+			end
+			if backend then
+				table.insert(backend.banApiCalls, { Kind = "unban", Config = config })
+			end
+		end,
 		GetFriendsAsync = function()
 			error("Harness: Players:GetFriendsAsync() is not implemented in the mock engine", 2)
 		end,
@@ -760,8 +790,16 @@ Instance.define("MarketplaceService", {
 		PromptPremiumPurchase = function(self, player)
 			table.insert(svc(self, "PromptPremiumPurchase").world.prompts, { kind = "premium", player = player })
 		end,
-		UserOwnsGamePassAsync = function()
-			return false
+		UserOwnsGamePassAsync = function(self, userId, passId)
+			local world = svc(self, "UserOwnsGamePassAsync").world
+			local market = world.marketplace
+			world.ownershipChecks += 1
+			if market.failures > 0 then
+				market.failures -= 1
+				error("HTTP 500 (Internal Server Error)", 2)
+			end
+			local owned = market.owned[userId]
+			return owned ~= nil and owned[passId] == true
 		end,
 		PlayerOwnsAsset = function()
 			return false
@@ -769,8 +807,9 @@ Instance.define("MarketplaceService", {
 		PlayerOwnsBundle = function()
 			return false
 		end,
-		GetProductInfo = function(_, id)
-			return { Name = "Product " .. tostring(id), PriceInRobux = 0, AssetId = id, IsForSale = false }
+		GetProductInfo = function(self, id)
+			local price = svc(self, "GetProductInfo").world.marketplace.prices[id]
+			return { Name = "Product " .. tostring(id), PriceInRobux = price or 0, AssetId = id, IsForSale = price ~= nil }
 		end,
 	},
 })

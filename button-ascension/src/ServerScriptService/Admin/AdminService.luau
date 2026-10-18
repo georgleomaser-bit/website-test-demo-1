@@ -2,7 +2,7 @@
 	AdminService (ModuleScript)
 	Location: ServerScriptService/Admin/AdminService
 	Depends on: Admin/AdminConfig, Admin/AdminPermissions, Admin/AdminActions,
-	            Admin/AdminCommands, Admin/AuditLog, Admin/PlayerResolver,
+	            Admin/AdminCommands, Admin/AuditLog, Admin/PlayerResolver, Admin/ModerationStore,
 	            Core/RateLimiter, Core/Guard, Shared/Remotes, ServerStorage/AdminClient,
 	            DataService, SecurityService, Net
 
@@ -16,7 +16,8 @@
 	  4. Global and per-category rate limits per admin.
 	  5. Permission check for the specific action.
 	  6. Argument validation and limits (AdminActions.Validate).
-	  7. Target resolution (unambiguous player, or #UserId for offline tools).
+	  7. Target resolution (unambiguous player, #UserId for offline tools, or
+	     for bans/staff roles also an exact Roblox username).
 	  8. Rank protection: punitive actions cannot target equal/higher staff.
 	  9. Destructive actions return a single-use confirmation token instead of
 	     running; only a matching "confirm" request from the same admin runs them.
@@ -24,7 +25,11 @@
 
 	The admin panel client lives in ServerStorage/AdminClient and is cloned
 	into the PlayerGui of authorised staff only, so normal players never even
-	receive its code.
+	receive its code. When an Owner hands out or removes a role in the game,
+	the panel is delivered or taken away right away, in every server.
+
+	Bans (ModerationStore) are enforced here: banned players are kicked when
+	they join and as soon as a ban arrives from another server.
 ]]
 
 local HttpService = game:GetService("HttpService")
@@ -44,6 +49,7 @@ local AdminActions = require(script.Parent.AdminActions)
 local AdminCommands = require(script.Parent.AdminCommands)
 local AuditLog = require(script.Parent.AuditLog)
 local PlayerResolver = require(script.Parent.PlayerResolver)
+local ModerationStore = require(script.Parent.ModerationStore)
 
 local AdminService = { Name = "AdminService" }
 
@@ -60,6 +66,8 @@ local deniedLog: { [number]: number } = {}
 -- audited at most once per minute per admin/action/target to keep logs useful.
 local readAudit: { [string]: number } = {}
 local READ_AUDIT_COOLDOWN = 60
+-- The role each online player's panel was built for, to notice role changes.
+local deliveredRole: { [Player]: string | false } = {}
 
 -- Actions that only need a live player, not their loaded data.
 local NO_PROFILE_NEEDED = {
@@ -85,6 +93,10 @@ end
 
 function AdminService:Start()
 	AuditLog.init(self.Services.DataService:IsPersistent())
+	ModerationStore.init(self.Services.DataService:IsPersistent())
+	ModerationStore.onChanged(function(kind)
+		self:_onModerationChanged(kind)
+	end)
 	AuditLog.onRecord(function(entry)
 		for _, player in ipairs(Players:GetPlayers()) do
 			if AdminPermissions.has(AdminPermissions.roleFor(player), "logs.view") then
@@ -100,6 +112,7 @@ function AdminService:Start()
 		task.spawn(self._onPlayerAdded, self, player)
 	end
 	Players.PlayerRemoving:Connect(function(player)
+		deliveredRole[player] = nil
 		seenRequests[player.UserId] = nil
 		deniedLog[player.UserId] = nil
 		local prefix = tostring(player.UserId) .. ":"
@@ -150,6 +163,18 @@ function AdminService:_onPlayerAdded(player: Player)
 			AdminActions.applyFreeze(player, true)
 		end
 	end)
+	-- Bans: right after a server starts, wait briefly for the list. If Roblox's data
+	-- services are down the player is let in (Roblox's own Ban API still applies).
+	ModerationStore.waitLoaded("bans", AdminConfig.Moderation.JoinCheckTimeout)
+	local ban = ModerationStore.activeBan(player.UserId)
+	if ban and player.Parent == Players then
+		player:Kick(AdminActions.banMessage(ban))
+		return
+	end
+	ModerationStore.waitLoaded("staff", AdminConfig.Moderation.JoinCheckTimeout)
+	if player.Parent ~= Players then
+		return
+	end
 	local role = AdminPermissions.roleFor(player)
 	-- If Roblox could not tell us who owns the group yet, keep asking for a while
 	-- so the group owner still receives the panel.
@@ -158,6 +183,9 @@ function AdminService:_onPlayerAdded(player: Player)
 		retries += 1
 		task.wait(35)
 		role = AdminPermissions.roleFor(player)
+	end
+	if player.Parent == Players and deliveredRole[player] == nil then
+		deliveredRole[player] = role or false
 	end
 	if role and AdminPermissions.has(role, "panel.open") and player.Parent == Players then
 		self:_givePanel(player)
@@ -192,6 +220,56 @@ function AdminService:_givePanel(player: Player)
 		child:Clone().Parent = gui
 	end
 	gui.Parent = playerGui
+end
+
+-- Moderation changes (from this or another server) ------------------------------------
+
+function AdminService:_onModerationChanged(kind: string)
+	for _, player in ipairs(Players:GetPlayers()) do
+		if kind == "bans" then
+			local ban = ModerationStore.activeBan(player.UserId)
+			if ban then
+				player:Kick(AdminActions.banMessage(ban))
+			end
+		else
+			task.spawn(self._syncStaffRole, self, player)
+		end
+	end
+end
+
+-- Delivers, rebuilds or removes a player's admin panel after their role changed.
+function AdminService:_syncStaffRole(player: Player)
+	local before = deliveredRole[player]
+	if before == nil then
+		return -- still joining; _onPlayerAdded delivers the panel
+	end
+	local role = AdminPermissions.roleFor(player)
+	if (role or false) == before or player.Parent ~= Players then
+		return
+	end
+	deliveredRole[player] = role or false
+	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	local old = playerGui and playerGui:FindFirstChild("AdminPanelGui")
+	if old then
+		old:Destroy()
+	end
+	if role and AdminPermissions.has(role, "panel.open") then
+		self:_givePanel(player)
+		self.Services.Net.notify(player, "Toast", {
+			Icon = "🛡️",
+			Text = `You are now {role}! Open the admin panel with {AdminConfig.PanelKey} or the Admin button.`,
+		})
+	else
+		self.Services.Net.notify(player, "Warning", { Text = "Your staff role was removed." })
+	end
+	AuditLog.record({
+		AdminId = player.UserId,
+		AdminName = player.Name,
+		Role = role,
+		Action = "session.role",
+		Result = "success",
+		Message = if role then `Role is now {role}; panel delivered.` else "Staff role removed; panel taken away.",
+	})
 end
 
 function AdminService:CommandList(role: string?)
@@ -347,14 +425,25 @@ function AdminService:Execute(admin: Player, role: string, actionName: string, r
 	end
 
 	local offline = false
-	if def.Target then
+	if def.Target == "user" then
+		-- Bans and staff roles only need a UserId; the person may be offline.
+		local userId, label, online = PlayerResolver.resolveUser(clean.Target, admin)
+		if not userId then
+			audit(admin, role, actionName, { Result = "invalid", Params = args, Message = label })
+			return { ok = false, err = label }
+		end
+		ctx.TargetUserId = userId
+		ctx.TargetName = label
+		ctx.TargetPlayer = online
+		ctx.TargetProfile = if online then self.Services.DataService:GetProfile(online) else nil
+	elseif def.Target then
 		local target, resolveErr = PlayerResolver.resolve(clean.Target, admin)
 		if target then
 			ctx.TargetPlayer = target
 			ctx.TargetUserId = target.UserId
 			ctx.TargetName = if target.DisplayName ~= target.Name then `{target.DisplayName} (@{target.Name})` else target.Name
 			ctx.TargetProfile = self.Services.DataService:GetProfile(target)
-			if not ctx.TargetProfile and not NO_PROFILE_NEEDED[actionName] then
+			if not ctx.TargetProfile and not NO_PROFILE_NEEDED[actionName] and not def.NoProfile then
 				return { ok = false, err = "That player's data is still loading." }
 			end
 		elseif def.Target == "any" then
@@ -370,7 +459,9 @@ function AdminService:Execute(admin: Player, role: string, actionName: string, r
 			audit(admin, role, actionName, { Result = "invalid", Params = args, Message = resolveErr })
 			return { ok = false, err = resolveErr }
 		end
+	end
 
+	if def.Target then
 		if def.Punitive and ctx.TargetUserId ~= admin.UserId then
 			local targetRole = AdminPermissions.roleForUserId(ctx.TargetUserId)
 			if targetRole and AdminPermissions.rank(targetRole) >= AdminPermissions.rank(role) then

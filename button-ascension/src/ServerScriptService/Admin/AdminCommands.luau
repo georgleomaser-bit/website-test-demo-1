@@ -12,7 +12,8 @@
 	  * Arguments are separated by spaces; use "double quotes" for spaces.
 	  * Players: name / display name prefix, @username, #UserId, me.
 	  * Numbers accept 1500, 1,500, 2.5k, 3m, 1b, 4t, 1e6.
-	  * The last argument of kick/announce takes the rest of the line.
+	  * The last argument of kick/ban/announce takes the rest of the line.
+	  * Ban lengths: 30m, 12h, 7d, 2w or perm.
 ]]
 
 local AdminActions = require(script.Parent.AdminActions)
@@ -44,6 +45,13 @@ local COMMANDS = {
 	{ Name = "freeze", Usage = "freeze <player>", Description = "Freeze a player.", Action = "players.freeze", Args = { { "Target", "player" } } },
 	{ Name = "unfreeze", Usage = "unfreeze <player>", Description = "Unfreeze a player.", Action = "players.unfreeze", Args = { { "Target", "player" } } },
 	{ Name = "respawn", Usage = "respawn <player>", Description = "Reset a player's character.", Action = "players.respawn", Args = { { "Target", "player" } } },
+	{ Name = "ban", Usage = "ban <player> <30m|12h|7d|2w|perm> <reason...>", Description = "Ban from every server (also offline: #UserId or exact username). Asks for confirmation.", Action = "players.ban", Args = { { "Target", "player" }, { "Duration", "word" }, { "Reason", "rest" } } },
+	{ Name = "unban", Usage = "unban <player|#UserId>", Description = "Lift a ban.", Action = "players.unban", Args = { { "Target", "player" } } },
+	{ Name = "bans", Usage = "bans", Description = "List active bans.", Action = "players.bans" },
+	{ Name = "setrole", Usage = "setrole <player> <moderator|admin>", Description = "Make someone Moderator or Admin in every server (asks for confirmation).", Action = "staff.setRole", Args = { { "Target", "player" }, { "Role", "word" } } },
+	{ Name = "mod", Usage = "mod <player>", Description = "Make someone Moderator (asks for confirmation).", Action = "staff.setRole", Fixed = { Role = "Moderator" }, Args = { { "Target", "player" } } },
+	{ Name = "removerole", Usage = "removerole <player>", Description = "Take away a staff role given in the game.", Action = "staff.removeRole", Args = { { "Target", "player" } } },
+	{ Name = "staff", Usage = "staff", Description = "List staff roles given in the game.", Action = "staff.list" },
 	{ Name = "announce", Usage = "announce <message...>", Description = "Server-wide announcement (this server only).", Action = "server.announce", Fixed = { Scope = "server" }, Args = { { "Message", "rest" } } },
 	{ Name = "gannounce", Usage = "gannounce <message...>", Description = "Game-wide announcement (all servers).", Action = "server.announce", Fixed = { Scope = "global" }, Args = { { "Message", "rest" } } },
 	{ Name = "event", Usage = "event <start|stop> <eventId> [seconds]", Description = "Start or stop a boost event in this server.", Special = "event" },

@@ -109,6 +109,28 @@ function Loot.roll(rng: Random, chest, luck: number, pityState: { [string]: numb
 	return itemId, rarityId, pityTriggered
 end
 
+--[[
+	Robux crates: the rarity comes from the crate's own weights (with luck),
+	the item from `pool` ({ [rarityId] = { itemId } }, built by the server from
+	the crates the player has unlocked). Rarities missing from the pool are
+	skipped. Returns itemId, rarityId (nil when the pool is empty).
+]]
+function Loot.rollFromPool(rng: Random, chest, luck: number, pool: { [string]: { string } }): (string?, string?)
+	local entries = {}
+	for _, entry in ipairs(Loot.effectiveWeights(chest, luck)) do
+		local list = pool[entry.Rarity]
+		if list and #list > 0 then
+			table.insert(entries, entry)
+		end
+	end
+	if #entries == 0 then
+		return nil, nil
+	end
+	local rarityId = pickRarity(rng, entries, 0)
+	local list = pool[rarityId]
+	return list[rng:NextInteger(1, #list)], rarityId
+end
+
 -- Admin testing: one item of an exact rarity from a crate's pool. Never touches pity.
 function Loot.rollForcedRarity(rng: Random, chest, rarityId: string): string?
 	return Loot.pickItem(rng, chest.Id, rarityId)

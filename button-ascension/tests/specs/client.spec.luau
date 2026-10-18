@@ -12,7 +12,7 @@ local Game = require("../helpers/Game")
 
 local describe, it = Test.describe, Test.it
 
-local SCREENS = { "Shop", "Chests", "Inventory", "Skills", "Collection", "Quests", "Ascend", "Stats", "Settings" }
+local SCREENS = { "Shop", "Chests", "Inventory", "Skills", "Collection", "Quests", "Ascend", "Stats", "Store", "Settings" }
 
 local function boot(ctx, extra)
 	local server = Game.server(ctx)
@@ -121,6 +121,49 @@ describe("Interface", function()
 		h:click(h:findByText(window, "Equip", "TextButton"))
 		h:advance(1)
 		ctx.expect(data.Equipped[1]).toBe("paper_clip")
+	end)
+
+	it("builds the skill tree up as skills are unlocked", function(ctx)
+		local h = ctx.harness
+		local server, player, _, gui = boot(ctx)
+		local Skills = Game.shared(server, "Config.Skills")
+		h:click(h:findDescendant(gui, "NavRail", "Frame"):FindFirstChild("Skills"))
+		h:advance(1)
+		local window = windowOf(h, gui, "Skills")
+		local function node(id: string)
+			return h:findDescendant(window, id, "TextButton")
+		end
+		-- A fresh player sees the core, its neighbours as "?" teasers, and nothing else.
+		ctx.expect(node("core").Visible).toBe(true)
+		ctx.expect(node("core").Text).toBe(Skills.ById.core.Icon)
+		ctx.expect(node("str_1").Visible).toBe(true)
+		ctx.expect(node("str_1").Text).toBe("?")
+		ctx.expect(node("str_2").Visible).toBe(false)
+		ctx.expect(node("str_cap2").Visible).toBe(false)
+		ctx.expect(h:findDescendant(window, "core_str_1", "Frame").Visible).toBe(true)
+		ctx.expect(h:findDescendant(window, "str_1_str_2", "Frame").Visible).toBe(false)
+
+		local profile = Game.profile(server, player)
+		profile.Data.SkillPoints = 5
+		Game.service(server, "SyncService"):MarkDirty(profile, "Progress")
+		h:advance(0.5)
+		ctx.expect(Game.action(ctx, server, player, "UnlockSkill", { Id = "core" }).ok).toBe(true)
+		h:advance(1.5)
+		-- Buying the core reveals its neighbours and teases the next ring.
+		ctx.expect(node("str_1").Text).toBe(Skills.ById.str_1.Icon)
+		ctx.expect(node("str_2").Visible).toBe(true)
+		ctx.expect(node("str_2").Text).toBe("?")
+		ctx.expect(node("str_5").Visible).toBe(false)
+		ctx.expect(h:findDescendant(window, "str_1_str_2", "Frame").Visible).toBe(true)
+
+		-- A respec folds the tree back to the core.
+		Game.give(server, player, "Gems", 100)
+		h:advance(0.5)
+		ctx.expect(Game.action(ctx, server, player, "ResetSkills", {}).ok).toBe(true)
+		h:advance(1.5)
+		ctx.expect(node("str_1").Text).toBe("?")
+		ctx.expect(node("str_2").Visible).toBe(false)
+		ctx.expect(h:findDescendant(window, "str_1_str_2", "Frame").Visible).toBe(false)
 	end)
 
 	it("saves settings changed in the settings screen", function(ctx)

@@ -4,6 +4,7 @@
 	Depends on: AdminUI/Widgets, ReplicatedStorage/Shared/Format, ReplicatedStorage/Shared/Config/{Upgrades,Skills,Chests}
 	Server actions: players.list, players.inspect, players.teleportTo, players.bring,
 	                players.freeze, players.unfreeze, players.respawn, players.kick
+	                (Ban and staff-role buttons open the Moderation tab)
 
 	Searchable list of online players; selecting one shows their progression,
 	inventory summary, statistics and moderation actions. Offline players can
@@ -261,6 +262,20 @@ return function(ctx, container: Frame)
 					ctx.toast("A kick reason is required.", "error")
 				end
 			end)
+		end
+		if data.UserId then
+			local modActions = UI.frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = details })
+			local modLayout = UI.list(modActions, { Dir = "X", Pad = 6 })
+			modLayout.Wraps = true
+			local targetId = data.UserId
+			actionButton(modActions, "🚫 Ban…", "adminDanger", "players.ban", 1, function()
+				ctx.switchTab("Moderation", targetId, "ban")
+			end)
+			if ctx.has("staff.manage") then
+				actionButton(modActions, "🛡️ Staff role…", "adminMagenta", "staff.manage", 2, function()
+					ctx.switchTab("Moderation", targetId, "staff")
+				end)
+			end
 		end
 
 		local progress = Widgets.section(details, "Currencies & progression", 4)

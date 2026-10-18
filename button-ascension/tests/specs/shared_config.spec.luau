@@ -96,6 +96,103 @@ describe("Configuration", function()
 	end)
 end)
 
+describe("Skill tree", function()
+	it("is a large, well-formed tree that can be bought from the core outward", function(ctx)
+		local world = sharedWorld(ctx)
+		local Skills = req(world, "Config.Skills")
+		ctx.expect(#Skills.List).toBeGreaterThanOrEqual(55)
+		ctx.expect(#Skills.List).toBeLessThanOrEqual(70)
+		-- Unique grid positions and positive costs.
+		local cells = {}
+		for _, node in ipairs(Skills.List) do
+			local key = `{node.X},{node.Y}`
+			ctx.expect(cells[key]).toBeNil()
+			cells[key] = node.Id
+			ctx.expect(node.Cost).toBeGreaterThan(0)
+			ctx.expect(node.CostStep).toBeGreaterThanOrEqual(0)
+			ctx.expect(Skills.Branches[node.Branch]).toBeTruthy()
+			ctx.expect(#node.Effects).toBeGreaterThan(0)
+		end
+		-- Buying greedily from the core must eventually own every node: this proves that
+		-- every node is reachable and that no prerequisites form a cycle.
+		local owned = {}
+		local count = 0
+		repeat
+			local progressed = false
+			for _, node in ipairs(Skills.List) do
+				if not owned[node.Id] and Skills.prerequisitesMet(node, owned) then
+					owned[node.Id] = node.MaxRank
+					count += 1
+					progressed = true
+				end
+			end
+		until not progressed
+		ctx.expect(count).toBe(#Skills.List)
+		-- Every main branch has a capstone and an ascended capstone further out.
+		for _, id in ipairs({ "str_cap", "luck_cap", "wealth_cap", "crit_cap", "str_cap2", "luck_cap2", "wealth_cap2", "crit_cap2" }) do
+			ctx.expect(Skills.ById[id]).toBeTruthy()
+			ctx.expect(Skills.ById[id].MaxRank).toBe(1)
+		end
+		-- The full tree is a long-term goal, not something finished in a few sessions.
+		local total = 0
+		for _, node in ipairs(Skills.List) do
+			total += Skills.totalCost(node, node.MaxRank)
+		end
+		ctx.expect(total).toBeGreaterThan(350)
+		ctx.expect(total).toBeLessThan(600)
+	end)
+
+	it("reveals the tree step by step as nodes are bought", function(ctx)
+		local world = sharedWorld(ctx)
+		local Skills = req(world, "Config.Skills")
+		local function counts(vis)
+			local n = { visible = 0, teaser = 0, hidden = 0 }
+			for _, state in pairs(vis) do
+				n[state] += 1
+			end
+			return n
+		end
+
+		-- A fresh player sees the core and its four neighbours as "?" teasers only.
+		local fresh = Skills.visibility({})
+		ctx.expect(fresh.core).toBe("visible")
+		for _, id in ipairs({ "str_1", "luck_1", "wealth_1", "crit_1" }) do
+			ctx.expect(fresh[id]).toBe("teaser")
+		end
+		ctx.expect(fresh.str_2).toBe("hidden")
+		ctx.expect(fresh.bridge_sl).toBe("hidden")
+		ctx.expect(fresh.str_cap2).toBe("hidden")
+		ctx.expect(counts(fresh).visible).toBe(1)
+		ctx.expect(counts(fresh).teaser).toBe(4)
+
+		-- Buying the core reveals its neighbours; the next ring becomes teasers.
+		local afterCore = Skills.visibility({ core = 1 })
+		ctx.expect(afterCore.str_1).toBe("visible")
+		ctx.expect(afterCore.str_2).toBe("teaser")
+		ctx.expect(afterCore.bridge_sl).toBe("teaser")
+		ctx.expect(afterCore.str_5).toBe("hidden")
+		ctx.expect(counts(afterCore).visible).toBe(5)
+
+		-- Nodes with two parents stay a teaser until both are owned.
+		ctx.expect(Skills.visibility({ core = 1, str_1 = 1 }).bridge_sl).toBe("teaser")
+		ctx.expect(Skills.visibility({ core = 1, str_1 = 1, luck_1 = 1 }).bridge_sl).toBe("visible")
+
+		-- "One of" prerequisites: one owned parent is enough.
+		local any = Skills.visibility({ core = 1, str_1 = 1 })
+		ctx.expect(any.str_4).toBe("visible")
+		ctx.expect(any.spec_orb).toBe("teaser")
+		ctx.expect(Skills.visibility({ core = 1, str_1 = 1, str_4 = 1 }).spec_orb).toBe("visible")
+
+		-- Owning everything shows everything; a respec collapses it again.
+		local all = {}
+		for _, node in ipairs(Skills.List) do
+			all[node.Id] = node.MaxRank
+		end
+		ctx.expect(counts(Skills.visibility(all)).visible).toBe(#Skills.List)
+		ctx.expect(counts(Skills.visibility({})).visible).toBe(1)
+	end)
+end)
+
 describe("Loot", function()
 	it("normalises effective weights for any luck value", function(ctx)
 		local world = sharedWorld(ctx)
@@ -175,10 +272,15 @@ describe("Economy invariants", function()
 		local GameConfig = req(world, "Config.GameConfig")
 		local Formulas = req(world, "Formulas")
 		local Loot = req(world, "Loot")
+		local GamePasses = req(world, "Config.GamePasses")
 
 		-- Every upgrade, skill and perk maxed, the strongest luck and gem items equipped
-		-- with plenty of copies, and every event running at once.
-		local data = { Rebirths = 1000, Upgrades = {}, Skills = {}, Ascension = {}, Inventory = {}, Equipped = {}, Discovered = {} }
+		-- with plenty of copies, every Robux game pass owned, and every event running at once.
+		local data = { Rebirths = 1000, Upgrades = {}, Skills = {}, Ascension = {}, Inventory = {}, Equipped = {}, Discovered = {}, Passes = {} }
+		for index, pass in ipairs(GamePasses.List) do
+			pass.GamePassId = 9000 + index
+			data.Passes[pass.Key] = true
+		end
 		for _, def in ipairs(Upgrades.List) do
 			data.Upgrades[def.Id] = def.MaxLevel
 		end

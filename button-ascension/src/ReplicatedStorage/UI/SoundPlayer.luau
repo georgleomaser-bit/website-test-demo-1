@@ -5,7 +5,9 @@
 
 	Client-side sound effects and music. Sounds are pooled (a few instances
 	per effect, used round-robin) so rapid clicking never creates garbage.
-	Volumes follow the player's SFX / Music settings.
+	Volumes follow the player's SFX / Music settings and are capped at
+	MAX_VOLUME. A sound's Custom id (Creator Store audio) replaces its
+	built-in Id when it is set.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,6 +18,7 @@ local Sounds = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Co
 local SoundPlayer = {}
 
 local POOL_SIZE = 4
+local MAX_VOLUME = 0.8
 local sfxVolume = 0.7
 local musicVolume = 0.4
 local pools: { [string]: { sounds: { Sound }, index: number } } = {}
@@ -40,14 +43,18 @@ local function getPool(name: string)
 		return pool
 	end
 	local def = Sounds[name]
-	if not def or def.Id == "" then
+	if type(def) ~= "table" then
+		return nil
+	end
+	local id = if type(def.Custom) == "string" and def.Custom ~= "" then def.Custom else def.Id
+	if type(id) ~= "string" or id == "" then
 		return nil
 	end
 	pool = { sounds = {}, index = 1 }
-	for i = 1, POOL_SIZE do
+	for i = 1, def.Pool or POOL_SIZE do
 		local sound = Instance.new("Sound")
 		sound.Name = name .. i
-		sound.SoundId = def.Id
+		sound.SoundId = id
 		sound.Volume = def.Volume * sfxVolume
 		sound.Parent = getFolder()
 		table.insert(pool.sounds, sound)
@@ -70,9 +77,21 @@ function SoundPlayer.play(name: string, opts: { Pitch: number?, Volume: number? 
 	pool.index = (pool.index % #pool.sounds) + 1
 	local pitch = if opts and opts.Pitch then opts.Pitch else rng:NextNumber(def.PitchMin or 1, def.PitchMax or 1)
 	sound.PlaybackSpeed = pitch
-	sound.Volume = def.Volume * sfxVolume * (if opts and opts.Volume then opts.Volume else 1)
+	sound.Volume = math.min(MAX_VOLUME, def.Volume * sfxVolume * (if opts and opts.Volume then opts.Volume else 1))
 	sound.TimePosition = 0
 	sound:Play()
+end
+
+-- Plays `name` once per pitch in `notes`, `gap` seconds apart (arpeggios, fanfares).
+function SoundPlayer.sequence(name: string, notes: { number }, gap: number, opts: { Volume: number? }?)
+	for i, pitch in ipairs(notes) do
+		local volume = if opts and opts.Volume then opts.Volume else 1
+		if i == 1 then
+			SoundPlayer.play(name, { Pitch = pitch, Volume = volume })
+		else
+			task.delay((i - 1) * gap, SoundPlayer.play, name, { Pitch = pitch, Volume = volume })
+		end
+	end
 end
 
 function SoundPlayer.setVolumes(sfx: number, musicVol: number)

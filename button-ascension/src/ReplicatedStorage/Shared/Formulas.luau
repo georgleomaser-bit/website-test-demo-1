@@ -8,8 +8,8 @@
 	the client uses the same functions to show "current -> next" previews.
 
 	computeStats(data, ctx) folds upgrades, ascension perks, skills, equipped
-	items, rebirths, stage, collection, server events and personal boosts into
-	a flat Stats table.
+	items, game passes, bought boosts, rebirths, stage, collection, server
+	events and personal boosts into a flat Stats table.
 ]]
 
 local Config = script.Parent.Config
@@ -18,6 +18,8 @@ local Upgrades = require(Config.Upgrades)
 local Ascension = require(Config.Ascension)
 local Skills = require(Config.Skills)
 local Items = require(Config.Items)
+local GamePasses = require(Config.GamePasses)
+local DevProducts = require(Config.DevProducts)
 local Format = require(script.Parent.Format)
 
 export type Stats = {
@@ -53,11 +55,14 @@ export type Stats = {
 	collectionMultiplier: number,
 	discovered: number,
 	frenzyMultiplier: number,
+	maxOpenBonus: number,
 }
 
 export type Context = {
 	Events: { string }?,
 	FrenzyMultiplier: number?,
+	-- Leave out timed boosts bought with Robux (for base stats such as quest targets).
+	ExcludeTimedBoosts: boolean?,
 }
 
 local Formulas = {}
@@ -89,9 +94,11 @@ local ADD_STATS = {
 	"orbPct",
 	"startSparks",
 	"keepAuto",
+	"autoRatePass", -- auto presses from game passes, added after the upgrade cap
+	"extraOpen", -- extra crates per opening (Fast Crates pass)
 }
 
-local MULT_STATS = { "clickMult", "sparksMult", "goldenMult", "xpMult", "passiveMult" }
+local MULT_STATS = { "clickMult", "sparksMult", "goldenMult", "xpMult", "passiveMult", "gemsMult" }
 local IS_MULT = {}
 for _, k in ipairs(MULT_STATS) do
 	IS_MULT[k] = true
@@ -230,6 +237,30 @@ function Formulas.collect(data, ctx: Context?)
 		end
 	end
 
+	-- Robux game passes (only passes whose GamePassId is set count).
+	for _, pass in ipairs(GamePasses.List) do
+		if GamePasses.owns(data.Passes, pass.Key) then
+			for _, effect in ipairs(pass.Effects) do
+				if effect.Mult then
+					apply(m, effect.Stat, "mult", effect.Mult)
+				else
+					apply(m, effect.Stat, "add", effect.Add or 0)
+				end
+			end
+		end
+	end
+
+	-- Timed boosts bought as developer products (seconds left > 0).
+	local boosts = data.Boosts
+	if type(boosts) == "table" and not (ctx and ctx.ExcludeTimedBoosts) then
+		for _, product in ipairs(DevProducts.List) do
+			local left = boosts[product.Key]
+			if product.Boost and type(left) == "number" and left > 0 then
+				apply(m, product.Boost.Stat, "mult", product.Boost.Mult)
+			end
+		end
+	end
+
 	if ctx and ctx.Events then
 		for _, eventId in ipairs(ctx.Events) do
 			local def = GameConfig.Events.Definitions[eventId]
@@ -278,12 +309,13 @@ function Formulas.computeStats(data, ctx: Context?): Stats
 		comboWindow = click.ComboWindow + a.comboWindow,
 		comboStep = click.ComboStep,
 		goldenChance = math.min(click.MaxGoldenChance, click.BaseGoldenChance * (1 + a.goldenPct) * x.goldenMult),
-		autoRate = math.min(GameConfig.AutoClick.MaxRate, a.autoRate),
+		-- Upgrades and skills are capped; game passes add on top of the cap.
+		autoRate = math.min(GameConfig.AutoClick.MaxRate, a.autoRate) + a.autoRatePass,
 		passivePerSec = math.min(a.passiveFlat * (1 + a.passivePct) * x.passiveMult * sparksMultiplier, GameConfig.CurrencyCap),
 		luck = a.luck,
 		chestBonus = math.min(0.75, a.chestBonus),
 		xpMultiplier = (1 + a.xpPct) * x.xpMult,
-		gemMultiplier = 1 + a.gemsPct,
+		gemMultiplier = (1 + a.gemsPct) * x.gemsMult,
 		equipSlots = math.min(GameConfig.Equip.MaxSlots, GameConfig.Equip.BaseSlots + a.equipSlots),
 		offlineRate = math.min(1, offline.BaseRate + a.offlineRate),
 		offlineMaxSeconds = (offline.BaseMaxHours + a.offlineHours) * 3600,
@@ -300,6 +332,7 @@ function Formulas.computeStats(data, ctx: Context?): Stats
 		collectionMultiplier = collectionMultiplier,
 		discovered = discovered,
 		frenzyMultiplier = frenzy,
+		maxOpenBonus = math.max(0, math.floor(a.extraOpen)),
 	}
 	return stats
 end
@@ -425,6 +458,11 @@ end
 
 function Formulas.chestUnlocked(chest, data): boolean
 	return Formulas.stageFor(data.Rebirths or 0).Id >= chest.Stage
+end
+
+-- Most crates of one kind per opening (Fast Crates pass adds to it).
+function Formulas.maxOpen(chest, stats: Stats?): number
+	return chest.MaxOpen + (if stats then stats.maxOpenBonus or 0 else 0)
 end
 
 function Formulas.pityThreshold(chest, rarityId: string, pityMultiplier: number): number?

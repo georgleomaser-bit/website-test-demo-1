@@ -186,20 +186,36 @@ skill tree). Pace is controlled by `GameConfig.Rebirth.BaseRequirement` and
   20, 30, 40, 50, 60 and all 74 discoveries give Gems, Skill Points, crates
   and Prisms.
 
-## Skill tree (30 nodes, permanent)
+## Skill tree (65 nodes, permanent)
 
-| Branch | Direction | Highlights |
-|---|---|---|
-| Core | centre | Awakening: +10% Sparks |
-| Strength | up | Click power +15%/+25% per rank, combo cap and window, streak bursts, Titan Grip ×1.5, **Button Crusher ×2** |
-| Fortune | right | Luck, bonus items, crate discount, golden chance, Pity Breaker, **Fortune's Favorite +75% luck** |
-| Wealth | down | Sparks %, passive %, Gems %, offline earnings, extra auto-presses, **Golden Economy ×1.75** |
-| Precision | left | Crit chance and multiplier, **Supercritical** |
-| Special | diagonals | Equip slots, XP, Prism yield, orb frequency/rewards. Each needs either of two neighbouring branches. |
+| Branch | Direction | Nodes | Highlights |
+|---|---|---|---|
+| Core | centre | 1 | Awakening: +10% Sparks |
+| Strength | up | 14 | Click power %, combo cap and window, streak bursts, Titan Grip ×1.5, **Button Crusher ×2**; outer ring: Iron Knuckles, Overdrive ×1.25, Unbreakable ×1.5, **Earthshaker ×2.5** |
+| Fortune | right | 13 | Luck, bonus items, crate discount, golden chance, pity, **Fortune's Favorite +75% luck**; outer ring: Jackpot Aura, **Lady Luck** (+30% luck, golden ×1.5) |
+| Wealth | down | 13 | Sparks %, passive %, Gems %, offline earnings, auto-presses, **Golden Economy ×1.75**; outer ring: Power Plant, Spark Vault ×1.25, **Infinite Economy** (Sparks ×2, passive ×1.5) |
+| Precision | left | 12 | Crit chance and multiplier, **Supercritical**; outer ring: Deadeye, Executioner, **Singularity Strike** (+3× crit multiplier) |
+| Special | diagonals | 12 | Four bridges between neighbouring branches next to the core (each needs both neighbours), equip slots, XP (×1.25 per rank further out), Prism yield, orbs, Golden Hoard |
 
-The four branch capstones (Button Crusher, Fortune's Favorite, Golden
-Economy, Supercritical) are the end of each branch. A respec costs 100 Gems
-and refunds every point.
+Each main branch ends in a capstone and, further out, an ascended capstone
+(`_cap2`). Buying every rank of every node costs 472 Skill Points (single
+ranks cost 1 to 12), so the outer ring is a long-term goal across many
+ascensions. A respec costs 100 Gems and refunds every point.
+
+**The tree builds itself up as you buy it** (`Skills.visibility`):
+
+* *Visible:* the core, every owned node, and every node whose prerequisites
+  are met. These show their name, effect, rank and cost.
+* *Teaser:* the next ring, i.e. nodes connected to a visible node. They show
+  only as a dim "?" with no name, effect or cost.
+* *Hidden:* everything further out, including connector lines.
+
+A new player sees the core and four "?" neighbours. Unlocking a node pops its
+neighbours in, and their connector lines draw outward from it. The scrollable
+canvas only covers the revealed part, so it grows with the tree. Zoom buttons
+(−, +, fit) help on bigger trees. A respec folds the tree back to the core.
+With Reduced motion, everything changes instantly. The server still checks
+prerequisites and costs for every unlock.
 
 ## Quests, achievements and rewards
 
@@ -252,3 +268,26 @@ Each server publishes every ~2.5 minutes and when a player leaves, and
 refreshes the top 25 every 2 minutes. A live board for the current server is
 always available. The Roblox player list shows **Ascensions** and **Sparks**
 (leaderstats).
+
+## Robux store (game passes and developer products)
+
+Optional purchases, opened from **💰 Store** in the navigation rail. Full
+setup and the security rules are in [`MONETIZATION.md`](MONETIZATION.md).
+
+* **Game passes** (buy once): Auto Clicker (+5 auto presses/s, beyond the
+  upgrade cap), OP Auto Clicker (+15/s), 2× Sparks, 3× Sparks (×6 together),
+  2× Gems, Lucky Pass (+50% Luck), Super Luck (+150% Luck), Fast Crates (no
+  animation, open ×20) and VIP (×1.25 Sparks, Gems and XP). All multipliers
+  stack.
+* **Developer products** (repeatable): Gem packs (100 / 550 / 1,200), Sparks
+  Rush (×3 Sparks for 15 minutes of play time, stackable), a Crate Bundle (5
+  of the best unlocked Spark crate) and three OP crates for 99 / 199 / 299 R$
+  with a guaranteed Epic / Legendary / Mythic or better. OP crate items come
+  from the crates the player has already unlocked.
+* Ownership and rewards are decided on the server only. Items without a
+  Roblox ID in the config do nothing and are hidden in live games.
+* Crate openings use layered, pitch-shifted built-in sounds: ticks that speed
+  up and rise, a whoosh and boom on the burst, a chime per card that climbs
+  in pitch, and a fanfare that grows with the best rarity (Epic, Legendary,
+  Mythic/Secret with an extra flash). Every crate sound has a `Custom` slot
+  in `Config/Sounds` for Creator Store audio.

@@ -36,6 +36,8 @@ local ORDER = {
 	"InventoryService",
 	"ProgressionService",
 	"OrbService",
+	"GamePassService",
+	"ProductService",
 	"SettingsService",
 	"LeaderboardService",
 	"WorldService",

@@ -11,7 +11,8 @@
 	Results are applied to the player's data BEFORE they are returned, so the
 	opening animation on the client is purely cosmetic.
 
-	Action: OpenChest { Id: string, Amount: integer 1..MaxOpen, Mode: "owned" | "buy" }
+	Action: OpenChest { Id: string, Amount: integer 1..maxOpen, Mode: "owned" | "buy" }
+	(maxOpen = the crate's MaxOpen plus the Fast Crates pass bonus, see Formulas.maxOpen)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -142,7 +143,8 @@ function ChestService:Open(profile, rawId: any, rawAmount: any, rawMode: any)
 		return Net.fail("Unknown crate.")
 	end
 	local chest = Chests.ById[chestId]
-	local amount = Guard.integer(rawAmount, 1, chest.MaxOpen)
+	local stats = self.Services.StatsService:Get(profile)
+	local amount = Guard.integer(rawAmount, 1, Formulas.maxOpen(chest, stats))
 	if not amount then
 		return Net.fail("Invalid amount.")
 	end
@@ -156,7 +158,6 @@ function ChestService:Open(profile, rawId: any, rawAmount: any, rawMode: any)
 		return Net.fail(`Unlocks at {stage.Name} ({stage.Rebirths} Ascensions).`)
 	end
 
-	local stats = self.Services.StatsService:Get(profile)
 	local spent = 0
 	if mode == "owned" then
 		if (data.Chests[chestId] or 0) < amount then
@@ -177,6 +178,51 @@ function ChestService:Open(profile, rawId: any, rawAmount: any, rawMode: any)
 	self.Services.QuestService:Progress(profile, "ChestsOpened", amount)
 	self:_afterAward(profile)
 	return Net.ok({ Chest = chestId, Mode = mode, Spent = spent, Results = results })
+end
+
+-- Robux crates ----------------------------------------------------------------------
+
+-- Every item of the crates this player has unlocked, by rarity (Robux crate pool).
+function ChestService:RobuxPool(data): { [string]: { string } }
+	local pool = {}
+	for _, chest in ipairs(Chests.List) do
+		if Formulas.chestUnlocked(chest, data) then
+			for rarityId, ids in pairs(Items.PoolByChest[chest.Id] or {}) do
+				local list = pool[rarityId]
+				if not list then
+					list = {}
+					pool[rarityId] = list
+				end
+				for _, id in ipairs(ids) do
+					if not table.find(list, id) then
+						table.insert(list, id)
+					end
+				end
+			end
+		end
+	end
+	return pool
+end
+
+--[[
+	Opens one Robux crate (only called by ProductService after a verified
+	receipt). The roll uses the server's Random; the item is applied before the
+	result is returned, the client only plays the animation.
+]]
+function ChestService:OpenRobuxCrate(profile, chestId: string)
+	local chest = Chests.RobuxById[chestId]
+	assert(chest, "Unknown Robux crate " .. tostring(chestId))
+	local stats = self.Services.StatsService:Get(profile)
+	local itemId = Loot.rollFromPool(rng, chest, stats.luck, self:RobuxPool(profile.Data))
+	local results = {}
+	if itemId then
+		table.insert(results, self:Award(profile, itemId, {}))
+	end
+	profile.Data.Stats.ChestsOpened += 1
+	self.Services.EconomyService:AddXP(profile, GameConfig.Levels.ChestXP * chest.Tier * stats.xpMultiplier)
+	self.Services.QuestService:Progress(profile, "ChestsOpened", 1)
+	self:_afterAward(profile)
+	return results
 end
 
 -- Admin testing helpers -------------------------------------------------------------

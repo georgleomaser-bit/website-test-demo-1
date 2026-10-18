@@ -232,6 +232,37 @@ end
 
 -- Interaction helpers -----------------------------------------------------------------------------
 
+--[[
+	Calls the server's MarketplaceService.ProcessReceipt callback the way Roblox
+	does (in a server thread, may yield) and returns its decision.
+	receipt: { PlayerId, ProductId, PurchaseId, CurrencySpent?, ... }
+]]
+function Harness:processReceipt(server, receipt, timeout: number?)
+	local market = server.services.MarketplaceService
+	assert(market, "processReceipt: the server never used MarketplaceService")
+	local callback = states[market].callbacks.ProcessReceipt
+	assert(callback, "processReceipt: no ProcessReceipt callback is set")
+	local done, decision, failure = false, nil, nil
+	self.scheduler:spawnIn(server, function()
+		local ok, result = xpcall(callback, debug.traceback, receipt)
+		done = true
+		if ok then
+			decision = result
+		else
+			failure = result
+		end
+	end)
+	local deadline = self.scheduler.now + (timeout or 120)
+	while not done and self.scheduler.now < deadline do
+		self.scheduler:step()
+	end
+	if failure then
+		error(failure, 0)
+	end
+	assert(done, "processReceipt: the callback did not return in time")
+	return decision
+end
+
 function Harness:fire(instance, eventName: string, ...)
 	local st = states[instance]
 	assert(st, "fire: not an Instance")

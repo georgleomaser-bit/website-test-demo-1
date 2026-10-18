@@ -121,7 +121,7 @@ Notifications.init(ctx)
 Hud.init(ctx)
 Orbs.init(ctx)
 
-for _, id in ipairs({ "Shop", "Chests", "Inventory", "Collection", "Skills", "Quests", "Ascend", "Stats", "Settings" }) do
+for _, id in ipairs({ "Shop", "Chests", "Inventory", "Collection", "Skills", "Quests", "Ascend", "Stats", "Store", "Settings" }) do
 	local module = require(Screens:WaitForChild(id))
 	local screen = module.new(ctx)
 	screenObjects[id] = screen

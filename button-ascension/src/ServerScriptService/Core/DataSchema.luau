@@ -16,7 +16,12 @@
 	  1  Pre-release format: Inventory was an array of item ids (one entry per
 	     copy) and Settings had a single "Volume" value.
 	  2  Current format: Inventory is a map itemId -> count; Settings has
-	     separate Music and SFX volumes, plus newer settings.
+	     separate Music and SFX volumes, plus newer settings. Later additions
+	     that need no migration (missing sections start empty): Passes (owned
+	     game passes, a cache re-checked on every join), Boosts (seconds left
+	     on bought timed boosts), Receipts (processed purchase IDs), Obby
+	     (obstacle course progress) and Tutorial (first-time tutorial; data
+	     saved before the tutorial existed counts as already finished).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -31,6 +36,10 @@ local Skills = require(Config.Skills)
 local Achievements = require(Config.Achievements)
 local Quests = require(Config.Quests)
 local Rewards = require(Config.Rewards)
+local GamePasses = require(Config.GamePasses)
+local DevProducts = require(Config.DevProducts)
+local Obby = require(Config.Obby)
+local Tutorial = require(Config.Tutorial)
 
 local DataSchema = {}
 
@@ -80,6 +89,10 @@ DataSchema.Sections = {
 	"Quests",
 	"Daily",
 	"Settings",
+	"Passes",
+	"Boosts",
+	"Obby",
+	"Tutorial",
 }
 
 local function defaultSettings()
@@ -124,6 +137,17 @@ function DataSchema.default()
 		},
 		Daily = { LastClaimDay = -1, Streak = 0 },
 		Settings = defaultSettings(),
+		-- [passKey] = true for owned game passes (written only by GamePassService).
+		Passes = {},
+		-- [productKey] = seconds left on a bought timed boost.
+		Boosts = {},
+		-- Purchase IDs of processed developer-product receipts (oldest first, bounded).
+		Receipts = {},
+		-- Obstacle course progress (written only by ObbyService).
+		Obby = { Stage = 0, Best = 0, Completions = 0, Checkpoints = 0 },
+		-- First-time tutorial (written only by TutorialService). Base holds the
+		-- counters at the moment the current step started.
+		Tutorial = { Step = 1, Done = false, Skipped = false, Rewarded = false, GaveCrate = false, Base = 0 },
 		Meta = { Created = os.time(), LastSave = 0, LastSeen = 0, Sessions = 0 },
 	}
 end
@@ -384,6 +408,31 @@ function DataSchema.sanitize(raw)
 			d.Settings[key] = if type(value) == "boolean" then value else def.Default
 		elseif type(def.Default) == "number" then
 			d.Settings[key] = num(value, def.Min, def.Max, def.Default)
+		end
+	end
+
+	for key, owned in pairs(tbl(raw.Passes)) do
+		if owned == true and GamePasses.ByKey[key] then
+			d.Passes[key] = true
+		end
+	end
+
+	for key, left in pairs(tbl(raw.Boosts)) do
+		local product = DevProducts.ByKey[key]
+		if product and product.Boost then
+			local seconds = num(left, 0, DevProducts.MaxBoostSeconds, 0)
+			if seconds > 0 then
+				d.Boosts[key] = seconds
+			end
+		end
+	end
+
+	local receipts = tbl(raw.Receipts)
+	local first = math.max(1, #receipts - DevProducts.ReceiptHistory + 1)
+	for i = first, #receipts do
+		local id = receipts[i]
+		if type(id) == "string" and #id > 0 and #id <= 100 then
+			table.insert(d.Receipts, id)
 		end
 	end
 

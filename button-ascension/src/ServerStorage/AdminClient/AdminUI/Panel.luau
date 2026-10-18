@@ -5,7 +5,7 @@
 	            ReplicatedStorage/Shared/Signal, ReplicatedStorage/UI/SoundPlayer
 
 	Builds the admin panel shell: floating toggle button, window with role
-	badge, sidebar with the eight tabs, command bar + console, in-panel
+	badge, sidebar with the nine tabs, command bar + console, in-panel
 	toasts, F2 / gamepad / "/admin" chat shortcuts and the refresh loop.
 	Tabs are built lazily the first time they are opened and only the visible
 	tab refreshes.
@@ -35,6 +35,7 @@ local Panel = {}
 local TABS = {
 	{ Id = "Dashboard", Name = "Dashboard", Icon = "📊", Any = { "panel.open" } },
 	{ Id = "Players", Name = "Players", Icon = "👥", Any = { "players.view" } },
+	{ Id = "Moderation", Name = "Moderation", Icon = "🚫", Any = { "players.ban", "staff.manage" } },
 	{ Id = "Economy", Name = "Economy", Icon = "💰", Any = { "economy.grant", "economy.reset" } },
 	{ Id = "Items", Name = "Items", Icon = "🎁", Any = { "items.grant", "items.test", "players.inspect" } },
 	{ Id = "Progression", Name = "Progression", Icon = "📈", Any = { "progression.grant", "progression.reset" } },

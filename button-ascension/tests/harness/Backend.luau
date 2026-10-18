@@ -49,6 +49,9 @@ function Backend.new(scheduler, options: { latency: number?, seed: number? }?)
 	self.filterFailures = 0
 	self.blocklist = { "badword", "darn" }
 	self.userNames = {}
+	-- Players:BanAsync / UnbanAsync calls ({ Kind = "ban" | "unban", Config = ... }).
+	self.banApiCalls = {}
+	self.banApiError = nil
 	return self
 end
 

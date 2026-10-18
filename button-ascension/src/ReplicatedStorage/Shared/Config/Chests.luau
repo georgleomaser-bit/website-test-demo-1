@@ -166,6 +166,57 @@ end)
 -- Allowed multi-open amounts shown in the UI. The server accepts any integer 1..MaxOpen.
 Chests.OpenAmounts = { 1, 5, 10 }
 
+--[[
+	Robux crates ("OP crates"). Bought only as Developer Products
+	(Config/DevProducts) and opened by the server the moment the purchase is
+	processed, so they are kept out of Chests.List / Chests.ById: the
+	OpenChest action, owned-crate counts, pity and the collection book never
+	see them.
+	Weights contain only the guaranteed rarity and better (Luck still shifts
+	them upward). The item comes from the combined pools of every crate the
+	player has already unlocked, so no item from a locked stage is handed out
+	early, and the crates have no items of their own.
+]]
+Chests.RobuxList = {
+	{
+		Id = "op_crate",
+		Name = "OP Crate",
+		Icon = "🔥",
+		Order = 101,
+		Tier = 4,
+		Currency = "Robux",
+		Color = Color3.fromRGB(176, 92, 255),
+		Description = "Epic or better guaranteed!",
+		Weights = { Epic = 7000, Legendary = 2400, Mythic = 550, Secret = 50 },
+	},
+	{
+		Id = "mega_op_crate",
+		Name = "Mega OP Crate",
+		Icon = "💥",
+		Order = 102,
+		Tier = 6,
+		Currency = "Robux",
+		Color = Color3.fromRGB(255, 180, 40),
+		Description = "Legendary or better guaranteed!",
+		Weights = { Legendary = 8000, Mythic = 1800, Secret = 200 },
+	},
+	{
+		Id = "ultra_op_crate",
+		Name = "Ultra OP Crate",
+		Icon = "🌌",
+		Order = 103,
+		Tier = 8,
+		Currency = "Robux",
+		Color = Color3.fromRGB(255, 64, 112),
+		Description = "Mythic or better guaranteed, 8% Secret!",
+		Weights = { Mythic = 9200, Secret = 800 },
+	},
+}
+Chests.RobuxById = {}
+for _, chest in ipairs(Chests.RobuxList) do
+	Chests.RobuxById[chest.Id] = chest
+end
+
 function Chests.get(id: string): Chest?
 	return Chests.ById[id]
 end

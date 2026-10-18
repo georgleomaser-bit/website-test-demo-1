@@ -1,11 +1,16 @@
 --[[
 	AdminPermissions (ModuleScript)
 	Location: ServerScriptService/Admin/AdminPermissions
-	Depends on: Admin/AdminConfig
+	Depends on: Admin/AdminConfig, Admin/ModerationStore
 
-	Resolves a player's staff role from SERVER-SIDE data only (UserId
-	allowlist, place creator, group owner, Studio test list) and answers
+	Resolves a player's staff role from SERVER-SIDE data only and answers
 	permission questions. Client-supplied values are never consulted.
+	Order (first match wins):
+	  1. Studio test list (Studio only)
+	  2. AdminConfig.Users allowlist
+	  3. place creator / group owner -> Owner
+	  4. roles an Owner handed out in the game (ModerationStore, by UserId;
+	     only Moderator or Admin, never Owner)
 ]]
 
 local GroupService = game:GetService("GroupService")
@@ -13,10 +18,12 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local AdminConfig = require(script.Parent.AdminConfig)
+local ModerationStore = require(script.Parent.ModerationStore)
 
 local AdminPermissions = {}
 
-local roleCache: { [number]: string | false } = {}
+-- Roles from config, creator and group ownership never change while a server runs.
+local configCache: { [number]: string | false } = {}
 
 local GROUP_RETRY_SECONDS = 30
 local GROUP_WAIT_SECONDS = 30
@@ -71,9 +78,9 @@ local function lookupGroupOwner(): (number?, boolean)
 	return nil, false
 end
 
--- Role for a UserId, or nil for normal players. May yield (group lookup).
-function AdminPermissions.roleForUserId(userId: number): string?
-	local cached = roleCache[userId]
+-- Role that comes from config, place creator or group owner (not changeable in game).
+function AdminPermissions.configRoleForUserId(userId: number): string?
+	local cached = configCache[userId]
 	if cached ~= nil then
 		return if cached == false then nil else cached
 	end
@@ -100,9 +107,22 @@ function AdminPermissions.roleForUserId(userId: number): string?
 	end
 	-- Never cache "not staff" from a failed group lookup, or the owner stays locked out.
 	if role or known then
-		roleCache[userId] = role or false
+		configCache[userId] = role or false
 	end
 	return role
+end
+
+-- Role for a UserId, or nil for normal players. May yield (group lookup).
+function AdminPermissions.roleForUserId(userId: number): string?
+	return AdminPermissions.configRoleForUserId(userId) or ModerationStore.staffRole(userId)
+end
+
+-- "config" (fixed in AdminConfig / place ownership), "game" (handed out in game) or nil.
+function AdminPermissions.roleSource(userId: number): string?
+	if AdminPermissions.configRoleForUserId(userId) then
+		return "config"
+	end
+	return if ModerationStore.staffRole(userId) then "game" else nil
 end
 
 -- True while a failed group-owner lookup leaves some roles undecided.
@@ -150,7 +170,7 @@ function AdminPermissions.limits(role: string?)
 end
 
 Players.PlayerRemoving:Connect(function(player)
-	roleCache[player.UserId] = nil
+	configCache[player.UserId] = nil
 end)
 
 return AdminPermissions

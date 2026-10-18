@@ -19,6 +19,13 @@
 	3. Publish the place. New servers use the new list; restart old servers
 	   (Game Settings > ... > Shut Down All Servers) to apply it everywhere.
 
+	EASIER: Owners can make people Moderator or Admin IN THE GAME, without
+	editing this file: Admin Panel (F2) → Moderation tab, or the command
+	"/admin setrole <player> moderator". Those roles are stored server-side
+	by UserId (DataStore, see AdminConfig.Moderation) and apply in every
+	server within seconds. Roles written in this file always win and cannot
+	be changed from the game.
+
 	Rules:
 	  * Always use UserIds. Never usernames or display names — those can be
 	    changed by their owner and could be taken by someone else.
@@ -88,6 +95,8 @@ AdminConfig.StudioOwnerWhenUnpublished = true
 	  logs.persisted           audit logs saved by all servers
 	  offline.read             inspect players who are offline
 	  offline.write            change data of offline players (verified, lock-checked)
+	  players.ban              ban / unban players in every server (up to Limits.MaxBanDays)
+	  staff.manage             make players Moderator or Admin in the game (Owner)
 ]]
 AdminConfig.Roles = {
 	Owner = {
@@ -101,6 +110,8 @@ AdminConfig.Roles = {
 			MaxRebirths = 100,
 			MaxLevels = 500,
 			MaxSkillPoints = 1000,
+			-- math.huge = no limit; permanent bans allowed.
+			MaxBanDays = math.huge,
 		},
 	},
 	Admin = {
@@ -114,6 +125,7 @@ AdminConfig.Roles = {
 			"players.kick",
 			"players.freeze",
 			"players.respawn",
+			"players.ban",
 			"economy.grant",
 			"economy.reset",
 			"items.grant",
@@ -132,6 +144,7 @@ AdminConfig.Roles = {
 			MaxRebirths = 5,
 			MaxLevels = 50,
 			MaxSkillPoints = 50,
+			MaxBanDays = 30,
 		},
 	},
 	Moderator = {
@@ -145,6 +158,7 @@ AdminConfig.Roles = {
 			"players.kick",
 			"players.freeze",
 			"players.respawn",
+			"players.ban",
 			"server.announce",
 			"server.stats",
 			"logs.view",
@@ -156,6 +170,7 @@ AdminConfig.Roles = {
 			MaxRebirths = 0,
 			MaxLevels = 0,
 			MaxSkillPoints = 0,
+			MaxBanDays = 7,
 		},
 	},
 }
@@ -174,6 +189,7 @@ AdminConfig.RateLimits = {
 		announce = { Capacity = 3, Refill = 0.1 },
 		events = { Capacity = 4, Refill = 0.1 },
 		test = { Capacity = 5, Refill = 0.25 },
+		staff = { Capacity = 5, Refill = 0.1 },
 	},
 }
 
@@ -201,6 +217,30 @@ AdminConfig.Audit = {
 AdminConfig.CrossServerAnnouncements = {
 	Enabled = true,
 	Topic = "ButtonAscension_Announce",
+}
+
+--[[
+	In-game staff roles and bans. Both are stored by UserId in a server-only
+	DataStore; servers tell each other about changes over MessagingService and
+	then re-read the DataStore (message contents are never trusted).
+]]
+AdminConfig.Moderation = {
+	StoreName = "ButtonAscension_Moderation",
+	Topic = "ButtonAscension_Moderation",
+	-- Every server also re-reads the lists this often, in case a message was lost.
+	RefreshSeconds = 60,
+	-- Roles an Owner can hand out in the game. "Owner" is deliberately not here.
+	GrantableRoles = { "Moderator", "Admin" },
+	MaxStaff = 100,
+	MaxBans = 3000,
+	-- How long a joining player waits for the ban list after a server starts.
+	JoinCheckTimeout = 10,
+	-- Also ban through Roblox's own Ban API (Players:BanAsync) in live servers.
+	-- Roblox then blocks the player before they can even join, in every server,
+	-- and the bans show up in the Creator Hub. Our own list stays the source of truth.
+	UseRobloxBanApi = true,
+	-- Let Roblox's Ban API also ban suspected alt accounts of the banned player.
+	BanAltAccounts = false,
 }
 
 -- Key that toggles the panel on keyboards (the panel also has an on-screen button).

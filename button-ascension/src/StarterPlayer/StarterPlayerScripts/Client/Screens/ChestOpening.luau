@@ -2,12 +2,15 @@
 	ChestOpening (ModuleScript)
 	Location: StarterPlayer/StarterPlayerScripts/Client/Screens/ChestOpening
 	Depends on: ReplicatedStorage/UI/*, ReplicatedStorage/Shared/{Format,Formulas,Config/*},
-	            Client/ItemCard
+	            Client/{ItemCard,State}
 
 	Cinematic reveal of results the server has ALREADY applied:
-	  anticipation shake (glow shifts toward the best rarity) → flash + light
-	  rays → item cards pop in one by one with NEW / PITY / BONUS badges.
-	Click or press anywhere to skip ahead. Reduced Motion shows results at once.
+	  anticipation shake (glow shifts toward the best rarity, ticks speed up
+	  and rise in pitch) → whoosh + boom, flash and light rays → item cards pop
+	  in one by one with rising chimes and NEW / PITY / BONUS badges → a
+	  fanfare that grows with the best rarity (Epic, Legendary, Mythic/Secret).
+	Click or press anywhere to skip ahead. Reduced Motion and the Fast Crates
+	game pass show the results at once.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -25,8 +28,11 @@ local Formulas = require(Shared.Formulas)
 local Config = Shared.Config
 local Items = require(Config.Items)
 local Rarities = require(Config.Rarities)
+local GamePasses = require(Config.GamePasses)
+local Sounds = require(Config.Sounds)
 
 local ItemCard = require(script.Parent.Parent.ItemCard)
+local State = require(script.Parent.Parent.State)
 
 local C = Theme.Colors
 local F = Theme.Fonts
@@ -58,7 +64,8 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 		return
 	end
 	active = true
-	local state = { Skip = false }
+	-- Fast Crates owners skip straight to the results.
+	local state = { Skip = GamePasses.owns(State.get("Passes"), "fast_crates") }
 	local best = bestResult(results)
 	local bestColor = Theme.rarityColor(best.Rarity)
 
@@ -122,6 +129,9 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 		Parent = stage,
 	})
 
+	if not Theme.ReducedMotion and not state.Skip then
+		SoundPlayer.play("CrateWhoosh")
+	end
 	if not Theme.ReducedMotion then
 		local steps = 14
 		for i = 1, steps do
@@ -137,16 +147,16 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 			glow.BackgroundColor3 = color
 			glowStroke.Color = color
 			glow.Size = UDim2.fromOffset(220 + t * 80, 220 + t * 80)
-			if i % 3 == 0 then
-				SoundPlayer.play("ChestShake", { Pitch = 0.7 + t * 0.6 })
-			end
-			skippableWait(state, 0.07)
+			-- Ticks speed up and climb in pitch toward the burst.
+			SoundPlayer.play("CrateTick", { Pitch = 0.8 + t * 0.9, Volume = 0.6 + t * 0.4 })
+			skippableWait(state, 0.11 - t * 0.07)
 		end
 	end
 	crate.Rotation = 0
 
 	-- Burst -----------------------------------------------------------------------------
 	SoundPlayer.play("ChestBurst")
+	SoundPlayer.play("CrateBoom")
 	-- Effects draw above the opening layers (ZIndex 80-88).
 	Effects.flash(root, bestColor, 0.5, 90)
 	local center = Vector2.new(450, 280)
@@ -162,13 +172,19 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 	-- Reveal ----------------------------------------------------------------------------
 	local single = #results == 1
 	-- Bonus drops can push a 10× opening past 14 results; smaller cards keep them in three rows.
+	-- Fast Crates allows ×20 (up to 40 results with bonus drops): tiny cards in four rows.
 	local dense = #results > 14
-	local cardSize = if single then UDim2.fromOffset(220, 256) elseif dense then UDim2.fromOffset(80, 94) else UDim2.fromOffset(112, 130)
+	local tiny = #results > 27
+	local cardSize = if single
+		then UDim2.fromOffset(220, 256)
+		elseif tiny then UDim2.fromOffset(64, 76)
+		elseif dense then UDim2.fromOffset(80, 94)
+		else UDim2.fromOffset(112, 130)
 	local holder = UI.frame({
 		Name = "Cards",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, if single then 0.4 else 0.42),
-		Size = UDim2.fromOffset(860, if single then 270 elseif dense then 330 else 290),
+		Size = UDim2.fromOffset(860, if single then 270 elseif tiny then 360 elseif dense then 330 else 290),
 		ZIndex = 84,
 		Grid = { Cell = cardSize, Pad = UDim2.fromOffset(10, 12), HA = "Center" },
 		Parent = stage,
@@ -188,6 +204,9 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 			if single then
 				card.Icon.TextSize = 96
 				card.Name.TextSize = 20
+			elseif tiny then
+				card.Icon.TextSize = 24
+				card.Name.TextSize = 9
 			elseif dense then
 				card.Icon.TextSize = 30
 				card.Name.TextSize = 10
@@ -223,13 +242,36 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 				card.Scale.Scale = 0
 				UI.tween(card.Scale, { Scale = 1 }, Theme.Motion.Pop, true)
 				local rarityIndex = Rarities.index(item.Rarity)
-				SoundPlayer.play("Reveal", { Pitch = 0.8 + rarityIndex * 0.1 })
+				-- Each card's chime is a little higher than the last; rarer cards sparkle.
+				SoundPlayer.play("CrateChime", { Pitch = math.min(2, 0.9 + (index - 1) * 0.06) + (rarityIndex - 1) * 0.04 })
+				if rarityIndex >= 4 then
+					SoundPlayer.play("CrateSparkle")
+				end
 				if rarityIndex >= 5 then
 					local pos = card.Instance.AbsolutePosition + card.Instance.AbsoluteSize / 2 - stage.AbsolutePosition
 					Effects.burst(stage, pos / math.max(0.01, (stage:FindFirstChildOfClass("UIScale") :: UIScale).Scale), Theme.rarityColor(item.Rarity), 16, 160, 90)
 				end
 				skippableWait(state, if single then 0.2 else 0.12)
 			end
+		end
+	end
+
+	-- Fanfare for the best drop -----------------------------------------------------------
+	local bestIndex = Rarities.index(best.Rarity)
+	local fanfare = if bestIndex >= 6
+		then Sounds.CrateFanfares.Mythic
+		elseif bestIndex >= 5 then Sounds.CrateFanfares.Legendary
+		elseif bestIndex >= 4 then Sounds.CrateFanfares.Epic
+		else nil
+	if fanfare then
+		SoundPlayer.sequence("CrateFanfare", fanfare.Notes, fanfare.Gap)
+		if fanfare.Sparkle then
+			task.delay(#fanfare.Notes * fanfare.Gap, SoundPlayer.sequence, "CrateSparkle", { 2, 2.52, 3 }, 0.06)
+		end
+		if fanfare.Jackpot then
+			SoundPlayer.play("CrateJackpot")
+			SoundPlayer.play("CrateBoom", { Pitch = 0.35 })
+			Effects.flash(root, bestColor, 0.35, 90)
 		end
 	end
 

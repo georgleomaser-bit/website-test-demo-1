@@ -8,9 +8,14 @@
 	owned count, live drop odds (including your Luck), pity progress and every
 	item in its pool (undiscovered ones stay hidden). Opening calls the
 	server, which rolls everything; the result is then animated by ChestOpening.
+	Below the normal crates, the Robux crates (developer products) open
+	Roblox's purchase prompt; the server opens them after the purchase.
 ]]
 
+local MarketplaceService = game:GetService("MarketplaceService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local UIFolder = ReplicatedStorage:WaitForChild("UI")
 local UI = require(UIFolder.UIKit)
@@ -24,6 +29,7 @@ local Chests = require(Config.Chests)
 local Items = require(Config.Items)
 local Rarities = require(Config.Rarities)
 local GameConfig = require(Config.GameConfig)
+local DevProducts = require(Config.DevProducts)
 
 local Client = script.Parent.Parent
 local State = require(Client.State)
@@ -109,6 +115,55 @@ function ChestsScreen.new(ctx)
 			screen.Refresh()
 		end)
 		crateCards[chestId] = { Card = card, Stroke = stroke, Sub = sub, Owned = owned }
+	end
+
+	-- Robux crates: a purchase prompt; hidden in live games until their ProductId is set.
+	local isStudio = RunService:IsStudio()
+	local robuxTitle = UI.label({
+		Name = "RobuxCratesTitle",
+		Text = "💰 Robux crates",
+		Font = F.Heading,
+		TextSize = 15,
+		Size = UDim2.new(1, 0, 0, 24),
+		LayoutOrder = 100,
+		Parent = listFrame,
+	})
+	local robuxCards = {}
+	for index, chest in ipairs(Chests.RobuxList) do
+		local product = DevProducts.ByKey[chest.Id]
+		local card = UI.new("TextButton", {
+			Name = chest.Id,
+			Size = UDim2.new(1, 0, 0, 64),
+			BackgroundColor3 = C.PanelLight,
+			AutoButtonColor = false,
+			Text = "",
+			LayoutOrder = 100 + index,
+			Selectable = true,
+			Corner = Theme.Radius.Medium,
+			Parent = listFrame,
+		})
+		UI.stroke(card, { Color = chest.Color, Thickness = 1.5, Transparency = 0.3 })
+		UI.label({ Text = chest.Icon, TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromOffset(64, 64), Parent = card })
+		UI.label({ Text = chest.Name, Font = F.Heading, TextSize = 16, TextColor3 = chest.Color, Size = UDim2.new(1, -72, 0, 22), Position = UDim2.fromOffset(64, 8), Parent = card })
+		local sub = UI.label({ Text = "", TextSize = 12, TextColor3 = C.TextDim, Size = UDim2.new(1, -72, 0, 18), Position = UDim2.fromOffset(64, 32), Parent = card })
+		card.Activated:Connect(function()
+			if product and DevProducts.isConfigured(product) then
+				MarketplaceService:PromptProductPurchase(Players.LocalPlayer, product.ProductId)
+			end
+		end)
+		robuxCards[chest.Id] = { Card = card, Sub = sub, Product = product, Chest = chest }
+	end
+	local function refreshRobuxCrates()
+		local any = false
+		for _, entry in pairs(robuxCards) do
+			local configured = entry.Product ~= nil and DevProducts.isConfigured(entry.Product)
+			entry.Card.Visible = configured or isStudio
+			any = any or entry.Card.Visible
+			entry.Sub.Text = if configured
+				then `{entry.Chest.Description} · R$ {entry.Product.SuggestedPrice}`
+				else "Not set up (ProductId missing)"
+		end
+		robuxTitle.Visible = any
 	end
 
 	-- Detail panel content (rebuilt when the selection changes; cheap: one crate).
@@ -208,15 +263,21 @@ function ChestsScreen.new(ctx)
 			local price = Formulas.chestPrice(chest, discount)
 			local icon = Theme.currencyIcon(chest.Currency)
 			local balance = State.currency(chest.Currency)
+			-- The Fast Crates pass raises the limit; offer the new maximum as an extra button.
+			local amounts = table.clone(Chests.OpenAmounts)
+			local maxOpen = Formulas.maxOpen(chest, stats)
+			if maxOpen > amounts[#amounts] then
+				table.insert(amounts, maxOpen)
+			end
 			local buyRow = add(UI.frame({ Size = UDim2.new(1, 0, 0, 46), LayoutOrder = nextOrder(), List = { Dir = "X", Pad = 8 }, Parent = detailScroll }))
-			for i, n in ipairs(Chests.OpenAmounts) do
+			for i, n in ipairs(amounts) do
 				local cost = price * n
 				local buyButton = UI.button({
 					Text = `Buy ×{n}  {icon} {Format.short(cost)}`,
 					Variant = "gold",
-					Size = UDim2.new(1 / #Chests.OpenAmounts, -6, 1, 0),
+					Size = UDim2.new(1 / #amounts, -6, 1, 0),
 					LayoutOrder = i,
-					TextSize = 14,
+					TextSize = if #amounts > 3 then 12 else 14,
 					Disabled = balance < cost,
 					OnClick = function()
 						openChest(chest.Id, n, "buy")
@@ -226,13 +287,13 @@ function ChestsScreen.new(ctx)
 				table.insert(buyButtons, { Button = buyButton, Cost = cost, Currency = chest.Currency })
 			end
 			local ownRow = add(UI.frame({ Size = UDim2.new(1, 0, 0, 40), LayoutOrder = nextOrder(), List = { Dir = "X", Pad = 8 }, Parent = detailScroll }))
-			for i, n in ipairs(Chests.OpenAmounts) do
+			for i, n in ipairs(amounts) do
 				UI.button({
 					Text = `Open owned ×{n}`,
 					Variant = "primary",
-					Size = UDim2.new(1 / #Chests.OpenAmounts, -6, 1, 0),
+					Size = UDim2.new(1 / #amounts, -6, 1, 0),
 					LayoutOrder = i,
-					TextSize = 14,
+					TextSize = if #amounts > 3 then 12 else 14,
 					Disabled = owned < n,
 					OnClick = function()
 						openChest(chest.Id, n, "owned")
@@ -341,6 +402,7 @@ function ChestsScreen.new(ctx)
 		if not window.IsOpen() then
 			return
 		end
+		refreshRobuxCrates()
 		local data = State.view()
 		local stats = State.stats()
 		local owned = State.get("Chests") or {}

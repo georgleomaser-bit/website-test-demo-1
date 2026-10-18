@@ -70,6 +70,8 @@ log.
 | `server.announce.global` | Game-wide announcements (all servers) | | | ✓ |
 | `logs.persisted` | Audit logs saved by all servers | | | ✓ |
 | `offline.write` | Change offline players' data (lock-checked) | | | ✓ |
+| `players.ban` | Ban / unban in every server, also offline players (up to the role's ban limit) | ✓ | ✓ | ✓ |
+| `staff.manage` | Make players Moderator or Admin in the game | | | ✓ |
 
 **Per-action limits** (`AdminConfig.Roles.<Role>.Limits`):
 
@@ -81,15 +83,84 @@ log.
 | Ascensions per action | — | 5 | 100 |
 | Levels per action | — | 50 | 500 |
 | Skill Points per action | — | 50 | 1,000 |
+| Longest ban | 7 days | 30 days | any, incl. permanent |
 
 **Rate limits** (token buckets per admin): global 30 burst / 3 per s; read
 20 / 4 per s; player 10 / 1 per s; punitive 5 / 1 per 5 s; economy and
 items 10 / 1 per s; progression 8 / 1 per 2 s; destructive 3 / 1 per 20 s;
-announcements 3 / 1 per 10 s; events 4 / 1 per 10 s; tests 5 / 1 per 4 s.
+announcements 3 / 1 per 10 s; events 4 / 1 per 10 s; tests 5 / 1 per 4 s;
+staff roles 5 / 1 per 10 s.
 
 All of these values are in `AdminConfig` and can be changed there.
 
-## Adding an administrator safely
+## Giving someone a role in the game (Owners)
+
+The easiest way: no code, no publishing.
+
+1. Press **F2** (or the 🛡️ Admin button) and open the **🚫 Moderation** tab.
+   You can also select the player in the **Players** tab and press
+   **🛡️ Staff role…**.
+2. Under **Staff roles**, enter the player (name, `@username` or `#UserId`;
+   they do not have to be online), choose **Moderator** or **Admin** and press
+   **Give role**. Confirm the dialog.
+3. The role applies in **every server within a few seconds**. An online
+   player gets the admin panel right away and a message saying so.
+4. **Remove role** takes it away again, also in every server; their panel
+   disappears.
+
+Command bar: `/admin mod <player>`, `/admin setrole <player> admin`,
+`/admin removerole <player>`, `/admin staff`.
+
+How it stays safe:
+
+* Only the `staff.manage` permission can do this (Owners by default).
+* Only **Moderator** and **Admin** can be handed out
+  (`AdminConfig.Moderation.GrantableRoles`). **Owner** never can.
+* Roles are stored **by UserId** in a server-only DataStore
+  (`AdminConfig.Moderation.StoreName`), never by name and never from client
+  data. Other servers are told over MessagingService and then re-read the
+  DataStore themselves; the message content is never trusted.
+* Roles written in `AdminConfig.Users`, the place creator and the group owner
+  always win and cannot be changed or removed from the game.
+* Every change is confirmed, rate-limited and recorded in the audit log.
+* In Studio without API access, roles last for that session only, and the
+  panel says so.
+
+## Banning
+
+Moderators, Admins and Owners have `players.ban`.
+
+* **Panel:** the **🚫 Moderation** tab (or **🚫 Ban…** on a player in the
+  Players tab). Enter the player, choose a length (1 hour, 1 day, 7 days,
+  30 days, Permanent; only the lengths your role may use are shown), type a
+  reason and press **Ban**. Active bans are listed below with **Unban**.
+* **Command bar:** `/admin ban <player> <30m|12h|7d|2w|perm> <reason...>`,
+  `/admin unban <player|#UserId>`, `/admin bans`.
+* A ban applies in **every server**. The player is removed right away
+  (other servers follow within seconds) and kicked whenever they try to
+  join, with the reason and the end date.
+* **Offline players** can be banned by `#UserId` or by their exact Roblox
+  username (looked up on the server). The confirmation dialog shows who the
+  name resolved to.
+* **Limits:** Moderators up to 7 days, Admins up to 30 days, Owners any length
+  including permanent (`Limits.MaxBanDays`). Nobody can ban staff of equal or
+  higher rank, and a ban can only be lifted by staff of at least the rank
+  that issued it.
+* The reason is filtered by Roblox before it is stored, because the player
+  and other staff will read it.
+* Bans are stored by UserId in the same server-only DataStore as staff roles
+  and end automatically. In live servers they are also sent to **Roblox's
+  own Ban API** (`Players:BanAsync`, `AdminConfig.Moderation.UseRobloxBanApi`),
+  so Roblox blocks the player before they can even join and the ban shows up
+  in the Creator Hub. If that call fails, our own ban list still applies.
+  Alt-account banning is off by default (`BanAltAccounts`).
+* If Roblox's data services are down when a server starts, a joining player
+  is let in after `JoinCheckTimeout` seconds rather than blocking everyone.
+
+## Adding an administrator in code
+
+You can also write roles into the code. These roles cannot be changed from
+the game.
 
 1. **Find their UserId.** Use the number in their profile URL,
    `https://www.roblox.com/users/123456789/profile`, or run this in Studio's
@@ -136,12 +207,13 @@ player. In an **unpublished** place, the solo Play tester is Owner
 | Tab | Features | Server actions |
 |---|---|---|
 | **Dashboard** | Online players, uptime, server presses and presses/s, memory, physics FPS, heartbeat, data status (saves, failures, last error), active events, security flags, recent admin actions and security events. Refreshes every 5 s. | `dashboard` |
-| **Players** | Searchable list with staff/frozen tags. Selecting a player shows username, display name, UserId, currencies, level/XP, Skill Points, ascensions/stage, upgrades, skills, inventory, crates, statistics and security counters. Buttons: Teleport to, Bring, Freeze/Unfreeze, Respawn, Kick (reason required), Inspect inventory. Offline lookup by UserId. | `players.list`, `players.inspect`, `players.teleportTo`, `players.bring`, `players.freeze`, `players.unfreeze`, `players.respawn`, `players.kick` |
+| **Players** | Searchable list with staff/frozen tags. Selecting a player shows username, display name, UserId, currencies, level/XP, Skill Points, ascensions/stage, upgrades, skills, inventory, crates, statistics and security counters. Buttons: Teleport to, Bring, Freeze/Unfreeze, Respawn, Kick (reason required), Inspect inventory, Ban… and (Owners) Staff role…, which open the Moderation tab for that player. Offline lookup by UserId. | `players.list`, `players.inspect`, `players.teleportTo`, `players.bring`, `players.freeze`, `players.unfreeze`, `players.respawn`, `players.kick` |
 | **Economy** | Target picker, currency selector, amount field (accepts 1.5k / 2m / 1e6), Add / Remove / Set, test rewards (500 Gems, crate bundle, Frenzy, spawn orb, level up), Grant Prisms, Reset currencies (confirmation). | `economy.add`, `economy.remove`, `economy.set`, `economy.reward`, `economy.reset` |
 | **Items** | Searchable item list with rarity filters, Grant / Remove, crate grants, inventory inspection, **drop-rate test** (1k/10k/100k rolls, luck, pity; observed vs expected per rarity; *no data changes*), forced-rarity test drop. | `items.grant`, `items.remove`, `chests.grant`, `items.simulate`, `items.forceRoll` |
 | **Progression** | Set upgrade levels, unlock a skill / all skills, grant ascensions, levels and Skill Points, reset skills (confirmation), reset progress by scope (confirmation; scope *all* also requires typing the player's name). | `progression.*` |
 | **Server** | Announcements: *Server-wide (this server only)* or *Game-wide (all servers)*. Start/stop boost events with duration and countdown. Server statistics. | `server.announce`, `server.eventStart`, `server.eventStop`, `server.stats` |
 | **Audit Logs** | Newest-first log with search and result filters (success, denied, invalid, error, rate_limited, confirm_required, duplicate). Live updates. Security view. Load the persisted log for a UTC day. | `logs.recent`, `logs.security`, `logs.persisted` |
+| **Moderation** | Ban (length chips limited to your role, reason required) and the list of active bans with Unban. Owners also get **Staff roles**: give Moderator/Admin by name, @username or #UserId, and the list of roles given in the game with Remove. | `players.ban`, `players.unban`, `players.bans`, `staff.list`, `staff.setRole`, `staff.removeRole` |
 | **Settings** | Your role, rank, permissions, limits, keybind and server info. Panel preferences for this session. Roles cannot be changed from the client. | `hello` |
 
 ## Command bar
@@ -180,6 +252,13 @@ that support offline players take `#UserId`.
 | `freeze` | `/admin freeze <player>` | Freeze a player. | `players.freeze` |
 | `unfreeze` | `/admin unfreeze <player>` | Unfreeze a player. | `players.freeze` |
 | `respawn` | `/admin respawn <player>` | Reset a player's character. | `players.respawn` |
+| `ban` | `/admin ban <player> <30m\|12h\|7d\|2w\|perm> <reason...>` | Ban from every server (also offline: #UserId or exact username). Asks for confirmation. | `players.ban` |
+| `unban` | `/admin unban <player\|#UserId>` | Lift a ban. | `players.ban` |
+| `bans` | `/admin bans` | List active bans. | `players.ban` |
+| `setrole` | `/admin setrole <player> <moderator\|admin>` | Make someone Moderator or Admin in every server (asks for confirmation). | `staff.manage` |
+| `mod` | `/admin mod <player>` | Make someone Moderator (asks for confirmation). | `staff.manage` |
+| `removerole` | `/admin removerole <player>` | Take away a staff role given in the game. | `staff.manage` |
+| `staff` | `/admin staff` | List staff roles given in the game. | `staff.manage` |
 | `announce` | `/admin announce <message...>` | Server-wide announcement (this server only). | `server.announce` |
 | `gannounce` | `/admin gannounce <message...>` | Game-wide announcement (all servers). | `server.announce` + `server.announce.global` |
 | `event` | `/admin event <start\|stop> <eventId> [seconds]` | Start or stop a boost event in this server. | `server.events` |
@@ -198,9 +277,10 @@ the commands their role may use.
 
 ## Destructive actions and confirmations
 
-`economy.reset`, `progression.resetSkills`, `progression.reset` and
-`progression.grantRebirth` (an ascension wipes the target's current run)
-return `needsConfirm` with a summary instead of running. The panel shows a red
+`economy.reset`, `progression.resetSkills`, `progression.reset`,
+`progression.grantRebirth` (an ascension wipes the target's current run),
+`players.ban` and `staff.setRole` return `needsConfirm` with a summary
+instead of running. The panel shows a red
 confirmation dialog. Resetting *all* progress also requires typing the
 player's name. The token is single-use, expires after 45 s, and works only
 for the admin it was issued to.

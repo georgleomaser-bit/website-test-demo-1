@@ -8,7 +8,11 @@
 	Every admin operation, declared as data:
 	  Permission   permission required (see AdminConfig)
 	  Category     rate-limit bucket (AdminConfig.RateLimits.Categories)
-	  Target       nil | "online" | "any"  ("any" also accepts an offline #UserId)
+	  Target       nil | "online" | "any" | "user"
+	               "any" also accepts an offline #UserId (edits their saved data);
+	               "user" accepts online players, #UserId or an exact Roblox username
+	               and only needs the UserId (bans, staff roles)
+	  NoProfile    runs without the target's loaded game data
 	  Punitive     cannot target staff of equal or higher rank (except yourself)
 	  Destructive  requires a single-use confirmation token
 	  Validate(args, ctx) -> clean | nil, error     (all client input checked here)
@@ -46,6 +50,7 @@ local Guard = require(Core.Guard)
 local AdminConfig = require(script.Parent.AdminConfig)
 local AdminPermissions = require(script.Parent.AdminPermissions)
 local AuditLog = require(script.Parent.AuditLog)
+local ModerationStore = require(script.Parent.ModerationStore)
 
 local AdminActions = {}
 local startedAt = os.clock()
@@ -121,6 +126,47 @@ function V.text(value: any, max: number, label: string): (string?, string?)
 		return nil, `{label} is too long (max {max} characters).`
 	end
 	return trimmed, nil
+end
+
+local DURATION_UNITS = { m = 60, h = 3600, d = 86400, w = 604800 }
+local MAX_BAN_SECONDS = 3650 * 86400
+
+-- "30m", "12h", "7d", "2w" -> seconds; "perm" / "permanent" / "forever" -> 0 (permanent).
+-- Whole seconds are accepted too (that is what a confirmation stores).
+function V.duration(value: any): (number?, string?)
+	if type(value) == "number" then
+		if value == 0 or (value == math.floor(value) and value >= 60 and value <= MAX_BAN_SECONDS) then
+			return value, nil
+		end
+		return nil, "Ban length must be between 1 minute and 10 years (or perm)."
+	end
+	if type(value) ~= "string" then
+		return nil, "Choose a ban length, e.g. 1h, 1d, 7d or perm."
+	end
+	local s = string.lower((string.gsub(value, "%s", "")))
+	if s == "perm" or s == "permanent" or s == "forever" then
+		return 0, nil
+	end
+	local amount, unit = string.match(s, "^(%d+)([mhdw])$")
+	local n = tonumber(amount)
+	if not n or not unit then
+		return nil, "Ban length must look like 30m, 12h, 7d, 2w or perm."
+	end
+	local seconds = n * DURATION_UNITS[unit]
+	if seconds < 60 or seconds > MAX_BAN_SECONDS then
+		return nil, "Ban length must be between 1 minute and 10 years (or perm)."
+	end
+	return seconds, nil
+end
+
+-- "moderator" / "mod" / "admin" -> a role an Owner may hand out in the game.
+function V.grantableRole(value: any): (string?, string?)
+	local s = if type(value) == "string" then string.lower(value) else ""
+	local role = if s == "mod" or s == "moderator" then "Moderator" elseif s == "admin" then "Admin" else nil
+	if role and ModerationStore.isGrantable(role) then
+		return role, nil
+	end
+	return nil, "Choose a role: " .. table.concat(AdminConfig.Moderation.GrantableRoles, " or ") .. "."
 end
 
 function V.int(value: any, min: number, max: number, label: string): (number?, string?)
@@ -297,12 +343,18 @@ A["hello"] = {
 	end,
 	Run = function(ctx)
 		local role = ctx.Role
+		local limits = table.clone(AdminPermissions.limits(role))
+		local maxBanDays = limits.MaxBanDays or 0
+		limits.MaxBanDays = nil
 		return true, "Welcome.", {
 			Role = role,
 			RoleColor = AdminConfig.Roles[role].Color,
 			Rank = AdminPermissions.rank(role),
 			Permissions = AdminPermissions.list(role),
-			Limits = AdminPermissions.limits(role),
+			Limits = limits,
+			-- 0 = no limit (permanent bans allowed).
+			MaxBanDays = if maxBanDays == math.huge then 0 else maxBanDays,
+			ModerationPersistent = ModerationStore.Persistent,
 			Commands = ctx.Services.AdminService:CommandList(role),
 			CrossServer = AdminConfig.CrossServerAnnouncements.Enabled,
 			PanelKey = AdminConfig.PanelKey,
@@ -529,6 +581,281 @@ A["players.respawn"] = {
 	Run = function(ctx)
 		ctx.TargetPlayer:LoadCharacter()
 		return true, `Respawned {ctx.TargetName}.`
+	end,
+}
+
+-- Bans ------------------------------------------------------------------------------------
+-- Stored by UserId in ModerationStore and enforced in every server (AdminService
+-- kicks banned players on join and when a ban arrives from another server).
+
+local function durationText(seconds: number): string
+	if seconds == 0 then
+		return "permanently"
+	end
+	for _, unit in ipairs({ { 604800, "week" }, { 86400, "day" }, { 3600, "hour" }, { 60, "minute" } }) do
+		local count = seconds / unit[1]
+		if count >= 1 and count == math.floor(count) then
+			return `for {count} {unit[2]}{if count == 1 then "" else "s"}`
+		end
+	end
+	return "for " .. Format.time(seconds)
+end
+
+-- What a banned player sees when they are removed or try to join.
+function AdminActions.banMessage(entry): string
+	local length = if entry.Until == 0 then "permanently" else "until " .. os.date("!%Y-%m-%d %H:%M", entry.Until) .. " UTC"
+	return `You are banned from {GameConfig.GameName} {length}. Reason: {entry.Reason}`
+end
+
+local function sessionNote(): string
+	return if ModerationStore.Persistent then "" else " (temporary Studio session: not saved)"
+end
+
+A["players.ban"] = {
+	Permission = "players.ban",
+	Category = "punish",
+	Target = "user",
+	NoProfile = true,
+	Punitive = true,
+	Destructive = true,
+	Validate = function(args, ctx)
+		local target, err = V.target(args.Target)
+		if not target then
+			return nil, err
+		end
+		local seconds, derr = V.duration(args.Duration)
+		if not seconds then
+			return nil, derr
+		end
+		local maxDays = ctx.Limits.MaxBanDays or 0
+		if maxDays ~= math.huge and (seconds == 0 or seconds > maxDays * 86400) then
+			return nil, `Your role ({ctx.Role}) can ban for at most {maxDays} days.`
+		end
+		local reason, rerr = V.text(args.Reason, AdminConfig.Text.MaxReason, "A ban reason")
+		if not reason then
+			return nil, rerr
+		end
+		return { Target = target, Duration = seconds, Reason = reason }
+	end,
+	Describe = function(ctx, clean)
+		return `Ban {ctx.TargetName} {durationText(clean.Duration)} from every server? Reason: "{clean.Reason}"`
+	end,
+	Run = function(ctx, clean)
+		if ctx.TargetUserId == ctx.AdminId then
+			return false, "You cannot ban yourself."
+		end
+		local existing = ModerationStore.activeBan(ctx.TargetUserId)
+		if existing and existing.ByRank > AdminPermissions.rank(ctx.Role) then
+			return false, `{ctx.TargetName} is already banned by higher-ranked staff ({existing.ByName}).`
+		end
+		-- Players and other staff see the reason, so only the filtered text is stored.
+		local shown = filterBroadcast(clean.Reason, ctx.AdminId) or "Banned by staff."
+		local now = os.time()
+		local entry = {
+			Name = ctx.TargetName,
+			Reason = shown,
+			By = ctx.AdminId,
+			ByName = ctx.Admin.Name,
+			ByRank = AdminPermissions.rank(ctx.Role),
+			At = now,
+			Until = if clean.Duration == 0 then 0 else now + clean.Duration,
+		}
+		-- On success AdminService (ModerationStore.onChanged) removes the player from
+		-- this server at once; other servers follow when they hear about the change.
+		local ok, err = ModerationStore.write("bans", ctx.TargetUserId, entry)
+		if not ok then
+			return false, err
+		end
+		local mirrored, mirrorErr =
+			ModerationStore.robloxBan(ctx.TargetUserId, clean.Duration, shown, `Banned by {ctx.Admin.Name} (#{ctx.AdminId}): {clean.Reason}`)
+		local note = if mirrored
+			then " Roblox's ban system blocks them too."
+			elseif mirrorErr ~= "off" then " (Roblox's ban system did not accept it; our ban list still applies.)"
+			else ""
+		return true, `Banned {ctx.TargetName} {durationText(clean.Duration)} from every server.{note}{sessionNote()}`
+	end,
+}
+
+A["players.unban"] = {
+	Permission = "players.ban",
+	Category = "punish",
+	Target = "user",
+	NoProfile = true,
+	Validate = function(args)
+		local target, err = V.target(args.Target)
+		return if target then { Target = target } else nil, err
+	end,
+	Run = function(ctx)
+		local existing = ModerationStore.activeBan(ctx.TargetUserId)
+		if not existing then
+			return false, `{ctx.TargetName} is not banned.`
+		end
+		if existing.ByRank > AdminPermissions.rank(ctx.Role) then
+			return false, `Only higher-ranked staff can lift this ban (banned by {existing.ByName}).`
+		end
+		local ok, err = ModerationStore.write("bans", ctx.TargetUserId, nil)
+		if not ok then
+			return false, err
+		end
+		ModerationStore.robloxUnban(ctx.TargetUserId)
+		return true, `Unbanned {ctx.TargetName}.{sessionNote()}`
+	end,
+}
+
+A["players.bans"] = {
+	Quiet = true,
+	Permission = "players.ban",
+	Category = "read",
+	Validate = function()
+		return {}
+	end,
+	Run = function()
+		local bans = ModerationStore.listBans()
+		local lines = {}
+		for i = 1, math.min(15, #bans) do
+			local b = bans[i]
+			local length = if b.Until == 0 then "permanent" else "until " .. os.date("!%Y-%m-%d %H:%M", b.Until) .. " UTC"
+			table.insert(lines, `{b.Name} (#{b.UserId}) — {length} — by {b.ByName}: {b.Reason}`)
+		end
+		local text = if #bans == 0 then "Nobody is banned." else `{#bans} banned:\n` .. table.concat(lines, "\n")
+		return true, text, { Bans = bans, Persistent = ModerationStore.Persistent }
+	end,
+}
+
+-- Staff roles handed out in the game ------------------------------------------------------------
+-- Only Owners (staff.manage). Roles from AdminConfig / place ownership always win and
+-- cannot be changed here; "Owner" itself can never be handed out.
+
+local function powersOf(role: string): string
+	local parts = {}
+	if AdminPermissions.has(role, "players.kick") then
+		table.insert(parts, "kick")
+	end
+	if AdminPermissions.has(role, "players.freeze") then
+		table.insert(parts, "freeze")
+	end
+	if AdminPermissions.has(role, "players.ban") then
+		local days = AdminConfig.Roles[role].Limits.MaxBanDays
+		table.insert(parts, if days == math.huge then "ban (any length)" else `ban (up to {days} days)`)
+	end
+	if AdminPermissions.has(role, "economy.grant") then
+		table.insert(parts, "give currency and items")
+	end
+	if AdminPermissions.has(role, "server.events") then
+		table.insert(parts, "start events")
+	end
+	return table.concat(parts, ", ")
+end
+
+A["staff.list"] = {
+	Quiet = true,
+	Permission = "staff.manage",
+	Category = "read",
+	Validate = function()
+		return {}
+	end,
+	Run = function()
+		local staff = ModerationStore.listStaff()
+		local lines = {}
+		for _, row in ipairs(staff) do
+			table.insert(lines, `{row.Role}: {row.Name} (#{row.UserId}), given by {row.ByName}`)
+		end
+		local online = {}
+		for _, p in ipairs(Players:GetPlayers()) do
+			local role = AdminPermissions.roleFor(p)
+			if role then
+				table.insert(online, {
+					UserId = p.UserId,
+					Name = p.Name,
+					DisplayName = p.DisplayName,
+					Role = role,
+					Source = AdminPermissions.roleSource(p.UserId),
+				})
+			end
+		end
+		local text = if #staff == 0 then "Nobody has a role given in the game yet." else table.concat(lines, "\n")
+		return true,
+			text,
+			{
+				Staff = staff,
+				Online = online,
+				Grantable = AdminConfig.Moderation.GrantableRoles,
+				Persistent = ModerationStore.Persistent,
+			}
+	end,
+}
+
+A["staff.setRole"] = {
+	Permission = "staff.manage",
+	Category = "staff",
+	Target = "user",
+	NoProfile = true,
+	Destructive = true,
+	Validate = function(args)
+		local target, err = V.target(args.Target)
+		if not target then
+			return nil, err
+		end
+		local role, rerr = V.grantableRole(args.Role)
+		if not role then
+			return nil, rerr
+		end
+		return { Target = target, Role = role }
+	end,
+	Describe = function(ctx, clean)
+		return `Make {ctx.TargetName} {clean.Role}? They will be able to {powersOf(clean.Role)}. You can remove the role at any time.`
+	end,
+	Run = function(ctx, clean)
+		if ctx.TargetUserId == ctx.AdminId then
+			return false, "You cannot change your own role."
+		end
+		local fixed = AdminPermissions.configRoleForUserId(ctx.TargetUserId)
+		if fixed then
+			return false, `{ctx.TargetName} is {fixed} through AdminConfig or place ownership; change it there.`
+		end
+		if ModerationStore.activeBan(ctx.TargetUserId) then
+			return false, `{ctx.TargetName} is banned. Unban them first.`
+		end
+		if ModerationStore.staffRole(ctx.TargetUserId) == clean.Role then
+			return false, `{ctx.TargetName} is already {clean.Role}.`
+		end
+		local ok, err = ModerationStore.write("staff", ctx.TargetUserId, {
+			Role = clean.Role,
+			Name = ctx.TargetName,
+			By = ctx.AdminId,
+			ByName = ctx.Admin.Name,
+			At = os.time(),
+		})
+		if not ok then
+			return false, err
+		end
+		return true, `{ctx.TargetName} is now {clean.Role} in every server.{sessionNote()}`
+	end,
+}
+
+A["staff.removeRole"] = {
+	Permission = "staff.manage",
+	Category = "staff",
+	Target = "user",
+	NoProfile = true,
+	Validate = function(args)
+		local target, err = V.target(args.Target)
+		return if target then { Target = target } else nil, err
+	end,
+	Run = function(ctx)
+		local fixed = AdminPermissions.configRoleForUserId(ctx.TargetUserId)
+		if fixed then
+			return false, `{ctx.TargetName} is {fixed} through AdminConfig or place ownership; change it there.`
+		end
+		local current = ModerationStore.staffRole(ctx.TargetUserId)
+		if not current then
+			return false, `{ctx.TargetName} has no staff role.`
+		end
+		local ok, err = ModerationStore.write("staff", ctx.TargetUserId, nil)
+		if not ok then
+			return false, err
+		end
+		return true, `{ctx.TargetName} is no longer {current}.{sessionNote()}`
 	end,
 }
 

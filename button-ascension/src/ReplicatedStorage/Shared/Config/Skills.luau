@@ -7,6 +7,16 @@
 	Skills are permanent: they are NOT reset by Ascension (a Gem-priced respec
 	refunds every point).
 
+	Layout: four main branches grow outward from the core (Strength up,
+	Fortune right, Wealth down, Precision left), each ending in a capstone and,
+	further out, an ascended capstone ("_cap2"). Bridge nodes sit between two
+	branches near the core, and Special nodes grow along the diagonals.
+
+	The tree reveals itself as it is bought (see Skills.visibility): only the
+	core, owned nodes and nodes whose prerequisites are met are shown in full;
+	the next ring appears as "?" silhouettes and everything further out stays
+	hidden until the player gets closer.
+
 	Requires    = every listed node needs at least rank 1
 	RequiresAny = at least one listed node needs rank 1
 	Cost        = Skill Points for rank 1; each further rank costs Cost + CostStep * rank
@@ -149,6 +159,123 @@ Skills.List = {
 	node({ Id = "spec_orb", Name = "Orb Magnet", Icon = "🔮", Branch = "Special", X = 2, Y = -2, MaxRank = 2, Cost = 2,
 		RequiresAny = { "str_4", "luck_3" }, Description = "Bonus orbs appear 20% more often and give +25% rewards per rank.",
 		Effects = { { Stat = "orbRate", Add = 0.2 }, { Stat = "orbPct", Add = 0.25 } } }),
+
+	-- Bridges (between two branches, next to the core) -------------------------------
+	node({ Id = "bridge_sl", Name = "Lucky Punch", Icon = "🥊", Branch = "Special", X = 1, Y = -1, MaxRank = 2, Cost = 2, CostStep = 1,
+		Requires = { "str_1", "luck_1" }, Description = "+10% Click Power and +15% golden press chance per rank.",
+		Effects = { { Stat = "clickPct", Add = 0.1 }, { Stat = "goldenPct", Add = 0.15 } } }),
+	node({ Id = "bridge_sc", Name = "Precise Strikes", Icon = "🎳", Branch = "Special", X = -1, Y = -1, MaxRank = 2, Cost = 2, CostStep = 1,
+		Requires = { "str_1", "crit_1" }, Description = "+10% Click Power and +1% Crit Chance per rank.",
+		Effects = { { Stat = "clickPct", Add = 0.1 }, { Stat = "critChance", Add = 0.01 } } }),
+	node({ Id = "bridge_wl", Name = "Fortune Flow", Icon = "🌊", Branch = "Special", X = 1, Y = 1, MaxRank = 2, Cost = 2, CostStep = 1,
+		Requires = { "wealth_1", "luck_1" }, Description = "+10% Sparks and +15% passive income per rank.",
+		Effects = { { Stat = "sparksPct", Add = 0.1 }, { Stat = "passivePct", Add = 0.15 } } }),
+	node({ Id = "bridge_wc", Name = "Steady Income", Icon = "📈", Branch = "Special", X = -1, Y = 1, MaxRank = 2, Cost = 2, CostStep = 1,
+		Requires = { "wealth_1", "crit_1" }, Description = "+15% passive income and +10% XP per rank.",
+		Effects = { { Stat = "passivePct", Add = 0.15 }, { Stat = "xpPct", Add = 0.1 } } }),
+
+	-- Strength, outer ring (up) --------------------------------------------------------
+	node({ Id = "str_7", Name = "Rhythm Keeper", Icon = "🥁", Branch = "Strength", X = 1, Y = -3, MaxRank = 2, Cost = 2, CostStep = 1,
+		Requires = { "str_4" }, Description = "+0.2s combo window per rank.",
+		Effects = { { Stat = "comboWindow", Add = 0.2 } } }),
+	node({ Id = "str_8", Name = "Endless Chain", Icon = "⛓️", Branch = "Strength", X = -1, Y = -4, MaxRank = 2, Cost = 3, CostStep = 1,
+		Requires = { "str_6" }, Description = "+100 combo cap per rank.",
+		Effects = { { Stat = "comboCap", Add = 100 } } }),
+	node({ Id = "str_10", Name = "Aftershock", Icon = "🌋", Branch = "Strength", X = 1, Y = -4, MaxRank = 2, Cost = 3, CostStep = 1,
+		Requires = { "str_7" }, Description = "+150% streak burst rewards per rank.",
+		Effects = { { Stat = "streakPct", Add = 1.5 } } }),
+	node({ Id = "str_9", Name = "Iron Knuckles", Icon = "🦾", Branch = "Strength", X = 0, Y = -5, MaxRank = 3, Cost = 3, CostStep = 1,
+		Requires = { "str_cap" }, Description = "+50% Click Power per rank.",
+		Effects = { { Stat = "clickPct", Add = 0.5 } } }),
+	node({ Id = "str_11", Name = "Overdrive", Icon = "🚀", Branch = "Strength", X = -1, Y = -5, MaxRank = 1, Cost = 6,
+		Requires = { "str_8" }, Description = "Click Power ×1.25.",
+		Effects = { { Stat = "clickMult", Mult = 1.25 } } }),
+	node({ Id = "str_12", Name = "Unbreakable", Icon = "🛡️", Branch = "Strength", X = 0, Y = -6, MaxRank = 1, Cost = 8,
+		Requires = { "str_9", "str_11" }, Description = "Click Power ×1.5.",
+		Effects = { { Stat = "clickMult", Mult = 1.5 } } }),
+	node({ Id = "str_cap2", Name = "Earthshaker", Icon = "🌍", Branch = "Strength", X = 0, Y = -7, MaxRank = 1, Cost = 12,
+		Requires = { "str_12" }, Description = "Click Power ×2.5 and +200% streak bursts. Every press shakes the world.",
+		Effects = { { Stat = "clickMult", Mult = 2.5 }, { Stat = "streakPct", Add = 2 } } }),
+
+	-- Fortune, outer ring (right) -------------------------------------------------------
+	node({ Id = "luck_7", Name = "Gilded Fingers", Icon = "🪙", Branch = "Fortune", X = 3, Y = 1, MaxRank = 3, Cost = 2, CostStep = 1,
+		Requires = { "luck_5" }, Description = "+25% golden press chance per rank.",
+		Effects = { { Stat = "goldenPct", Add = 0.25 } } }),
+	node({ Id = "luck_8", Name = "Second Chance", Icon = "🎲", Branch = "Fortune", X = 4, Y = -1, MaxRank = 2, Cost = 3, CostStep = 1,
+		Requires = { "luck_6" }, Description = "Crate pity triggers 5% sooner per rank.",
+		Effects = { { Stat = "pityReduction", Add = 0.05 } } }),
+	node({ Id = "luck_10", Name = "Bargain Sense", Icon = "🛍️", Branch = "Fortune", X = 5, Y = 0, MaxRank = 2, Cost = 4, CostStep = 1,
+		Requires = { "luck_cap" }, Description = "-5% Spark crate prices per rank.",
+		Effects = { { Stat = "chestDiscount", Add = 0.05 } } }),
+	node({ Id = "luck_11", Name = "Bonus Hunter", Icon = "🧲", Branch = "Fortune", X = 5, Y = -1, MaxRank = 2, Cost = 4, CostStep = 1,
+		Requires = { "luck_8" }, Description = "+3% bonus item chance from Spark crates per rank.",
+		Effects = { { Stat = "chestBonus", Add = 0.03 } } }),
+	node({ Id = "luck_12", Name = "Jackpot Aura", Icon = "💫", Branch = "Fortune", X = 6, Y = 0, MaxRank = 1, Cost = 8,
+		Requires = { "luck_10", "luck_11" }, Description = "Golden press chance ×1.5 and +25% more.",
+		Effects = { { Stat = "goldenMult", Mult = 1.5 }, { Stat = "goldenPct", Add = 0.25 } } }),
+	node({ Id = "luck_cap2", Name = "Lady Luck", Icon = "👑", Branch = "Fortune", X = 7, Y = 0, MaxRank = 1, Cost = 12,
+		Requires = { "luck_12" }, Description = "+30% Luck and golden press chance ×1.5. Fortune bows to you.",
+		Effects = { { Stat = "luck", Add = 0.3 }, { Stat = "goldenMult", Mult = 1.5 } } }),
+
+	-- Wealth, outer ring (down) ----------------------------------------------------------
+	node({ Id = "wealth_6", Name = "Compound Interest", Icon = "🧮", Branch = "Wealth", X = 1, Y = 3, MaxRank = 3, Cost = 2, CostStep = 1,
+		Requires = { "wealth_3" }, Description = "+25% passive income per rank.",
+		Effects = { { Stat = "passivePct", Add = 0.25 } } }),
+	node({ Id = "wealth_7", Name = "Sleepwalker", Icon = "😴", Branch = "Wealth", X = -1, Y = 3, MaxRank = 2, Cost = 3, CostStep = 1,
+		Requires = { "wealth_4" }, Description = "+2 hours offline earnings and +10% offline rate per rank.",
+		Effects = { { Stat = "offlineHours", Add = 2 }, { Stat = "offlineRate", Add = 0.1 } } }),
+	node({ Id = "wealth_9", Name = "Power Plant", Icon = "🏭", Branch = "Wealth", X = 1, Y = 4, MaxRank = 1, Cost = 5,
+		Requires = { "wealth_6" }, Description = "Passive income ×1.25.",
+		Effects = { { Stat = "passiveMult", Mult = 1.25 } } }),
+	node({ Id = "wealth_8", Name = "Golden Reserve", Icon = "🏛️", Branch = "Wealth", X = 0, Y = 5, MaxRank = 3, Cost = 3, CostStep = 1,
+		Requires = { "wealth_cap" }, Description = "+25% Sparks per rank.",
+		Effects = { { Stat = "sparksPct", Add = 0.25 } } }),
+	node({ Id = "wealth_10", Name = "Reactor Core", Icon = "☢️", Branch = "Wealth", X = 1, Y = 5, MaxRank = 2, Cost = 4, CostStep = 1,
+		Requires = { "wealth_9" }, Description = "+50% passive income per rank.",
+		Effects = { { Stat = "passivePct", Add = 0.5 } } }),
+	node({ Id = "wealth_11", Name = "Spark Vault", Icon = "🗝️", Branch = "Wealth", X = 0, Y = 6, MaxRank = 1, Cost = 8,
+		Requires = { "wealth_8", "wealth_10" }, Description = "All Sparks ×1.25.",
+		Effects = { { Stat = "sparksMult", Mult = 1.25 } } }),
+	node({ Id = "wealth_cap2", Name = "Infinite Economy", Icon = "♾️", Branch = "Wealth", X = 0, Y = 7, MaxRank = 1, Cost = 12,
+		Requires = { "wealth_11" }, Description = "All Sparks ×2 and passive income ×1.5. Money makes money.",
+		Effects = { { Stat = "sparksMult", Mult = 2 }, { Stat = "passiveMult", Mult = 1.5 } } }),
+
+	-- Precision, outer ring (left) -------------------------------------------------------
+	node({ Id = "crit_5", Name = "Hair Trigger", Icon = "🔫", Branch = "Precision", X = -3, Y = -1, MaxRank = 3, Cost = 2, CostStep = 1,
+		Requires = { "crit_3" }, Description = "+2% Crit Chance per rank.",
+		Effects = { { Stat = "critChance", Add = 0.02 } } }),
+	node({ Id = "crit_6", Name = "Brutal Force", Icon = "🔨", Branch = "Precision", X = -3, Y = 1, MaxRank = 3, Cost = 3, CostStep = 1,
+		Requires = { "crit_4" }, Description = "+0.5× crit multiplier per rank.",
+		Effects = { { Stat = "critPower", Add = 0.5 } } }),
+	node({ Id = "crit_7", Name = "Eagle Eye", Icon = "🦅", Branch = "Precision", X = -4, Y = -1, MaxRank = 2, Cost = 4, CostStep = 1,
+		Requires = { "crit_5" }, Description = "+3% Crit Chance per rank.",
+		Effects = { { Stat = "critChance", Add = 0.03 } } }),
+	node({ Id = "crit_8", Name = "Deadeye", Icon = "🎯", Branch = "Precision", X = -5, Y = 0, MaxRank = 2, Cost = 4, CostStep = 1,
+		Requires = { "crit_cap" }, Description = "+1× crit multiplier per rank.",
+		Effects = { { Stat = "critPower", Add = 1 } } }),
+	node({ Id = "crit_10", Name = "Perfect Timing", Icon = "⌛", Branch = "Precision", X = -5, Y = -1, MaxRank = 2, Cost = 3, CostStep = 1,
+		Requires = { "crit_7" }, Description = "+0.2s combo window per rank.",
+		Effects = { { Stat = "comboWindow", Add = 0.2 } } }),
+	node({ Id = "crit_11", Name = "Executioner", Icon = "⚔️", Branch = "Precision", X = -6, Y = 0, MaxRank = 1, Cost = 8,
+		Requires = { "crit_8", "crit_10" }, Description = "+5% Crit Chance and +1.5× crit multiplier.",
+		Effects = { { Stat = "critChance", Add = 0.05 }, { Stat = "critPower", Add = 1.5 } } }),
+	node({ Id = "crit_cap2", Name = "Singularity Strike", Icon = "🌀", Branch = "Precision", X = -7, Y = 0, MaxRank = 1, Cost = 12,
+		Requires = { "crit_11" }, Description = "+5% Crit Chance and +3× crit multiplier. Every crit tears space.",
+		Effects = { { Stat = "critChance", Add = 0.05 }, { Stat = "critPower", Add = 3 } } }),
+
+	-- Special, outer diagonals ------------------------------------------------------------
+	node({ Id = "spec_prism2", Name = "Prism Resonance", Icon = "🔶", Branch = "Special", X = -3, Y = -3, MaxRank = 3, Cost = 4, CostStep = 1,
+		Requires = { "spec_prism" }, Description = "+10% Prisms per ascension per rank.",
+		Effects = { { Stat = "prismPct", Add = 0.1 } } }),
+	node({ Id = "spec_orb2", Name = "Orb Storm", Icon = "🌪️", Branch = "Special", X = 3, Y = -3, MaxRank = 2, Cost = 3, CostStep = 1,
+		Requires = { "spec_orb" }, Description = "Bonus orbs appear 20% more often and give +25% rewards per rank.",
+		Effects = { { Stat = "orbRate", Add = 0.2 }, { Stat = "orbPct", Add = 0.25 } } }),
+	node({ Id = "spec_xp2", Name = "Scholar's Focus", Icon = "🎓", Branch = "Special", X = -3, Y = 3, MaxRank = 2, Cost = 4, CostStep = 2,
+		Requires = { "spec_xp" }, Description = "All XP ×1.25 per rank.",
+		Effects = { { Stat = "xpMult", Mult = 1.25 } } }),
+	node({ Id = "spec_hoard", Name = "Golden Hoard", Icon = "🏺", Branch = "Special", X = 3, Y = 3, MaxRank = 1, Cost = 6,
+		RequiresAny = { "spec_slot", "luck_7", "wealth_6" }, Description = "Golden press chance ×1.25 and +3% bonus item chance from Spark crates.",
+		Effects = { { Stat = "goldenMult", Mult = 1.25 }, { Stat = "chestBonus", Add = 0.03 } } }),
 }
 
 Skills.ById = {}
@@ -203,6 +330,46 @@ function Skills.prerequisitesMet(n: SkillNode, owned: { [string]: number }): boo
 		end
 	end
 	return true
+end
+
+-- Every prerequisite id of a node (Requires and RequiresAny).
+function Skills.prerequisiteIds(n: SkillNode): { string }
+	local ids = table.clone(n.Requires)
+	for _, id in ipairs(n.RequiresAny) do
+		table.insert(ids, id)
+	end
+	return ids
+end
+
+export type Visibility = "visible" | "teaser" | "hidden"
+
+--[[
+	How much of the tree a player sees, so it builds itself up as it is bought:
+	  visible  the core, owned nodes, and nodes whose prerequisites are met
+	  teaser   the next ring: not visible, but connected to a visible node
+	           (shown only as a "?" silhouette, without name, effect or cost)
+	  hidden   everything further out, including its connector lines
+	Pure function; used by the Skills screen and the tests.
+]]
+function Skills.visibility(owned: { [string]: number }): { [string]: Visibility }
+	local result: { [string]: Visibility } = {}
+	for _, n in ipairs(Skills.List) do
+		if n.Id == "core" or (owned[n.Id] or 0) > 0 or Skills.prerequisitesMet(n, owned) then
+			result[n.Id] = "visible"
+		end
+	end
+	for _, n in ipairs(Skills.List) do
+		if not result[n.Id] then
+			result[n.Id] = "hidden"
+			for _, id in ipairs(Skills.prerequisiteIds(n)) do
+				if result[id] == "visible" then
+					result[n.Id] = "teaser"
+					break
+				end
+			end
+		end
+	end
+	return result
 end
 
 return Skills
