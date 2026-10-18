@@ -1,0 +1,51 @@
+{
+  "name": "ButtonAscension",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "$path": "src/ReplicatedStorage"
+    },
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "$path": "src/ServerScriptService"
+    },
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "$path": "src/ServerStorage"
+    },
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "$properties": {
+        "CameraMaxZoomDistance": 60,
+        "CharacterWalkSpeed": 16
+      },
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
+      }
+    },
+    "StarterGui": {
+      "$className": "StarterGui"
+    },
+    "Workspace": {
+      "$className": "Workspace"
+    },
+    "Lighting": {
+      "$className": "Lighting",
+      "$properties": {
+        "Ambient": [0.12, 0.12, 0.18],
+        "OutdoorAmbient": [0.16, 0.14, 0.24],
+        "Brightness": 1.5,
+        "ClockTime": 0,
+        "GlobalShadows": true
+      }
+    },
+    "SoundService": {
+      "$className": "SoundService"
+    },
+    "Players": {
+      "$className": "Players"
+    }
+  }
+}
