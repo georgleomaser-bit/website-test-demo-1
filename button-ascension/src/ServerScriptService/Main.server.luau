@@ -69,4 +69,4 @@ for _, name in ipairs(ORDER) do
 	end
 end
 
-print(`[Main] Button Ascension server started with {#ORDER} services.`)
+print(`[Main] Click a Button server started with {#ORDER} services.`)

@@ -1,12 +1,16 @@
-# Button Ascension — a complete Roblox incremental clicker
+# Click a Button — a complete Roblox incremental clicker
 
 *Press the button. Open the crates. Ascend.*
 
-**Button Ascension** is a complete Roblox game written in Luau and inspired by
+**Click a Button** is a complete Roblox game written in Luau and inspired by
 the mechanics of the Steam game *Click the Button*. You press a big central
 button to earn currency, open crates for collectible items, buy upgrades,
 unlock a skill tree and ascend for permanent bonuses. It also comes with a
 secure Admin Panel. All branding, item names, icons and UI are original.
+
+Internally (folder, file and DataStore names) the project is still called
+`ButtonAscension`; players only ever see **Click a Button**. The store-page
+description, icon and thumbnails are in [`branding/`](branding/STORE_PAGE.md).
 
 | | |
 |---|---|
@@ -135,6 +139,7 @@ button-ascension/
 │   ├── ServerStorage/          Admin Panel client (only cloned to authorised staff)
 │   └── StarterPlayer/          Client entry point, HUD, screens, input, effects
 ├── tests/                      Headless Roblox simulation + 103 tests (Lune)
+├── branding/                   Store-page description, icon and thumbnails (+ sources)
 └── docs/                       Documentation
 ```
 

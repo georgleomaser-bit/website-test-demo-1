@@ -1,6 +1,6 @@
 # Architecture
 
-This document explains how Button Ascension is put together: the Explorer
+This document explains how Click a Button is put together: the Explorer
 hierarchy, which code runs where, how data flows between server and client,
 and how security is enforced.
 

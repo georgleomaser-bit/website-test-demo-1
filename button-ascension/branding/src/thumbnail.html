@@ -1,0 +1,199 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Click a Button thumbnail</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #07071a; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#06061a"/>
+      <stop offset="0.62" stop-color="#1c0b35"/>
+      <stop offset="0.72" stop-color="#3a0d3f"/>
+      <stop offset="1" stop-color="#0b0718"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ff3d6e" stop-opacity="0.55"/>
+      <stop offset="0.5" stop-color="#b05cff" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#b05cff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="gridFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="0.35" stop-color="#fff" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#fff" stop-opacity="1"/>
+    </linearGradient>
+    <mask id="gridMask"><rect x="0" y="760" width="1920" height="320" fill="url(#gridFade)"/></mask>
+    <radialGradient id="cap" cx="38%" cy="30%" r="78%">
+      <stop offset="0" stop-color="#ffb3c6"/>
+      <stop offset="0.28" stop-color="#ff5c86"/>
+      <stop offset="0.7" stop-color="#ff3d6e"/>
+      <stop offset="1" stop-color="#b8124a"/>
+    </radialGradient>
+    <linearGradient id="skirt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c41c58"/>
+      <stop offset="1" stop-color="#6e0c34"/>
+    </linearGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a1f3f"/>
+      <stop offset="1" stop-color="#120d1f"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.55" stop-color="#ffd0dc"/>
+      <stop offset="1" stop-color="#ff5c86"/>
+    </linearGradient>
+    <linearGradient id="title2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#4de1ff"/>
+      <stop offset="1" stop-color="#b05cff"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff2a8"/>
+      <stop offset="1" stop-color="#ffb627"/>
+    </linearGradient>
+    <linearGradient id="gem" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c9f6ff"/>
+      <stop offset="1" stop-color="#25b9e6"/>
+    </linearGradient>
+    <linearGradient id="prism" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ecd6ff"/>
+      <stop offset="1" stop-color="#9b4dff"/>
+    </linearGradient>
+    <filter id="blur30" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="30"/></filter>
+    <filter id="blur14" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+    <filter id="textShadow" x="-20%" y="-40%" width="140%" height="180%">
+      <feDropShadow dx="0" dy="8" stdDeviation="4" flood-color="#2a0420" flood-opacity="0.9"/>
+    </filter>
+    <filter id="smallShadow" x="-20%" y="-40%" width="140%" height="180%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#000" flood-opacity="0.7"/>
+    </filter>
+    <symbol id="boltShape" viewBox="0 0 40 64" overflow="visible">
+      <path d="M24 0 L4 36 H18 L12 64 L36 24 H22 Z"/>
+    </symbol>
+    <symbol id="gemShape" viewBox="0 0 40 52" overflow="visible">
+      <path d="M20 0 L40 18 L20 52 L0 18 Z"/>
+      <path d="M0 18 H40 M12 18 L20 0 L28 18 L20 52" fill="none" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2"/>
+    </symbol>
+  </defs>
+
+  <!-- Sky, stars, horizon -->
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <g fill="#ffffff">
+    <circle cx="120" cy="80" r="2"/><circle cx="380" cy="150" r="1.5"/><circle cx="640" cy="60" r="2.5"/>
+    <circle cx="860" cy="190" r="1.5"/><circle cx="1010" cy="70" r="2"/><circle cx="1240" cy="40" r="1.5"/>
+    <circle cx="1720" cy="90" r="2.5"/><circle cx="1860" cy="220" r="1.5"/><circle cx="1560" cy="160" r="2"/>
+    <circle cx="60" cy="420" r="1.5"/><circle cx="930" cy="430" r="1.5"/><circle cx="1880" cy="520" r="2"/>
+    <circle cx="250" cy="300" r="1.2"/><circle cx="760" cy="330" r="1.2"/><circle cx="1150" cy="250" r="1.5"/>
+  </g>
+  <rect x="0" y="752" width="1920" height="10" fill="#ff3d6e" opacity="0.55" filter="url(#blur14)"/>
+  <rect x="0" y="758" width="1920" height="3" fill="#ff8aa8" opacity="0.8"/>
+
+  <!-- Neon grid floor -->
+  <g mask="url(#gridMask)" stroke="#ff3d6e" stroke-width="2.5" opacity="0.75">
+    <line x1="0" y1="772" x2="1920" y2="772"/>
+    <line x1="0" y1="790" x2="1920" y2="790"/>
+    <line x1="0" y1="814" x2="1920" y2="814"/>
+    <line x1="0" y1="846" x2="1920" y2="846"/>
+    <line x1="0" y1="888" x2="1920" y2="888"/>
+    <line x1="0" y1="942" x2="1920" y2="942"/>
+    <line x1="0" y1="1010" x2="1920" y2="1010"/>
+    <line x1="0" y1="1078" x2="1920" y2="1078"/>
+    <line x1="960" y1="760" x2="960" y2="1080"/>
+    <line x1="900" y1="760" x2="540" y2="1080"/><line x1="1020" y1="760" x2="1380" y2="1080"/>
+    <line x1="840" y1="760" x2="120" y2="1080"/><line x1="1080" y1="760" x2="1800" y2="1080"/>
+    <line x1="780" y1="760" x2="-300" y2="1080"/><line x1="1140" y1="760" x2="2220" y2="1080"/>
+    <line x1="720" y1="760" x2="-720" y2="1080"/><line x1="1200" y1="760" x2="2640" y2="1080"/>
+    <line x1="660" y1="760" x2="-1140" y2="1080"/><line x1="1260" y1="760" x2="3060" y2="1080"/>
+    <line x1="600" y1="760" x2="-1560" y2="1080"/><line x1="1320" y1="760" x2="3480" y2="1080"/>
+  </g>
+
+  <!-- Button halo and shockwaves -->
+  <circle cx="1390" cy="500" r="560" fill="url(#halo)"/>
+  <circle cx="1390" cy="512" r="440" fill="none" stroke="#ff3d6e" stroke-width="4" opacity="0.35"/>
+  <circle cx="1390" cy="512" r="405" fill="none" stroke="#4de1ff" stroke-width="3" opacity="0.3"/>
+  <circle cx="1390" cy="512" r="330" fill="#ff3d6e" opacity="0.5" filter="url(#blur30)"/>
+
+  <!-- The button (same build as the in-game button) -->
+  <g transform="translate(1390 512) scale(1.75) translate(-256 -262)">
+    <g filter="url(#shadow)">
+      <circle cx="256" cy="268" r="196" fill="url(#base)" stroke="#4a3466" stroke-width="5"/>
+    </g>
+    <circle cx="256" cy="282" r="170" fill="url(#skirt)"/>
+    <circle cx="256" cy="256" r="164" fill="url(#cap)" stroke="#ff9ab6" stroke-width="6"/>
+    <ellipse cx="256" cy="168" rx="112" ry="56" fill="url(#gloss)"/>
+    <text x="256" y="276" text-anchor="middle" font-family="Inter Display, Inter, sans-serif" font-weight="900"
+          font-size="64" letter-spacing="1" fill="#ffffff" filter="url(#smallShadow)">PRESS</text>
+    <text x="256" y="322" text-anchor="middle" font-family="Inter, sans-serif" font-weight="800"
+          font-size="28" fill="#fff0d2" filter="url(#smallShadow)">+1.25K</text>
+    <use href="#boltShape" x="330" y="294" width="16" height="26" fill="url(#bolt)"/>
+  </g>
+
+  <!-- Cursor pressing it -->
+  <g stroke="#ffd34d" stroke-width="10" stroke-linecap="round">
+    <line x1="1500" y1="676" x2="1500" y2="650"/>
+    <line x1="1462" y1="696" x2="1438" y2="686"/>
+    <line x1="1530" y1="680" x2="1546" y2="658"/>
+  </g>
+  <g transform="translate(1506 704) rotate(-14) scale(1.6)">
+    <path d="M0 0 L0 118 L28 92 L46 134 L66 125 L48 85 L86 85 Z"
+          fill="#ffffff" stroke="#14101f" stroke-width="8" stroke-linejoin="round" filter="url(#shadow)"/>
+  </g>
+
+  <!-- Floating rewards -->
+  <g font-family="Inter Display, Inter, sans-serif" font-weight="900" filter="url(#smallShadow)">
+    <g transform="translate(1000 180) rotate(-8)">
+      <use href="#boltShape" x="0" y="-48" width="34" height="54" fill="url(#bolt)" stroke="#7a4a00" stroke-width="1.5"/>
+      <text x="44" y="0" font-size="58" fill="#ffd34d">+48.6K</text>
+    </g>
+    <g transform="translate(1590 168) rotate(7)">
+      <text x="0" y="0" font-size="54" fill="#ff5c86">CRIT ×3!</text>
+    </g>
+    <g transform="translate(1745 880) rotate(-6)">
+      <use href="#gemShape" x="0" y="-46" width="36" height="47" fill="url(#gem)"/>
+      <text x="46" y="0" font-size="52" fill="#7eeaff">+50</text>
+    </g>
+    <g transform="translate(985 880) rotate(5)">
+      <text x="0" y="0" font-size="46" fill="#4de1ff">COMBO ×1.85</text>
+    </g>
+  </g>
+  <use href="#boltShape" x="1880" y="380" width="30" height="48" fill="url(#bolt)" opacity="0.9"/>
+  <use href="#gemShape" x="935" y="560" width="30" height="39" fill="url(#gem)" opacity="0.9"/>
+  <use href="#gemShape" x="1820" y="620" width="34" height="44" fill="url(#prism)" opacity="0.95"/>
+
+  <!-- Title -->
+  <g font-family="Inter Display, Inter, sans-serif" font-weight="900">
+    <text x="108" y="400" font-size="268" letter-spacing="-6" fill="#ff3d6e" opacity="0.65" filter="url(#blur30)">CLICK</text>
+    <text x="108" y="400" font-size="268" letter-spacing="-6" fill="url(#title)" filter="url(#textShadow)">CLICK</text>
+    <text x="116" y="560" font-size="150" letter-spacing="-3" fill="url(#title2)" filter="url(#textShadow)">A BUTTON</text>
+  </g>
+  <text x="120" y="640" font-family="Inter, sans-serif" font-weight="700" font-size="44" fill="#e9e4ff" filter="url(#smallShadow)">Press. Open crates. Ascend.</text>
+
+  <!-- Feature chips -->
+  <g font-family="Inter, sans-serif" font-weight="800" font-size="30" text-anchor="middle">
+    <g transform="translate(120 690)">
+      <rect width="190" height="62" rx="31" fill="#120d22" stroke="#ffb428" stroke-width="3"/>
+      <text x="95" y="41" fill="#ffd27a">74 ITEMS</text>
+    </g>
+    <g transform="translate(326 690)">
+      <rect width="232" height="62" rx="31" fill="#120d22" stroke="#b05cff" stroke-width="3"/>
+      <text x="116" y="41" fill="#d6b0ff">7 RARITIES</text>
+    </g>
+    <g transform="translate(574 690)">
+      <rect width="212" height="62" rx="31" fill="#120d22" stroke="#4ade80" stroke-width="3"/>
+      <text x="106" y="41" fill="#9ff0bc">SKILL TREE</text>
+    </g>
+  </g>
+</svg>
+</body>
+</html>

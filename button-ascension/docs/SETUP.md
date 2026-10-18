@@ -1,6 +1,6 @@
 # Setup
 
-There are three ways to get Button Ascension into Roblox Studio. They all
+There are three ways to get Click a Button into Roblox Studio. They all
 give the same result.
 
 ## Option A — open the ready-made place file
@@ -117,7 +117,7 @@ created automatically when the server starts. Do **not** create them by hand.
 3. *(Optional)* Set **StarterPlayer → CameraMaxZoomDistance** to 60. The arena
    sets its own night lighting when it is built.
 4. Press **Play**. The Output should show
-   `[Main] Button Ascension server started with 18 services.`
+   `[Main] Click a Button server started with 18 services.`
    and no red errors.
 
 ## Publishing
@@ -129,7 +129,10 @@ created automatically when the server starts. Do **not** create them by hand.
    [`ADMIN.md`](ADMIN.md)). If the experience belongs to your own account,
    you are already Owner. For group-owned experiences, the group owner is
    Owner.
-4. *(Optional)* Put a music track you are allowed to use into
+4. Set the name, description, icon and thumbnails from
+   [`branding/STORE_PAGE.md`](../branding/STORE_PAGE.md) in
+   **Game Settings → Basic Info**.
+5. *(Optional)* Put a music track you are allowed to use into
    `ReplicatedStorage/Shared/Config/Sounds` → `Music.Id = "rbxassetid://…"`.
 
 ## Testing in Studio

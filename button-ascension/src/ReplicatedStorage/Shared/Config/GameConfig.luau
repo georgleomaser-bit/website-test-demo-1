@@ -12,7 +12,7 @@
 
 local GameConfig = {}
 
-GameConfig.GameName = "Button Ascension"
+GameConfig.GameName = "Click a Button"
 GameConfig.Version = "1.0.0"
 
 -- Currencies ---------------------------------------------------------------

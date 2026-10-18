@@ -539,7 +539,7 @@ return Chests
 
 local GameConfig = {}
 
-GameConfig.GameName = "Button Ascension"
+GameConfig.GameName = "Click a Button"
 GameConfig.Version = "1.0.0"
 
 -- Currencies ---------------------------------------------------------------
@@ -8394,7 +8394,7 @@ for _, name in ipairs(ORDER) do
 	end
 end
 
-print(`[Main] Button Ascension server started with {#ORDER} services.`)
+print(`[Main] Click a Button server started with {#ORDER} services.`)
 ]]></string>
       </Properties>
     </Item>
@@ -12650,7 +12650,7 @@ function Panel.build(gui: ScreenGui, hello)
 		Parent = gui,
 		Name = "AdminWindow",
 		Title = "Admin Panel",
-		Subtitle = "Button Ascension · staff tools · every action is validated and logged by the server",
+		Subtitle = "Click a Button · staff tools · every action is validated and logged by the server",
 		Icon = "🛡️",
 		Size = Vector2.new(1140, 700),
 		CompactSize = Vector2.new(940, 590),

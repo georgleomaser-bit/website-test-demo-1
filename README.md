@@ -10,7 +10,7 @@ Eine an TradingView angelehnte Trading-Plattform im Browser – installierbar al
 
 > **Arbeitstaschen** – der persönliche Projektmanager für alle Projekte: digitale Arbeitstaschen mit Aufgaben, Notizen, Links, Dateien und Meilensteinen, Tagesbriefing mit Erinnerungen und verschlüsseltem Sync auf iPhone, iPad und Mac: [`taschen/TASCHEN.md`](taschen/TASCHEN.md) · App: `…/website-test-demo-1/taschen/`
 
-> **Button Ascension** – ein komplettes Roblox-Spiel (Clicker/Incremental, inspiriert von *Click the Button*): großer Button, Kisten mit 74 Items, Upgrades, Skill-Tree, Aufstieg (Rebirth), Quests, Ranglisten, sicheres Admin-Panel und automatisierte Tests: [`button-ascension/README.md`](button-ascension/README.md) · Place-Datei: `button-ascension/build/ButtonAscension.rbxlx`
+> **Click a Button** – ein komplettes Roblox-Spiel (Clicker/Incremental, inspiriert von *Click the Button*): großer Button, Kisten mit 74 Items, Upgrades, Skill-Tree, Aufstieg (Rebirth), Quests, Ranglisten, sicheres Admin-Panel und automatisierte Tests: [`button-ascension/README.md`](button-ascension/README.md) · Place-Datei: `button-ascension/build/ButtonAscension.rbxlx`
 
 ## Funktionen
 

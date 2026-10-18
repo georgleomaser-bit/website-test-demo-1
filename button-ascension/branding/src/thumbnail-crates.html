@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Click a Button crates thumbnail</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #07071a; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<svg id="art" xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#06061a"/>
+      <stop offset="0.7" stop-color="#1c0b35"/>
+      <stop offset="1" stop-color="#2a0c30"/>
+    </linearGradient>
+    <radialGradient id="crateGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ffd34d" stop-opacity="0.85"/>
+      <stop offset="0.45" stop-color="#ff7a3d" stop-opacity="0.3"/>
+      <stop offset="1" stop-color="#ff3d6e" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#ffe9a0" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffe9a0" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="crateFront" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffcf4a"/>
+      <stop offset="1" stop-color="#c9781a"/>
+    </linearGradient>
+    <linearGradient id="crateSide" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d9932a"/>
+      <stop offset="1" stop-color="#8f4e0e"/>
+    </linearGradient>
+    <linearGradient id="secret" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff5078"/>
+      <stop offset="0.25" stop-color="#ffd250"/>
+      <stop offset="0.5" stop-color="#50ffaa"/>
+      <stop offset="0.75" stop-color="#50aaff"/>
+      <stop offset="1" stop-color="#dc64ff"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.6" stop-color="#ffe7a8"/>
+      <stop offset="1" stop-color="#ffb428"/>
+    </linearGradient>
+    <filter id="blur24" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="24"/></filter>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000" flood-opacity="0.6"/>
+    </filter>
+    <filter id="textShadow" x="-20%" y="-40%" width="140%" height="180%">
+      <feDropShadow dx="0" dy="6" stdDeviation="3" flood-color="#000" flood-opacity="0.8"/>
+    </filter>
+  </defs>
+
+  <rect width="1920" height="1080" fill="url(#sky)"/>
+  <g fill="#ffffff" opacity="0.9">
+    <circle cx="90" cy="120" r="2"/><circle cx="300" cy="60" r="1.5"/><circle cx="520" cy="210" r="2"/>
+    <circle cx="1420" cy="80" r="2"/><circle cx="1660" cy="190" r="1.5"/><circle cx="1850" cy="70" r="2.5"/>
+    <circle cx="180" cy="330" r="1.5"/><circle cx="1780" cy="330" r="1.5"/><circle cx="760" cy="40" r="1.5"/>
+  </g>
+
+  <!-- Light from the open crate -->
+  <circle cx="960" cy="930" r="520" fill="url(#crateGlow)"/>
+  <g opacity="0.9">
+    <path d="M880 920 L620 300 L780 300 Z" fill="url(#beam)"/>
+    <path d="M980 920 L910 260 L1050 260 Z" fill="url(#beam)"/>
+    <path d="M1080 920 L1160 300 L1320 300 Z" fill="url(#beam)"/>
+  </g>
+
+  <!-- Title -->
+  <g font-family="Inter Display, Inter, sans-serif" font-weight="900" text-anchor="middle">
+    <text x="960" y="170" font-size="150" letter-spacing="-3" fill="#ffb428" opacity="0.55" filter="url(#blur24)">OPEN CRATES</text>
+    <text x="960" y="170" font-size="150" letter-spacing="-3" fill="url(#title)" filter="url(#textShadow)">OPEN CRATES</text>
+  </g>
+  <text x="960" y="236" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="42"
+        fill="#e9e4ff" filter="url(#textShadow)">From Common to Secret · 74 items to collect</text>
+
+  <!-- Rarity cards (built below) -->
+  <g id="cards"></g>
+
+  <!-- The crate, lid flipped open behind it, light pouring out -->
+  <g filter="url(#shadow)">
+    <path d="M800 900 L1200 900 L1222 808 L822 808 Z" fill="#e8a83a" stroke="#6b3a08" stroke-width="6"/>
+    <path d="M760 940 L800 900 L1200 900 L1160 940 Z" fill="#3a1d05" stroke="#6b3a08" stroke-width="6"/>
+    <path d="M760 940 L1160 940 L1160 1080 L760 1080 Z" fill="url(#crateFront)" stroke="#6b3a08" stroke-width="6"/>
+    <path d="M1160 940 L1200 900 L1200 1060 L1160 1080 Z" fill="url(#crateSide)" stroke="#6b3a08" stroke-width="6"/>
+    <path d="M760 985 H1160 M760 1035 H1160" stroke="#a85c12" stroke-width="8"/>
+    <path d="M940 940 V1080 M980 940 V1080" stroke="#a85c12" stroke-width="8"/>
+  </g>
+  <ellipse cx="980" cy="920" rx="190" ry="22" fill="#fff4c4" opacity="0.95" filter="url(#blur24)"/>
+  <ellipse cx="980" cy="920" rx="150" ry="12" fill="#fffbe6"/>
+
+  <!-- Chips -->
+  <g font-family="Inter, sans-serif" font-weight="800" font-size="30" text-anchor="middle">
+    <g transform="translate(110 940)">
+      <rect width="300" height="64" rx="32" fill="#120d22" stroke="#ff5c86" stroke-width="3"/>
+      <text x="150" y="42" fill="#ffb3c6">PITY GUARANTEE</text>
+    </g>
+    <g transform="translate(1510 940)">
+      <rect width="300" height="64" rx="32" fill="#120d22" stroke="#4de1ff" stroke-width="3"/>
+      <text x="150" y="42" fill="#a8f0ff">7 CRATE TIERS</text>
+    </g>
+  </g>
+</svg>
+<script>
+  // Spark Crate odds from src/ReplicatedStorage/Shared/Config/Chests.luau (weights / 100000).
+  const rarities = [
+    { name: "COMMON", color: "#b0bacc", odds: "62%" },
+    { name: "UNCOMMON", color: "#4ade80", odds: "25%" },
+    { name: "RARE", color: "#409cff", odds: "9%" },
+    { name: "EPIC", color: "#b05cff", odds: "3%" },
+    { name: "LEGENDARY", color: "#ffb428", odds: "0.8%" },
+    { name: "MYTHIC", color: "#ff4070", odds: "0.18%" },
+    { name: "SECRET", color: "url(#secret)", odds: "0.02%", secret: true },
+  ];
+  const ns = "http://www.w3.org/2000/svg";
+  const group = document.getElementById("cards");
+  const width = 216, height = 286, gap = 26;
+  const startX = (1920 - (rarities.length * width + (rarities.length - 1) * gap)) / 2;
+  function star(cx, cy, outer, inner) {
+    const points = [];
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? outer : inner;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      points.push(`${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`);
+    }
+    return points.join(" ");
+  }
+  rarities.forEach((r, i) => {
+    const x = startX + i * (width + gap);
+    const y = 560 - i * 34; // rarer cards sit higher: a staircase toward Secret
+    const glowStrength = 0.25 + i * 0.09;
+    const cx = x + width / 2;
+    let markup = `
+      <rect x="${x - 6}" y="${y - 6}" width="${width + 12}" height="${height + 12}" rx="30"
+            fill="${r.color}" opacity="${glowStrength}" filter="url(#blur24)"/>
+      <rect x="${x}" y="${y}" width="${width}" height="${height}" rx="24" fill="#120d22"
+            stroke="${r.color}" stroke-width="5" filter="url(#shadow)"/>
+      <rect x="${x + 10}" y="${y + 10}" width="${width - 20}" height="${height - 96}" rx="16"
+            fill="${r.color}" opacity="0.14"/>`;
+    if (r.secret) {
+      markup += `<text x="${cx}" y="${y + 160}" text-anchor="middle" font-family="Inter Display, Inter, sans-serif"
+                   font-weight="900" font-size="130" fill="url(#secret)" filter="url(#textShadow)">?</text>`;
+    } else {
+      markup += `<polygon points="${star(cx, y + 104, 62, 27)}" fill="${r.color}" stroke="#ffffff" stroke-opacity="0.6"
+                   stroke-width="3" stroke-linejoin="round" filter="url(#textShadow)"/>`;
+    }
+    markup += `
+      <text x="${cx}" y="${y + height - 50}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="900"
+            font-size="${r.name.length > 8 ? 26 : 30}" fill="${r.secret ? "#ffffff" : r.color}">${r.name}</text>
+      <text x="${cx}" y="${y + height - 18}" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700"
+            font-size="24" fill="#cfc8e8">${r.odds}</text>`;
+    group.insertAdjacentHTML("beforeend", markup);
+  });
+</script>
+</body>
+</html>

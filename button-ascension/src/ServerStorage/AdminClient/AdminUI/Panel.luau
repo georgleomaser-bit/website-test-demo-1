@@ -209,7 +209,7 @@ function Panel.build(gui: ScreenGui, hello)
 		Parent = gui,
 		Name = "AdminWindow",
 		Title = "Admin Panel",
-		Subtitle = "Button Ascension · staff tools · every action is validated and logged by the server",
+		Subtitle = "Click a Button · staff tools · every action is validated and logged by the server",
 		Icon = "🛡️",
 		Size = Vector2.new(1140, 700),
 		CompactSize = Vector2.new(940, 590),
