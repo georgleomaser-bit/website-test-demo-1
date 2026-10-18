@@ -8,7 +8,7 @@
 	applies the player's settings.
 
 	Dependencies: StarterPlayerScripts/Client/* (State, ClientNet, Hud, ScreenManager,
-	Notifications, Orbs, InputController, WorldFx, Screens/*), ReplicatedStorage/UI/*,
+	Notifications, Orbs, InputController, WorldFx, ObbyClient, Tutorial, Screens/*), ReplicatedStorage/UI/*,
 	ReplicatedStorage/Shared/*
 ]]
 
@@ -37,6 +37,8 @@ local Hud = require(Client.Hud)
 local Orbs = require(Client.Orbs)
 local InputController = require(Client.InputController)
 local WorldFx = require(Client.WorldFx)
+local ObbyClient = require(Client.ObbyClient)
+local Tutorial = require(Client.Tutorial)
 
 local C = Theme.Colors
 
@@ -66,19 +68,8 @@ for index, name in ipairs({ "Backdrop", "Hud", "Orbs", "Windows", "Fx", "Overlay
 	layers[name] = frame
 end
 
--- Backdrop: darkens the 3D world so the interface reads clearly.
-local backdrop = layers.Backdrop
-backdrop.BackgroundColor3 = C.Background
-backdrop.BackgroundTransparency = 1 - GameConfig.Settings.BackgroundDim.Default
-UI.gradient(backdrop, {
-	Color = ColorSequence.new(Color3.fromRGB(40, 20, 70), C.Background),
-	Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0.2),
-		NumberSequenceKeypoint.new(0.5, 0.6),
-		NumberSequenceKeypoint.new(1, 0.1),
-	}),
-	Rotation = 90,
-})
+-- The 3D world stays fully visible: players run around and do the obby while
+-- they press (windows dim the world themselves while they are open).
 
 local ctx = {
 	Player = player,
@@ -103,7 +94,6 @@ local function applySettings()
 	local scaleChanged = math.abs(scale - Theme.UserScale) > 1e-3
 	Theme.UserScale = scale
 	SoundPlayer.setVolumes(tonumber(settings.SFX) or 0.7, tonumber(settings.Music) or 0.4)
-	backdrop.BackgroundTransparency = 1 - (tonumber(settings.BackgroundDim) or 0.35)
 	if scaleChanged then
 		Hud.layout()
 		if Notifications.rescale then
@@ -130,6 +120,8 @@ end
 
 InputController.init(ctx)
 WorldFx.init(ctx)
+ObbyClient.init(ctx)
+Tutorial.init(ctx)
 
 -- Loading screen ---------------------------------------------------------------------------------
 local loading = UI.frame({ Name = "Loading", ZIndex = 200, Parent = layers.Overlay })

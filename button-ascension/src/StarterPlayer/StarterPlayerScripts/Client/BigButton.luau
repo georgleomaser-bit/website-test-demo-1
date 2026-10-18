@@ -4,7 +4,7 @@
 	Depends on: ReplicatedStorage/UI/{UIKit,Theme,Effects,SoundPlayer},
 	            ReplicatedStorage/Shared/{Format, Config/GameConfig}, Client/ClientNet
 
-	The large central button. Pressing it gives instant local feedback
+	The PRESS button (bottom right of the HUD). Pressing it gives instant local feedback
 	(squash, shockwave, sparks, sound) and fires the Click remote; the
 	floating reward number appears when the server's ClickResult arrives, so
 	what the player sees is always what the server actually awarded.
@@ -31,12 +31,16 @@ local C = Theme.Colors
 local BigButton = {}
 BigButton.__index = BigButton
 
-local SIZE = 300
+local DEFAULT_SIZE = 300
 local MAX_LOCAL_CPS = 25
 local rng = Random.new()
 
-function BigButton.new(parent: GuiObject, fxLayer: GuiObject)
+-- size: diameter in pixels before HUD scaling (default 300).
+function BigButton.new(parent: GuiObject, fxLayer: GuiObject, size: number?)
 	local self = setmetatable({}, BigButton)
+	local SIZE = size or DEFAULT_SIZE
+	local k = SIZE / DEFAULT_SIZE
+	self.Size = SIZE
 	self.FxLayer = fxLayer
 	self.LastPress = 0
 	self.Presses = {}
@@ -126,9 +130,9 @@ function BigButton.new(parent: GuiObject, fxLayer: GuiObject)
 		Name = "Label",
 		Text = "PRESS",
 		Font = Theme.Fonts.Display,
-		TextSize = 34,
+		TextSize = math.max(16, math.floor(34 * k + 0.5)),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.new(1, 0, 0, 40),
+		Size = UDim2.new(1, 0, 0, math.max(20, math.floor(40 * k))),
 		Position = UDim2.fromScale(0, 0.38),
 		ZIndex = 6,
 		Parent = cap,
@@ -138,10 +142,10 @@ function BigButton.new(parent: GuiObject, fxLayer: GuiObject)
 		Name = "Value",
 		Text = "+1 ⚡",
 		Font = Theme.Fonts.Heading,
-		TextSize = 20,
+		TextSize = math.max(12, math.floor(20 * k + 0.5)),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		TextColor3 = Color3.fromRGB(255, 240, 210),
-		Size = UDim2.new(1, 0, 0, 24),
+		Size = UDim2.new(1, 0, 0, math.max(14, math.floor(24 * k))),
 		Position = UDim2.fromScale(0, 0.57),
 		ZIndex = 6,
 		Parent = cap,
@@ -225,15 +229,17 @@ function BigButton:Press()
 		UI.tween(self.Cap, { Position = UDim2.new(0.5, 0, 0.5, -4) }, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
 	end
 	local center = self:Center()
-	Effects.ring(self.FxLayer, center, self.Accent or C.Accent, SIZE * 1.15)
-	Effects.burst(self.FxLayer, center, self.Accent or C.Accent, 6, 170)
+	Effects.ring(self.FxLayer, center, self.Accent or C.Accent, self.Size * 1.15)
+	Effects.burst(self.FxLayer, center, self.Accent or C.Accent, 6, self.Size * 0.57)
 	SoundPlayer.play("Click", { Pitch = 0.95 + math.min(#recent, 20) * 0.012 + rng:NextNumber(-0.02, 0.02) })
 end
 
 -- Floating number for a server-confirmed press.
 function BigButton:ShowResult(result, showNumbers: boolean)
 	local center = self:Center()
-	local pos = center + Vector2.new(rng:NextNumber(-110, 110), rng:NextNumber(-SIZE * 0.42, -SIZE * 0.22))
+	local size = self.Size
+	-- Numbers float up and to the left, into the open screen above the button.
+	local pos = center + Vector2.new(rng:NextNumber(-size * 0.9, size * 0.1), rng:NextNumber(-size * 0.75, -size * 0.45))
 	if showNumbers then
 		if result.Crit then
 			Effects.floatText(self.FxLayer, pos, "CRIT! +" .. Format.short(result.Amount, true), C.Gold, { Size = 34, Rise = 120, Duration = 1.1 })
@@ -242,17 +248,17 @@ function BigButton:ShowResult(result, showNumbers: boolean)
 		end
 	end
 	if result.Crit then
-		Effects.burst(self.FxLayer, center, C.Gold, 10, 200)
+		Effects.burst(self.FxLayer, center, C.Gold, 10, size * 0.67)
 		SoundPlayer.play("Crit")
 	end
 	if result.Streak then
-		Effects.floatText(self.FxLayer, center + Vector2.new(0, -SIZE * 0.62), `STREAK ×{result.Combo}!  +{Format.short(result.Streak, true)}`, C.Accent2, { Size = 36, Rise = 70, Duration = 1.4 })
-		Effects.ring(self.FxLayer, center, C.Accent2, SIZE * 1.8)
+		Effects.floatText(self.FxLayer, center + Vector2.new(-size * 0.6, -size * 0.95), `STREAK ×{result.Combo}!  +{Format.short(result.Streak, true)}`, C.Accent2, { Size = 30, Rise = 70, Duration = 1.4 })
+		Effects.ring(self.FxLayer, center, C.Accent2, size * 1.8)
 		SoundPlayer.play("Streak")
 	end
 	if result.Golden then
-		Effects.burst(self.FxLayer, center, C.Gold, 26, 300)
-		Effects.ring(self.FxLayer, center, C.Gold, SIZE * 2.2)
+		Effects.burst(self.FxLayer, center, C.Gold, 26, size)
+		Effects.ring(self.FxLayer, center, C.Gold, size * 2.2)
 		SoundPlayer.play("Golden")
 	end
 end
@@ -263,11 +269,12 @@ function BigButton:ShowIncome(result, showNumbers: boolean)
 		return
 	end
 	local center = self:Center()
+	local size = self.Size
 	if result.Auto and result.Auto > 0 then
-		Effects.floatText(self.FxLayer, center + Vector2.new(SIZE * 0.55, -20), "🤖 +" .. Format.short(result.Auto, true), C.Accent2, { Size = 20, Rise = 60, Duration = 1.0 })
+		Effects.floatText(self.FxLayer, center + Vector2.new(-size * 0.2, -size * 0.7), "🤖 +" .. Format.short(result.Auto, true), C.Accent2, { Size = 18, Rise = 60, Duration = 1.0 })
 	end
 	if result.Passive and result.Passive > 0 then
-		Effects.floatText(self.FxLayer, center + Vector2.new(-SIZE * 0.55, -20), "🔋 +" .. Format.short(result.Passive, true), C.Sparks, { Size = 20, Rise = 60, Duration = 1.0 })
+		Effects.floatText(self.FxLayer, center + Vector2.new(-size * 0.8, -size * 0.45), "🔋 +" .. Format.short(result.Passive, true), C.Sparks, { Size = 18, Rise = 60, Duration = 1.0 })
 	end
 end
 
