@@ -331,7 +331,6 @@ GameConfig.Settings = {
 	FloatingNumbers = { Default = true },
 	ConfirmRareSales = { Default = true },
 	AutoSell = { Default = 0, Min = 0, Max = 3 },
-	BackgroundDim = { Default = 0.35, Min = 0, Max = 0.8 },
 }
 
 return GameConfig

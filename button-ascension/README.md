@@ -3,10 +3,12 @@
 *Press the button. Open the crates. Ascend.*
 
 **Click a Button** is a complete Roblox game written in Luau and inspired by
-the mechanics of the Steam game *Click the Button*. You press a big central
-button to earn currency, open crates for collectible items, buy upgrades,
-unlock a skill tree and ascend for permanent bonuses. It also comes with a
-secure Admin Panel. All branding, item names, icons and UI are original.
+the mechanics of the Steam game *Click the Button*. You press the button to
+earn currency, open crates for collectible items, fuse them into Golden and
+Rainbow versions, buy upgrades, grow a skill tree, run an obby while your
+auto clicker keeps earning, and ascend for permanent bonuses. It comes with a
+secure Admin Panel (staff roles and bans) and a Robux store with game passes
+and developer products. All branding, item names, icons and UI are original.
 
 Internally (folder, file and DataStore names) the project is still called
 `ButtonAscension`; players only ever see **Click a Button**. The store-page
@@ -16,10 +18,11 @@ description, icon and thumbnails are in [`branding/`](branding/STORE_PAGE.md).
 |---|---|
 | **Engine** | Roblox (Luau, modern APIs — no deprecated `wait`/`spawn`/`delay`) |
 | **Project format** | [Rojo 7](https://rojo.space) project + a ready-to-open place file |
-| **Scripts** | 1 Script, 2 LocalScripts, 84 ModuleScripts (≈20,500 lines of game code) |
-| **Content** | 74 items in 7 crates · 7 rarities · 10 upgrades in 3 tiers · 9 Prism perks · 30-node skill tree · 5 stages · 34 achievements · 10 daily-quest types + 10-step starter path · 7-day login calendar · 5 server events · bonus orbs · 3 global leaderboards |
-| **Admin** | Owner / Admin / Moderator roles, 8-tab panel, 34 commands, audit log, confirmations, rate limits |
-| **Verification** | luau-lsp type check (Roblox API definitions) clean · 103 automated tests on a headless Roblox simulation (gameplay, exploits, persistence, admin security, UI, multiplayer) |
+| **Scripts** | 1 Script, 2 LocalScripts, 97 ModuleScripts (≈26,000 lines of game code) |
+| **Content** | 81 items in 7 crates · 7 rarities · Golden and Rainbow variants with fusing · 10 upgrades in 3 tiers · 9 Prism perks · 65-node skill tree that reveals itself as you buy · 5 stages · 15-stage obby · 37 achievements · 10 daily-quest types + 10-step starter path · 7-step tutorial · 7-day login calendar · 5 server events · bonus orbs · 3 global leaderboards |
+| **Robux** | 9 game passes (Auto Clicker, OP Auto Clicker, 2×/3× Sparks, 2× Gems, Lucky, Super Luck, Fast Crates, VIP) · 9 developer products (Gem packs, Sparks Rush, Crate Bundle, OP / Mega OP / Ultra OP crates, Rainbow Chest). IDs are placeholders until you create them, see [`docs/MONETIZATION.md`](docs/MONETIZATION.md) |
+| **Admin** | Owner / Admin / Moderator roles, Owners hand out Moderator/Admin in the game, bans across all servers (also via Roblox's Ban API), 9-tab panel, 41 commands, audit log, confirmations, rate limits |
+| **Verification** | luau-lsp type check (Roblox API definitions) clean · 163 automated tests on a headless Roblox simulation (gameplay, obby, fusing, Robux purchases, exploits, persistence, moderation, admin security, UI, multiplayer) |
 
 ---
 
@@ -48,19 +51,29 @@ rojo build default.project.json -o build/ButtonAscension.rbxlx
 Follow [`docs/SETUP.md`](docs/SETUP.md). It lists every folder and script with
 its exact name, type and location.
 
-To publish: *File → Publish to Roblox*, enable API services for the live game,
-and add your staff's UserIds to `ServerScriptService/Admin/AdminConfig`
-(see [`docs/ADMIN.md`](docs/ADMIN.md)).
+To publish: *File → Publish to Roblox* and enable API services. Then:
+
+* give people roles in the game (Admin Panel → Moderation tab, see
+  [`docs/ADMIN.md`](docs/ADMIN.md)),
+* create the game passes and developer products and paste their IDs (German
+  quick start at the top of [`docs/MONETIZATION.md`](docs/MONETIZATION.md)),
+* set the name, description, icon and thumbnails from
+  [`branding/STORE_PAGE.md`](branding/STORE_PAGE.md).
 
 ---
 
 ## What's in the game
 
-* **Pressing.** The big animated button squashes, sends out shockwaves, sparks
-  and sounds, and shows floating reward numbers. It also has combos, a combo
-  meter, critical presses, streak bursts every 50 presses, rare **golden
-  presses** and timed **Frenzy** boosts. It works with mouse, touch and
-  controller (R2/L2).
+* **Pressing, anywhere.** You run around the 3D world; the PRESS button sits at
+  the bottom right (above the jump button on phones) and also works with **E**
+  and the controller triggers. It squashes, sends out shockwaves, sparks and
+  sounds, and shows floating reward numbers. It has combos, critical presses,
+  streak bursts every 50 presses, rare **golden presses** and timed **Frenzy**
+  boosts. Auto presses keep earning while you do anything else.
+* **Interface.** Everything sits in a dock at the bottom of the screen
+  (currencies, level, obby progress, boosts, menu); the quest card stays on the
+  right. A 7-step **tutorial** walks new players through pressing, upgrades,
+  crates, equipping, quests and the obby, and can be replayed from Settings.
 * **Economy.** There are three currencies:
   * ⚡ **Sparks**, earned by pressing and spent in the Shop and on crates
   * 💎 **Gems**, from quests, achievements and selling items, spent on the Prism Cache and on skill respecs
@@ -76,17 +89,31 @@ and add your staff's UserIds to `ServerScriptService/Admin/AdminConfig`
   Epic, Legendary, Mythic and **Secret**. Luck shifts the odds, which are shown
   for every crate. Legendary and Mythic **pity** guarantees a drop. Crates can
   give bonus drops, duplicates can be auto-sold, and NEW discoveries are
-  announced.
+  announced. Each crate has two Secret items, and any drop can come out
+  **Golden** (1.5%) or **Rainbow** (0.15%). Openings have layered sounds with
+  extra fanfares for rare drops.
+* **Fusing.** 3 copies of an item fuse into 1 **Golden** (×2.5 power), 3 Golden
+  into 1 **Rainbow** (×6 power, animated rainbow border). A fused item always
+  sells for exactly what its three inputs would.
 * **Inventory and collection.** The inventory is a stacked, pooled grid with
   search, a rarity filter and 4 sorts. You can equip items (3–8 slots), use
   Equip Best, favourite items, sell one, sell extras, sell all, or sell
   duplicates. Extra copies make an equipped item up to twice as strong. The
   **Collection Book** shows silhouettes for undiscovered items, gives +1%
   Sparks per discovery and has 8 claimable milestones.
-* **Skill tree.** A pannable canvas holds 30 connected nodes in 5 branches:
-  Strength, Fortune, Wealth, Precision and Special. Nodes have prerequisites,
-  multi-rank costs, tooltips and pulsing "available" states, plus unlock
-  animations and a Gem respec.
+* **Skill tree.** 65 connected nodes in 5 branches (Strength, Fortune, Wealth,
+  Precision and Special). The tree **builds itself up as you buy**: you only see
+  what you can buy now, the next ring as "?" silhouettes, and new nodes grow out
+  with an animation. Nodes have prerequisites, multi-rank costs and tooltips;
+  the canvas pans and zooms, and a Gem respec folds it back.
+* **Obby.** A 15-stage neon obstacle course next to the plaza with moving and
+  spinning platforms, 14 checkpoints and a finish. Checkpoints and first clears
+  pay Sparks and Gems; the server checks order and travel time, so teleporting
+  earns nothing. Your checkpoint is saved.
+* **Robux store.** Game passes and developer products, including OP crates for
+  99/199/299 R$ with guaranteed Epic/Legendary/Mythic drops and a Rainbow Chest.
+  Every purchase is granted only by the server and confirmed to Roblox only
+  after it has been saved.
 * **Ascension (rebirth).** When you ascend you get Prisms and a permanent ×0.5
   Sparks per ascension. Ascending also unlocks new **stages**, which change the
   button's colour and bring new crates. The ascension screen lists exactly
@@ -96,7 +123,7 @@ and add your staff's UserIds to `ServerScriptService/Admin/AdminConfig`
   * Daily quests, plus a bonus for finishing them all.
   * A guided 10-step starter path.
   * A 7-day login calendar.
-  * 34 achievements and 25 tracked statistics.
+  * 37 achievements and tracked statistics.
   * Offline earnings.
   * Global leaderboards (OrderedDataStore) and a live board for your server.
 * **Multiplayer.** Every player has their own data. The 3D giant button pulses
@@ -112,6 +139,7 @@ and add your staff's UserIds to `ServerScriptService/Admin/AdminConfig`
 | "Sparks earned this run" and your current combo | Inventory, equipped items, favourites and the Collection Book |
 | | Owned crates and pity progress |
 | | Achievements, quests, login streak, statistics and settings |
+| | Obby progress and everything bought with Robux |
 
 ---
 
@@ -122,7 +150,8 @@ and add your staff's UserIds to `ServerScriptService/Admin/AdminConfig`
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Architecture, the full Explorer hierarchy, data flow, remotes, security model and design decisions |
 | [`docs/SCRIPTS.md`](docs/SCRIPTS.md) | Every script: file, type, exact Explorer location, dependencies and purpose |
 | [`docs/SETUP.md`](docs/SETUP.md) | Step-by-step setup: place file, Rojo, or manual copy-and-paste, plus publishing |
-| [`docs/ADMIN.md`](docs/ADMIN.md) | Roles and permissions, adding admins and finding UserIds, the panel, commands, audit logs, safeguards |
+| [`docs/ADMIN.md`](docs/ADMIN.md) | Roles and permissions, giving roles in the game, banning, adding admins in code, the panel, commands, audit logs, safeguards |
+| [`docs/MONETIZATION.md`](docs/MONETIZATION.md) | Game passes and developer products: what they do, suggested prices, how to create them and paste the IDs (German quick start) |
 | [`docs/GAME_DESIGN.md`](docs/GAME_DESIGN.md) | Economy and balance (with simulation results), crates and odds, pity, skills, quests, data schema |
 | [`docs/TESTING.md`](docs/TESTING.md) | Automated test suite, the full manual testing checklist and results |
 | [`tests/README.md`](tests/README.md) | How the headless Roblox test harness works and how to run it |
@@ -138,8 +167,8 @@ button-ascension/
 │   ├── ServerScriptService/    Main script, core, gameplay services, admin system
 │   ├── ServerStorage/          Admin Panel client (only cloned to authorised staff)
 │   └── StarterPlayer/          Client entry point, HUD, screens, input, effects
-├── tests/                      Headless Roblox simulation + 103 tests (Lune)
-├── branding/                   Store-page description, icon and thumbnails (+ sources)
+├── tests/                      Headless Roblox simulation + 163 tests (Lune)
+├── branding/                   Store-page description, icon, thumbnails, pass icons (+ sources)
 └── docs/                       Documentation
 ```
 
@@ -165,8 +194,15 @@ These limitations are honest constraints, not unfinished work:
   nothing has to be uploaded. You can swap them for image assets later.
 * **Phone notches.** The HUD keeps clear of the Roblox top bar (GUI inset), but
   does not yet read the device safe area. On phones with a notch or rounded
-  corners in landscape, the left navigation rail can sit slightly under the
+  corners in landscape, the edges of the bottom dock can sit slightly under the
   notch. Check this on a real device.
+* **Obby feel.** The course, rewards and anti-cheat are tested headless, but
+  jump distances and the moving platforms' physics can only be judged by
+  playing. All gaps are 8 studs or less; play it through once in Studio.
+* **Robux items** do nothing until you create the passes and products in the
+  Creator Hub and paste their IDs into `Config/GamePasses` and
+  `Config/DevProducts`. In Studio, unconfigured items are shown as "Not set up";
+  in live games they are hidden.
 * **Game-wide announcements** use MessagingService. Only Owners have the
   permission by default, and Roblox applies its own MessagingService rate
   limits. Server events and normal announcements affect only the current

@@ -15,17 +15,19 @@ Click a Button
 ```
 Press the big neon button, earn Sparks and turn a single click into an empire! 🔴
 
-⚡ PRESS: crits, combos, streaks and golden presses
-🎁 OPEN CRATES: 7 crates, 74 items, 7 rarities from Common to Secret, with pity
-🎒 COLLECT: equip your best items and complete the Collection Book
-⬆️ UPGRADE: 10 upgrades, auto-press and a 30-skill tree
+⚡ PRESS: crits, combos, streaks and auto clickers that keep earning while you play
+🎁 OPEN CRATES: 81 items, 7 rarities from Common to Secret, with pity
+✨ FUSE: combine 3 copies into Golden, then into Rainbow items
+🏃 OBBY: 15 stages with checkpoints and rewards, while you keep earning
+🌳 SKILL TREE: 65 skills that reveal themselves as you unlock them
 🔷 ASCEND: rebirth for Prisms and permanent perks, unlock 5 stages
 📜 EVERY DAY: quests, login rewards, achievements and leaderboards
-✨ Bonus orbs and server-wide boost events
+💰 STORE: Auto Clicker, OP passes and OP crates
 
+New here? A short tutorial shows you everything.
 Plays on PC, phone, tablet and controller. Progress is saved automatically.
 
-Can you find all 74 items, including the Secret ones? 👀
+Can you find all 81 items, including the Secret ones? 👀
 ```
 
 ## Beschreibung (Deutsch)
@@ -33,17 +35,19 @@ Can you find all 74 items, including the Secret ones? 👀
 ```
 Drück den großen Neon-Button, sammle Sparks und mach aus einem Klick ein Imperium! 🔴
 
-⚡ DRÜCKEN: Crits, Combos, Streaks und goldene Klicks
-🎁 KISTEN ÖFFNEN: 7 Kisten, 74 Items, 7 Seltenheiten von Common bis Secret, mit Pity
-🎒 SAMMELN: rüste deine besten Items aus und vervollständige das Sammelbuch
-⬆️ UPGRADES: 10 Upgrades, Auto-Klick und ein Skill-Baum mit 30 Skills
-🔷 AUFSTEIGEN: Rebirth für Prismen und dauerhafte Boni, 5 Stufen freischalten
+⚡ DRÜCKEN: Crits, Combos, Streaks und Auto-Klicker, die beim Spielen weiterverdienen
+🎁 KISTEN: 81 Items, 7 Seltenheiten von Common bis Secret, mit Pity
+✨ FUSEN: 3 gleiche Items werden zu Golden, dann zu Rainbow
+🏃 OBBY: 15 Stufen mit Checkpoints und Belohnungen, während du weiterverdienst
+🌳 SKILL-BAUM: 65 Skills, die sich beim Freischalten nach und nach zeigen
+🔷 AUFSTIEG: Rebirth für Prismen und dauerhafte Boni, 5 Stufen freischalten
 📜 JEDEN TAG: Quests, Login-Belohnungen, Erfolge und Ranglisten
-✨ Bonus-Orbs und Boost-Events für den ganzen Server
+💰 STORE: Auto-Klicker, OP-Pässe und OP-Kisten
 
+Neu hier? Ein kurzes Tutorial zeigt dir alles.
 Spielbar auf PC, Handy, Tablet und Controller. Dein Fortschritt wird automatisch gespeichert.
 
-Findest du alle 74 Items, auch die geheimen? 👀
+Findest du alle 81 Items, auch die geheimen? 👀
 ```
 
 Both versions are under Roblox's 1,000-character limit.

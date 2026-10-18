@@ -2,7 +2,7 @@
 
 Testing has two layers:
 
-1. **Automated:** 103 tests that run the real game scripts in a headless
+1. **Automated:** 163 tests that run the real game scripts in a headless
    Roblox simulation, plus static type checking. They run without Roblox
    Studio, in under a minute.
 2. **Manual:** a checklist for things that need the real engine (rendering,
@@ -13,9 +13,9 @@ Testing has two layers:
 | Check | Command | Result |
 |---|---|---|
 | Static type check against the Roblox API definitions (luau-lsp 1.70, `globalTypes.d.luau`) | `luau-lsp analyze --definitions=globalTypes.d.luau --sourcemap=sourcemap.json src` | **0 errors, 0 warnings** |
-| Every file compiles (luau-compile) | `luau-compile --text <file>` | **all 87 scripts compile** |
-| Rojo build | `rojo build default.project.json -o build/ButtonAscension.rbxlx` | **builds**; 1 Script, 2 LocalScripts, 84 ModuleScripts, 11 Folders |
-| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **103 passed, 0 failed** |
+| Every file compiles (luau-compile) | `luau-compile --text <file>` | **all 100 scripts compile** |
+| Rojo build | `rojo build default.project.json -o build/ButtonAscension.rbxlx` | **builds**; 1 Script, 2 LocalScripts, 97 ModuleScripts, 11 Folders |
+| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **163 passed, 0 failed** |
 
 ### How the headless tests work
 
@@ -58,6 +58,7 @@ Details: [`tests/README.md`](../tests/README.md).
 - requires a single-use token from the same admin before resetting
 - keeps a confirmation bound to the player it was issued for
 - resets a chosen progression scope only after confirmation
+- never takes away Robux purchases in a full reset
 **Player management**
 - freezes, unfreezes, teleports, respawns and kicks with a reason
 **Command bar**
@@ -76,12 +77,35 @@ Details: [`tests/README.md`](../tests/README.md).
 - buys an upgrade from the shop
 - opens a crate and plays the reveal
 - equips an item from the inventory
+- builds the skill tree up as skills are unlocked
 - saves settings changed in the settings screen
 **Devices**
 - uses the compact layout on a phone with touch input
 - presses the button with a controller trigger
+- presses with the E key on a keyboard, so you can press while running
+**Bottom HUD, obby and tutorial**
+- puts the HUD at the bottom with only the quest card at the side, and keeps the world visible
+- moves you to your obby checkpoint and back with the dock buttons
+- shows the tutorial for new players, follows real progress and can be skipped and replayed
 **Admin panel client**
 - boots for an Owner and runs a command from the command bar
+
+#### Suite: fusion
+**Item catalogue**
+- has two Secret items per crate and Golden/Rainbow versions of every item
+**Fusing**
+- turns three copies into the next variant, up to Rainbow
+- protects favourites and gives the fused item the equipped copies' slot
+- rejects forged and malformed fuse requests
+**Variant drops**
+- drops Golden and Rainbow items at their natural rates and never auto-sells them
+**Rainbow Chest**
+- grants exactly one Rainbow Epic-or-better item per receipt
+- always rolls Rainbow, Epic or better, with a real Secret chance
+**Saving**
+- keeps variant items, equipped variants and variant discoveries when sanitising
+**Fusing in the interface**
+- fuses from the inventory detail panel and shows the variant on its card
 
 #### Suite: fuzz
 **Fuzzing**
@@ -147,11 +171,63 @@ Details: [`tests/README.md`](../tests/README.md).
 - delivers MessagingService messages between servers
 - filters text and runs BindToClose on shutdown
 
+#### Suite: moderation
+**Staff roles given in the game**
+- lets the Owner make a player Moderator, who can then kick, freeze and ban
+- applies roles in every server within seconds, and takes them away again
+- lets only Owners hand out roles, never Owner itself, and never changes config roles
+- works for the session only in Studio without API access
+- supports the command bar
+**Bans**
+- bans across servers, keeps the player out and mirrors the ban to Roblox
+- limits Moderators to 7 days and protects equal or higher staff
+- lets players back in when a ban expires
+- bans offline players by #UserId or exact username
+- keeps enforcing its own list when Roblox's Ban API fails, and refuses forged requests
+**Moderation tab**
+- lets an Owner give a role and ban a player from the admin panel
+- shows Moderators the ban tools but not the staff tools
+
+#### Suite: monetization
+**Game passes**
+- loads owned passes on join and applies them on the server
+- adds auto clicker passes on top of the upgrade cap and stacks the OP passes
+- grants a pass the moment Roblox reports the purchase and keeps it for the session
+- keeps the last saved ownership when Roblox can't answer, and drops refunded passes
+- does nothing for passes that are not set up yet
+- can't be granted by anything a client sends
+**Developer products**
+- grants a product once, saves it first and ignores repeated receipts
+- waits (NotProcessedYet) when the buyer is not here, unknown, or their data is not loaded
+- never grants in a temporary session that can't save
+- does not confirm a purchase whose save failed and grants it only once on the retry
+- runs Sparks Rush only while playing, stacks its time and lets it expire
+**Robux crates**
+- opens a Robux crate on purchase with its guaranteed rarity, once per receipt
+- always meets the rarity floor and only uses items from unlocked crates
+- can't be opened through the normal crate action
+- plays the opening animation on the buyer's screen
+- defines every crate sound with a bundled fallback and sane volumes
+**Store screen**
+- lists passes and products and opens Roblox's purchase prompts
+- hides passes and products that are not set up in live games
+
 #### Suite: multiplayer
 **Multiplayer**
 - keeps each player's data isolated
 - runs 8 players with full collections and auto-presses for 3 minutes
 - shares server activity with every client
+
+#### Suite: obby
+**Obby course**
+- builds 14 checkpoints and a finish next to the plaza
+- counts checkpoints in order and pays each one once per run
+- ignores teleports and impossibly fast runs and flags them
+- sends you back to your checkpoint from kill bricks and the void, but only counts the living
+- saves progress and puts you back on your checkpoint after rejoining
+- finishes a run, pays the finish rewards, resets the run and returns you to the plaza
+- only teleports to your own checkpoint or the plaza
+- keeps auto-pressing while you run the course
 
 #### Suite: persistence
 **Saving**
@@ -183,16 +259,27 @@ Details: [`tests/README.md`](../tests/README.md).
 - loads every config module
 - gives every weighted rarity of every crate a non-empty item pool
 - keeps skill prerequisites, upgrades, achievements and quests consistent
+**Skill tree**
+- is a large, well-formed tree that can be bought from the core outward
+- reveals the tree step by step as nodes are bought
 **Loot**
 - normalises effective weights for any luck value
 - matches expected odds over 20,000 simulated openings per crate
 - guarantees Legendary or better when the pity threshold is reached
 **Economy invariants**
 - never lets a Gem-priced crate be resold for more Gems than it costs, even fully maxed
+- never creates Gems by fusing: a fused item is worth exactly its inputs
 **Formulas and Format**
 - computes finite stats for fresh and heavily progressed players
 - computes stats from the server's default player data
 - formats numbers like the UI expects
+
+#### Suite: tutorial
+**Tutorial**
+- walks a new player through every step from real actions and pays the reward once
+- only accepts 'seen' for the active look-at step and never for real-action steps
+- saves a skip and keeps it after rejoining
+- does not start for players saved before the tutorial existed
 
 ### Bugs found and fixed by these tests during development
 
@@ -297,7 +384,29 @@ the manual pass confirms them in the real engine.
 | ☐ | Daily login | Claim once; "Come back tomorrow"; the streak shows | ✅ |
 | ☐ | Bonus orb | Appears within ~30–60 s, bobs, can be tapped once, then shows a reward toast | ✅ |
 | ☐ | Offline earnings | Rejoin after ≥ 2 min with a Generator: *Welcome back* banner | ✅ |
-| ☐ | Settings | Volumes, UI scale, background dim, reduced motion (no shake or particles), floating numbers, auto-sell; the values survive a rejoin | ✅ (save) |
+| ☐ | Settings | Volumes, UI scale (applies on release), reduced motion (no shake or particles), floating numbers, auto-sell, Tutorial → Replay; the values survive a rejoin | ✅ (save) |
+| ☐ | Fusing | 3 copies → "✨ Fuse 3 → Golden" in the item panel, burst and chime; 3 Golden → Rainbow with an animated rainbow border; favourites must be unfavourited first | ✅ |
+| ☐ | Skill tree reveal | A fresh player sees the core and "?" teasers; buying a node grows its neighbours with lines; respec folds the tree back | ✅ |
+
+### Obby, interface and tutorial
+
+| ✓ | Check | Expected | Auto |
+|---|---|---|---|
+| ☐ | Bottom dock | Currencies, level, obby chip, boosts and menu at the bottom; quest card on the right; PRESS bottom right; the world is not darkened | ✅ (layout) / ☐ visual |
+| ☐ | Press while moving | E (keyboard), the PRESS button and R2 press while the character walks; auto presses keep earning | ✅ |
+| ☐ | Run the obby | All 15 stages are jumpable; movers and spinners carry you; kill bricks and falls return you to your checkpoint; pads turn green | ✅ (rules) / ☐ feel |
+| ☐ | Obby rewards and anti-cheat | Sparks per checkpoint, Gems for first clears and the finish; skipping a checkpoint or teleporting gives nothing and shows up in security flags | ✅ |
+| ☐ | Rejoin mid-course | You spawn at your saved checkpoint; ▶ and 🏠 in the dock move you to your checkpoint or the plaza | ✅ |
+| ☐ | Tutorial | A new player gets the coach card and gold arrow; each step completes only when done; skip is saved; replay from Settings; 50 Gems once | ✅ |
+
+### Robux store (needs the IDs from MONETIZATION.md)
+
+| ✓ | Check | Expected | Auto |
+|---|---|---|---|
+| ☐ | Store screen | 💰 Store lists passes and products with prices; owned passes show OWNED; unconfigured items say "Not set up" in Studio | ✅ |
+| ☐ | Buy a pass (Studio test purchase) | Effect applies at once (e.g. Auto Clicker +5/s) and stays after rejoining | ✅ (mock) |
+| ☐ | Buy a product | Gems arrive once; a Robux crate plays the opening with the guaranteed rarity; Sparks Rush timer shows in the dock | ✅ (mock) |
+| ☐ | Crate sounds | Rising ticks, burst, rising chimes; extra fanfare for Epic+, bigger for Legendary+, flash for Mythic/Secret | ☐ listen |
 
 ### Persistence
 
@@ -333,22 +442,25 @@ the manual pass confirms them in the real engine.
 | ☐ | Rate limits | Spamming freeze shows "rate limited" | ✅ |
 | ☐ | Announcements | Server-wide banner labelled "this server"; game-wide (Owner) reaches other servers | ✅ |
 | ☐ | Events | Start Spark Surge: every player's banner and timer, presses ×2; stop ends it | ✅ |
+| ☐ | Give a role in the game | Owner → Moderation tab → Give role (Moderator) → confirm: the player gets the panel at once, in every server; Remove role takes it away | ✅ |
+| ☐ | Ban | Moderator bans for 1 day with a reason: the player is removed and kicked on every rejoin with the reason and end date; Unban lets them back; Moderators cannot pick longer than 7 days or ban staff | ✅ |
+| ☐ | Ban an offline player | Ban by exact username or #UserId; they are kicked when they join | ✅ |
 
 ### Compatibility
 
 | ✓ | Check | Expected | Auto |
 |---|---|---|---|
 | ☐ | Desktop 1920×1080 and 1280×720 | HUD clusters anchored to the edges, nothing overlaps, windows centred and scaled | ☐ manual |
-| ☐ | Phone (Studio *Device* emulator, e.g. iPhone 14, landscape) | Compact layout: icon-only rail, side cards behind 📋, windows use the compact size; touch presses work | ✅ (logic) / ☐ visual |
+| ☐ | Phone (Studio *Device* emulator, e.g. iPhone 14, landscape) | Compact dock with icon-only menu, quest card behind 📋, PRESS above the jump button, windows use the compact size; touch presses work | ✅ (logic) / ☐ visual |
 | ☐ | Tablet | Normal layout scaled down | ☐ manual |
 | ☐ | Controller | R2/L2 press; Y jumps to the menu; D-pad navigates; A selects; B closes windows; the panel is reachable | ✅ (press) / ☐ navigation |
 | ☐ | Multiplayer | Several players press at the same time; the giant 3D button glows with server activity; Mythic drops announced to everyone | ✅ |
 | ☐ | Performance | 8 players with full collections and auto-presses: no hitches; Dashboard memory and FPS stable | ✅ (sim) |
-| ☐ | Large inventory | All 74 items with ×1000 copies: grid renders, filters and sorting instant | ✅ |
+| ☐ | Large inventory | All 81 items with ×1000 copies: grid renders, filters and sorting instant | ✅ |
 
 ### Results of this build
 
-* All automated checks above pass (103/103 tests, a clean type check, Rojo
+* All automated checks above pass (163/163 tests, a clean type check, Rojo
   builds).
 * The manual Studio checklist has **not** been run as part of this
   delivery; no Roblox Studio was available in the build environment. The

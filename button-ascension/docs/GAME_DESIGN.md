@@ -162,10 +162,10 @@ skill tree). Pace is controlled by `GameConfig.Rebirth.BaseRequirement` and
 * **Every roll happens on the server** with `Random.new()`. The client
   receives only the results, after they have been applied.
 
-## Items (74)
+## Items (81)
 
-* Every crate has 11 items (3 Common, 2 Uncommon, 2 Rare, 1 Epic,
-  1 Legendary, 1 Mythic, 1 Secret). The Prism Cache has 8 items, Rare or
+* Every crate has 12 items (3 Common, 2 Uncommon, 2 Rare, 1 Epic,
+  1 Legendary, 1 Mythic, 2 Secret). The Prism Cache has 9 items, Rare or
   better.
 * **Equip bonus** = rarity base (Common 2% … Legendary 30%, Mythic 60%,
   Secret 150%) × crate tier factor (1, 1.5, 2.5, 4, 6.5, 10; Prism Cache 3)
@@ -176,15 +176,40 @@ skill tree). Pace is controlled by `GameConfig.Rebirth.BaseRequirement` and
 * **Equip slots:** 3 base. Collector's Satchel adds up to +2 and Deep
   Pockets up to +3; the maximum is 8.
 * **Selling** pays Gems: the rarity value (Common 1 … Secret 3,000) × the
-  crate tier factor × the Gem multiplier. Items from the Gem-priced Prism
-  Cache use a sell factor of 0.1 instead, so buying caches and selling the
-  drops always loses Gems. Even fully maxed, a cache resells for at most
-  about 36 of its 120 Gems. Favourite items cannot be sold. The
+  crate tier factor × the Gem multiplier (capped at ×50). Items from the
+  Gem-priced Prism Cache use a sell factor of 0.1 instead and ignore Gem
+  boosts, so buying caches and selling the drops always loses Gems: even with
+  every pass, Rainbow Gem items and every bonus maxed, a cache resells for at
+  most about 10 of its 120 Gems. Favourite items cannot be sold. The
   *auto-sell duplicates* setting sells repeat drops up to a chosen rarity the
-  moment they drop.
+  moment they drop (never Golden or Rainbow copies).
 * **Collection Book:** +1% Sparks per discovered item. Milestones at 5, 10,
-  20, 30, 40, 50, 60 and all 74 discoveries give Gems, Skill Points, crates
-  and Prisms.
+  20, 30, 40, 50, 60 and all 81 discoveries give Gems, Skill Points, crates
+  and Prisms. Golden and Rainbow versions are tracked (shown in the item
+  tooltip) but don't count as extra entries.
+
+### Golden and Rainbow variants, fusing
+
+| Variant | Equip power | Sells for | Natural drop chance | Made by fusing |
+|---|---|---|---|---|
+| Normal | ×1 | ×1 | — | — |
+| ✦ Golden | ×2.5 | ×3 | 1.5% of every crate roll | 3 Normal copies |
+| ✦ Rainbow | ×6 | ×9 | 0.15% of every crate roll | 3 Golden copies |
+
+* Every item exists in all three versions (ids `<item>:golden` and
+  `<item>:rainbow`). Each version stacks, equips and gets the copies bonus on
+  its own.
+* **Fuse** (Inventory → item → "✨ Fuse 3 → Golden/Rainbow", or "Fuse all"):
+  the server checks the copies, removes 3 per result and adds one of the next
+  version. Favourites must be unfavourited first. If the equipped copies are
+  used up, the fused item takes their slot.
+* A fused item sells for exactly what its three inputs sell for together, so
+  fusing never creates Gems (tested for every item and many Gem multipliers).
+* Variant rolls are independent of rarity and never change pity; bonus drops
+  can be variants too. Robux OP crates have better variant odds, and the
+  Rainbow Chest always gives a Rainbow item.
+* Fusing counts towards the `ItemsFused` stat and the achievements Fusion
+  Novice (1), Fusion Master (25) and Over the Rainbow (get any Rainbow item).
 
 ## Skill tree (65 nodes, permanent)
 
@@ -364,8 +389,9 @@ setup and the security rules are in [`MONETIZATION.md`](MONETIZATION.md).
 * **Developer products** (repeatable): Gem packs (100 / 550 / 1,200), Sparks
   Rush (×3 Sparks for 15 minutes of play time, stackable), a Crate Bundle (5
   of the best unlocked Spark crate) and three OP crates for 99 / 199 / 299 R$
-  with a guaranteed Epic / Legendary / Mythic or better. OP crate items come
-  from the crates the player has already unlocked.
+  with a guaranteed Epic / Legendary / Mythic or better, plus the Rainbow Chest
+  (a guaranteed Rainbow item, Epic or better). These items come from the
+  crates the player has already unlocked.
 * Ownership and rewards are decided on the server only. Items without a
   Roblox ID in the config do nothing and are hidden in live games.
 * Crate openings use layered, pitch-shifted built-in sounds: ticks that speed

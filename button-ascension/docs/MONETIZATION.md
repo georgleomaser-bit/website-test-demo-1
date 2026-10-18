@@ -64,9 +64,10 @@ Gems ×2.5, Luck +200% and auto presses +20 per second.
 | 💠 Vault of Gems | +1,200 Gems | 399 R$ | `gems_large` |
 | 🔥 Sparks Rush | ×3 Sparks for 15 minutes of play; each purchase adds 15 minutes (max 24 h stored) | 99 R$ | `sparks_rush` |
 | 🎁 Crate Bundle | 5 of the best Spark crate the player has unlocked | 149 R$ | `crate_bundle` |
-| 🔥 OP Crate | Opens at once: Epic or better (Epic 70%, Legendary 24%, Mythic 5.5%, Secret 0.5%) | 99 R$ | `op_crate` |
-| 💥 Mega OP Crate | Legendary or better (Legendary 80%, Mythic 18%, Secret 2%) | 199 R$ | `mega_op_crate` |
-| 🌌 Ultra OP Crate | Mythic or better (Mythic 92%, Secret 8%) | 299 R$ | `ultra_op_crate` |
+| 🔥 OP Crate | Opens at once: Epic or better (Epic 70%, Legendary 24%, Mythic 5.5%, Secret 0.5%); Golden 6%, Rainbow 0.6% | 99 R$ | `op_crate` |
+| 💥 Mega OP Crate | Legendary or better (Legendary 80%, Mythic 18%, Secret 2%); Golden 10%, Rainbow 1.2% | 199 R$ | `mega_op_crate` |
+| 🌌 Ultra OP Crate | Mythic or better (Mythic 92%, Secret 8%); Golden 15%, Rainbow 2% | 299 R$ | `ultra_op_crate` |
+| 🌈 Rainbow Chest | Always a **Rainbow** item (×6 power), Epic or better (Epic 55%, Legendary 30%, Mythic 10%, Secret 5%) | 449 R$ | `rainbow_chest` |
 
 * **Sparks Rush** time only runs while the player is in a game, and
   stacking adds time. The HUD and the Store show the time left. Quest targets
@@ -102,9 +103,14 @@ reported as saved when it wasn't.
 ## Economy notes
 
 * Robux → Gems (Gem packs, selling OP crate items) is intended.
-  Gems → more Gems is not. The economy test owns every pass and maxes every
-  bonus, and still finds that a Prism Cache (120 Gems) resells for at most
-  about 94 Gems.
+  Gems → more Gems is not. Prism Cache items ignore Gem boosts when sold and
+  the Gem multiplier is capped at ×50. The economy test owns every pass,
+  equips Rainbow versions of the best Luck and Gem items, maxes every bonus,
+  and still finds that a Prism Cache (120 Gems) resells for at most about
+  10 Gems.
+* Golden and Rainbow items (from drops, fusing or the Rainbow Chest) sell for
+  exactly ×3 and ×9 of the normal item, the same as the copies fused into
+  them, so fusing can't create Gems either.
 * Passes stack with everything else, including server events and Frenzy.
   Leaderboards therefore favour pass owners, as in most Roblox games.
 
@@ -120,4 +126,4 @@ reported as saved when it wasn't.
 | `ServerScriptService/Services/ChestService` (`OpenRobuxCrate`) | OP crate rolls |
 | `StarterPlayerScripts/Client/Screens/Store` | The 💰 Store window |
 | `tests/specs/monetization.spec.luau` | Automated tests |
-| `branding/passes/` | 512 × 512 images for the passes and OP crates |
+| `branding/passes/` | 512 × 512 images for the passes, OP crates and the Rainbow Chest |

@@ -45,13 +45,17 @@ game
 │   │   │   ├── Achievements  (ModuleScript)
 │   │   │   ├── Ascension  (ModuleScript)
 │   │   │   ├── Chests  (ModuleScript)
+│   │   │   ├── DevProducts  (ModuleScript)
 │   │   │   ├── GameConfig  (ModuleScript)
+│   │   │   ├── GamePasses  (ModuleScript)
 │   │   │   ├── Items  (ModuleScript)
+│   │   │   ├── Obby  (ModuleScript)
 │   │   │   ├── Quests  (ModuleScript)
 │   │   │   ├── Rarities  (ModuleScript)
 │   │   │   ├── Rewards  (ModuleScript)
 │   │   │   ├── Skills  (ModuleScript)
 │   │   │   ├── Sounds  (ModuleScript)
+│   │   │   ├── Tutorial  (ModuleScript)
 │   │   │   └── Upgrades  (ModuleScript)
 │   │   ├── Format  (ModuleScript)
 │   │   ├── Formulas  (ModuleScript)
@@ -72,6 +76,7 @@ game
 │   │   ├── AdminPermissions  (ModuleScript)
 │   │   ├── AdminService  (ModuleScript)
 │   │   ├── AuditLog  (ModuleScript)
+│   │   ├── ModerationStore  (ModuleScript)
 │   │   └── PlayerResolver  (ModuleScript)
 │   ├── Core  (Folder)
 │   │   ├── DataOps  (ModuleScript)
@@ -86,15 +91,19 @@ game
 │   │   ├── DataService  (ModuleScript)
 │   │   ├── EconomyService  (ModuleScript)
 │   │   ├── EventService  (ModuleScript)
+│   │   ├── GamePassService  (ModuleScript)
 │   │   ├── InventoryService  (ModuleScript)
 │   │   ├── LeaderboardService  (ModuleScript)
+│   │   ├── ObbyService  (ModuleScript)
 │   │   ├── OrbService  (ModuleScript)
+│   │   ├── ProductService  (ModuleScript)
 │   │   ├── ProgressionService  (ModuleScript)
 │   │   ├── QuestService  (ModuleScript)
 │   │   ├── SecurityService  (ModuleScript)
 │   │   ├── SettingsService  (ModuleScript)
 │   │   ├── StatsService  (ModuleScript)
 │   │   ├── SyncService  (ModuleScript)
+│   │   ├── TutorialService  (ModuleScript)
 │   │   ├── UpgradeService  (ModuleScript)
 │   │   └── WorldService  (ModuleScript)
 │   └── Main  (Script)
@@ -106,6 +115,7 @@ game
 │       │   │   ├── Economy  (ModuleScript)
 │       │   │   ├── Items  (ModuleScript)
 │       │   │   ├── Logs  (ModuleScript)
+│       │   │   ├── Moderation  (ModuleScript)
 │       │   │   ├── Players  (ModuleScript)
 │       │   │   ├── Progression  (ModuleScript)
 │       │   │   ├── Server  (ModuleScript)
@@ -131,16 +141,19 @@ game
 │       │   │   ├── Settings  (ModuleScript)
 │       │   │   ├── Shop  (ModuleScript)
 │       │   │   ├── Skills  (ModuleScript)
-│       │   │   └── Stats  (ModuleScript)
+│       │   │   ├── Stats  (ModuleScript)
+│       │   │   └── Store  (ModuleScript)
 │       │   ├── BigButton  (ModuleScript)
 │       │   ├── ClientNet  (ModuleScript)
 │       │   ├── Hud  (ModuleScript)
 │       │   ├── InputController  (ModuleScript)
 │       │   ├── ItemCard  (ModuleScript)
 │       │   ├── Notifications  (ModuleScript)
+│       │   ├── ObbyClient  (ModuleScript)
 │       │   ├── Orbs  (ModuleScript)
 │       │   ├── ScreenManager  (ModuleScript)
 │       │   ├── State  (ModuleScript)
+│       │   ├── Tutorial  (ModuleScript)
 │       │   └── WorldFx  (ModuleScript)
 │       └── ClientMain  (LocalScript)
 └── SoundService  — ButtonAscensionSounds (Folder) — created by SoundPlayer on each client
@@ -267,16 +280,21 @@ The server never calls `InvokeClient`.
 ```
 Version, Currencies{Sparks,Gems,Prisms}, Level, XP, SkillPoints, Rebirths,
 Upgrades{id→level}, Ascension{id→level}, Skills{id→rank},
-Inventory{itemId→count}, LegacyInventory{id→count}, Favorites{id→true}, Equipped[itemId],
+Inventory{itemId→count} (variants as "<id>:golden" / "<id>:rainbow"), LegacyInventory{id→count},
+Favorites{id→true}, Equipped[itemId],
 Discovered{itemId→unixTime}, Chests{chestId→count}, Pity{chestId→{Legendary,Mythic}},
 Stats{TotalClicks, AutoClicks, LifetimeSparks, SparksThisRun, BestRunSparks, ChestsOpened,
       TotalCrits, HighestCombo, GoldenClicks, UpgradesPurchased, LegendariesFound,
       MythicsFound, SecretsFound, ItemsSold, QuestsCompleted, OrbsCollected, PlayTime,
-      GemsEarned, PrismsEarned, BestDailyStreak, StreakBursts, OfflineEarned},
+      GemsEarned, PrismsEarned, BestDailyStreak, StreakBursts, OfflineEarned,
+      ItemsFused, RainbowsFound},
 Achievements{id→unixTime}, CollectionClaimed{id→true},
 Quests{Day, Daily[{Id,Target,Progress,Claimed}], BonusClaimed, StarterIndex, StarterProgress},
 Daily{LastClaimDay, Streak}, Settings{Music,SFX,UIScale,ReducedMotion,ScreenShake,
-      FloatingNumbers,ConfirmRareSales,AutoSell,BackgroundDim},
+      FloatingNumbers,ConfirmRareSales,AutoSell},
+Passes{passKey→true}, Boosts{boostKey→secondsLeft}, Receipts[purchaseId] (newest 100),
+Obby{Stage, Best, Completions, Checkpoints},
+Tutorial{Step, Done, Skipped, Rewarded, Base},
 Meta{Created, LastSave, LastSeen, Sessions}
 ```
 
@@ -290,3 +308,7 @@ Other stores:
 
 * `ButtonAscension_AdminAudit`: one key per UTC day, `Audit_YYYY-MM-DD`.
 * `ButtonAscension_LB_<board>`: OrderedDataStores for the leaderboards.
+* `ButtonAscension_Moderation`: key `StaffRoles` ({UserId → Role, Name, By, ByName, At},
+  Moderator or Admin only) and key `Bans` ({UserId → Name, Reason, By, ByName, ByRank,
+  At, Until}; Until 0 = permanent). Changes are announced on the MessagingService
+  topic `ButtonAscension_Moderation`; receivers re-read the DataStore.

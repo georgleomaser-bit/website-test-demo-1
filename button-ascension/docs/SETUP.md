@@ -55,8 +55,9 @@ Steps:
 ReplicatedStorage
 ├── Shared            (Folder)
 │   ├── Config        (Folder)  ← src/ReplicatedStorage/Shared/Config/*.luau
-│   │     Achievements, Ascension, Chests, GameConfig, Items, Quests,
-│   │     Rarities, Rewards, Skills, Sounds, Upgrades        (ModuleScripts)
+│   │     Achievements, Ascension, Chests, DevProducts, GameConfig,
+│   │     GamePasses, Items, Obby, Quests, Rarities, Rewards, Skills,
+│   │     Sounds, Tutorial, Upgrades                         (ModuleScripts)
 │   ├── Format, Formulas, Loot, Remotes, Signal, Util        (ModuleScripts)
 └── UI                (Folder)
       Effects, SoundPlayer, Theme, UIKit                     (ModuleScripts)
@@ -71,13 +72,14 @@ ServerScriptService
 │     DataOps, DataSchema, Guard, Net, RateLimiter           (ModuleScripts)
 ├── Services          (Folder)
 │     AchievementService, ChestService, ClickService, DataService,
-│     EconomyService, EventService, InventoryService, LeaderboardService,
-│     OrbService, ProgressionService, QuestService, SecurityService,
-│     SettingsService, StatsService, SyncService, UpgradeService,
+│     EconomyService, EventService, GamePassService, InventoryService,
+│     LeaderboardService, ObbyService, OrbService, ProductService,
+│     ProgressionService, QuestService, SecurityService, SettingsService,
+│     StatsService, SyncService, TutorialService, UpgradeService,
 │     WorldService                                           (ModuleScripts)
 └── Admin             (Folder)
       AdminActions, AdminCommands, AdminConfig, AdminPermissions,
-      AdminService, AuditLog, PlayerResolver                 (ModuleScripts)
+      AdminService, AuditLog, ModerationStore, PlayerResolver (ModuleScripts)
 ```
 
 ### ServerStorage
@@ -89,8 +91,8 @@ ServerStorage
     └── AdminUI       (Folder)
         ├── AdminNet, CommandBar, LogRow, Panel, TargetPicker, Widgets   (ModuleScripts)
         └── Tabs      (Folder)
-              Dashboard, Economy, Items, Logs, Players, Progression,
-              Server, Settings                                           (ModuleScripts)
+              Dashboard, Economy, Items, Logs, Moderation, Players,
+              Progression, Server, Settings                              (ModuleScripts)
 ```
 
 The `AdminPanel` LocalScript does not run in ServerStorage. That is
@@ -104,10 +106,11 @@ StarterPlayer
     ├── ClientMain    (LocalScript)  ← src/StarterPlayer/StarterPlayerScripts/ClientMain.client.luau
     └── Client        (Folder)
         ├── BigButton, ClientNet, Hud, InputController, ItemCard,
-        │   Notifications, Orbs, ScreenManager, State, WorldFx       (ModuleScripts)
+        │   Notifications, ObbyClient, Orbs, ScreenManager, State,
+        │   Tutorial, WorldFx                                        (ModuleScripts)
         └── Screens   (Folder)
               Ascend, ChestOpening, Chests, Collection, Inventory,
-              Quests, Settings, Shop, Skills, Stats                    (ModuleScripts)
+              Quests, Settings, Shop, Skills, Stats, Store             (ModuleScripts)
 ```
 
 Leave **StarterGui** empty; the interface is created in code.
@@ -125,14 +128,19 @@ created automatically when the server starts. Do **not** create them by hand.
 1. **File → Publish to Roblox** and create or choose an experience.
 2. **Game Settings → Security → Enable Studio Access to API Services** (for
    Studio testing). Live servers always have DataStore access.
-3. Add your staff to `ServerScriptService/Admin/AdminConfig` (see
-   [`ADMIN.md`](ADMIN.md)). If the experience belongs to your own account,
-   you are already Owner. For group-owned experiences, the group owner is
-   Owner.
-4. Set the name, description, icon and thumbnails from
+3. Give people roles. If the experience belongs to your own account, you
+   are already Owner (for group-owned experiences, the group owner is). Make
+   others Moderator or Admin in the game: Admin Panel (F2) → **Moderation**
+   tab, or `/admin mod <player>` (see [`ADMIN.md`](ADMIN.md)). You can also
+   write roles into `ServerScriptService/Admin/AdminConfig`.
+4. Create the game passes and developer products in the Creator Hub and paste
+   their IDs into `ReplicatedStorage/Shared/Config/GamePasses` and
+   `DevProducts`. The step-by-step guide (German quick start first) is in
+   [`MONETIZATION.md`](MONETIZATION.md); icons are in `branding/passes/`.
+5. Set the name, description, icon and thumbnails from
    [`branding/STORE_PAGE.md`](../branding/STORE_PAGE.md) in
    **Game Settings → Basic Info**.
-5. *(Optional)* Put a music track you are allowed to use into
+6. *(Optional)* Put a music track you are allowed to use into
    `ReplicatedStorage/Shared/Config/Sounds` → `Music.Id = "rbxassetid://…"`.
 
 ## Testing in Studio

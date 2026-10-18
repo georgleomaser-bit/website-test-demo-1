@@ -209,7 +209,10 @@ describe("Crates", function()
 		local sold = 0
 		for _, r in ipairs(result.Results) do
 			local item = Items.ById[r.Item]
-			if item.RarityIndex <= 3 then
+			if item.Variant then
+				-- A rare Golden/Rainbow drop is never auto-sold.
+				ctx.expect(r.AutoSold).toBeNil()
+			elseif item.RarityIndex <= 3 then
 				ctx.expect(r.AutoSold).toBeGreaterThan(0)
 				sold += 1
 			end
