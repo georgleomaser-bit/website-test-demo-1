@@ -165,7 +165,8 @@ game
    `SecurityService, DataService, EventService, StatsService, SyncService,
    EconomyService, QuestService, AchievementService, ClickService,
    UpgradeService, ChestService, InventoryService, ProgressionService,
-   OrbService, SettingsService, LeaderboardService, WorldService, AdminService`.
+   OrbService, GamePassService, ProductService, ObbyService, TutorialService,
+   SettingsService, LeaderboardService, WorldService, AdminService` (22).
 3. `Net.init` binds the `Action` RemoteFunction to the action router.
 4. `Init(services)` runs on each service. Services register their actions here.
 5. `Start()` runs on each service. This begins the loops, player hooks and world building.

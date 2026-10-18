@@ -117,7 +117,7 @@ created automatically when the server starts. Do **not** create them by hand.
 3. *(Optional)* Set **StarterPlayer → CameraMaxZoomDistance** to 60. The arena
    sets its own night lighting when it is built.
 4. Press **Play**. The Output should show
-   `[Main] Click a Button server started with 18 services.`
+   `[Main] Click a Button server started with 22 services.`
    and no red errors.
 
 ## Publishing
