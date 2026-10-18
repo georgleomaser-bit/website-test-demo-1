@@ -293,7 +293,9 @@ GameConfig.Data = {
 	AutosaveInterval = 60,
 	-- A session lock older than this is considered abandoned (crashed server) and may be taken over.
 	LockStaleSeconds = 150,
-	LoadAttempts = 8,
+	LoadAttempts = 8, -- retries for DataStore errors while loading
+	-- While another server holds a fresh lock, loading retries every LockedRetryDelay
+	-- seconds until the lock is released or becomes stale (LockStaleSeconds + 15 s).
 	LockedRetryDelay = 4,
 	SaveAttempts = 4,
 	-- In live servers, players whose data cannot be loaded safely are kicked instead of

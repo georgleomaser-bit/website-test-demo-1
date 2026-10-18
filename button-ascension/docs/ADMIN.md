@@ -31,10 +31,12 @@ log.
   7. Resolve the target: exactly one online player, or `#UserId` for offline
      tools. Ambiguous names are rejected and the candidates listed.
   8. **Rank protection**: punitive actions (kick, freeze, bring, respawn,
-     remove/set currency, item removal, resets) cannot target staff of equal
-     or higher rank.
+     remove/set currency, item removal, resets, ascension grants) cannot
+     target staff of equal or higher rank.
   9. **Confirmation**: destructive actions return a single-use token that
-     expires after 45 s. Only the same admin can confirm with it.
+     expires after 45 s. Only the same admin can confirm with it. The token
+     stores the target's resolved UserId, so a confirmation can never hit a
+     different player who joined with a similar name in the meantime.
   10. Run through the normal services (`EconomyService`, `DataOps`,
       `ChestService`, ...) inside `pcall`, then record an audit entry.
 * No arbitrary code execution exists anywhere. There is no `loadstring` and
@@ -184,7 +186,7 @@ that support offline players take `#UserId`.
 | `setupgrade` | `/admin setupgrade <player> <upgradeId> <level>` | Set a shop upgrade level. | `progression.grant` |
 | `unlockskill` | `/admin unlockskill <player> <skillId\|all>` | Unlock skills for testing. | `progression.grant` |
 | `resetskills` | `/admin resetskills <player>` | Reset a skill tree with refund (confirmation). | `progression.reset` |
-| `giverebirth` | `/admin giverebirth <player> [count]` | Grant ascensions. | `progression.grant` |
+| `giverebirth` | `/admin giverebirth <player> [count]` | Grant ascensions; resets their run (asks for confirmation). | `progression.grant` |
 | `givelevel` | `/admin givelevel <player> [count]` | Grant levels. | `progression.grant` |
 | `givesp` | `/admin givesp <player> <amount>` | Grant Skill Points. | `progression.grant` |
 | `resetprogress` | `/admin resetprogress <player> [upgrades\|skills\|ascension\|inventory\|collection\|quests\|stats\|level\|all]` | Reset progression (asks for confirmation). | `progression.reset` |
@@ -196,8 +198,9 @@ the commands their role may use.
 
 ## Destructive actions and confirmations
 
-`economy.reset`, `progression.resetSkills` and `progression.reset` return
-`needsConfirm` with a summary instead of running. The panel shows a red
+`economy.reset`, `progression.resetSkills`, `progression.reset` and
+`progression.grantRebirth` (an ascension wipes the target's current run)
+return `needsConfirm` with a summary instead of running. The panel shows a red
 confirmation dialog. Resetting *all* progress also requires typing the
 player's name. The token is single-use, expires after 45 s, and works only
 for the admin it was issued to.

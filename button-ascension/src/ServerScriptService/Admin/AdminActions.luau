@@ -914,6 +914,9 @@ A["progression.grantRebirth"] = {
 	Permission = "progression.grant",
 	Category = "progression",
 	Target = "online",
+	-- An ascension wipes the target's current run, so it is treated like a reset.
+	Punitive = true,
+	Destructive = true,
 	Validate = function(args, ctx)
 		local target, err = V.target(args.Target)
 		if not target then
@@ -924,6 +927,9 @@ A["progression.grantRebirth"] = {
 			return nil, cerr
 		end
 		return { Target = target, Count = count }
+	end,
+	Describe = function(ctx, clean)
+		return `Grant {clean.Count} ascension(s) to {ctx.TargetName}? Their current run (Sparks, upgrades, level) resets as in a normal Ascension.`
 	end,
 	Run = function(ctx, clean)
 		local profile = ctx.TargetProfile

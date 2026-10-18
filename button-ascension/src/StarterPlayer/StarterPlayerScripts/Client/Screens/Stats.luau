@@ -1,7 +1,7 @@
 --[[
 	Stats (ModuleScript)
 	Location: StarterPlayer/StarterPlayerScripts/Client/Screens/Stats
-	Depends on: ReplicatedStorage/UI/*, ReplicatedStorage/Shared/{Format,Formulas,Config/*},
+	Depends on: ReplicatedStorage/UI/*, ReplicatedStorage/Shared/{Format,Formulas,Util,Config/*},
 	            Client/{State,ClientNet}
 
 	Personal statistics and leaderboards (global boards from OrderedDataStores,
@@ -18,6 +18,7 @@ local Theme = require(UIFolder.Theme)
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
 local Formulas = require(Shared.Formulas)
+local Util = require(Shared.Util)
 local Config = Shared.Config
 local GameConfig = require(Config.GameConfig)
 local Items = require(Config.Items)
@@ -241,7 +242,7 @@ function StatsScreen.new(ctx)
 			if scope == "Global" then
 				entries = (cache.Global or {})[board] or {}
 				status.Text = if cache.Available
-					then (if #entries > 0 then `Updated {Format.time(os.time() - (cache.UpdatedAt or os.time()))} ago` else "No entries yet — the board refreshes every few minutes.")
+					then (if #entries > 0 then `Updated {Format.time(math.max(0, Util.serverTime() - (cache.UpdatedAt or Util.serverTime())))} ago` else "No entries yet — the board refreshes every few minutes.")
 					else "Global leaderboards are unavailable in this session (DataStores disabled)."
 			else
 				local stat = if board == "LifetimeSparks" then "LifetimeSparks" elseif board == "TotalClicks" then "TotalClicks" else "Rebirths"

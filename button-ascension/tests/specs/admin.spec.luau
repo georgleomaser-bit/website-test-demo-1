@@ -104,6 +104,38 @@ describe("Access", function()
 	end)
 end)
 
+describe("Group-owned places", function()
+	local function groupServer(ctx, group)
+		return Game.server(ctx, { creatorId = 777, creatorType = roblox.Enum.CreatorType.Group, group = group })
+	end
+
+	it("asks Roblox once when several players join together and still finds the owner", function(ctx)
+		local h = ctx.harness
+		local server = groupServer(ctx, { ownerId = 5000, delay = 3 })
+		-- The member's lookup is still in flight when the owner joins.
+		local other = h:addPlayer(server, { userId = 5001, name = "Member" })
+		local owner = h:addPlayer(server, { userId = 5000, name = "GroupOwner" })
+		h:advance(8)
+		ctx.expect(server.groupInfoCalls).toBe(1)
+		ctx.expect(owner.PlayerGui:FindFirstChild("AdminPanelGui")).toBeTruthy()
+		ctx.expect(other.PlayerGui:FindFirstChild("AdminPanelGui")).toBeNil()
+		ctx.expect(Game.admin(ctx, server, owner, "hello").data.Role).toBe("Owner")
+		ctx.expect(Game.admin(ctx, server, other, "hello").err).toBe("Not authorized.")
+	end)
+
+	it("retries a failed group lookup instead of locking the owner out", function(ctx)
+		local h = ctx.harness
+		ctx.allowScriptErrors()
+		local server = groupServer(ctx, { ownerId = 5000, failures = 1 })
+		local owner = Game.join(ctx, server, 5000, "GroupOwner")
+		ctx.expect(owner.PlayerGui:FindFirstChild("AdminPanelGui")).toBeNil()
+		h:advance(40)
+		ctx.expect(owner.PlayerGui:FindFirstChild("AdminPanelGui")).toBeTruthy()
+		ctx.expect(Game.admin(ctx, server, owner, "hello").data.Role).toBe("Owner")
+		ctx.expect(server.groupInfoCalls).toBe(2)
+	end)
+end)
+
 describe("Roles and permissions", function()
 	it("gives Owner, Admin and Moderator different powers", function(ctx)
 		local server, owner, admin, mod, player = studio(ctx)
@@ -196,7 +228,11 @@ describe("Economy, items and progression tools", function()
 		ctx.expect(Game.admin(ctx, server, owner, "progression.setUpgrade", { Target = "Player", Upgrade = "click_power", Level = 5000 }).ok).toBe(false)
 		ctx.expect(Game.admin(ctx, server, owner, "progression.unlockSkill", { Target = "Player", Skill = "core" }).ok).toBe(true)
 		ctx.expect(data.Skills.core).toBe(1)
-		ctx.expect(Game.admin(ctx, server, owner, "progression.grantRebirth", { Target = "Player", Count = 2 }).ok).toBe(true)
+		-- Ascensions reset the target's run, so they need a confirmation too.
+		local ask = Game.admin(ctx, server, owner, "progression.grantRebirth", { Target = "Player", Count = 2 })
+		ctx.expect(ask.needsConfirm).toBe(true)
+		ctx.expect(data.Rebirths).toBe(0)
+		ctx.expect(Game.admin(ctx, server, owner, "confirm", { Token = ask.token }).ok).toBe(true)
 		ctx.expect(data.Rebirths).toBe(2)
 		ctx.expect(data.Currencies.Prisms).toBeGreaterThan(0)
 		ctx.expect(Game.admin(ctx, server, owner, "progression.grantLevels", { Target = "Player", Count = 4 }).ok).toBe(true)
@@ -232,6 +268,23 @@ describe("Confirmation of destructive actions", function()
 		ctx.expect(auditHas(server, function(e)
 			return e.Action == "economy.reset" and e.Result == "confirm_required"
 		end)).toBe(true)
+	end)
+
+	it("keeps a confirmation bound to the player it was issued for", function(ctx)
+		local h = ctx.harness
+		local server, owner, _, _, player = studio(ctx)
+		Game.data(server, player).Currencies.Gems = 40
+		local ask = Game.admin(ctx, server, owner, "economy.reset", { Target = "Player" })
+		ctx.expect(ask.needsConfirm).toBe(true)
+		-- The target leaves and a different account with the same name joins.
+		h:removePlayer(player)
+		h:advance(5)
+		local impostor = Game.join(ctx, server, -5, "Player")
+		local impostorData = Game.data(server, impostor)
+		impostorData.Currencies.Gems = 70
+		local confirmed = Game.admin(ctx, server, owner, "confirm", { Token = ask.token })
+		ctx.expect(confirmed.ok).toBe(false)
+		ctx.expect(impostorData.Currencies.Gems).toBe(70)
 	end)
 
 	it("resets a chosen progression scope only after confirmation", function(ctx)

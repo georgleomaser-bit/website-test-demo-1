@@ -124,7 +124,8 @@ function ChestService:RollMany(profile, chest, amount: number)
 		if itemId then
 			table.insert(results, self:Award(profile, itemId, { Pity = pityTriggered }))
 		end
-		if stats.chestBonus > 0 and rng:NextNumber() < stats.chestBonus then
+		local bonusChance = Formulas.chestBonusChance(chest, stats.chestBonus)
+		if bonusChance > 0 and rng:NextNumber() < bonusChance then
 			-- Bonus drops use the same odds but never advance or consume pity.
 			local bonusId = Loot.roll(rng, chest, stats.luck, {}, {})
 			if bonusId then

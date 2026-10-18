@@ -15,7 +15,7 @@ secure Admin Panel. All branding, item names, icons and UI are original.
 | **Scripts** | 1 Script, 2 LocalScripts, 84 ModuleScripts (≈20,500 lines of game code) |
 | **Content** | 74 items in 7 crates · 7 rarities · 10 upgrades in 3 tiers · 9 Prism perks · 30-node skill tree · 5 stages · 34 achievements · 10 daily-quest types + 10-step starter path · 7-day login calendar · 5 server events · bonus orbs · 3 global leaderboards |
 | **Admin** | Owner / Admin / Moderator roles, 8-tab panel, 34 commands, audit log, confirmations, rate limits |
-| **Verification** | luau-lsp type check (Roblox API definitions) clean · 96 automated tests on a headless Roblox simulation (gameplay, exploits, persistence, admin security, UI, multiplayer) |
+| **Verification** | luau-lsp type check (Roblox API definitions) clean · 103 automated tests on a headless Roblox simulation (gameplay, exploits, persistence, admin security, UI, multiplayer) |
 
 ---
 
@@ -134,7 +134,7 @@ button-ascension/
 │   ├── ServerScriptService/    Main script, core, gameplay services, admin system
 │   ├── ServerStorage/          Admin Panel client (only cloned to authorised staff)
 │   └── StarterPlayer/          Client entry point, HUD, screens, input, effects
-├── tests/                      Headless Roblox simulation + 96 tests (Lune)
+├── tests/                      Headless Roblox simulation + 103 tests (Lune)
 └── docs/                       Documentation
 ```
 
@@ -158,6 +158,10 @@ These limitations are honest constraints, not unfinished work:
   you own.
 * **Icons.** Items and UI use emoji glyphs instead of uploaded images, so
   nothing has to be uploaded. You can swap them for image assets later.
+* **Phone notches.** The HUD keeps clear of the Roblox top bar (GUI inset), but
+  does not yet read the device safe area. On phones with a notch or rounded
+  corners in landscape, the left navigation rail can sit slightly under the
+  notch. Check this on a real device.
 * **Game-wide announcements** use MessagingService. Only Owners have the
   permission by default, and Roblox applies its own MessagingService rate
   limits. Server events and normal announcements affect only the current

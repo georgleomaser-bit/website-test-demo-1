@@ -69,6 +69,7 @@ end
 function ClickService:OnProfileLoaded(profile)
 	local rt = profile.Runtime
 	rt.Combo = 0
+	rt.StreakCount = 0
 	rt.LastClick = 0
 	rt.AutoCarry = 0
 	rt.PendingAuto = 0
@@ -156,8 +157,10 @@ function ClickService:_onClick(player: Player)
 
 	if now - rt.LastClick <= stats.comboWindow then
 		rt.Combo = math.min(rt.Combo + 1, CLICK.HardComboLimit)
+		rt.StreakCount += 1
 	else
 		rt.Combo = 1
+		rt.StreakCount = 1
 	end
 	rt.LastClick = now
 
@@ -166,7 +169,8 @@ function ClickService:_onClick(player: Player)
 	local amount = stats.clickValue * comboMult * (if crit then stats.critMultiplier else 1)
 
 	local streakBonus = 0
-	if rt.Combo % CLICK.StreakEvery == 0 then
+	-- Counted separately from the clamped combo, so a capped combo still bursts only every StreakEvery presses.
+	if rt.StreakCount % CLICK.StreakEvery == 0 then
 		streakBonus = stats.clickValue * CLICK.StreakBurstClicks * stats.streakMultiplier * (rt.Combo / CLICK.StreakEvery) ^ 0.5
 		data.Stats.StreakBursts += 1
 	end
@@ -265,6 +269,7 @@ end
 -- Resets the combo (used by ascension).
 function ClickService:ResetCombo(profile)
 	profile.Runtime.Combo = 0
+	profile.Runtime.StreakCount = 0
 	profile.Runtime.LastClick = 0
 end
 

@@ -147,10 +147,11 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 
 	-- Burst -----------------------------------------------------------------------------
 	SoundPlayer.play("ChestBurst")
-	Effects.flash(root, bestColor, 0.5)
+	-- Effects draw above the opening layers (ZIndex 80-88).
+	Effects.flash(root, bestColor, 0.5, 90)
 	local center = Vector2.new(450, 280)
-	Effects.burst(stage, center, bestColor, 30, 360)
-	Effects.ring(stage, center, bestColor, 700)
+	Effects.burst(stage, center, bestColor, 30, 360, 90)
+	Effects.ring(stage, center, bestColor, 700, 89)
 	crate.Visible = false
 	glow.Visible = false
 	caption.Visible = false
@@ -160,12 +161,14 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 
 	-- Reveal ----------------------------------------------------------------------------
 	local single = #results == 1
-	local cardSize = if single then UDim2.fromOffset(220, 256) else UDim2.fromOffset(112, 130)
+	-- Bonus drops can push a 10× opening past 14 results; smaller cards keep them in three rows.
+	local dense = #results > 14
+	local cardSize = if single then UDim2.fromOffset(220, 256) elseif dense then UDim2.fromOffset(80, 94) else UDim2.fromOffset(112, 130)
 	local holder = UI.frame({
 		Name = "Cards",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, if single then 0.4 else 0.42),
-		Size = UDim2.fromOffset(860, if single then 270 else 290),
+		Size = UDim2.fromOffset(860, if single then 270 elseif dense then 330 else 290),
 		ZIndex = 84,
 		Grid = { Cell = cardSize, Pad = UDim2.fromOffset(10, 12), HA = "Center" },
 		Parent = stage,
@@ -185,6 +188,9 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 			if single then
 				card.Icon.TextSize = 96
 				card.Name.TextSize = 20
+			elseif dense then
+				card.Icon.TextSize = 30
+				card.Name.TextSize = 10
 			end
 			if result.New then
 				newCount += 1
@@ -220,7 +226,7 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 				SoundPlayer.play("Reveal", { Pitch = 0.8 + rarityIndex * 0.1 })
 				if rarityIndex >= 5 then
 					local pos = card.Instance.AbsolutePosition + card.Instance.AbsoluteSize / 2 - stage.AbsolutePosition
-					Effects.burst(stage, pos / math.max(0.01, (stage:FindFirstChildOfClass("UIScale") :: UIScale).Scale), Theme.rarityColor(item.Rarity), 16, 160)
+					Effects.burst(stage, pos / math.max(0.01, (stage:FindFirstChildOfClass("UIScale") :: UIScale).Scale), Theme.rarityColor(item.Rarity), 16, 160, 90)
 				end
 				skippableWait(state, if single then 0.2 else 0.12)
 			end

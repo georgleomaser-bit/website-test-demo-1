@@ -244,7 +244,7 @@ function QuestsScreen.new(ctx)
 			frame.Visible = name == tab
 		end
 		local quests = State.get("Quests") or { Daily = {} }
-		local now = os.time()
+		local now = Util.serverTime()
 
 		if tab == "Daily" then
 			resetLabel.Text = `New quests in {Format.time(Util.secondsUntilNextDay(now))}`

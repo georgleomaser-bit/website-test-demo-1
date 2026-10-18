@@ -178,10 +178,12 @@ PlayerAdded
      ├─ on success: profile created → every service's OnProfileLoaded(profile)
      │   (stats, quests, offline earnings, orbs, leaderstats, …)
      │   → SyncService:SendFull(profile)  → client State becomes Ready
-     ├─ fresh lock held by another live server: wait and retry, then kick with an explanation
+     ├─ fresh lock held by another live server: keep retrying until it is saved and
+     │   released, or until it goes stale (150 s + 15 s) and is taken over; else kick
      └─ DataStore unavailable: kick in live servers (protects real data);
          labelled temporary profile in Studio
 AdminService (in parallel): role from server config → clone the admin panel into PlayerGui
+     (group-owned places: if the group-owner lookup fails it is retried, never cached)
 ```
 
 ### A press

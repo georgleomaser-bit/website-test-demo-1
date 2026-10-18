@@ -44,7 +44,8 @@ local function releaseParticle(p: Frame)
 end
 
 -- Burst of square sparks flying outward from a point (offset pixels in parent space).
-function Effects.burst(parent: GuiObject, position: Vector2, color: Color3, count: number?, spread: number?)
+-- zIndex is optional, for layers whose own content sits above the default.
+function Effects.burst(parent: GuiObject, position: Vector2, color: Color3, count: number?, spread: number?, zIndex: number?)
 	if Theme.ReducedMotion then
 		return
 	end
@@ -57,7 +58,7 @@ function Effects.burst(parent: GuiObject, position: Vector2, color: Color3, coun
 		p.Rotation = rng:NextInteger(0, 90)
 		p.BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), rng:NextNumber(0, 0.4))
 		p.BackgroundTransparency = 0
-		p.ZIndex = 40
+		p.ZIndex = zIndex or 40
 		p.Parent = parent
 		local angle = rng:NextNumber(0, math.pi * 2)
 		local distance = rng:NextNumber(50, spread or 140)
@@ -77,7 +78,7 @@ function Effects.burst(parent: GuiObject, position: Vector2, color: Color3, coun
 end
 
 -- Expanding ring centred on a point.
-function Effects.ring(parent: GuiObject, position: Vector2, color: Color3, size: number?)
+function Effects.ring(parent: GuiObject, position: Vector2, color: Color3, size: number?, zIndex: number?)
 	if Theme.ReducedMotion then
 		return
 	end
@@ -87,7 +88,7 @@ function Effects.ring(parent: GuiObject, position: Vector2, color: Color3, size:
 	ring.Position = UDim2.fromOffset(position.X, position.Y)
 	ring.Size = UDim2.fromOffset(40, 40)
 	ring.BackgroundTransparency = 1
-	ring.ZIndex = 35
+	ring.ZIndex = zIndex or 35
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(1, 0)
 	corner.Parent = ring
@@ -181,7 +182,7 @@ function Effects.shake(target: GuiObject, intensity: number?, duration: number?)
 end
 
 -- Full-screen colour flash inside parent.
-function Effects.flash(parent: GuiObject, color: Color3, strength: number?)
+function Effects.flash(parent: GuiObject, color: Color3, strength: number?, zIndex: number?)
 	if Theme.ReducedMotion then
 		return
 	end
@@ -191,7 +192,7 @@ function Effects.flash(parent: GuiObject, color: Color3, strength: number?)
 	frame.BackgroundColor3 = color
 	frame.BackgroundTransparency = 1 - (strength or 0.35)
 	frame.BorderSizePixel = 0
-	frame.ZIndex = 60
+	frame.ZIndex = zIndex or 60
 	frame.Parent = parent
 	local tween = TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
 	tween.Completed:Connect(function()

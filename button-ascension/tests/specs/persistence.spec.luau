@@ -143,7 +143,10 @@ describe("Session locking", function()
 		Game.data(a, alice).Currencies.Gems = 3
 		local b = Game.server(ctx, { jobId = "server-B" })
 		h:addPlayer(b, { userId = USER, name = "Alice" })
-		h:advance(45)
+		-- Server A keeps refreshing its lock, so B waits out the stale window, then gives up.
+		h:advance(60)
+		ctx.expect(kickedWith(b, USER, ".")).toBe(false)
+		h:advance(120)
 		ctx.expect(kickedWith(b, USER, "still being saved")).toBe(true)
 		ctx.expect(h.backend:peek(STORE, KEY).Lock.JobId).toBe("server-A")
 		ctx.expect(Game.profile(a, alice)).toBeTruthy()
@@ -176,6 +179,23 @@ describe("Session locking", function()
 		ctx.expect(h.backend:peek(STORE, KEY).Lock.JobId).toBe("server-B")
 	end)
 
+	it("keeps waiting while a crashed server's lock ages and takes over once it is stale", function(ctx)
+		local h = ctx.harness
+		h.backend:poke(STORE, KEY, {
+			Schema = 2,
+			Data = { Version = 2, Currencies = { Sparks = 0, Gems = 21, Prisms = 0 } },
+			Lock = { JobId = "crashed-server", PlaceId = 1, Time = h.scheduler:unixTime() - 100 },
+		})
+		local b = Game.server(ctx, { jobId = "server-B" })
+		local bAlice = h:addPlayer(b, { userId = USER, name = "Alice" })
+		h:advance(30)
+		ctx.expect(Game.profile(b, bAlice)).toBeNil()
+		h:advance(40)
+		ctx.expect(kickedWith(b, USER, ".")).toBe(false)
+		ctx.expect(Game.data(b, bAlice).Currencies.Gems).toBe(21)
+		ctx.expect(h.backend:peek(STORE, KEY).Lock.JobId).toBe("server-B")
+	end)
+
 	it("stops saving and removes the player if another server took the lock", function(ctx)
 		local h = ctx.harness
 		ctx.allowScriptErrors()
@@ -191,6 +211,23 @@ describe("Session locking", function()
 		local after = h.backend:peek(STORE, KEY)
 		ctx.expect(after.Data.Currencies.Gems).toBe(500)
 		ctx.expect(after.Lock.JobId).toBe("server-Z")
+	end)
+
+	it("never writes over data another server saved and released after taking over", function(ctx)
+		local h = ctx.harness
+		local a = Game.server(ctx, { jobId = "server-A" })
+		local alice = Game.join(ctx, a, USER, "Alice")
+		Game.data(a, alice).Currencies.Gems = 1
+		-- Server B took the (stale) lock, saved newer progress and released it.
+		local record = h.backend:peek(STORE, KEY)
+		record.Lock = nil
+		record.Data = { Version = 2, Currencies = { Sparks = 0, Gems = 777, Prisms = 0 } }
+		h.backend:poke(STORE, KEY, record)
+		h:removePlayer(alice)
+		h:advance(10)
+		local after = h.backend:peek(STORE, KEY)
+		ctx.expect(after.Data.Currencies.Gems).toBe(777)
+		ctx.expect(after.Lock).toBeNil()
 	end)
 end)
 

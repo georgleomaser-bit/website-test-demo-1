@@ -133,13 +133,26 @@ function Inventory.new(ctx)
 		Padding = 14,
 		Parent = body,
 	})
-	local dIcon = UI.label({ Text = "", TextSize = 56, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 70), Parent = detail })
-	local dName = UI.label({ Text = "Select an item", Font = F.Heading, TextSize = 20, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 72), Parent = detail })
-	local dSub = UI.label({ Text = "", TextSize = 13, TextColor3 = C.TextDim, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 98), Parent = detail })
-	local dEffect = UI.label({ Text = "", Font = F.Bold, TextSize = 15, TextColor3 = C.Accent2, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 20), Position = UDim2.fromOffset(0, 122), Parent = detail })
-	local dCopies = UI.label({ Text = "", TextSize = 13, TextColor3 = C.TextDim, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 34), Position = UDim2.fromOffset(0, 144), Parent = detail })
-	local dDesc = UI.label({ Text = "", TextSize = 13, TextColor3 = C.TextDim, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 180), Parent = detail })
-	local dValue = UI.label({ Text = "", TextSize = 13, TextColor3 = C.Gems, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.fromOffset(0, 218), Parent = detail })
+	-- Item info scrolls above the fixed action buttons, so short windows never overlap them.
+	local info = UI.scroll({
+		Name = "Info",
+		Size = UDim2.new(1, 0, 1, -138),
+		List = { Dir = "Y", Pad = 2, HA = "Center" },
+		Parent = detail,
+	})
+	local function infoLabel(order: number, props: { [string]: any }): TextLabel
+		props.LayoutOrder = order
+		props.TextXAlignment = Enum.TextXAlignment.Center
+		props.Parent = info
+		return UI.label(props)
+	end
+	local dIcon = infoLabel(1, { Text = "", TextSize = 56, Size = UDim2.new(1, 0, 0, 70) })
+	local dName = infoLabel(2, { Text = "Select an item", Font = F.Heading, TextSize = 20, Size = UDim2.new(1, 0, 0, 24) })
+	local dSub = infoLabel(3, { Text = "", TextSize = 13, TextColor3 = C.TextDim, Size = UDim2.new(1, 0, 0, 18) })
+	local dEffect = infoLabel(4, { Text = "", Font = F.Bold, TextSize = 15, TextColor3 = C.Accent2, Size = UDim2.new(1, 0, 0, 22) })
+	local dCopies = infoLabel(5, { Text = "", TextSize = 13, TextColor3 = C.TextDim, TextWrapped = true, Size = UDim2.new(1, -6, 0, 16), AutomaticSize = Enum.AutomaticSize.Y })
+	local dDesc = infoLabel(6, { Text = "", TextSize = 13, TextColor3 = C.TextDim, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Size = UDim2.new(1, -6, 0, 16), AutomaticSize = Enum.AutomaticSize.Y })
+	local dValue = infoLabel(7, { Text = "", TextSize = 13, TextColor3 = C.Gems, Size = UDim2.new(1, 0, 0, 18) })
 	local actions = UI.frame({ Size = UDim2.new(1, 0, 0, 132), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = detail })
 
 	local equipButton, favButton, sellOne, sellExtra, sellAll
@@ -284,6 +297,10 @@ function Inventory.new(ctx)
 			Parent = slotRow,
 		})
 		local stroke = UI.stroke(slot, { Color = C.StrokeSoft, Thickness = 1.5 })
+		-- Slots share the row width (sized in renderEquipBar) and stay square, at most 62 px.
+		local aspect = Instance.new("UIAspectRatioConstraint")
+		aspect.AspectRatio = 1
+		aspect.Parent = slot
 		slot.Activated:Connect(function()
 			local id = (State.get("Equipped") or {})[i]
 			if id then
@@ -425,6 +442,7 @@ function Inventory.new(ctx)
 			local id = equippedList[i]
 			local item = id and Items.ById[id]
 			slot.Button.Visible = i <= slots
+			slot.Button.Size = UDim2.new(1 / slots, -6, 0, 62)
 			slot.Button.Text = if item then item.Icon else "+"
 			slot.Button.TextColor3 = if item then C.White else C.TextMuted
 			slot.Stroke.Color = if item then Theme.rarityColor(item.Rarity) else C.StrokeSoft

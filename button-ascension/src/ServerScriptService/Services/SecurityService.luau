@@ -6,13 +6,17 @@
 	actions, click floods, unauthorised admin requests). Flags are kept in a
 	bounded in-memory ring buffer that the Admin Panel can display, and are
 	written to the server output with rate limiting so a flood cannot spam
-	the logs. Nothing here punishes players automatically; admins decide.
+	the logs. Repeats of the same reason from the same player within
+	MERGE_SECONDS update one entry, so a single flooder cannot push everyone
+	else's flags out of the buffer. Nothing here punishes players
+	automatically; admins decide.
 ]]
 
 local Players = game:GetService("Players")
 
 local MAX_RECENT = 300
 local OUTPUT_PER_MINUTE = 6
+local MERGE_SECONDS = 30
 
 local SecurityService = {
 	Name = "SecurityService",
@@ -22,6 +26,8 @@ local SecurityService = {
 }
 
 local outputBudget: { [number]: { count: number, windowStart: number } } = {}
+-- Newest buffer entry per "userId:reason", for merging repeats.
+local lastEntry: { [string]: any } = {}
 
 function SecurityService:Init(services)
 	self.Services = services
@@ -43,17 +49,31 @@ local function record(self, player: Player, severity: string, reason: string, de
 		return
 	end
 	self.TotalFlags += 1
-	local entry = {
-		Time = os.time(),
-		UserId = userId,
-		Name = player.Name,
-		Reason = reason,
-		Detail = string.sub(tostring(detail), 1, 120),
-		Count = counts[reason],
-	}
-	table.insert(self.Recent, entry)
-	if #self.Recent > MAX_RECENT then
-		table.remove(self.Recent, 1)
+	local key = `{userId}:{reason}`
+	local entry = lastEntry[key]
+	local nowUnix = os.time()
+	if entry and nowUnix - entry.Time <= MERGE_SECONDS then
+		entry.Time = nowUnix
+		entry.Detail = string.sub(tostring(detail), 1, 120)
+		entry.Count = counts[reason]
+	else
+		entry = {
+			Time = nowUnix,
+			UserId = userId,
+			Name = player.Name,
+			Reason = reason,
+			Detail = string.sub(tostring(detail), 1, 120),
+			Count = counts[reason],
+		}
+		lastEntry[key] = entry
+		table.insert(self.Recent, entry)
+		if #self.Recent > MAX_RECENT then
+			local removed = table.remove(self.Recent, 1)
+			local removedKey = `{removed.UserId}:{removed.Reason}`
+			if lastEntry[removedKey] == removed then
+				lastEntry[removedKey] = nil
+			end
+		end
 	end
 
 	local now = os.clock()

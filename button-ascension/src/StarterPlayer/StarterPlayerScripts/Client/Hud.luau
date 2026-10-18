@@ -191,7 +191,9 @@ function Hud.init(ctx)
 		Parent = layer,
 	})
 	Hud.Rail = rail
-	addScale(rail)
+	-- Scaled separately in Hud.layout so the rail always fits below the Roblox top bar.
+	Hud.RailScale = Instance.new("UIScale")
+	Hud.RailScale.Parent = rail
 	Hud.NavButtons = {}
 	for index, nav in ipairs(NAV) do
 		local button = UI.new("TextButton", {
@@ -459,11 +461,13 @@ end
 function Hud.layout()
 	local v = UI.viewport()
 	local compact = UI.isCompact()
-	local scale = math.clamp(math.min(v.X / 1280, v.Y / 720), 0.55, 1.25)
+	local fit = math.min(v.X / 1280, v.Y / 720)
+	local base = math.clamp(fit, 0.55, 1.25)
 	if compact then
-		scale = math.max(scale, 0.62)
+		base = math.max(base, 0.62)
 	end
-	scale *= Theme.UserScale
+	-- The UI Scale setting may always shrink the HUD, but only enlarge it while it still fits.
+	local scale = math.min(base * Theme.UserScale, math.max(base, fit))
 	for _, s in ipairs(scales) do
 		s.Scale = scale
 	end
@@ -475,7 +479,11 @@ function Hud.layout()
 		nav.Text.Visible = not compact
 		nav.Button.Size = UDim2.fromOffset(if compact then 58 else 72, buttonHeight)
 	end
-	Hud.Rail.Size = UDim2.fromOffset(84, #NAV * (buttonHeight + 6))
+	local railHeight = #NAV * (buttonHeight + 6)
+	Hud.Rail.Size = UDim2.fromOffset(84, railHeight)
+	-- Centre the rail in the area below the inset and shrink it if it would not fit there.
+	Hud.Rail.Position = UDim2.new(0, 14, 0.5, inset.Y / 2)
+	Hud.RailScale.Scale = math.min(scale, math.max(0.3, (v.Y - inset.Y - 16) / railHeight))
 	Hud.RateLabel.Visible = not compact
 	Hud.Right.Visible = not compact
 	Hud.SideToggle.Visible = compact
@@ -694,7 +702,7 @@ function Hud.refreshBadges()
 		questCount += 1
 	end
 	local daily = State.get("Daily")
-	if daily and daily.LastClaimDay ~= Util.dayNumber(os.time()) then
+	if daily and daily.LastClaimDay ~= Util.dayNumber(Util.serverTime()) then
 		questCount += 1
 	end
 	setBadge("Quests", questCount)

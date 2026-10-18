@@ -134,6 +134,11 @@ describe("Interface", function()
 		h:click(toggle)
 		h:advance(2)
 		ctx.expect(Game.data(server, player).Settings.ReducedMotion).toBe(true)
+		-- The interface size applies on release / − + presses rather than mid-drag.
+		local sizeRow = h:findByText(window, "Interface size", "TextLabel").Parent
+		h:click(h:findByText(sizeRow, "+", "TextButton"))
+		h:advance(2)
+		ctx.expect(Game.data(server, player).Settings.UIScale).toBeGreaterThan(1)
 	end)
 end)
 
@@ -141,6 +146,10 @@ describe("Devices", function()
 	it("uses the compact layout on a phone with touch input", function(ctx)
 		local h = ctx.harness
 		local _, _, _, gui = boot(ctx, { viewport = roblox.Vector2.new(844, 390), input = { touch = true, keyboard = false, mouse = false } })
+		-- The whole navigation rail fits between the Roblox top bar (58 px in the harness) and the bottom.
+		local rail = h:findDescendant(gui, "NavRail", "Frame")
+		local railScale = rail:FindFirstChildOfClass("UIScale")
+		ctx.expect(rail.Size.Y.Offset * railScale.Scale).toBeLessThanOrEqual(390 - 58)
 		local right = h:findDescendant(gui, "RightColumn", "Frame")
 		ctx.expect(right.Visible).toBe(false)
 		local toggle = h:findDescendant(gui, "SideToggle", "TextButton")

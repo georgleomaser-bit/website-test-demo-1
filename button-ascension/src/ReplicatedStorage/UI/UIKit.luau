@@ -261,7 +261,9 @@ function UI.fitScale(width: number, height: number, marginX: number?, marginY: n
 	local v = UI.viewport()
 	local sx = (v.X * (marginX or 0.94)) / width
 	local sy = (v.Y * (marginY or 0.88)) / height
-	return math.clamp(math.min(sx, sy, 1.15) * Theme.UserScale, 0.45, 1.6)
+	local fits = math.min(sx, sy)
+	-- The UI Scale setting may shrink windows freely but never push them off-screen.
+	return math.clamp(math.min(math.min(fits, 1.15) * Theme.UserScale, fits), 0.45, 1.6)
 end
 
 local overlayGui: ScreenGui? = nil
@@ -638,7 +640,8 @@ end
 
 --[[
 	Slider with − / + buttons (for gamepad and precise input).
-	props: Min, Max, Step, Value, OnChange(value), Format(value) -> string, Width
+	props: Min, Max, Step, Value, OnChange(value), OnCommit(value), Format(value) -> string, Width
+	OnChange fires continuously while dragging; OnCommit once the drag ends or a − / + press lands.
 ]]
 function UI.slider(props: { [string]: any })
 	local min, max, step = props.Min or 0, props.Max or 1, props.Step or 0.05
@@ -716,6 +719,11 @@ function UI.slider(props: { [string]: any })
 		return value
 	end
 	local dragging = false
+	local function commit()
+		if props.OnCommit then
+			props.OnCommit(value)
+		end
+	end
 	local function fromInput(x: number)
 		local absPos = track.AbsolutePosition.X
 		local absSize = math.max(1, track.AbsoluteSize.X)
@@ -733,8 +741,9 @@ function UI.slider(props: { [string]: any })
 		end
 	end)
 	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 			dragging = false
+			commit()
 		end
 	end)
 	minus = UI.button({
@@ -746,6 +755,7 @@ function UI.slider(props: { [string]: any })
 		TextSize = 18,
 		OnClick = function()
 			set(value - step, true)
+			commit()
 		end,
 		Parent = root,
 	})
@@ -758,6 +768,7 @@ function UI.slider(props: { [string]: any })
 		TextSize = 18,
 		OnClick = function()
 			set(value + step, true)
+			commit()
 		end,
 		Parent = root,
 	})
@@ -771,7 +782,8 @@ function UI.segmented(props: { [string]: any })
 	local root = UI.new("Frame", {
 		Name = props.Name or "Segmented",
 		BackgroundColor3 = C.BackgroundAlt,
-		Size = props.Size or UDim2.fromOffset(#props.Options * (props.ButtonWidth or 70) + 8, 34),
+		-- Buttons + 4 px gaps between them + 4 px padding on each side.
+		Size = props.Size or UDim2.fromOffset(#props.Options * (props.ButtonWidth or 70) + (#props.Options - 1) * 4 + 8, 34),
 		Position = props.Position,
 		AnchorPoint = props.AnchorPoint,
 		LayoutOrder = props.LayoutOrder,
@@ -1123,9 +1135,11 @@ function UI.window(props: { [string]: any })
 		if t then
 			t.Completed:Wait()
 		end
-		if not open then
-			root.Visible = false
+		-- Reopened during the close animation: stay open and don't report a close.
+		if open then
+			return
 		end
+		root.Visible = false
 		window.Closed:Fire()
 		if props.OnClose then
 			props.OnClose()

@@ -241,7 +241,9 @@ function ChestsScreen.new(ctx)
 				})
 			end
 			add(UI.label({
-				Text = `You own {owned} · Balance {icon} {Format.short(balance)}` .. (if discount > 0 then ` · {Format.pct(discount)} discount` else ""),
+				Text = `You own {owned} · Balance {icon} {Format.short(balance)}`
+					.. (if discount > 0 and chest.Currency == "Sparks" then ` · {Format.pct(math.min(0.6, discount))} discount` else "")
+					.. (if chest.Currency ~= "Sparks" then " · no discounts or bonus drops on Gem crates" else ""),
 				TextColor3 = C.TextDim,
 				TextSize = 13,
 				Size = UDim2.new(1, 0, 0, 18),
@@ -376,7 +378,7 @@ function ChestsScreen.new(ctx)
 			updateAffordability()
 		end)
 	end)
-	State.subscribe({ "Chests", "Pity", "Discovered", "Derived", "Progress" }, function()
+	local function scheduleRefresh()
 		if pending or not window.IsOpen() then
 			return
 		end
@@ -385,6 +387,16 @@ function ChestsScreen.new(ctx)
 			pending = false
 			screen.Refresh()
 		end)
+	end
+	State.subscribe({ "Chests", "Pity", "Discovered", "Derived" }, scheduleRefresh)
+	-- Progress changes with every XP gain; only an Ascension can unlock a crate.
+	local lastRebirths = nil
+	State.subscribe("Progress", function()
+		local rebirths = State.progress().Rebirths
+		if rebirths ~= lastRebirths then
+			lastRebirths = rebirths
+			scheduleRefresh()
+		end
 	end)
 	window.Opened.Event:Connect(screen.Refresh)
 

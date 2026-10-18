@@ -13,6 +13,7 @@
 		backend = Backend?,           -- DataStores/Messaging/TextService (servers)
 		isStudio = false,
 		jobId = "...", placeId = 0, creatorId = 0,
+		creatorType = Enum.CreatorType?, group = { ownerId, delay, failures }?,
 		seed = 1,                     -- math.random / Random.new() determinism
 		input = { touch, keyboard, mouse, gamepad },  -- client input capabilities
 		quiet = true,                 -- false echoes print/warn to stdout
@@ -51,6 +52,9 @@ function World.new(options)
 	self.jobId = options.jobId or (if self.isStudio then "" else string.format("job-%04d", worldCounter))
 	self.placeId = options.placeId or (if self.isStudio then 0 else 1000001)
 	self.creatorId = options.creatorId or 1
+	-- GroupService mock: { ownerId = number?, delay = seconds?, failures = count? }
+	self.group = options.group or {}
+	self.groupInfoCalls = 0
 	self.quiet = options.quiet ~= false
 	self.closed = false
 	self.services = {}

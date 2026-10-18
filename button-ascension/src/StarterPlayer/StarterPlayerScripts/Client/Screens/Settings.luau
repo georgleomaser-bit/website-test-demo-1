@@ -64,19 +64,25 @@ function SettingsScreen.new(ctx)
 		end
 	end
 
-	local function row(label: string, hint: string?): Frame
+	-- reserve: width kept free on the right for the row's control (default fits a slider).
+	local function row(label: string, hint: string?, reserve: number?): Frame
 		order += 1
+		local free = -((reserve or 330) + 28)
 		local frame = UI.panel({ Size = UDim2.new(1, 0, 0, if hint then 62 else 50), BackgroundColor3 = C.PanelLight, LayoutOrder = order, Parent = list })
-		UI.label({ Text = label, Font = F.Bold, TextSize = 16, Size = UDim2.new(0.5, 0, 0, 22), Position = UDim2.fromOffset(16, if hint then 9 else 14), Parent = frame })
+		UI.label({ Text = label, Font = F.Bold, TextSize = 16, Size = UDim2.new(1, free, 0, 22), Position = UDim2.fromOffset(16, if hint then 9 else 14), Parent = frame })
 		if hint then
-			UI.label({ Text = hint, TextSize = 12, TextColor3 = C.TextMuted, TextWrapped = true, Size = UDim2.new(0.55, 0, 0, 26), Position = UDim2.fromOffset(16, 31), Parent = frame })
+			UI.label({ Text = hint, TextSize = 12, TextColor3 = C.TextMuted, TextWrapped = true, Size = UDim2.new(1, free, 0, 26), Position = UDim2.fromOffset(16, 31), Parent = frame })
 		end
 		return frame
 	end
 
-	local function sliderRow(key: string, label: string, hint: string?, format: (number) -> string, step: number)
+	-- commitOnly: apply when the drag ends instead of live (for settings that move the slider itself).
+	local function sliderRow(key: string, label: string, hint: string?, format: (number) -> string, step: number, commitOnly: boolean?)
 		local def = GameConfig.Settings[key]
 		local frame = row(label, hint)
+		local function apply(v: number)
+			send(key, v)
+		end
 		controls[key] = UI.slider({
 			Min = def.Min,
 			Max = def.Max,
@@ -86,9 +92,8 @@ function SettingsScreen.new(ctx)
 			AnchorPoint = Vector2.new(1, 0.5),
 			Position = UDim2.new(1, -12, 0.5, 0),
 			Format = format,
-			OnChange = function(v)
-				send(key, v)
-			end,
+			OnChange = if commitOnly then nil else apply,
+			OnCommit = if commitOnly then apply else nil,
 			Parent = frame,
 		})
 	end
@@ -118,20 +123,22 @@ function SettingsScreen.new(ctx)
 		0.05
 	)
 	sliderRow("SFX", "Sound effects", nil, percent, 0.05)
-	sliderRow("UIScale", "Interface size", "Scales the whole interface.", function(v)
+	-- Rescaling while dragging would move the slider under the pointer, so it applies on release.
+	sliderRow("UIScale", "Interface size", "Scales the whole interface. Applies when you let go.", function(v)
 		return string.format("%.2f×", v)
-	end, 0.05)
+	end, 0.05, true)
 	sliderRow("BackgroundDim", "Background dim", "Darkens the world behind the interface.", percent, 0.05)
 	toggleRow("ReducedMotion", "Reduced motion", "Turns off shaking, particles and most animations.")
 	toggleRow("ScreenShake", "Screen shake on crits")
 	toggleRow("FloatingNumbers", "Floating reward numbers")
 	toggleRow("ConfirmRareSales", "Confirm selling Epic or better")
 
-	local autoFrame = row("Auto-sell duplicates", "Duplicates up to this rarity are sold for Gems the moment you open them.")
 	local autoOptions = { { Id = 0, Text = "Off" } }
 	for i = 1, GameConfig.Inventory.AutoSellMaxIndex do
 		table.insert(autoOptions, { Id = i, Text = Rarities.Order[i] })
 	end
+	local autoWidth = #autoOptions * 84 + (#autoOptions - 1) * 4 + 8
+	local autoFrame = row("Auto-sell duplicates", "Duplicates up to this rarity are sold for Gems the moment you open them.", autoWidth)
 	controls.AutoSell = UI.segmented({
 		Options = autoOptions,
 		Value = 0,

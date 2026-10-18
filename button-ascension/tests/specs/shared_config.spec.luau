@@ -164,6 +164,75 @@ describe("Loot", function()
 	end)
 end)
 
+describe("Economy invariants", function()
+	it("never lets a Gem-priced crate be resold for more Gems than it costs, even fully maxed", function(ctx)
+		local world = sharedWorld(ctx)
+		local Chests = req(world, "Config.Chests")
+		local Items = req(world, "Config.Items")
+		local Upgrades = req(world, "Config.Upgrades")
+		local Skills = req(world, "Config.Skills")
+		local Ascension = req(world, "Config.Ascension")
+		local GameConfig = req(world, "Config.GameConfig")
+		local Formulas = req(world, "Formulas")
+		local Loot = req(world, "Loot")
+
+		-- Every upgrade, skill and perk maxed, the strongest luck and gem items equipped
+		-- with plenty of copies, and every event running at once.
+		local data = { Rebirths = 1000, Upgrades = {}, Skills = {}, Ascension = {}, Inventory = {}, Equipped = {}, Discovered = {} }
+		for _, def in ipairs(Upgrades.List) do
+			data.Upgrades[def.Id] = def.MaxLevel
+		end
+		for _, def in ipairs(Skills.List) do
+			data.Skills[def.Id] = def.MaxRank
+		end
+		for _, def in ipairs(Ascension.List) do
+			data.Ascension[def.Id] = def.MaxLevel
+		end
+		local candidates = {}
+		for _, item in ipairs(Items.List) do
+			local stat = GameConfig.ItemStats[item.Stat].Stat
+			if stat == "luck" or stat == "gemsPct" then
+				table.insert(candidates, item)
+			end
+		end
+		table.sort(candidates, function(a, b)
+			return a.Bonus > b.Bonus
+		end)
+		for i = 1, math.min(GameConfig.Equip.MaxSlots, #candidates) do
+			data.Equipped[i] = candidates[i].Id
+			data.Inventory[candidates[i].Id] = 1000
+		end
+		local events = {}
+		for id in pairs(GameConfig.Events.Definitions) do
+			table.insert(events, id)
+		end
+		local stats = Formulas.computeStats(data, { Events = events })
+		ctx.expect(stats.luck).toBeGreaterThan(0)
+
+		local checked = 0
+		for _, chest in ipairs(Chests.List) do
+			if chest.Currency == "Gems" then
+				checked += 1
+				-- No discounts or bonus drops apply to Gem crates.
+				ctx.expect(Formulas.chestPrice(chest, 0.6)).toBe(chest.Price)
+				ctx.expect(Formulas.chestBonusChance(chest, 0.75)).toBe(0)
+				-- Conservative: value every rarity at its most valuable item.
+				local expected = 0
+				for _, entry in ipairs(Loot.effectiveWeights(chest, stats.luck)) do
+					local best = 0
+					for _, itemId in ipairs(Items.PoolByChest[chest.Id][entry.Rarity]) do
+						best = math.max(best, Formulas.sellValue(Items.ById[itemId], 1, stats.gemMultiplier))
+					end
+					expected += entry.Chance * best
+				end
+				print(`    {chest.Id}: resale ≤ {math.floor(expected)} of {chest.Price} Gems (luck +{math.floor(stats.luck * 100)}%, gems ×{stats.gemMultiplier})`)
+				ctx.expect(expected).toBeLessThan(chest.Price)
+			end
+		end
+		ctx.expect(checked).toBeGreaterThan(0)
+	end)
+end)
+
 describe("Formulas and Format", function()
 	it("computes finite stats for fresh and heavily progressed players", function(ctx)
 		local world = sharedWorld(ctx)

@@ -412,8 +412,15 @@ end
 
 -- Crates ---------------------------------------------------------------------------
 
+-- Discounts apply to Sparks crates only (Gem crates must not become cheaper than their resale).
 function Formulas.chestPrice(chest, discount: number): number
-	return math.ceil(chest.Price * (1 - math.min(0.6, discount)))
+	local d = if chest.Currency == "Sparks" then math.min(0.6, discount) else 0
+	return math.ceil(chest.Price * (1 - d))
+end
+
+-- Bonus-drop chance for a crate (Sparks crates only, for the same reason).
+function Formulas.chestBonusChance(chest, chestBonus: number): number
+	return if chest.Currency == "Sparks" then chestBonus else 0
 end
 
 function Formulas.chestUnlocked(chest, data): boolean

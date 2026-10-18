@@ -2,7 +2,7 @@
 
 Testing has two layers:
 
-1. **Automated:** 96 tests that run the real game scripts in a headless
+1. **Automated:** 103 tests that run the real game scripts in a headless
    Roblox simulation, plus static type checking. They run without Roblox
    Studio, in under a minute.
 2. **Manual:** a checklist for things that need the real engine (rendering,
@@ -15,7 +15,7 @@ Testing has two layers:
 | Static type check against the Roblox API definitions (luau-lsp 1.70, `globalTypes.d.luau`) | `luau-lsp analyze --definitions=globalTypes.d.luau --sourcemap=sourcemap.json src` | **0 errors, 0 warnings** |
 | Every file compiles (luau-compile) | `luau-compile --text <file>` | **all 87 scripts compile** |
 | Rojo build | `rojo build default.project.json -o build/ButtonAscension.rbxlx` | **builds**; 1 Script, 2 LocalScripts, 84 ModuleScripts, 11 Folders |
-| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **96 passed, 0 failed** |
+| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **103 passed, 0 failed** |
 
 ### How the headless tests work
 
@@ -44,6 +44,9 @@ Details: [`tests/README.md`](../tests/README.md).
 - makes the place creator Owner in live servers and nobody else
 - rejects every request from a normal player, however it is forged
 - rejects malformed and duplicate requests from staff
+**Group-owned places**
+- asks Roblox once when several players join together and still finds the owner
+- retries a failed group lookup instead of locking the owner out
 **Roles and permissions**
 - gives Owner, Admin and Moderator different powers
 - protects staff of equal or higher rank from punitive actions
@@ -53,6 +56,7 @@ Details: [`tests/README.md`](../tests/README.md).
 - grants upgrades, skills, ascensions, levels and skill points
 **Confirmation of destructive actions**
 - requires a single-use token from the same admin before resetting
+- keeps a confirmation bound to the player it was issued for
 - resets a chosen progression scope only after confirmation
 **Player management**
 - freezes, unfreezes, teleports, respawns and kicks with a reason
@@ -64,6 +68,7 @@ Details: [`tests/README.md`](../tests/README.md).
 **Announcements and events**
 - filters announcements, labels the scope and delivers game-wide ones to other servers
 - starts and stops server events that change player stats
+
 #### Suite: client
 **Interface**
 - boots without errors, hides the loading screen and presses through the big button
@@ -77,16 +82,19 @@ Details: [`tests/README.md`](../tests/README.md).
 - presses the button with a controller trigger
 **Admin panel client**
 - boots for an Owner and runs a command from the command bar
+
 #### Suite: fuzz
 **Fuzzing**
 - survives random payloads on every player action without throwing or granting anything
 - survives random admin payloads from staff and outsiders
+
 #### Suite: gameplay
 **New player**
 - gets default data, leaderstats, daily quests and a full snapshot
 **Pressing**
 - awards server-computed Sparks, XP and stats and ignores forged arguments
 - caps instant click floods with the token bucket and flags them
+- bursts a streak only every 50 chained presses, even once the combo is capped
 - ignores presses before the profile has loaded
 **Upgrades**
 - rejects purchases without funds, unknown ids, bad amounts and locked tiers
@@ -114,6 +122,7 @@ Details: [`tests/README.md`](../tests/README.md).
 **Settings and request validation**
 - validates every setting and rejects unknown actions
 - rate limits action spam
+
 #### Suite: harness_selftest
 **Instances**
 - reports Roblox-style errors for invalid members, types and classes
@@ -137,11 +146,13 @@ Details: [`tests/README.md`](../tests/README.md).
 - only replicates a PlayerGui to its owner and starts LocalScripts placed there
 - delivers MessagingService messages between servers
 - filters text and runs BindToClose on shutdown
+
 #### Suite: multiplayer
 **Multiplayer**
 - keeps each player's data isolated
 - runs 8 players with full collections and auto-presses for 3 minutes
 - shares server activity with every client
+
 #### Suite: persistence
 **Saving**
 - saves on leave, releases the lock and restores the data in another server
@@ -156,7 +167,9 @@ Details: [`tests/README.md`](../tests/README.md).
 - refuses a second server while the first holds a fresh lock
 - waits for the other server to finish saving, then loads the newest data
 - takes over a stale lock left behind by a crashed server
+- keeps waiting while a crashed server's lock ages and takes over once it is stale
 - stops saving and removes the player if another server took the lock
+- never writes over data another server saved and released after taking over
 **Schema and validation**
 - migrates version 1 data to the current schema
 - sanitises tampered or corrupted values
@@ -164,6 +177,7 @@ Details: [`tests/README.md`](../tests/README.md).
 - refuses to overwrite an unreadable record
 **Offline earnings**
 - grants a capped share of passive income for time away
+
 #### Suite: shared_config
 **Configuration**
 - loads every config module
@@ -173,6 +187,8 @@ Details: [`tests/README.md`](../tests/README.md).
 - normalises effective weights for any luck value
 - matches expected odds over 20,000 simulated openings per crate
 - guarantees Legendary or better when the pity threshold is reached
+**Economy invariants**
+- never lets a Gem-priced crate be resold for more Gems than it costs, even fully maxed
 **Formulas and Format**
 - computes finite stats for fresh and heavily progressed players
 - computes stats from the server's default player data
@@ -190,6 +206,58 @@ Details: [`tests/README.md`](../tests/README.md).
   top-left corner and would push the Admin button off-screen on large
   displays. Scaling now happens per anchored element. This one was found in
   review, because the harness doesn't simulate layout.
+
+### Found in an independent code review and fixed
+
+A separate review pass read the whole codebase looking for exploits and
+edge cases. Each fix that can be simulated has a regression test that fails
+on the old code.
+
+* **Gem loop (economy).** Prism Cache drops resold for more Gems than the
+  cache cost, and Gem crates got Spark-crate discounts and bonus drops.
+  Gem-crate items now sell at a 10% factor, and discounts and bonus drops
+  apply to Spark crates only. A test maxes every bonus and checks that
+  resale stays below the price (worst case: 36 of 120 Gems).
+* **Session lock wait.** A second server gave up after about 30 seconds,
+  long before a crashed server's lock goes stale (150 s), and kicked the
+  player. Loading now waits until the lock is stale (plus 15 s) and then
+  takes it over.
+* **Overlapping saves.** Autosave, a manual save and the leave/shutdown save
+  could run at the same time, and a save after release could re-lock the
+  record. Saves are now serialised and coalesced. Nothing is written after
+  release, and a missing lock during any save (including the final one)
+  counts as lost, so newer data saved by another server is never overwritten.
+* **Confirmations followed names.** A confirmed admin action re-resolved the
+  target by name, so it could hit someone else who joined with a matching
+  name. The token now stores the resolved UserId.
+* **Ascension grants.** `progression.grantRebirth` wipes a player's run but
+  needed no confirmation and ignored rank protection. It is now both
+  Destructive (confirmation) and Punitive (rank protection).
+* **Streak bursts at the combo cap.** Once the combo reached its hard limit,
+  every press triggered a streak burst. Streaks now use their own unclamped
+  counter.
+* **Daily quest targets.** Targets were scaled with event/Frenzy-boosted
+  stats if a boost was running at reset. They now use base stats.
+* **Group-owned places.** Concurrent joins raced the group-owner lookup, and
+  a failed lookup was cached as "not staff". Callers now wait for the one
+  lookup in flight. Failures are retried, never cached, and the panel is
+  delivered once the lookup succeeds.
+* **Security log flooding.** One player could fill the 300-entry flag buffer
+  and push out everyone else's flags. Repeats of the same reason within 30
+  seconds now update one entry.
+* **UI fixes (found by reading the layout code).**
+  * The navigation rail now always fits below the Roblox top bar.
+  * The UI Scale setting can no longer push windows or the HUD off-screen.
+  * The Inventory details panel scrolls instead of overlapping its buttons.
+  * Equip slots share the row width when 8 are unlocked.
+  * Large crate openings use smaller cards.
+  * Opening effects draw above the reveal.
+  * Segmented controls are sized correctly.
+  * The loading screen blocks input.
+  * The interface-size slider applies on release.
+  * A window reopened during its close animation stays open.
+  * The daily badge and timers use the server clock.
+  * The crate screen no longer rebuilds on every XP gain.
 
 ## Manual checklist (Roblox Studio)
 
@@ -280,7 +348,7 @@ the manual pass confirms them in the real engine.
 
 ### Results of this build
 
-* All automated checks above pass (96/96 tests, a clean type check, Rojo
+* All automated checks above pass (103/103 tests, a clean type check, Rojo
   builds).
 * The manual Studio checklist has **not** been run as part of this
   delivery; no Roblox Studio was available in the build environment. The

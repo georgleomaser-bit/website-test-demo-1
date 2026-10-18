@@ -135,6 +135,8 @@ WorldFx.init(ctx)
 local loading = UI.frame({ Name = "Loading", ZIndex = 200, Parent = layers.Overlay })
 loading.BackgroundTransparency = 0
 loading.BackgroundColor3 = C.Background
+-- Swallow input so presses can't reach the button and HUD hidden behind it.
+loading.Active = true
 local title = UI.label({
 	Text = string.upper(GameConfig.GameName),
 	Font = Theme.Fonts.Display,

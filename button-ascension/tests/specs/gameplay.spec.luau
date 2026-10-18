@@ -67,6 +67,22 @@ describe("Pressing", function()
 		ctx.expect(security:GetCounts(player.UserId).ClickFlood or 0).toBeGreaterThanOrEqual(1)
 	end)
 
+	it("bursts a streak only every 50 chained presses, even once the combo is capped", function(ctx)
+		local server, player = setup(ctx)
+		local data = Game.data(server, player)
+		local rt = Game.profile(server, player).Runtime
+		local CLICK = Game.shared(server, "Config.GameConfig").Click
+		-- Pretend a very long chain already hit the hard combo limit.
+		rt.Combo = CLICK.HardComboLimit
+		rt.StreakCount = 0
+		rt.LastClick = math.huge
+		Game.press(ctx, server, player, CLICK.StreakEvery - 1)
+		ctx.expect(rt.Combo).toBe(CLICK.HardComboLimit)
+		ctx.expect(data.Stats.StreakBursts).toBe(0)
+		Game.press(ctx, server, player, 1)
+		ctx.expect(data.Stats.StreakBursts).toBe(1)
+	end)
+
 	it("ignores presses before the profile has loaded", function(ctx)
 		local server = Game.server(ctx)
 		local player = ctx.harness:addPlayer(server, { userId = 1009, name = "Early" })

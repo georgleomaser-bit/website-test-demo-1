@@ -17,8 +17,15 @@ local AdminConfig = require(script.Parent.AdminConfig)
 local AdminPermissions = {}
 
 local roleCache: { [number]: string | false } = {}
-local groupOwnerId: number? = nil
-local groupOwnerChecked = false
+
+local GROUP_RETRY_SECONDS = 30
+local GROUP_WAIT_SECONDS = 30
+local group = {
+	Known = false, -- the lookup succeeded (OwnerId may still be nil for an ownerless group)
+	OwnerId = nil :: number?,
+	Running = false,
+	FailedAt = -math.huge,
+}
 
 local function validRole(role: any): string?
 	if type(role) == "string" and AdminConfig.Roles[role] then
@@ -30,27 +37,41 @@ local function validRole(role: any): string?
 	return nil
 end
 
-local function lookupGroupOwner(): number?
-	if groupOwnerChecked then
-		return groupOwnerId
-	end
-	groupOwnerChecked = true
+--[[
+	Returns the owning group's owner UserId and whether that answer is known.
+	Concurrent callers wait for the one lookup in flight instead of racing it,
+	and a failed lookup is retried after GROUP_RETRY_SECONDS.
+]]
+local function lookupGroupOwner(): (number?, boolean)
 	if game.CreatorType ~= Enum.CreatorType.Group or not AdminConfig.GroupOwnerIsOwner then
-		return nil
+		return nil, true
 	end
+	local waitUntil = os.clock() + GROUP_WAIT_SECONDS
+	while group.Running and os.clock() < waitUntil do
+		task.wait(0.1)
+	end
+	if group.Known then
+		return group.OwnerId, true
+	end
+	if group.Running or os.clock() - group.FailedAt < GROUP_RETRY_SECONDS then
+		return nil, false
+	end
+	group.Running = true
 	local ok, info = pcall(function()
 		return GroupService:GetGroupInfoAsync(game.CreatorId)
 	end)
-	if ok and type(info) == "table" and type(info.Owner) == "table" and type(info.Owner.Id) == "number" then
-		groupOwnerId = info.Owner.Id
-	else
-		-- Allow a retry later if the lookup failed.
-		groupOwnerChecked = false
+	group.Running = false
+	if ok and type(info) == "table" then
+		group.Known = true
+		group.OwnerId = if type(info.Owner) == "table" and type(info.Owner.Id) == "number" then info.Owner.Id else nil
+		return group.OwnerId, true
 	end
-	return groupOwnerId
+	group.FailedAt = os.clock()
+	warn("[AdminPermissions] Group owner lookup failed; retrying later: " .. tostring(info))
+	return nil, false
 end
 
--- Role for a UserId, or nil for normal players. May yield once (group lookup).
+-- Role for a UserId, or nil for normal players. May yield (group lookup).
 function AdminPermissions.roleForUserId(userId: number): string?
 	local cached = roleCache[userId]
 	if cached ~= nil then
@@ -69,14 +90,24 @@ function AdminPermissions.roleForUserId(userId: number): string?
 	if not role and AdminConfig.AutoOwnerForCreator and game.CreatorType == Enum.CreatorType.User and userId == game.CreatorId and userId > 0 then
 		role = "Owner"
 	end
+	local known = true
 	if not role and game.CreatorType == Enum.CreatorType.Group then
-		local owner = lookupGroupOwner()
+		local owner
+		owner, known = lookupGroupOwner()
 		if owner and owner == userId then
 			role = "Owner"
 		end
 	end
-	roleCache[userId] = role or false
+	-- Never cache "not staff" from a failed group lookup, or the owner stays locked out.
+	if role or known then
+		roleCache[userId] = role or false
+	end
 	return role
+end
+
+-- True while a failed group-owner lookup leaves some roles undecided.
+function AdminPermissions.groupLookupPending(): boolean
+	return game.CreatorType == Enum.CreatorType.Group and AdminConfig.GroupOwnerIsOwner and not group.Known
 end
 
 function AdminPermissions.roleFor(player: Player): string?

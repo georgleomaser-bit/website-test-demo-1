@@ -151,6 +151,14 @@ function AdminService:_onPlayerAdded(player: Player)
 		end
 	end)
 	local role = AdminPermissions.roleFor(player)
+	-- If Roblox could not tell us who owns the group yet, keep asking for a while
+	-- so the group owner still receives the panel.
+	local retries = 0
+	while not role and retries < 6 and player.Parent == Players and AdminPermissions.groupLookupPending() do
+		retries += 1
+		task.wait(35)
+		role = AdminPermissions.roleFor(player)
+	end
 	if role and AdminPermissions.has(role, "panel.open") and player.Parent == Players then
 		self:_givePanel(player)
 		AuditLog.record({
@@ -382,10 +390,16 @@ function AdminService:Execute(admin: Player, role: string, actionName: string, r
 
 	if def.Destructive and not opts.Confirmed then
 		local token = HttpService:GenerateGUID(false)
+		-- Pin the resolved UserId so the confirmation cannot hit a different player
+		-- (for example someone who joins with a matching name before it is confirmed).
+		local pinned = table.clone(clean)
+		if def.Target then
+			pinned.Target = ctx.TargetUserId
+		end
 		confirmTokens[token] = {
 			AdminId = admin.UserId,
 			Action = actionName,
-			Args = clean,
+			Args = pinned,
 			Expires = os.clock() + AdminConfig.ConfirmTokenSeconds,
 		}
 		local summary = if def.Describe then def.Describe(ctx, clean) else `Confirm {actionName}?`

@@ -105,7 +105,7 @@ view of the 3D giant button.
 | 🍀 Prismatic Luck | +10% Luck per level | 🔷 3 | ×1.5 | 20 |
 | 🎒 Deep Pockets | +1 equip slot per level | 🔷 10 | ×3 | 3 |
 | 🔷 Prism Refinery | +10% Prisms per ascension per level | 🔷 4 | ×1.45 | 25 |
-| 🏷️ Crate Broker | −3% crate prices per level | 🔷 5 | ×1.6 | 10 |
+| 🏷️ Crate Broker | −3% Spark crate prices per level | 🔷 5 | ×1.6 | 10 |
 | 🦉 Night Owl | +1 h offline earnings and +5% offline rate per level | 🔷 4 | ×1.7 | 6 |
 | 🔥 Combo Mastery | +20 combo cap per level | 🔷 6 | ×2 | 5 |
 
@@ -157,6 +157,8 @@ skill tree). Pace is controlled by `GameConfig.Rebirth.BaseRequirement` and
   thresholds by 10% per rank. Bonus drops never use or advance pity.
 * **Bonus drops** (Treasure Sense and skills) roll an extra item with the
   same odds.
+* **Gem crates** (the Prism Cache) get no crate discount and no bonus drops;
+  those bonuses apply to Spark crates only.
 * **Every roll happens on the server** with `Random.new()`. The client
   receives only the results, after they have been applied.
 
@@ -174,7 +176,10 @@ skill tree). Pace is controlled by `GameConfig.Rebirth.BaseRequirement` and
 * **Equip slots:** 3 base. Collector's Satchel adds up to +2 and Deep
   Pockets up to +3; the maximum is 8.
 * **Selling** pays Gems: the rarity value (Common 1 … Secret 3,000) × the
-  crate tier factor × the Gem multiplier. Favourite items cannot be sold. The
+  crate tier factor × the Gem multiplier. Items from the Gem-priced Prism
+  Cache use a sell factor of 0.1 instead, so buying caches and selling the
+  drops always loses Gems. Even fully maxed, a cache resells for at most
+  about 36 of its 120 Gems. Favourite items cannot be sold. The
   *auto-sell duplicates* setting sells repeat drops up to a chosen rarity the
   moment they drop.
 * **Collection Book:** +1% Sparks per discovered item. Milestones at 5, 10,

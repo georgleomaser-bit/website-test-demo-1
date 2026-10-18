@@ -150,7 +150,7 @@ for index, row in ipairs(LIST) do
 		Order = index,
 		RarityIndex = rarity.Index,
 		Bonus = rarity.Bonus * chest.TierFactor * statDef.Factor,
-		SellValue = math.max(1, math.floor(rarity.SellGems * chest.TierFactor + 0.5)),
+		SellValue = math.max(1, math.floor(rarity.SellGems * (chest.SellFactor or chest.TierFactor) + 0.5)),
 	}
 	table.insert(Items.List, item)
 	Items.ById[id] = item

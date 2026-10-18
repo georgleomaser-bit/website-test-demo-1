@@ -869,8 +869,18 @@ Instance.define("BadgeService", {
 
 Instance.define("GroupService", {
 	methods = {
-		GetGroupInfoAsync = function(_, id)
-			return { Id = id, Name = "Group " .. tostring(id), Owner = { Id = 1, Name = "Owner" }, Roles = {} }
+		GetGroupInfoAsync = function(self, id)
+			local world = svc(self, "GetGroupInfoAsync").world
+			local group = world.group
+			world.groupInfoCalls += 1
+			if group.delay then
+				world.scheduler:wait(group.delay)
+			end
+			if (group.failures or 0) > 0 then
+				group.failures -= 1
+				error("HTTP 503 (Service Unavailable)", 2)
+			end
+			return { Id = id, Name = "Group " .. tostring(id), Owner = { Id = group.ownerId or 1, Name = "Owner" }, Roles = {} }
 		end,
 		GetGroupsAsync = function()
 			return {}

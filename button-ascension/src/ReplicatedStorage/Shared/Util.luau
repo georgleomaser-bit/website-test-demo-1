@@ -2,7 +2,8 @@
 	Util (ModuleScript)
 	Location: ReplicatedStorage/Shared/Util
 
-	Small pure helpers shared by server and client. No Roblox services.
+	Small pure helpers shared by server and client. No Roblox services
+	(serverTime only reads the synced workspace clock).
 ]]
 
 local Util = {}
@@ -72,6 +73,11 @@ function Util.weightedPick<T>(rng: Random, list: { T }): T
 end
 
 -- Whole UTC day number for a unix timestamp.
+-- Unix time synced to the server clock (a player's device clock can be wrong).
+function Util.serverTime(): number
+	return math.floor(workspace:GetServerTimeNow())
+end
+
 function Util.dayNumber(timestamp: number): number
 	return math.floor(timestamp / 86400)
 end

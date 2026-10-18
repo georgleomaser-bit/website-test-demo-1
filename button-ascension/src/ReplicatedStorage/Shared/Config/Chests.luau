@@ -7,6 +7,10 @@
 	Pity: after N openings of the same crate without a drop of at least the
 	given rarity, the next drop is guaranteed to be that rarity or better.
 
+	Gem-priced crates (Prism Cache) never get crate discounts or bonus drops,
+	and their items use a small SellFactor, so Gems cannot be farmed by
+	buying caches and selling what drops (see docs/GAME_DESIGN.md).
+
 	Item pools are built in Items (each item declares its Chest), so this module
 	has no dependency on Items.
 ]]
@@ -18,6 +22,7 @@ export type Chest = {
 	Order: number,
 	Tier: number,
 	TierFactor: number,
+	SellFactor: number?,
 	Currency: string,
 	Price: number,
 	Stage: number,
@@ -134,6 +139,9 @@ Chests.List = {
 		Order = 7,
 		Tier = 3,
 		TierFactor = 3,
+		-- Items from a Gem-priced crate sell for far less than their equip power
+		-- suggests, so buying caches and selling the drops can never create Gems.
+		SellFactor = 0.1,
 		Currency = "Gems",
 		Price = 120,
 		Stage = 1,

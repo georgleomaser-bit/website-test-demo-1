@@ -170,8 +170,15 @@ function DataService:GetStatus()
 	return table.clone(self.Status)
 end
 
--- Saves immediately (used after important changes such as ascending).
+-- Saves soon (used after important changes such as ascending and by autosave).
+-- Requests made while a save is already queued are merged into it.
 function DataService:SaveNow(profile): boolean
+	if profile.SaveQueued then
+		return false
+	end
+	-- _save clears SaveQueued when it takes its snapshot, so a request made after
+	-- that point queues a new save instead of being lost.
+	profile.SaveQueued = true
 	return self:_save(profile, false)
 end
 
@@ -192,11 +199,17 @@ end
 
 -- Loading ------------------------------------------------------------------------
 
--- Returns ({ data, isNew } | nil, status). status: ok | locked | newer | corrupt | error
-function DataService:_loadData(userId: number)
+-- Returns ({ data, isNew } | nil, status). status: ok | locked | newer | corrupt | error | left
+function DataService:_loadData(player: Player)
+	local userId = player.UserId
 	local key = keyFor(userId)
-	local lastStatus = "error"
-	for attempt = 1, CONFIG.LoadAttempts do
+	local errors = 0
+	local lockDeadline: number? = nil
+	local notified = false
+	while true do
+		if player.Parent ~= Players then
+			return nil, "left"
+		end
 		waitForBudget(Enum.DataStoreRequestType.UpdateAsync)
 		local status, loaded = nil, nil
 		local ok, err = pcall(function()
@@ -242,17 +255,30 @@ function DataService:_loadData(userId: number)
 		end
 
 		if not ok then
+			errors += 1
 			self.Status.LastError = tostring(err)
-			lastStatus = "error"
-			warn(`[DataService] Load attempt {attempt} for {userId} failed: {err}`)
-			task.wait(backoff(attempt))
+			warn(`[DataService] Load attempt {errors} for {userId} failed: {err}`)
+			if errors >= CONFIG.LoadAttempts then
+				return nil, "error"
+			end
+			task.wait(backoff(errors))
 		else
-			lastStatus = "locked"
+			-- Another server holds a fresh lock. It is usually saving this player right
+			-- now; otherwise the lock goes stale after LockStaleSeconds and is taken over.
 			self.Status.LockConflicts += 1
+			lockDeadline = lockDeadline or (os.clock() + CONFIG.LockStaleSeconds + 15)
+			if os.clock() >= lockDeadline then
+				return nil, "locked"
+			end
+			if not notified then
+				notified = true
+				self.Services.Net.notify(player, "Warning", {
+					Text = "Your progress is still being saved by another server. Loading it as soon as it is free…",
+				})
+			end
 			task.wait(CONFIG.LockedRetryDelay)
 		end
 	end
-	return nil, lastStatus
 end
 
 function DataService:_newProfile(player: Player, data, temporary: boolean, isNew: boolean)
@@ -267,6 +293,9 @@ function DataService:_newProfile(player: Player, data, temporary: boolean, isNew
 		Dirty = {},
 		LoadedAt = os.clock(),
 		Saving = false,
+		SaveQueued = false,
+		Releasing = false,
+		Released = false,
 		LockLost = false,
 	}
 end
@@ -284,10 +313,16 @@ function DataService:_onPlayerAdded(player: Player)
 	end
 	loading[player] = true
 
-	-- If this user is still being saved after leaving this very server, wait for it.
-	local deadline = os.clock() + 30
+	-- If this user is still being saved after leaving this very server, wait for it:
+	-- loading before that save finishes would read older data.
+	local deadline = os.clock() + 90
 	while releasing[player.UserId] and os.clock() < deadline do
 		task.wait(0.2)
+	end
+	if releasing[player.UserId] then
+		loading[player] = nil
+		player:Kick(KICK_MESSAGES.locked)
+		return
 	end
 
 	local profile
@@ -301,7 +336,7 @@ function DataService:_onPlayerAdded(player: Player)
 			return
 		end
 	else
-		local result, status = self:_loadData(player.UserId)
+		local result, status = self:_loadData(player)
 		if player.Parent ~= Players then
 			-- Left while loading: give the lock back without touching the data.
 			loading[player] = nil
@@ -354,15 +389,23 @@ end
 -- Saving ------------------------------------------------------------------------------
 
 function DataService:_save(profile, release: boolean): boolean
-	if profile.Temporary or profile.LockLost then
+	if profile.Temporary or profile.LockLost or profile.Released then
 		return false
 	end
-	-- Serialise saves per profile so a release never races an autosave.
-	local waitDeadline = os.clock() + 30
-	while profile.Saving and os.clock() < waitDeadline do
+	-- Once the release (leave/shutdown) save is requested, it writes the final state;
+	-- no other save may run after it and re-claim the lock with older data.
+	if not release and profile.Releasing then
+		return false
+	end
+	-- Strictly one save at a time per profile, in order, without a timeout.
+	while profile.Saving do
 		task.wait(0.1)
 	end
+	if profile.LockLost or profile.Released or (not release and profile.Releasing) then
+		return false
+	end
 	profile.Saving = true
+	profile.SaveQueued = false
 
 	local snapshot = Util.deepCopy(profile.Data)
 	local now = os.time()
@@ -380,6 +423,13 @@ function DataService:_save(profile, release: boolean): boolean
 				local rec = if type(record) == "table" then record else {}
 				local lock = rec.Lock
 				if type(lock) == "table" and lock.JobId ~= game.JobId then
+					lost = true
+					return nil
+				end
+				-- Our session holds the lock until its own release save completes. A missing
+				-- lock means another server took over and released, or the record was erased:
+				-- writing now would overwrite newer data, so never re-claim it (release or not).
+				if lock == nil then
 					lost = true
 					return nil
 				end
@@ -462,6 +512,7 @@ function DataService:_onPlayerRemoving(player: Player)
 	end
 	self.Profiles[player] = nil
 	releasing[player.UserId] = true
+	profile.Releasing = true
 	self:_runReleasingHooks(profile)
 	self:_save(profile, true)
 	profile.Released = true
@@ -481,7 +532,7 @@ function DataService:_autosave()
 			return
 		end
 		if self.Profiles[profile.Player] == profile then
-			task.spawn(self._save, self, profile, false)
+			task.spawn(self.SaveNow, self, profile)
 			task.wait(0.25)
 		end
 	end
@@ -493,10 +544,12 @@ function DataService:_onClose()
 	for player, profile in pairs(self.Profiles) do
 		self.Profiles[player] = nil
 		releasing[profile.UserId] = true
+		profile.Releasing = true
 		pending += 1
 		task.spawn(function()
 			self:_runReleasingHooks(profile)
 			self:_save(profile, true)
+			profile.Released = true
 			releasing[profile.UserId] = nil
 			pending -= 1
 		end)

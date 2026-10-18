@@ -99,7 +99,8 @@ function QuestService:EnsureDaily(profile)
 	end
 	local rng = Random.new(profile.UserId * 1000003 + day)
 	local pool = table.clone(Quests.Daily)
-	local stats = self.Services.StatsService:Get(profile)
+	-- Base stats (no events or Frenzy), so a boost active at reset cannot inflate the targets.
+	local stats = self.Services.StatsService:GetBase(profile)
 	local list = {}
 	for _ = 1, math.min(Quests.DailyCount, #pool) do
 		local index = rng:NextInteger(1, #pool)
