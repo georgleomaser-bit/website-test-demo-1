@@ -19,6 +19,7 @@ local ACTIONS = {
 	"Favorite",
 	"Sell",
 	"SellDuplicates",
+	"Fuse",
 	"UnlockSkill",
 	"ResetSkills",
 	"Rebirth",
@@ -32,6 +33,10 @@ local ACTIONS = {
 	"UpdateSettings",
 	"RequestState",
 	"GetLeaderboards",
+	"ObbyTeleport",
+	"TutorialSeen",
+	"TutorialSkip",
+	"TutorialRestart",
 }
 
 -- Small deterministic generator (the test runner has no Roblox Random).

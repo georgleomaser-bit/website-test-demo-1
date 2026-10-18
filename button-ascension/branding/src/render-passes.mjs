@@ -26,6 +26,7 @@ const keys = [
 	"op_crate",
 	"mega_op_crate",
 	"ultra_op_crate",
+	"rainbow_chest",
 ];
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined });

@@ -68,13 +68,13 @@ local function part(props: { [string]: any }): BasePart
 	return p
 end
 
-local function label(parent: BasePart, text: string, height: number, color: Color3?)
+local function label(parent: BasePart, text: string, height: number, color: Color3?, maxDistance: number?)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "Label"
 	gui.Size = UDim2.fromOffset(260, 46)
 	gui.StudsOffset = Vector3.new(0, height, 0)
 	gui.LightInfluence = 0
-	gui.MaxDistance = 140
+	gui.MaxDistance = maxDistance or 140
 	local text_ = Instance.new("TextLabel")
 	text_.BackgroundTransparency = 1
 	text_.Size = UDim2.fromScale(1, 1)
@@ -429,7 +429,8 @@ function ObbyService:_build()
 		})
 	end
 	part({ Name = "GateTop", Size = Vector3.new(1, 1, 14), CFrame = CFrame.new(118, 12.5, 0), Color = NEON_CYAN, Material = Enum.Material.Neon, Parent = model })
-	label(start, `🏃 OBBY · {COUNT} stages · rewards every checkpoint`, 9, NEON_CYAN)
+	-- Readable from the plaza spawn, so new players find the course.
+	label(start, `🏃 OBBY · {COUNT} stages · rewards every checkpoint`, 9, NEON_CYAN, 320)
 
 	local b = Builder.new(model, 130, 0)
 	for _, build in ipairs(STAGES) do

@@ -7,6 +7,13 @@
 	grants an equip bonus to one stat. Derived values (Bonus, SellValue) are
 	computed below from the rarity and crate tier so balance stays centralised.
 
+	Variants: every item also exists as a Golden and a Rainbow version with its
+	own id ("<id>:golden", "<id>:rainbow") in Items.ById, so inventory,
+	equipping and stats treat them like any other item. Items.List, the
+	pools and Items.Count contain base items only (the collection book counts
+	base items). Three copies fuse into the next variant; a variant sells for
+	exactly as much as the copies it was made from, so fusing never makes Gems.
+
 	Stat keys: sparks, click, luck, crit, passive, xp, gems, golden
 	(see GameConfig.ItemStats for how they map onto player stats).
 ]]
@@ -28,6 +35,19 @@ export type Item = {
 	RarityIndex: number,
 	Bonus: number,
 	SellValue: number,
+	-- variants only
+	Base: string?, -- id of the normal item
+	Variant: string?, -- "golden" | "rainbow"
+}
+
+export type VariantDef = {
+	Id: string,
+	Name: string,
+	Level: number,
+	Power: number, -- equip power vs. the normal item
+	Sell: number, -- sell value vs. the normal item (= copies used to fuse it)
+	DropChance: number, -- chance per normal crate roll
+	Color: Color3,
 }
 
 local Items = {}
@@ -46,6 +66,7 @@ local LIST = {
 	{ "golden_plug",     "Golden Plug",        "🔌", "Legendary", "starter", "sparks",  "Plugged straight into the grid." },
 	{ "storm_jar",       "Storm in a Jar",     "🌩️", "Mythic",    "starter", "golden",  "A thunderstorm, politely contained." },
 	{ "first_button",    "The First Button",   "🔴", "Secret",    "starter", "sparks",  "Where it all began. It still clicks." },
+	{ "button_zero",     "Button Zero",        "🟥", "Secret",    "starter", "click",   "The prototype every other button was copied from." },
 
 	-- Neon Crate ---------------------------------------------------------------------
 	{ "headphones",      "Bass Headphones",    "🎧", "Common",    "neon", "xp",      "Bass-boosted focus." },
@@ -59,6 +80,7 @@ local LIST = {
 	{ "pixel_crown",     "Pixel Crown",        "👑", "Legendary", "neon", "sparks",  "Rule the high-score table." },
 	{ "neon_dragon",     "Neon Dragon",        "🐉", "Mythic",    "neon", "luck",    "Breathes pure, glowing luck." },
 	{ "glitch",          "The Glitch",         "🌀", "Secret",    "neon", "golden",  "ERR_BUTTON_OVERFLOW." },
+	{ "neon_cat",        "Neon Cat",           "🐈", "Secret",    "neon", "luck",    "Always lands on its feet. Usually on a Secret." },
 
 	-- Plasma Crate -------------------------------------------------------------------
 	{ "test_tube",       "Test Tube",          "🧪", "Common",    "plasma", "xp",      "Bubbling with experimental knowledge." },
@@ -72,6 +94,7 @@ local LIST = {
 	{ "atomic_heart",    "Atomic Heart",       "⚛️", "Legendary", "plasma", "sparks",  "Splits atoms, multiplies Sparks." },
 	{ "plasma_eagle",    "Plasma Eagle",       "🦅", "Mythic",    "plasma", "golden",  "Soars over golden opportunities." },
 	{ "mad_button",      "The Mad Button",     "🧠", "Secret",    "plasma", "click",   "Do NOT press. (They pressed.)" },
+	{ "golden_alembic",  "Golden Alembic",     "⚗️", "Secret",    "plasma", "golden",  "Distils golden presses out of thin air." },
 
 	-- Void Crate ---------------------------------------------------------------------
 	{ "void_pebble",     "Void Pebble",        "🌑", "Common",    "void", "sparks",  "Heavier than it looks." },
@@ -85,6 +108,7 @@ local LIST = {
 	{ "abyss_key",       "Abyss Key",          "🗝️", "Legendary", "void", "luck",    "Unlocks crates you did not know existed." },
 	{ "eclipse",         "Eclipse",            "🌘", "Mythic",    "void", "sparks",  "When the light goes out, Sparks pour in." },
 	{ "null_button",     "The Null Button",    "⚫", "Secret",    "void", "sparks",  "Pressing it presses everything." },
+	{ "pocket_hole",     "Pocket Black Hole",  "🕳️", "Secret",    "void", "gems",    "Everything falls in. Gems come out." },
 
 	-- Celestial Crate ----------------------------------------------------------------
 	{ "stardust",        "Stardust",           "✨", "Common",    "celestial", "sparks",  "Collected one twinkle at a time." },
@@ -98,6 +122,7 @@ local LIST = {
 	{ "galaxy_heart",    "Galaxy Heart",       "💫", "Legendary", "celestial", "click",   "Beats once per press." },
 	{ "star_unicorn",    "Star Unicorn",       "🦄", "Mythic",    "celestial", "luck",    "Mythical, therefore lucky." },
 	{ "star_button",     "The Star Button",    "⭐", "Secret",    "celestial", "golden",  "Pressed by constellations." },
+	{ "cosmic_whale",    "Cosmic Whale",       "🐋", "Secret",    "celestial", "passive", "Swims between stars, humming in Sparks." },
 
 	-- Singularity Core ---------------------------------------------------------------
 	{ "hourglass",       "Golden Hourglass",   "⏳", "Common",    "singularity", "passive", "Time itself pays interest." },
@@ -111,6 +136,7 @@ local LIST = {
 	{ "singular_crown",  "Singularity Crown",  "🏆", "Legendary", "singularity", "sparks",  "For those who pressed beyond infinity." },
 	{ "world_serpent",   "World Serpent",      "🐲", "Mythic",    "singularity", "click",   "Coils around the universe, pressing." },
 	{ "final_button",    "The Final Button",   "🔘", "Secret",    "singularity", "sparks",  "There is nothing after this. Or is there?" },
+	{ "big_bang",        "The Big Bang",       "🎆", "Secret",    "singularity", "click",   "Pressed once. Everything else followed." },
 
 	-- Prism Cache (Gems) --------------------------------------------------------------
 	{ "prism_lens",      "Prism Lens",         "🔍", "Rare",      "prism", "luck",    "Splits light into pure luck." },
@@ -121,6 +147,7 @@ local LIST = {
 	{ "crystal_sword",   "Crystal Sword",      "⚔️", "Legendary", "prism", "click",   "Cuts through any price tag." },
 	{ "prism_heart",     "Prismatic Heart",    "💖", "Mythic",    "prism", "sparks",  "Loves you back in Sparks." },
 	{ "sage_button",     "The Sage Button",    "🌟", "Secret",    "prism", "xp",      "Knows every press you will ever make." },
+	{ "prism_peacock",   "Prism Peacock",      "🦚", "Secret",    "prism", "gems",    "Fans out every colour of the Gem spectrum." },
 }
 
 Items.List = {} :: { Item }
@@ -173,6 +200,73 @@ for _, chest in ipairs(Chests.List) do
 			assert(pool and pool[rarityId] and #pool[rarityId] > 0, `Crate {chest.Id} has no {rarityId} items`)
 		end
 	end
+end
+
+-- Variants ---------------------------------------------------------------------------
+
+-- Copies of one item (and variant) needed to fuse one of the next variant.
+Items.FuseCost = 3
+
+Items.Variants = {
+	{ Id = "golden", Name = "Golden", Level = 2, Power = 2.5, Sell = 3, DropChance = 0.015, Color = Color3.fromRGB(255, 205, 64) },
+	{ Id = "rainbow", Name = "Rainbow", Level = 3, Power = 6, Sell = 9, DropChance = 0.0015, Color = Color3.fromRGB(255, 120, 220) },
+} :: { VariantDef }
+Items.VariantById = {} :: { [string]: VariantDef }
+for _, variant in ipairs(Items.Variants) do
+	Items.VariantById[variant.Id] = variant
+end
+
+-- Id of an item's variant ("paper_clip", "golden" -> "paper_clip:golden"); nil variant = normal.
+function Items.variantId(baseId: string, variant: string?): string
+	return if variant then baseId .. ":" .. variant else baseId
+end
+
+for _, base in ipairs(table.clone(Items.List)) do
+	for _, variant in ipairs(Items.Variants) do
+		local id = Items.variantId(base.Id, variant.Id)
+		Items.ById[id] = {
+			Id = id,
+			Name = `{variant.Name} {base.Name}`,
+			Icon = base.Icon,
+			Rarity = base.Rarity,
+			Chest = base.Chest,
+			Stat = base.Stat,
+			Description = base.Description,
+			Order = base.Order,
+			RarityIndex = base.RarityIndex,
+			Bonus = base.Bonus * variant.Power,
+			SellValue = base.SellValue * variant.Sell,
+			Base = base.Id,
+			Variant = variant.Id,
+		}
+	end
+end
+
+-- The normal item an id belongs to (itself for normal items).
+function Items.baseOf(id: string): string
+	local item = Items.ById[id]
+	return if item and item.Base then item.Base else id
+end
+
+-- Variant level: 1 normal, 2 golden, 3 rainbow.
+function Items.variantLevel(id: string): number
+	local item = Items.ById[id]
+	local variant = item and item.Variant and Items.VariantById[item.Variant]
+	return if variant then variant.Level else 1
+end
+
+-- The id three copies of `id` fuse into, or nil when it is already Rainbow.
+function Items.fuseResult(id: string): string?
+	local item = Items.ById[id]
+	if not item then
+		return nil
+	end
+	local level = Items.variantLevel(id)
+	local nextVariant = Items.Variants[level] -- Variants[1] is golden (level 2)
+	if not nextVariant then
+		return nil
+	end
+	return Items.variantId(Items.baseOf(id), nextVariant.Id)
 end
 
 function Items.get(id: string): Item?

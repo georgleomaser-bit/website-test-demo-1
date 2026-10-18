@@ -123,6 +123,17 @@ DevProducts.List = {
 		ProductId = 0,
 	},
 	{
+		Key = "rainbow_chest",
+		Name = "Rainbow Chest",
+		Icon = "🌈",
+		Color = Color3.fromRGB(255, 120, 220),
+		Description = "A guaranteed Rainbow item, Epic or better!",
+		Crate = "rainbow_chest",
+		Op = true,
+		SuggestedPrice = 449,
+		ProductId = 0,
+	},
+	{
 		Key = "crate_bundle",
 		Name = "Crate Bundle",
 		Icon = "🎁",

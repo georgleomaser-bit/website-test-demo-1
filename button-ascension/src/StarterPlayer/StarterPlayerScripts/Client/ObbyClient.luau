@@ -51,8 +51,9 @@ function ObbyClient.init(_ctx)
 				if Theme.ReducedMotion then
 					return
 				end
-				pulse = TweenService:Create(nextPad, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Color = AHEAD })
-				pulse:Play()
+				local tween = TweenService:Create(nextPad, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { Color = AHEAD })
+				tween:Play()
+				pulse = tween
 			end
 		end
 		State.subscribe("Obby", apply)

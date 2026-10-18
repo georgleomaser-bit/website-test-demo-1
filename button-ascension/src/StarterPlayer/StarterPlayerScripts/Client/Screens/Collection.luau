@@ -127,9 +127,16 @@ function Collection.new(ctx)
 				local card = ItemCard.new({ Parent = grid, LayoutOrder = order, Size = UDim2.fromOffset(84, 100) })
 				local item = Items.ById[itemId]
 				UI.attachTooltip(card.Instance, function()
-					local discovered = (State.get("Discovered") or {})[itemId]
+					local found = State.get("Discovered") or {}
+					local discovered = found[itemId]
 					if discovered then
-						return `<b>{item.Icon} {item.Name}</b> ({item.Rarity})\n{Formulas.describeItemBonus(item, 1)}\n{item.Description}\nDiscovered {os.date("%Y-%m-%d", discovered)}`
+						-- Which Golden / Rainbow versions have been found too.
+						local variants = {}
+						for _, variant in ipairs(Items.Variants) do
+							local mark = if found[Items.variantId(itemId, variant.Id)] then "✓" else "✗"
+							table.insert(variants, `{variant.Name} {mark}`)
+						end
+						return `<b>{item.Icon} {item.Name}</b> ({item.Rarity})\n{Formulas.describeItemBonus(item, 1)}\n{item.Description}\nDiscovered {os.date("%Y-%m-%d", discovered)}\n{table.concat(variants, " · ")}`
 					end
 					if item.Rarity == "Secret" then
 						return `A secret hides in the {chest.Name}…`

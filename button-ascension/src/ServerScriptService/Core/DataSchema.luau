@@ -68,6 +68,8 @@ DataSchema.StatKeys = {
 	"BestDailyStreak",
 	"StreakBursts",
 	"OfflineEarned",
+	"ItemsFused",
+	"RainbowsFound",
 }
 
 -- Top-level sections replicated to the owning client (see SyncService).

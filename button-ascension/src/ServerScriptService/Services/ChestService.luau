@@ -8,6 +8,8 @@
 	Crate purchasing and opening. Prices, odds, luck, pity and the item pool
 	are all evaluated here with a server-side Random; the client only sends
 	which crate, how many, and whether to use owned crates or buy them.
+	Every drop (bonus drops too) can also come out Golden or Rainbow
+	(Items.Variants chances); variants never change pity.
 	Results are applied to the player's data BEFORE they are returned, so the
 	opening animation on the client is purely cosmetic.
 
@@ -68,6 +70,9 @@ function ChestService:Award(profile, itemId: string, flags)
 	if item.RarityIndex >= 7 then
 		stats.SecretsFound += 1
 	end
+	if item.Variant == "rainbow" then
+		stats.RainbowsFound += 1
+	end
 
 	local result = {
 		Item = itemId,
@@ -79,8 +84,10 @@ function ChestService:Award(profile, itemId: string, flags)
 	}
 
 	local autoSell = data.Settings.AutoSell or 0
+	-- Golden/Rainbow copies are fusing material and are never auto-sold.
 	if not isNew
 		and not flags.Test
+		and not item.Variant
 		and autoSell > 0
 		and item.RarityIndex <= math.min(autoSell, GameConfig.Inventory.AutoSellMaxIndex)
 		and not data.Favorites[itemId]
@@ -98,10 +105,16 @@ function ChestService:Award(profile, itemId: string, flags)
 	if isNew then
 		self.Services.Net.notify(profile.Player, "Discovery", { Item = itemId })
 	end
-	if item.RarityIndex >= 6 and not flags.Test then
+	if (item.RarityIndex >= 6 or item.Variant == "rainbow") and not flags.Test then
 		self.Services.Net.notifyAll("Rare", { Player = profile.Player.DisplayName, Item = itemId })
 	end
 	return result
+end
+
+-- Turns a rolled item into its Golden/Rainbow version by chance (or by force).
+function ChestService:_withVariant(itemId: string, chest): string
+	local variant = chest.ForceVariant or Loot.rollVariant(rng, chest.VariantChances)
+	return if variant then Items.variantId(itemId, variant) else itemId
 end
 
 function ChestService:_afterAward(profile)
@@ -123,14 +136,14 @@ function ChestService:RollMany(profile, chest, amount: number)
 	for _ = 1, amount do
 		local itemId, _, pityTriggered = Loot.roll(rng, chest, stats.luck, pity, thresholds)
 		if itemId then
-			table.insert(results, self:Award(profile, itemId, { Pity = pityTriggered }))
+			table.insert(results, self:Award(profile, self:_withVariant(itemId, chest), { Pity = pityTriggered }))
 		end
 		local bonusChance = Formulas.chestBonusChance(chest, stats.chestBonus)
 		if bonusChance > 0 and rng:NextNumber() < bonusChance then
 			-- Bonus drops use the same odds but never advance or consume pity.
 			local bonusId = Loot.roll(rng, chest, stats.luck, {}, {})
 			if bonusId then
-				table.insert(results, self:Award(profile, bonusId, { Bonus = true }))
+				table.insert(results, self:Award(profile, self:_withVariant(bonusId, chest), { Bonus = true }))
 			end
 		end
 	end
@@ -216,7 +229,7 @@ function ChestService:OpenRobuxCrate(profile, chestId: string)
 	local itemId = Loot.rollFromPool(rng, chest, stats.luck, self:RobuxPool(profile.Data))
 	local results = {}
 	if itemId then
-		table.insert(results, self:Award(profile, itemId, {}))
+		table.insert(results, self:Award(profile, self:_withVariant(itemId, chest), {}))
 	end
 	profile.Data.Stats.ChestsOpened += 1
 	self.Services.EconomyService:AddXP(profile, GameConfig.Levels.ChestXP * chest.Tier * stats.xpMultiplier)

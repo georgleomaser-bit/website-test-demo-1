@@ -176,6 +176,8 @@ Chests.OpenAmounts = { 1, 5, 10 }
 	them upward). The item comes from the combined pools of every crate the
 	player has already unlocked, so no item from a locked stage is handed out
 	early, and the crates have no items of their own.
+	VariantChances: better Golden/Rainbow odds than normal crates (see
+	Items.Variants). ForceVariant: every drop is that variant (Rainbow Chest).
 ]]
 Chests.RobuxList = {
 	{
@@ -188,6 +190,7 @@ Chests.RobuxList = {
 		Color = Color3.fromRGB(176, 92, 255),
 		Description = "Epic or better guaranteed!",
 		Weights = { Epic = 7000, Legendary = 2400, Mythic = 550, Secret = 50 },
+		VariantChances = { golden = 0.06, rainbow = 0.006 },
 	},
 	{
 		Id = "mega_op_crate",
@@ -199,6 +202,7 @@ Chests.RobuxList = {
 		Color = Color3.fromRGB(255, 180, 40),
 		Description = "Legendary or better guaranteed!",
 		Weights = { Legendary = 8000, Mythic = 1800, Secret = 200 },
+		VariantChances = { golden = 0.1, rainbow = 0.012 },
 	},
 	{
 		Id = "ultra_op_crate",
@@ -210,6 +214,19 @@ Chests.RobuxList = {
 		Color = Color3.fromRGB(255, 64, 112),
 		Description = "Mythic or better guaranteed, 8% Secret!",
 		Weights = { Mythic = 9200, Secret = 800 },
+		VariantChances = { golden = 0.15, rainbow = 0.02 },
+	},
+	{
+		Id = "rainbow_chest",
+		Name = "Rainbow Chest",
+		Icon = "🌈",
+		Order = 104,
+		Tier = 10,
+		Currency = "Robux",
+		Color = Color3.fromRGB(255, 120, 220),
+		Description = "A guaranteed Rainbow item, Epic or better!",
+		Weights = { Epic = 5500, Legendary = 3000, Mythic = 1000, Secret = 500 },
+		ForceVariant = "rainbow",
 	},
 }
 Chests.RobuxById = {}

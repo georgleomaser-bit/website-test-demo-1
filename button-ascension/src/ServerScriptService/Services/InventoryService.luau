@@ -2,15 +2,18 @@
 	InventoryService (ModuleScript)
 	Location: ServerScriptService/Services/InventoryService
 	Depends on: Shared/Config/{Items,GameConfig}, Shared/Formulas, Core/DataOps, Core/Net,
-	            Core/Guard, EconomyService, StatsService, SyncService, QuestService
+	            Core/Guard, EconomyService, StatsService, SyncService, QuestService,
+	            AchievementService
 
-	Equip / unequip / favourite / sell. Items stack by id (inventory is a map
-	itemId -> count), so even a huge collection is a small table and every
-	operation is O(unique items).
+	Equip / unequip / favourite / sell / fuse. Items stack by id (inventory is
+	a map itemId -> count), so even a huge collection is a small table and
+	every operation is O(unique items).
 
 	Actions:
 	  Equip { Id }            Unequip { Id }        EquipBest {}
 	  Favorite { Id, State }  Sell { Id, Amount }   SellDuplicates { MaxRarity }
+	  Fuse { Id, Amount: integer | "max" }   3 copies -> 1 of the next variant
+	                                         (Normal -> Golden -> Rainbow)
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -68,6 +71,12 @@ function InventoryService:Init(services)
 		Rate = rate,
 		Handler = function(profile, payload)
 			return self:Sell(profile, payload.Id, payload.Amount)
+		end,
+	})
+	Net.registerAction("Fuse", {
+		Rate = { Capacity = 6, Refill = 2 },
+		Handler = function(profile, payload)
+			return self:Fuse(profile, payload.Id, payload.Amount)
 		end,
 	})
 	Net.registerAction("SellDuplicates", {
@@ -220,6 +229,58 @@ function InventoryService:SellDuplicates(profile, rawMax: any)
 	end
 	changed(self, profile, touchedEquipped)
 	return Net.ok({ Sold = totalItems, Gems = totalGems })
+end
+
+--[[
+	Fuses copies of one item: every Items.FuseCost copies become one copy of
+	the next variant. Amount is how many results to make (or "max").
+	Favourites are protected like for selling. If equipped copies are used
+	up, the fused item takes over their equip slot.
+]]
+function InventoryService:Fuse(profile, rawId: any, rawAmount: any)
+	local id = Guard.id(rawId, Items.ById)
+	local data = profile.Data
+	local owned = if id then data.Inventory[id] or 0 else 0
+	if not id or owned < 1 then
+		return Net.fail("You don't own that item.")
+	end
+	local resultId = Items.fuseResult(id)
+	if not resultId then
+		return Net.fail("Rainbow items can't be fused any further.")
+	end
+	local cost = Items.FuseCost
+	local possible = math.floor(owned / cost)
+	if possible < 1 then
+		return Net.fail(`You need {cost} copies to fuse.`)
+	end
+	if data.Favorites[id] then
+		return Net.fail("Unfavorite the item before fusing it.")
+	end
+	local amount = if rawAmount == "max" then possible else Guard.integer(rawAmount, 1, possible)
+	if not amount then
+		return Net.fail("Invalid amount.")
+	end
+
+	local slot = table.find(data.Equipped, id)
+	DataOps.removeItem(data, id, amount * cost)
+	local isNew = DataOps.addItem(data, resultId, amount)
+	if slot and (data.Inventory[id] or 0) == 0 and not isEquipped(data, resultId) then
+		table.insert(data.Equipped, math.min(slot, #data.Equipped + 1), resultId)
+	end
+
+	local result = Items.ById[resultId]
+	data.Stats.ItemsFused += amount
+	if result.Variant == "rainbow" then
+		data.Stats.RainbowsFound += amount
+		self.Services.Net.notifyAll("Rare", { Player = profile.Player.DisplayName, Item = resultId })
+	end
+	if isNew then
+		self.Services.Net.notify(profile.Player, "Discovery", { Item = resultId })
+	end
+	self.Services.AchievementService:MarkDirty(profile)
+	self.Services.StatsService:Invalidate(profile)
+	self.Services.SyncService:MarkDirty(profile, "Inventory", "Equipped", "Favorites", "Discovered", "Stats")
+	return Net.ok({ Id = id, Result = resultId, Fused = amount, Used = amount * cost, Count = data.Inventory[resultId] or 0 })
 end
 
 InventoryService.MaxSlots = GameConfig.Equip.MaxSlots

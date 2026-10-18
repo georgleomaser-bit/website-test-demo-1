@@ -7,8 +7,9 @@
 	Owned items as a searchable, filterable, sortable grid. Items stack by
 	type, and each card is created once and then reused (only visibility and
 	order change when filtering), so the grid stays fast for any collection.
-	The detail panel equips, favourites and sells; selling Epic or better
-	asks for confirmation (setting: Confirm rare sales).
+	The detail panel equips, favourites, sells and fuses (3 copies → Golden,
+	3 Golden → Rainbow; the server checks and applies it). Selling Epic or
+	better asks for confirmation (setting: Confirm rare sales).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,6 +17,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UIFolder = ReplicatedStorage:WaitForChild("UI")
 local UI = require(UIFolder.UIKit)
 local Theme = require(UIFolder.Theme)
+local Effects = require(UIFolder.Effects)
+local SoundPlayer = require(UIFolder.SoundPlayer)
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Format = require(Shared.Format)
 local Formulas = require(Shared.Formulas)
@@ -24,6 +27,7 @@ local Items = require(Config.Items)
 local Rarities = require(Config.Rarities)
 local Chests = require(Config.Chests)
 local GameConfig = require(Config.GameConfig)
+local Sounds = require(Config.Sounds)
 
 local Client = script.Parent.Parent
 local State = require(Client.State)
@@ -136,7 +140,7 @@ function Inventory.new(ctx)
 	-- Item info scrolls above the fixed action buttons, so short windows never overlap them.
 	local info = UI.scroll({
 		Name = "Info",
-		Size = UDim2.new(1, 0, 1, -138),
+		Size = UDim2.new(1, 0, 1, -182),
 		List = { Dir = "Y", Pad = 2, HA = "Center" },
 		Parent = detail,
 	})
@@ -153,9 +157,10 @@ function Inventory.new(ctx)
 	local dCopies = infoLabel(5, { Text = "", TextSize = 13, TextColor3 = C.TextDim, TextWrapped = true, Size = UDim2.new(1, -6, 0, 16), AutomaticSize = Enum.AutomaticSize.Y })
 	local dDesc = infoLabel(6, { Text = "", TextSize = 13, TextColor3 = C.TextDim, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, Size = UDim2.new(1, -6, 0, 16), AutomaticSize = Enum.AutomaticSize.Y })
 	local dValue = infoLabel(7, { Text = "", TextSize = 13, TextColor3 = C.Gems, Size = UDim2.new(1, 0, 0, 18) })
-	local actions = UI.frame({ Size = UDim2.new(1, 0, 0, 132), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = detail })
+	local dFuse = infoLabel(8, { Text = "", TextSize = 12, TextColor3 = C.Gold, TextWrapped = true, Size = UDim2.new(1, -6, 0, 16), AutomaticSize = Enum.AutomaticSize.Y })
+	local actions = UI.frame({ Size = UDim2.new(1, 0, 0, 176), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Parent = detail })
 
-	local equipButton, favButton, sellOne, sellExtra, sellAll
+	local equipButton, favButton, sellOne, sellExtra, sellAll, fuseButton, fuseAllButton
 
 	local function confirmSell(item, count: number): boolean
 		local settings = State.get("Settings") or {}
@@ -267,7 +272,67 @@ function Inventory.new(ctx)
 		end,
 		Parent = actions,
 	})
-	local dDate = UI.label({ Text = "", TextSize = 12, TextColor3 = C.TextMuted, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, 96), Parent = actions })
+	-- Fusing ------------------------------------------------------------------------------------
+	local function fuse(amount: any)
+		local item = selectedId and Items.ById[selectedId]
+		if not item then
+			return
+		end
+		local result = ClientNet.once("fuse", "Fuse", { Id = item.Id, Amount = amount })
+		if not result then
+			return
+		end
+		if not result.ok then
+			ctx.Notifications.error(result.err)
+			return
+		end
+		local made = Items.ById[result.Result]
+		ctx.Notifications.result(result, `Fused {result.Used}× {item.Name} into {result.Fused}× {made.Name}!`)
+		-- Celebrate: sparkle burst on the detail panel, rising chimes, a fanfare for Rainbow.
+		local color = if made.Variant == "rainbow" then Color3.fromRGB(255, 120, 220) else C.Gold
+		local center = Vector2.new(detail.AbsoluteSize.X / 2, 60)
+		Effects.burst(detail, center, color, 24, 170, 30)
+		Effects.ring(detail, center, color, 220, 29)
+		if made.Variant == "rainbow" then
+			local fanfare = Sounds.CrateFanfares.Legendary
+			SoundPlayer.sequence("CrateFanfare", fanfare.Notes, fanfare.Gap)
+		else
+			SoundPlayer.sequence("CrateChime", { 1, 1.26, 1.5, 2 }, 0.07)
+		end
+		SoundPlayer.play("CrateSparkle")
+		if not Theme.ReducedMotion then
+			dIcon.TextSize = 80
+			UI.tween(dIcon, { TextSize = 56 }, Theme.Motion.Pop, true)
+		end
+		selectedId = made.Id
+		screen.Render()
+	end
+	fuseButton = UI.button({
+		Name = "Fuse",
+		Text = "✨ Fuse",
+		Variant = "gold",
+		Size = UDim2.new(0.62, -4, 0, 36),
+		Position = UDim2.fromOffset(0, 92),
+		TextSize = 14,
+		Tooltip = `{Items.FuseCost} copies → 1 Golden (×2.5 power). {Items.FuseCost} Golden → 1 Rainbow (×6 power).`,
+		OnClick = function()
+			fuse(1)
+		end,
+		Parent = actions,
+	})
+	fuseAllButton = UI.button({
+		Name = "FuseAll",
+		Text = "Fuse all",
+		Variant = "secondary",
+		Size = UDim2.new(0.38, -4, 0, 36),
+		Position = UDim2.new(0.62, 4, 0, 92),
+		TextSize = 14,
+		OnClick = function()
+			fuse("max")
+		end,
+		Parent = actions,
+	})
+	local dDate = UI.label({ Text = "", TextSize = 12, TextColor3 = C.TextMuted, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, 140), Parent = actions })
 
 	-- Equipped bar -------------------------------------------------------------------------------
 	local bar = UI.panel({
@@ -389,7 +454,8 @@ function Inventory.new(ctx)
 			dName.Text = "Select an item"
 			dName.TextColor3 = C.Text
 			dSub.Text, dEffect.Text, dCopies.Text, dDesc.Text, dValue.Text, dDate.Text = "", "", "", "", "", ""
-			for _, b in ipairs({ equipButton, favButton, sellOne, sellExtra, sellAll }) do
+			dFuse.Text = ""
+			for _, b in ipairs({ equipButton, favButton, sellOne, sellExtra, sellAll, fuseButton, fuseAllButton }) do
 				UI.setEnabled(b, false)
 			end
 			return
@@ -416,6 +482,25 @@ function Inventory.new(ctx)
 		UI.setEnabled(sellOne, not favorite)
 		UI.setEnabled(sellExtra, not favorite and count > 1)
 		UI.setEnabled(sellAll, not favorite)
+
+		local resultId = Items.fuseResult(item.Id)
+		local fused = resultId and Items.ById[resultId]
+		local possible = math.floor(count / Items.FuseCost)
+		if fused then
+			local variant = Items.VariantById[fused.Variant]
+			dFuse.Text = `Fuse {Items.FuseCost} → {fused.Name}: {Formulas.describeItemBonus(fused, 1)}`
+				.. (if favorite then " (unfavourite it first)" elseif possible < 1 then ` · you have {count}/{Items.FuseCost}` else "")
+			UI.setText(fuseButton, `✨ Fuse {Items.FuseCost} → {variant.Name}`)
+			UI.setText(fuseAllButton, if possible > 1 then `Fuse all ×{possible}` else "Fuse all")
+			UI.setEnabled(fuseButton, possible >= 1 and not favorite)
+			UI.setEnabled(fuseAllButton, possible >= 1 and not favorite)
+		else
+			dFuse.Text = "Rainbow is the best variant."
+			UI.setText(fuseButton, "✨ Max variant")
+			UI.setText(fuseAllButton, "Fuse all")
+			UI.setEnabled(fuseButton, false)
+			UI.setEnabled(fuseAllButton, false)
+		end
 	end
 
 	local function renderEquipBar()

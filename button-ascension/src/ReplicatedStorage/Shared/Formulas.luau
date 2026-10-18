@@ -18,6 +18,7 @@ local Upgrades = require(Config.Upgrades)
 local Ascension = require(Config.Ascension)
 local Skills = require(Config.Skills)
 local Items = require(Config.Items)
+local Chests = require(Config.Chests)
 local GamePasses = require(Config.GamePasses)
 local DevProducts = require(Config.DevProducts)
 local Format = require(script.Parent.Format)
@@ -66,6 +67,10 @@ export type Context = {
 }
 
 local Formulas = {}
+
+-- Upper limit for the Gem multiplier. Rainbow Gem items stacked with passes
+-- could otherwise reach several hundred; the cap only matters in the late game.
+Formulas.MaxGemMultiplier = 50
 
 local ADD_STATS = {
 	"clickFlat",
@@ -142,10 +147,12 @@ function Formulas.describeItemBonus(item, count: number?): string
 	return "+" .. Format.pct(value, if value < 0.1 then 1 else 0) .. " " .. statDef.Label
 end
 
+-- Discovered base items (Golden/Rainbow variants are tracked but not counted).
 function Formulas.discoveredCount(data): number
 	local n = 0
 	for id in pairs(data.Discovered or {}) do
-		if Items.ById[id] then
+		local item = Items.ById[id]
+		if item and not item.Variant then
 			n += 1
 		end
 	end
@@ -315,7 +322,7 @@ function Formulas.computeStats(data, ctx: Context?): Stats
 		luck = a.luck,
 		chestBonus = math.min(0.75, a.chestBonus),
 		xpMultiplier = (1 + a.xpPct) * x.xpMult,
-		gemMultiplier = (1 + a.gemsPct) * x.gemsMult,
+		gemMultiplier = math.min(Formulas.MaxGemMultiplier, (1 + a.gemsPct) * x.gemsMult),
 		equipSlots = math.min(GameConfig.Equip.MaxSlots, GameConfig.Equip.BaseSlots + a.equipSlots),
 		offlineRate = math.min(1, offline.BaseRate + a.offlineRate),
 		offlineMaxSeconds = (offline.BaseMaxHours + a.offlineHours) * 3600,
@@ -487,8 +494,13 @@ function Formulas.questTarget(template, rebirths: number, clickValue: number): n
 end
 
 -- Sum of sell value for a set of copies.
+-- Gems for selling `count` copies. Items from Gem-priced crates (Prism Cache)
+-- ignore Gem boosts: otherwise a high Gem multiplier would turn buying and
+-- reselling caches into a Gem machine.
 function Formulas.sellValue(item, count: number, gemMultiplier: number): number
-	return math.floor(item.SellValue * count * gemMultiplier)
+	local chest = Chests.ById[item.Chest]
+	local multiplier = if chest and chest.Currency == "Gems" then 1 else gemMultiplier
+	return math.floor(item.SellValue * count * multiplier)
 end
 
 return Formulas

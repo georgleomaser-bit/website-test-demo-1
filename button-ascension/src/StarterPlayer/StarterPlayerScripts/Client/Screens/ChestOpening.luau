@@ -194,7 +194,7 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 		grid.VerticalAlignment = Enum.VerticalAlignment.Center
 	end
 
-	local newCount, soldGems = 0, 0
+	local newCount, soldGems, variantDrops = 0, 0, 0
 	for index, result in ipairs(results) do
 		local item = Items.ById[result.Item]
 		if item then
@@ -217,19 +217,35 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 			if result.AutoSold then
 				soldGems += result.AutoSold
 			end
-			local tag = if result.Pity then "PITY" elseif result.Bonus then "BONUS" elseif result.Test then "TEST" else nil
-			if tag then
+			local variant = item.Variant and Items.VariantById[item.Variant]
+			if variant then
+				variantDrops += 1
+			end
+			local tags = {}
+			if variant then
+				table.insert(tags, string.upper(variant.Name))
+			end
+			if result.Pity then
+				table.insert(tags, "PITY")
+			elseif result.Bonus then
+				table.insert(tags, "BONUS")
+			elseif result.Test then
+				table.insert(tags, "TEST")
+			end
+			if #tags > 0 then
 				UI.label({
-					Text = tag,
+					Text = table.concat(tags, " · "),
 					Font = F.Heading,
 					TextSize = 11,
 					TextColor3 = C.Background,
 					TextXAlignment = Enum.TextXAlignment.Center,
-					BackgroundColor3 = if tag == "PITY" then C.Gold else C.Accent2,
+					BackgroundColor3 = if variant then variant.Color elseif result.Pity then C.Gold else C.Accent2,
 					BackgroundTransparency = 0,
 					AnchorPoint = Vector2.new(0.5, 1),
 					Position = UDim2.new(0.5, 0, 1, 6),
 					Size = UDim2.fromOffset(52, 16),
+					AutomaticSize = Enum.AutomaticSize.X,
+					Padding = { X = 4 },
 					ZIndex = 88,
 					Corner = Theme.Radius.Pill,
 					Parent = card.Instance,
@@ -247,6 +263,15 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 				if rarityIndex >= 4 then
 					SoundPlayer.play("CrateSparkle")
 				end
+				-- Golden and Rainbow drops get their own sparkle and a burst in their colour.
+				if variant then
+					SoundPlayer.sequence("CrateSparkle", if variant.Id == "rainbow" then { 2, 2.52, 3, 4 } else { 2, 2.52 }, 0.05)
+					if variant.Id == "rainbow" then
+						SoundPlayer.play("CrateJackpot")
+					end
+					local pos = card.Instance.AbsolutePosition + card.Instance.AbsoluteSize / 2 - stage.AbsolutePosition
+					Effects.burst(stage, pos / math.max(0.01, (stage:FindFirstChildOfClass("UIScale") :: UIScale).Scale), variant.Color, 20, 180, 90)
+				end
 				if rarityIndex >= 5 then
 					local pos = card.Instance.AbsolutePosition + card.Instance.AbsoluteSize / 2 - stage.AbsolutePosition
 					Effects.burst(stage, pos / math.max(0.01, (stage:FindFirstChildOfClass("UIScale") :: UIScale).Scale), Theme.rarityColor(item.Rarity), 16, 160, 90)
@@ -254,6 +279,11 @@ function ChestOpening.play(ctx, chest, results, onAgain: (() -> ())?)
 				skippableWait(state, if single then 0.2 else 0.12)
 			end
 		end
+	end
+
+	-- Skipped reveals still announce Golden/Rainbow drops with a sparkle.
+	if variantDrops > 0 and (Theme.ReducedMotion or state.Skip) then
+		SoundPlayer.sequence("CrateSparkle", { 2, 2.52, 3 }, 0.05)
 	end
 
 	-- Fanfare for the best drop -----------------------------------------------------------

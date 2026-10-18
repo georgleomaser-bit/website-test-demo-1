@@ -42,6 +42,10 @@ local LIST = {
 	{ "crate_500",      "Crate Hoarder",      "🎁", "Open 500 crates.",                          "ChestsOpened",      500,       { Gems = 150, SkillPoints = 2 } },
 	{ "crate_5000",     "Crate Tycoon",       "🎁", "Open 5,000 crates.",                        "ChestsOpened",      5000,      { Gems = 600, SkillPoints = 3 } },
 
+	{ "fuse_1",         "Fusion Novice",      "✨", "Fuse 3 copies of an item into a better one.", "ItemsFused",       1,         { Gems = 20 } },
+	{ "fuse_25",        "Fusion Master",      "✨", "Fuse items 25 times.",                      "ItemsFused",        25,        { Gems = 150, SkillPoints = 2 } },
+	{ "rainbow_1",      "Over the Rainbow",   "🌈", "Get a Rainbow item.",                       "RainbowsFound",     1,         { Gems = 100, SkillPoints = 1 } },
+
 	{ "discover_10",    "Curious Mind",       "📖", "Discover 10 different items.",              "ItemsDiscovered",   10,        { Gems = 25, SkillPoints = 1 } },
 	{ "discover_30",    "Archivist",          "📖", "Discover 30 different items.",              "ItemsDiscovered",   30,        { Gems = 100, SkillPoints = 2 } },
 	{ "discover_60",    "Museum Curator",     "🏛️", "Discover 60 different items.",              "ItemsDiscovered",   60,        { Gems = 400, SkillPoints = 3 } },

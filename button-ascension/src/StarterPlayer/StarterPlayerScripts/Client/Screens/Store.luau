@@ -34,7 +34,7 @@ local State = require(Client.State)
 local C = Theme.Colors
 local F = Theme.Fonts
 
-local CARD = UDim2.fromOffset(272, 178)
+local CARD = UDim2.fromOffset(272, 194)
 
 local Store = {}
 
@@ -55,7 +55,13 @@ local function crateOdds(chestId: string): string
 			table.insert(parts, `{rarityId} {Format.pct(weight / total, if weight / total < 0.1 then 1 else 0)}`)
 		end
 	end
-	return table.concat(parts, " · ") .. ". Items from every crate you have unlocked."
+	local variants = ""
+	if chest.ForceVariant then
+		variants = " Always Rainbow (×6 power)."
+	elseif chest.VariantChances then
+		variants = ` Golden {Format.pct(chest.VariantChances.golden or 0, 1)} · Rainbow {Format.pct(chest.VariantChances.rainbow or 0, 1)}.`
+	end
+	return table.concat(parts, " · ") .. "." .. variants .. " Items from crates you have unlocked."
 end
 
 function Store.new(ctx)
@@ -156,7 +162,7 @@ function Store.new(ctx)
 			TextColor3 = C.TextDim,
 			TextWrapped = true,
 			TextYAlignment = Enum.TextYAlignment.Top,
-			Size = UDim2.new(1, 0, 0, 46),
+			Size = UDim2.new(1, 0, 0, 62),
 			Position = UDim2.fromOffset(0, 50),
 			Parent = panel,
 		})

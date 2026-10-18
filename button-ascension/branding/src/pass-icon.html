@@ -26,6 +26,7 @@
     op_crate: { color: "#b05cff", glyph: "crate", big: "EPIC+", label: "OP CRATE", op: true },
     mega_op_crate: { color: "#ffb428", glyph: "crate", big: "LEGEND+", label: "MEGA OP CRATE", op: true },
     ultra_op_crate: { color: "#ff4070", glyph: "crate", big: "MYTHIC+", label: "ULTRA OP CRATE", op: true },
+    rainbow_chest: { color: "#ff78dc", glyph: "rainbowCrate", big: "RAINBOW", label: "RAINBOW CHEST", op: true },
   };
 
   const GLYPHS = {
@@ -58,6 +59,9 @@
                  </g>`,
   };
 
+  // The Rainbow Chest: the crate painted with the rainbow gradient defined below.
+  GLYPHS.rainbowCrate = () => GLYPHS.crate("url(#rainbow)");
+
   const key = decodeURIComponent(location.hash.slice(1)) || "auto_clicker";
   const icon = ICONS[key];
   const bigSize = icon.big.length > 5 ? 84 : icon.big.length > 3 ? 104 : 128;
@@ -69,6 +73,11 @@
         <stop offset="1" stop-color="#07071a"/>
       </radialGradient>
       <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="16"/></filter>
+      <linearGradient id="rainbow" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#ff5078"/><stop offset="0.25" stop-color="#ffd250"/>
+        <stop offset="0.5" stop-color="#50ffaa"/><stop offset="0.75" stop-color="#50aaff"/>
+        <stop offset="1" stop-color="#dc64ff"/>
+      </linearGradient>
       <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
         <feDropShadow dx="0" dy="6" stdDeviation="5" flood-color="#000" flood-opacity="0.7"/>
       </filter>

@@ -131,6 +131,25 @@ function Loot.rollFromPool(rng: Random, chest, luck: number, pool: { [string]: {
 	return list[rng:NextInteger(1, #list)], rarityId
 end
 
+--[[
+	Golden / Rainbow roll for a dropped item: returns "golden", "rainbow" or nil.
+	chances: { golden = p, rainbow = p } (defaults to Items.Variants drop chances).
+	Independent of rarity and pity.
+]]
+function Loot.rollVariant(rng: Random, chances: { [string]: number }?): string?
+	local roll = rng:NextNumber()
+	-- Rarest first, so the chances add up the way they read.
+	for i = #Items.Variants, 1, -1 do
+		local variant = Items.Variants[i]
+		local chance = if chances then chances[variant.Id] or 0 else variant.DropChance
+		if roll < chance then
+			return variant.Id
+		end
+		roll -= chance
+	end
+	return nil
+end
+
 -- Admin testing: one item of an exact rarity from a crate's pool. Never touches pity.
 function Loot.rollForcedRarity(rng: Random, chest, rarityId: string): string?
 	return Loot.pickItem(rng, chest.Id, rarityId)

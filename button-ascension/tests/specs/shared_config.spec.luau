@@ -290,11 +290,12 @@ describe("Economy invariants", function()
 		for _, def in ipairs(Ascension.List) do
 			data.Ascension[def.Id] = def.MaxLevel
 		end
+		-- Rainbow versions are the strongest copies of every Luck and Gem item.
 		local candidates = {}
 		for _, item in ipairs(Items.List) do
 			local stat = GameConfig.ItemStats[item.Stat].Stat
 			if stat == "luck" or stat == "gemsPct" then
-				table.insert(candidates, item)
+				table.insert(candidates, Items.ById[Items.variantId(item.Id, "rainbow")])
 			end
 		end
 		table.sort(candidates, function(a, b)
@@ -318,20 +319,47 @@ describe("Economy invariants", function()
 				-- No discounts or bonus drops apply to Gem crates.
 				ctx.expect(Formulas.chestPrice(chest, 0.6)).toBe(chest.Price)
 				ctx.expect(Formulas.chestBonusChance(chest, 0.75)).toBe(0)
-				-- Conservative: value every rarity at its most valuable item.
+				-- Conservative: value every rarity at its most valuable item, and count
+				-- Golden (×3) and Rainbow (×9) drops at their natural chances.
+				local variantFactor = 1
+				for _, variant in ipairs(Items.Variants) do
+					variantFactor += variant.DropChance * (variant.Sell - 1)
+				end
 				local expected = 0
 				for _, entry in ipairs(Loot.effectiveWeights(chest, stats.luck)) do
 					local best = 0
 					for _, itemId in ipairs(Items.PoolByChest[chest.Id][entry.Rarity]) do
 						best = math.max(best, Formulas.sellValue(Items.ById[itemId], 1, stats.gemMultiplier))
 					end
-					expected += entry.Chance * best
+					expected += entry.Chance * best * variantFactor
 				end
 				print(`    {chest.Id}: resale ≤ {math.floor(expected)} of {chest.Price} Gems (luck +{math.floor(stats.luck * 100)}%, gems ×{stats.gemMultiplier})`)
 				ctx.expect(expected).toBeLessThan(chest.Price)
 			end
 		end
 		ctx.expect(checked).toBeGreaterThan(0)
+	end)
+
+	it("never creates Gems by fusing: a fused item is worth exactly its inputs", function(ctx)
+		local world = sharedWorld(ctx)
+		local Items = req(world, "Config.Items")
+		local Formulas = req(world, "Formulas")
+		local multipliers = { 1, 1.37, 2.5, 4.84, 12.1, 61.3 }
+		for _, base in ipairs(Items.List) do
+			local golden = Items.ById[Items.fuseResult(base.Id)]
+			local rainbow = Items.ById[Items.fuseResult(golden.Id)]
+			ctx.expect(golden.Id).toBe(base.Id .. ":golden")
+			ctx.expect(rainbow.Id).toBe(base.Id .. ":rainbow")
+			ctx.expect(Items.fuseResult(rainbow.Id)).toBeNil()
+			ctx.expect(golden.SellValue).toBe(base.SellValue * Items.FuseCost)
+			ctx.expect(rainbow.SellValue).toBe(golden.SellValue * Items.FuseCost)
+			ctx.expect(math.abs(golden.Bonus / base.Bonus - 2.5)).toBeLessThan(1e-9)
+			ctx.expect(math.abs(rainbow.Bonus / base.Bonus - 6)).toBeLessThan(1e-9)
+			for _, m in ipairs(multipliers) do
+				ctx.expect(Formulas.sellValue(golden, 1, m)).toBe(Formulas.sellValue(base, Items.FuseCost, m))
+				ctx.expect(Formulas.sellValue(rainbow, 1, m)).toBe(Formulas.sellValue(golden, Items.FuseCost, m))
+			end
+		end
 	end)
 end)
 

@@ -269,9 +269,91 @@ refreshes the top 25 every 2 minutes. A live board for the current server is
 always available. The Roblox player list shows **Ascensions** and **Sparks**
 (leaderstats).
 
+## Interface (HUD)
+
+There is no full-screen "clicker mode": the 3D world stays visible and the
+character can walk, jump and run the obby while pressing. The HUD sits at
+the bottom of the screen (`Client/Hud`):
+
+* **Dock** (bottom centre), rows from the bottom: the menu (Shop, Crates,
+  Items, Skills, Book, Quests, Ascend, Stats, Store, Settings, with badges);
+  Sparks, Gems, Prisms, level/XP and ascension progress (opens Ascend);
+  obby progress with **▶** (go to your checkpoint) and **🏠** (back to the
+  plaza) plus the live chips (crit, luck, auto presses and what they earn per
+  second, total multiplier); boost timers; the "not saving" warning.
+* **PRESS button** (bottom right) with the combo meter and the income per
+  press / per second. On touch screens it sits above Roblox's jump button.
+  Keyboard **E** and controller **R2/L2** press too, so pressing works while
+  running.
+* **Quest card** (right side) — the only element not at the bottom. On
+  phones it hides behind the 📋 toggle under the Roblox top bar.
+* Windows open over the world as before and dim it while open.
+
+## Obby
+
+A 15-stage obstacle course starts at the gate on the east edge of the plaza
+(`Services/ObbyService`, numbers in `Config/Obby`). Auto-presses and passive
+income keep earning while you run it, which is what makes Auto-Presser
+upgrades (and the Auto Clicker passes) worth it here.
+
+| # | Stage | Obstacle |
+|---|---|---|
+| 1 | First Steps | 4 easy jumps |
+| 2 | Stairway | 5 rising platforms |
+| 3 | Hot Floor | walkway with 3 kill strips to jump |
+| 4 | Tightrope | two 1.6-stud beams |
+| 5 | Ferry | moving platform over a 26-stud gap |
+| 6 | Spinner | rotating kill bar |
+| 7 | Zigzag | alternating side platforms |
+| 8 | Ladder | 16-stud truss climb |
+| 9 | Elevators | two lifts (+10 and +8 studs) |
+| 10 | Islands | six 3.5-stud islands |
+| 11 | Double Spin | two spinners turning opposite ways |
+| 12 | Leap of Faith | three 8-stud jumps |
+| 13 | Needle | four 1.4-stud beams |
+| 14 | Lava Ferry | moving platform over lava |
+| 15 | Summit | climb to the golden finish |
+
+* **Checkpoints** (cyan pads; cleared ones turn green for you, the next one
+  pulses). Kill bricks and falling 30 studs below your checkpoint put you back
+  on it, and so does respawning mid-run, also after rejoining.
+* **Rewards** (server only): each checkpoint in a run pays base press value ×
+  25 × stage number in Sparks; the first time a stage is ever cleared +5 💎
+  (+25 💎 on stages 5, 10, 15). Finishing pays base press value × 600 Sparks
+  and +10 💎 (+100 💎 the first time; +50 / 100 / 250 / 500 💎 at 5 / 10 / 25 /
+  50 completions), resets the run and returns you to the plaza.
+* **Anti-cheat:** the server samples positions every 0.1 s instead of
+  trusting messages. Checkpoints count only in order and while alive, and
+  only if the segment took at least distance / 45 studs per second (and ≥ 2
+  s). A jump of more than 40 studs between samples that the server did not
+  cause is flagged and freezes progress for 4 s. The ▶ / 🏠 buttons can only
+  move you to your own saved checkpoint or the plaza.
+* **Saved:** current stage, best stage, completions and total checkpoints.
+
+## Tutorial
+
+New players get a short guided tutorial (`Config/Tutorial`,
+`Services/TutorialService`, `Client/Tutorial`): a coach card at the top, an
+arrow and a glowing ring on the right HUD element.
+
+1. Press the button 10 times.
+2. Buy your first upgrade in the Shop.
+3. Open a crate (the starter quest gives a free one).
+4. Equip an item.
+5. Open the quests.
+6. Reach obby checkpoint 1.
+7. Learn about Auto-Presser upgrades (Got it!).
+
+Steps complete only when the server sees the real result (counters such as
+presses or crates opened grow from the moment the step starts; auto-presses
+do not count as pressing). The client can only send "I looked at it" for the
+two look-at steps while they are active, "skip" and "replay". Finishing pays
+50 💎 once. Skipping is saved; Settings → Tutorial → Replay starts it again.
+Players whose data was saved before the tutorial existed never see it.
+
 ## Robux store (game passes and developer products)
 
-Optional purchases, opened from **💰 Store** in the navigation rail. Full
+Optional purchases, opened from **💰 Store** in the bottom menu. Full
 setup and the security rules are in [`MONETIZATION.md`](MONETIZATION.md).
 
 * **Game passes** (buy once): Auto Clicker (+5 auto presses/s, beyond the

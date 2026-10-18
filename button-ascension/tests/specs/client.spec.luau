@@ -189,10 +189,14 @@ describe("Devices", function()
 	it("uses the compact layout on a phone with touch input", function(ctx)
 		local h = ctx.harness
 		local _, _, _, gui = boot(ctx, { viewport = roblox.Vector2.new(844, 390), input = { touch = true, keyboard = false, mouse = false } })
-		-- The whole navigation rail fits between the Roblox top bar (58 px in the harness) and the bottom.
-		local rail = h:findDescendant(gui, "NavRail", "Frame")
-		local railScale = rail:FindFirstChildOfClass("UIScale")
-		ctx.expect(rail.Size.Y.Offset * railScale.Scale).toBeLessThanOrEqual(390 - 58)
+		-- The bottom dock fits beside Roblox's jump button (bottom right) and is not taller than the screen.
+		local dock = h:findDescendant(gui, "Dock", "Frame")
+		local dockScale = dock:FindFirstChildOfClass("UIScale").Scale
+		ctx.expect(dock.Size.X.Offset * dockScale).toBeLessThanOrEqual(844 - 120 - 10)
+		ctx.expect(dock.Size.Y.Offset * dockScale).toBeLessThanOrEqual(390 - 58)
+		-- The PRESS button sits above the jump button on touch screens.
+		local press = h:findDescendant(gui, "Center", "Frame")
+		ctx.expect(press.Position.Y.Offset).toBeLessThanOrEqual(-140)
 		local right = h:findDescendant(gui, "RightColumn", "Frame")
 		ctx.expect(right.Visible).toBe(false)
 		local toggle = h:findDescendant(gui, "SideToggle", "TextButton")
@@ -213,6 +217,92 @@ describe("Devices", function()
 		end
 		h:advance(1)
 		ctx.expect(Game.data(server, player).Stats.TotalClicks).toBe(3)
+	end)
+
+	it("presses with the E key on a keyboard, so you can press while running", function(ctx)
+		local h = ctx.harness
+		local server, player, client = boot(ctx)
+		-- E is bound to the same action as the controller triggers.
+		local bound = false
+		for _, input in ipairs(client.actions["ButtonAscension_Press"].inputs) do
+			bound = bound or input == roblox.Enum.KeyCode.E
+		end
+		ctx.expect(bound).toBe(true)
+		for _ = 1, 4 do
+			h:triggerAction(client, "ButtonAscension_Press", nil, h:inputObject({ KeyCode = roblox.Enum.KeyCode.E, UserInputType = roblox.Enum.UserInputType.Keyboard }))
+			h:advance(0.2)
+		end
+		h:advance(1)
+		ctx.expect(Game.data(server, player).Stats.TotalClicks).toBe(4)
+	end)
+end)
+
+describe("Bottom HUD, obby and tutorial", function()
+	it("puts the HUD at the bottom with only the quest card at the side, and keeps the world visible", function(ctx)
+		local h = ctx.harness
+		local _, _, _, gui = boot(ctx)
+		local dock = h:findDescendant(gui, "Dock", "Frame")
+		ctx.expect(dock.AnchorPoint.Y).toBe(1)
+		ctx.expect(dock.Position.Y.Scale).toBe(1)
+		-- Navigation, currencies and chips all live in the dock.
+		for _, name in ipairs({ "NavRail", "Row", "Chips" }) do
+			ctx.expect(dock:FindFirstChild(name)).toBeTruthy()
+		end
+		ctx.expect(h:findDescendant(dock, "Sparks", "Frame")).toBeTruthy()
+		ctx.expect(dock:FindFirstChild("NavRail"):FindFirstChild("Store")).toBeTruthy()
+		local press = h:findDescendant(gui, "Center", "Frame")
+		ctx.expect(press.AnchorPoint.Y).toBe(1)
+		ctx.expect(press.Position.Y.Scale).toBe(1)
+		local right = h:findDescendant(gui, "RightColumn", "Frame")
+		ctx.expect(right.Position.Y.Scale).toBeLessThan(0.5)
+		ctx.expect(right:FindFirstChild("GoalCard")).toBeTruthy()
+		-- No more full-screen darkening behind the HUD.
+		ctx.expect(h:findDescendant(gui, "Backdrop", "Frame").BackgroundTransparency).toBe(1)
+	end)
+
+	it("moves you to your obby checkpoint and back with the dock buttons", function(ctx)
+		local h = ctx.harness
+		local server, player, _, gui = boot(ctx)
+		local obby = Game.service(server, "ObbyService")
+		h:click(h:findDescendant(gui, "ObbyGo", "TextButton"))
+		h:advance(1)
+		local root = player.Character:FindFirstChild("HumanoidRootPart")
+		ctx.expect((root.Position - obby.Start.Position).Magnitude).toBeLessThan(5)
+		ctx.expect(h:findDescendant(gui, "ObbyLabel", "TextLabel").Text).toMatch("Obby 0/15")
+		h:advance(5)
+		h:click(h:findDescendant(gui, "ObbyHome", "TextButton"))
+		h:advance(1)
+		ctx.expect(root.Position.X).toBeLessThan(20)
+	end)
+
+	it("shows the tutorial for new players, follows real progress and can be skipped and replayed", function(ctx)
+		local h = ctx.harness
+		local server, player, _, gui = boot(ctx)
+		local card = h:findDescendant(gui, "TutorialCard", "Frame")
+		ctx.expect(card.Visible).toBe(true)
+		ctx.expect(h:findDescendant(card, "Counter", "TextLabel").Text).toMatch("STEP 1/7")
+		ctx.expect(h:findDescendant(gui, "TutorialArrow", "TextLabel").Visible).toBe(true)
+		local cap = h:findDescendant(gui, "Cap", "TextButton")
+		for _ = 1, 10 do
+			h:click(cap)
+			h:advance(0.15)
+		end
+		h:advance(1.5)
+		ctx.expect(h:findDescendant(card, "Counter", "TextLabel").Text).toMatch("STEP 2/7")
+
+		h:click(h:findByText(card, "Skip tutorial", "TextButton"))
+		h:advance(1)
+		ctx.expect(Game.data(server, player).Tutorial.Done).toBe(true)
+		ctx.expect(card.Visible).toBe(false)
+
+		-- Settings → Replay starts it again.
+		h:click(h:findDescendant(gui, "NavRail", "Frame"):FindFirstChild("Settings"))
+		h:advance(1)
+		h:click(h:findDescendant(windowOf(h, gui, "Settings"), "ReplayTutorial", "TextButton"))
+		h:advance(1.5)
+		ctx.expect(Game.data(server, player).Tutorial.Done).toBe(false)
+		ctx.expect(card.Visible).toBe(true)
+		ctx.expect(h:findDescendant(card, "Counter", "TextLabel").Text).toMatch("STEP 1/7")
 	end)
 end)
 

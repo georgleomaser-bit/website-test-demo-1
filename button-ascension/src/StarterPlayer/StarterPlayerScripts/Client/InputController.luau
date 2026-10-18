@@ -3,11 +3,13 @@
 	Location: StarterPlayer/StarterPlayerScripts/Client/InputController
 	Depends on: Client/ScreenManager
 
-	Controller support on top of Roblox's built-in GUI selection:
-	  R2 / L2   press the big button (when no window is open)
-	  Y         jump to the navigation rail (press again to leave it)
+	Pressing works everywhere, also while running around or doing the obby:
+	  E (keyboard), R2 / L2 (controller)   press the PRESS button
+	Controller menus on top of Roblox's built-in GUI selection:
+	  Y         jump into the bottom menu (press again, or B, to leave it)
 	  B         close the open window
-	D-pad / left stick move between buttons, A activates (built in).
+	D-pad / left stick move between buttons while the menu is selected, A activates.
+	Nothing is selected by default, so the left stick and A move and jump the character.
 	Mouse and touch work directly on the UI; nothing extra is bound for them.
 ]]
 
@@ -29,35 +31,39 @@ function InputController.init(ctx)
 		end
 		ctx.BigButton:Press()
 		return Enum.ContextActionResult.Sink
-	end, false, 2000, Enum.KeyCode.ButtonR2, Enum.KeyCode.ButtonL2)
+	end, false, 2000, Enum.KeyCode.ButtonR2, Enum.KeyCode.ButtonL2, Enum.KeyCode.E)
+
+	local function inMenu(): boolean
+		local selected = GuiService.SelectedObject
+		return selected ~= nil and selected:IsDescendantOf(ctx.Hud.Dock)
+	end
 
 	ContextActionService:BindActionAtPriority("ButtonAscension_Back", function(_, state)
-		if state ~= Enum.UserInputState.Begin or not ScreenManager.isOpen() then
+		if state ~= Enum.UserInputState.Begin then
 			return Enum.ContextActionResult.Pass
 		end
-		ScreenManager.close()
-		return Enum.ContextActionResult.Sink
+		if ScreenManager.isOpen() then
+			ScreenManager.close()
+			return Enum.ContextActionResult.Sink
+		end
+		if inMenu() then
+			GuiService.SelectedObject = nil
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
 	end, false, 2000, Enum.KeyCode.ButtonB)
 
 	ContextActionService:BindActionAtPriority("ButtonAscension_Nav", function(_, state)
 		if state ~= Enum.UserInputState.Begin then
 			return Enum.ContextActionResult.Pass
 		end
-		local selected = GuiService.SelectedObject
-		if selected and selected:IsDescendantOf(ctx.Hud.Rail) then
-			GuiService.SelectedObject = ctx.BigButton.Cap
+		if inMenu() then
+			GuiService.SelectedObject = nil
 		else
 			GuiService:Select(ctx.Hud.Rail)
 		end
 		return Enum.ContextActionResult.Sink
 	end, false, 2000, Enum.KeyCode.ButtonY)
-
-	-- When a gamepad connects with nothing selected, start on the big button.
-	UserInputService.GamepadConnected:Connect(function()
-		if not GuiService.SelectedObject and not ScreenManager.isOpen() then
-			GuiService.SelectedObject = ctx.BigButton.Cap
-		end
-	end)
 end
 
 return InputController

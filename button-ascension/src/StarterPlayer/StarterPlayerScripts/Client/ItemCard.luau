@@ -5,7 +5,9 @@
 
 	Reusable item tile with rarity border, glow, icon, name and badges
 	(count, equipped, favourite, new). Secret items get an animated rainbow
-	border. Undiscovered items render as a dark silhouette.
+	border. Golden variants get a gold tint and border, Rainbow variants the
+	animated rainbow border (static with Reduced Motion), both with a ✦ mark.
+	Undiscovered items render as a dark silhouette.
 	Cards are updated in place (Set) so large grids never get rebuilt.
 ]]
 
@@ -131,6 +133,19 @@ function ItemCard.new(props)
 		Visible = false,
 		Parent = button,
 	})
+	self.VariantMark = UI.label({
+		Name = "VariantMark",
+		Text = "✦",
+		Font = F.Heading,
+		TextSize = 15,
+		TextColor3 = C.Gold,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Size = UDim2.new(1, -8, 0, 16),
+		Position = UDim2.fromOffset(0, 20),
+		ZIndex = 3,
+		Visible = false,
+		Parent = button,
+	})
 	self.NewBadge = UI.label({
 		Name = "New",
 		Text = "NEW",
@@ -197,14 +212,21 @@ function ItemCard:Set(state)
 	self.Favorite.Visible = state.Favorite == true
 	self.NewBadge.Visible = state.New == true
 
-	self.Stroke.Color = if state.Selected then C.White else color
-	self.Stroke.Thickness = if state.Selected then 3 else 2
+	local variant = if undiscovered then nil else Items.VariantById[item.Variant or ""]
+	self.VariantMark.Visible = variant ~= nil
+	if variant then
+		self.VariantMark.TextColor3 = variant.Color
+	end
+	self.Stroke.Color = if state.Selected then C.White elseif variant and variant.Id == "golden" then C.Gold else color
+	self.Stroke.Thickness = if state.Selected or variant then 3 else 2
 	self.Gradient.Color = if undiscovered
 		then ColorSequence.new(C.Panel, C.BackgroundAlt)
+		elseif variant and variant.Id == "golden" then ColorSequence.new(Color3.fromRGB(130, 96, 18), C.Panel)
+		elseif variant then ColorSequence.new(Color3.fromRGB(110, 40, 120), C.Panel)
 		else ColorSequence.new(Theme.darken(rarity.Glow, 0.35), C.Panel)
 
 	local secretGradient = self.Stroke:FindFirstChildOfClass("UIGradient")
-	if item.Rarity == "Secret" and not undiscovered then
+	if (item.Rarity == "Secret" or item.Variant == "rainbow") and not undiscovered then
 		if not secretGradient then
 			secretGradient = Instance.new("UIGradient")
 			secretGradient.Color = Rarities.SecretGradient
