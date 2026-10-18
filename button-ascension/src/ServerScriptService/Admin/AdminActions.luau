@@ -262,6 +262,7 @@ local function summarizeProfile(profile, services)
 		Equipped = table.clone(data.Equipped),
 		Chests = table.clone(data.Chests),
 		Stats = table.clone(data.Stats),
+		Passes = if services.GamePassService then services.GamePassService:OwnedList(profile) else {},
 		Discovered = Formulas.discoveredCount(data),
 		Achievements = (function()
 			local n = 0
@@ -1335,7 +1336,7 @@ AdminActions.ResetScopes = {
 	quests = "Daily quests, starter path and daily streak",
 	stats = "Statistics",
 	level = "Level, XP, Skill Points and skills",
-	all = "EVERYTHING (fresh start; settings kept)",
+	all = "EVERYTHING (fresh start; settings, Robux purchases and tutorial kept)",
 }
 AdminActions.ResetScopeOrder = { "upgrades", "skills", "ascension", "inventory", "collection", "quests", "stats", "level", "all" }
 
@@ -1394,15 +1395,24 @@ A["progression.reset"] = {
 			data.SkillPoints = 0
 			table.clear(data.Skills)
 		elseif scope == "all" then
-			local keep = { Settings = data.Settings, Meta = data.Meta }
+			-- Things bought with Robux are never reset: passes, running boosts, and the
+			-- processed receipt ids (wiping those could grant a pending purchase twice).
+			local KEEP = { "Settings", "Meta", "Passes", "Boosts", "Receipts", "Tutorial" }
+			local keep = {}
+			for _, key in ipairs(KEEP) do
+				keep[key] = data[key]
+			end
 			for key in pairs(data) do
 				data[key] = nil
 			end
 			for key, value in pairs(fresh) do
 				data[key] = value
 			end
-			data.Settings = keep.Settings
-			data.Meta = keep.Meta
+			for _, key in ipairs(KEEP) do
+				if keep[key] ~= nil then
+					data[key] = keep[key]
+				end
+			end
 		end
 		local services = ctx.Services
 		services.QuestService:EnsureDaily(profile)

@@ -147,7 +147,7 @@ function DataSchema.default()
 		Obby = { Stage = 0, Best = 0, Completions = 0, Checkpoints = 0 },
 		-- First-time tutorial (written only by TutorialService). Base holds the
 		-- counters at the moment the current step started.
-		Tutorial = { Step = 1, Done = false, Skipped = false, Rewarded = false, GaveCrate = false, Base = 0 },
+		Tutorial = { Step = 1, Done = false, Skipped = false, Rewarded = false, Base = 0 },
 		Meta = { Created = os.time(), LastSave = 0, LastSeen = 0, Sessions = 0 },
 	}
 end
@@ -434,6 +434,26 @@ function DataSchema.sanitize(raw)
 		if type(id) == "string" and #id > 0 and #id <= 100 then
 			table.insert(d.Receipts, id)
 		end
+	end
+
+	local obby = tbl(raw.Obby)
+	d.Obby.Best = int(obby.Best, 0, Obby.StageCount, 0)
+	-- A run in progress can never be past the last checkpoint (finishing resets it to 0).
+	d.Obby.Stage = math.min(int(obby.Stage, 0, Obby.StageCount - 1, 0), d.Obby.Best)
+	d.Obby.Completions = int(obby.Completions, 0, 1e9, 0)
+	d.Obby.Checkpoints = int(obby.Checkpoints, 0, 1e12, 0)
+
+	local tutorial = raw.Tutorial
+	if type(tutorial) == "table" then
+		d.Tutorial.Step = int(tutorial.Step, 1, #Tutorial.Steps, 1)
+		d.Tutorial.Done = tutorial.Done == true
+		d.Tutorial.Skipped = tutorial.Skipped == true
+		d.Tutorial.Rewarded = tutorial.Rewarded == true
+		d.Tutorial.Base = num(tutorial.Base, 0, cap, 0)
+	elseif type(raw.Meta) == "table" and int(raw.Meta.Sessions, 0, 1e9, 0) > 0 then
+		-- Saved before the tutorial existed: an experienced player, don't start it.
+		d.Tutorial.Done = true
+		d.Tutorial.Skipped = true
 	end
 
 	local meta = tbl(raw.Meta)

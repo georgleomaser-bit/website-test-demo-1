@@ -299,6 +299,19 @@ describe("Confirmation of destructive actions", function()
 		ctx.expect(data.Upgrades.click_power).toBeNil()
 		ctx.expect(data.Inventory.paper_clip).toBe(1)
 	end)
+
+	it("never takes away Robux purchases in a full reset", function(ctx)
+		local server, owner, _, _, player = studio(ctx)
+		local data = Game.data(server, player)
+		data.Upgrades.click_power = 10
+		data.Passes.auto_clicker = true
+		table.insert(data.Receipts, "purchase-123")
+		local ask = Game.admin(ctx, server, owner, "progression.reset", { Target = "Player", Scope = "all" })
+		ctx.expect(Game.admin(ctx, server, owner, "confirm", { Token = ask.token }).ok).toBe(true)
+		ctx.expect(data.Upgrades.click_power).toBeNil()
+		ctx.expect(data.Passes.auto_clicker).toBe(true)
+		ctx.expect(table.find(data.Receipts, "purchase-123")).toBeTruthy()
+	end)
 end)
 
 describe("Player management", function()

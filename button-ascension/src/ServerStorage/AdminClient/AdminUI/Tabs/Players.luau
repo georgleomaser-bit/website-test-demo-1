@@ -216,6 +216,9 @@ return function(ctx, container: Frame)
 		if not online then
 			Widgets.tag(tagRow, "OFFLINE · read-only view", P.TextDim, 4)
 		end
+		if type(data.Passes) == "table" and #data.Passes > 0 then
+			Widgets.tag(tagRow, "PASSES · " .. string.upper(table.concat(data.Passes, ", ")), P.Accent, 5)
+		end
 
 		if online then
 			local actions = UI.frame({ Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 3, Parent = details })

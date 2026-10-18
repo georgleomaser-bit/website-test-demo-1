@@ -35,12 +35,11 @@ Tutorial.Steps = {
 	{
 		Id = "crate",
 		Title = "Open a crate",
-		Text = "Open the Crates menu 🎁 and open a crate. Here's a free one!",
+		Text = "Claim your free crate on the quest card ➡, then open it in the Crates menu 🎁.",
 		Target = "nav:Chests",
 		Kind = "stat",
 		Stat = "ChestsOpened",
 		Amount = 1,
-		GiveCrate = "starter",
 	},
 	{
 		Id = "equip",
