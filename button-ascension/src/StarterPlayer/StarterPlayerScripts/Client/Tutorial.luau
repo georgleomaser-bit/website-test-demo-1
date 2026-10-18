@@ -209,7 +209,6 @@ function Tutorial.init(ctx)
 		ring.Visible = show
 		arrow.Visible = show
 		card.Position = UDim2.new(0.5, 0, 0, if ScreenManager.isOpen() then 8 else 70)
-		scale.Scale = if Theme.ReducedMotion then 1 else scale.Scale
 		if not show or not target then
 			return
 		end
@@ -221,6 +220,12 @@ function Tutorial.init(ctx)
 		local bob = if Theme.ReducedMotion then 0 else math.sin(clock * 5) * 6
 		arrow.Position = UDim2.fromOffset(pos.X + size.X / 2, pos.Y - 8 + bob)
 	end)
+
+	local function fitWidth()
+		card.Size = UDim2.fromOffset(math.min(470, UI.viewport().X - 32), 0)
+	end
+	fitWidth()
+	UI.onViewportChanged(fitWidth)
 
 	State.subscribe("Tutorial", refresh)
 	State.onReady(refresh)

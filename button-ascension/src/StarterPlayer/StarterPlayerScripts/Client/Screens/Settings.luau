@@ -127,7 +127,6 @@ function SettingsScreen.new(ctx)
 	sliderRow("UIScale", "Interface size", "Scales the whole interface. Applies when you let go.", function(v)
 		return string.format("%.2f×", v)
 	end, 0.05, true)
-	sliderRow("BackgroundDim", "Background dim", "Darkens the world behind the interface.", percent, 0.05)
 	toggleRow("ReducedMotion", "Reduced motion", "Turns off shaking, particles and most animations.")
 	toggleRow("ScreenShake", "Screen shake on crits")
 	toggleRow("FloatingNumbers", "Floating reward numbers")
@@ -151,11 +150,32 @@ function SettingsScreen.new(ctx)
 		Parent = autoFrame,
 	})
 
+	local tutorialFrame = row("Tutorial", "Shows the first-time guide again, step by step.", 140)
+	UI.button({
+		Name = "ReplayTutorial",
+		Text = "Replay",
+		Icon = "🎓",
+		Variant = "secondary",
+		Size = UDim2.fromOffset(130, 36),
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -12, 0.5, 0),
+		TextSize = 14,
+		OnClick = function()
+			local result = ClientNet.action("TutorialRestart", {})
+			if result.ok then
+				window.Close()
+			else
+				ctx.Notifications.error(result.err)
+			end
+		end,
+		Parent = tutorialFrame,
+	})
+
 	order += 1
 	local info = UI.panel({ Size = UDim2.new(1, 0, 0, 120), BackgroundColor3 = C.BackgroundAlt, LayoutOrder = order, Padding = 14, Parent = list })
 	local dataLabel = UI.label({ Text = "", Font = F.Bold, TextSize = 14, Size = UDim2.new(1, 0, 0, 20), Parent = info })
 	UI.label({
-		Text = "Controls — Mouse/touch: press the big button and tap menus. Controller: R2/L2 press, Y jumps to the menu, D-pad moves, A selects, B closes windows.",
+		Text = "Controls — Mouse/touch: tap PRESS (bottom right) and the menu buttons at the bottom; move and jump as usual. Keyboard: E presses. Controller: R2/L2 press, Y jumps to the menu (B leaves it), A selects, B closes windows.",
 		TextSize = 13,
 		TextColor3 = C.TextDim,
 		TextWrapped = true,
