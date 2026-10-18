@@ -19,7 +19,8 @@
 	     separate Music and SFX volumes, plus newer settings. Later additions
 	     that need no migration (missing sections start empty): Passes (owned
 	     game passes, a cache re-checked on every join), Boosts (seconds left
-	     on bought timed boosts), Receipts (processed purchase IDs), Obby
+	     on bought timed boosts), Receipts (processed purchase IDs),
+	     PassRewards (one-time rewards of game passes already granted), Obby
 	     (obstacle course progress) and Tutorial (first-time tutorial; data
 	     saved before the tutorial existed counts as already finished).
 ]]
@@ -93,6 +94,7 @@ DataSchema.Sections = {
 	"Settings",
 	"Passes",
 	"Boosts",
+	"PassRewards",
 	"Obby",
 	"Tutorial",
 }
@@ -145,6 +147,8 @@ function DataSchema.default()
 		Boosts = {},
 		-- Purchase IDs of processed developer-product receipts (oldest first, bounded).
 		Receipts = {},
+		-- [productKey] = true once the one-time reward of a game pass was granted.
+		PassRewards = {},
 		-- Obstacle course progress (written only by ObbyService).
 		Obby = { Stage = 0, Best = 0, Completions = 0, Checkpoints = 0 },
 		-- First-time tutorial (written only by TutorialService). Base holds the
@@ -426,6 +430,12 @@ function DataSchema.sanitize(raw)
 			if seconds > 0 then
 				d.Boosts[key] = seconds
 			end
+		end
+	end
+
+	for key, granted in pairs(tbl(raw.PassRewards)) do
+		if granted == true and DevProducts.ByKey[key] then
+			d.PassRewards[key] = true
 		end
 	end
 

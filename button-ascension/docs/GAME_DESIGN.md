@@ -381,6 +381,14 @@ Players whose data was saved before the tutorial existed never see it.
 Optional purchases, opened from **💰 Store** in the bottom menu. Full
 setup and the security rules are in [`MONETIZATION.md`](MONETIZATION.md).
 
+**Live right now** (IDs from the owner's Creator Hub): OP CLICKER (the OP
+Auto Clicker pass) and nine one-time items that give exactly what their names
+say: Starter Pack (25,000 Sparks, 150 Gems, 3 crates), 30,000 / 60,000 /
+200,000 Sparks, 120 / 600 / 15,000 Gems, and one hour of Lucky Hour (+100%
+Luck) or Spark Surge (×2 Sparks). Sparks bought with Robux are added exactly
+(no multipliers) and do not count toward quests or the ascension run total.
+The other items below are ready and appear as soon as their IDs are set.
+
 * **Game passes** (buy once): Auto Clicker (+5 auto presses/s, beyond the
   upgrade cap), OP Auto Clicker (+15/s), 2× Sparks, 3× Sparks (×6 together),
   2× Gems, Lucky Pass (+50% Luck), Super Luck (+150% Luck), Fast Crates (no

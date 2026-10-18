@@ -751,7 +751,8 @@ function Hud.refreshBoosts()
 	for _, product in ipairs(DevProducts.List) do
 		local endsAt = derived and derived.BoostEndsAt and derived.BoostEndsAt[product.Key]
 		if product.Boost and type(endsAt) == "number" and endsAt > now then
-			table.insert(lines, { `{product.Icon} {product.Name} ×{product.Boost.Mult}`, endsAt - now, product.Color })
+			local amount = if product.Boost.Add then `+{math.floor(product.Boost.Add * 100 + 0.5)}%` else `×{product.Boost.Mult}`
+			table.insert(lines, { `{product.Icon} {product.Name} {amount}`, endsAt - now, product.Color })
 		end
 	end
 	local serverState = ReplicatedStorage:FindFirstChild("ServerState")

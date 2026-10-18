@@ -2,7 +2,7 @@
 
 Testing has two layers:
 
-1. **Automated:** 163 tests that run the real game scripts in a headless
+1. **Automated:** 169 tests that run the real game scripts in a headless
    Roblox simulation, plus static type checking. They run without Roblox
    Studio, in under a minute.
 2. **Manual:** a checklist for things that need the real engine (rendering,
@@ -13,9 +13,9 @@ Testing has two layers:
 | Check | Command | Result |
 |---|---|---|
 | Static type check against the Roblox API definitions (luau-lsp 1.70, `globalTypes.d.luau`) | `luau-lsp analyze --definitions=globalTypes.d.luau --sourcemap=sourcemap.json src` | **0 errors, 0 warnings** |
-| Every file compiles (luau-compile) | `luau-compile --text <file>` | **all 100 scripts compile** |
-| Rojo build | `rojo build default.project.json -o build/ButtonAscension.rbxlx` | **builds**; 1 Script, 2 LocalScripts, 97 ModuleScripts, 11 Folders |
-| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **163 passed, 0 failed** |
+| Every file compiles (luau-compile) | `luau-compile --text <file>` | **all 101 scripts compile** |
+| Rojo build | `rojo build default.project.json -o build/ButtonAscension.rbxlx` | **builds**; 1 Script, 2 LocalScripts, 98 ModuleScripts, 11 Folders |
+| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **169 passed, 0 failed** |
 
 ### How the headless tests work
 
@@ -274,6 +274,15 @@ Details: [`tests/README.md`](../tests/README.md).
 - computes stats from the server's default player data
 - formats numbers like the UI expects
 
+#### Suite: store_items
+**Owner's store items**
+- has every Creator Hub ID in the right place
+- gives what each name says, once, when the passes are owned
+- grants a pass bought in the game right away, and only once
+- sells an item as a developer product when Roblox says it is one
+- shows owned one-time items and items that are not for sale yet
+- keeps one-time rewards through saving and a full admin reset
+
 #### Suite: tutorial
 **Tutorial**
 - walks a new player through every step from real actions and pays the reward once
@@ -403,7 +412,8 @@ the manual pass confirms them in the real engine.
 
 | ✓ | Check | Expected | Auto |
 |---|---|---|---|
-| ☐ | Store screen | 💰 Store lists passes and products with prices; owned passes show OWNED; unconfigured items say "Not set up" in Studio | ✅ |
+| ☐ | Store screen | 💰 Store lists passes and products with prices; owned passes show OWNED; unconfigured items say "Not set up" in Studio; items still off sale in the Creator Hub say "Not for sale yet" | ✅ |
+| ☐ | Your Creator Hub items | After putting them on sale: buying "Gems 600" gives exactly 600 Gems once; OP CLICKER adds +15 auto presses/s; the Output shows no "Could not confirm" warnings for them | ✅ (mock) |
 | ☐ | Buy a pass (Studio test purchase) | Effect applies at once (e.g. Auto Clicker +5/s) and stays after rejoining | ✅ (mock) |
 | ☐ | Buy a product | Gems arrive once; a Robux crate plays the opening with the guaranteed rarity; Sparks Rush timer shows in the dock | ✅ (mock) |
 | ☐ | Crate sounds | Rising ticks, burst, rising chimes; extra fanfare for Epic+, bigger for Legendary+, flash for Mythic/Secret | ☐ listen |
@@ -460,7 +470,7 @@ the manual pass confirms them in the real engine.
 
 ### Results of this build
 
-* All automated checks above pass (163/163 tests, a clean type check, Rojo
+* All automated checks above pass (169/169 tests, a clean type check, Rojo
   builds).
 * The manual Studio checklist has **not** been run as part of this
   delivery; no Roblox Studio was available in the build environment. The

@@ -14,7 +14,8 @@
 		isStudio = false,
 		jobId = "...", placeId = 0, creatorId = 0,
 		creatorType = Enum.CreatorType?, group = { ownerId, delay, failures }?,
-		marketplace = { owned = { [userId] = { [passId] = true } }, failures, prices }?,
+		marketplace = { owned = { [userId] = { [passId] = true } }, failures, prices,
+		                info = { [id] = { Kind = "pass" | "product", Name, Price, ForSale } } }?,
 		seed = 1,                     -- math.random / Random.new() determinism
 		input = { touch, keyboard, mouse, gamepad },  -- client input capabilities
 		quiet = true,                 -- false echoes print/warn to stdout
@@ -59,7 +60,7 @@ function World.new(options)
 	-- MarketplaceService mock: owned[userId][gamePassId] = true, failures = n failed
 	-- UserOwnsGamePassAsync calls, prices[id] = Robux price for GetProductInfo.
 	local market = options.marketplace or {}
-	self.marketplace = { owned = market.owned or {}, failures = market.failures or 0, prices = market.prices or {} }
+	self.marketplace = { owned = market.owned or {}, failures = market.failures or 0, prices = market.prices or {}, info = market.info or {} }
 	self.ownershipChecks = 0
 	self.quiet = options.quiet ~= false
 	self.closed = false

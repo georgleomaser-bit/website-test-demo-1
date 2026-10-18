@@ -263,7 +263,11 @@ function Formulas.collect(data, ctx: Context?)
 		for _, product in ipairs(DevProducts.List) do
 			local left = boosts[product.Key]
 			if product.Boost and type(left) == "number" and left > 0 then
-				apply(m, product.Boost.Stat, "mult", product.Boost.Mult)
+				if product.Boost.Add then
+					apply(m, product.Boost.Stat, "add", product.Boost.Add)
+				else
+					apply(m, product.Boost.Stat, "mult", product.Boost.Mult or 1)
+				end
 			end
 		end
 	end

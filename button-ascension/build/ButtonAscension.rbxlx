@@ -618,11 +618,20 @@ return Chests
 	   it as ProductId below, e.g.  ProductId = 123456789,
 	5. Publish again. Products with ProductId = 0 are "not set up": they are
 	   hidden in live games and can't be bought.
+
+	The same rewards can also be sold as a one-time GAME PASS: put the pass
+	ID into GamePassId instead. Its reward is then granted once per player
+	(recorded in data.PassRewards), on purchase or on the next join.
+	With HubName (the exact Creator Hub name) the server checks with Roblox
+	which kind the ID really is, so it works either way (Shared/RobuxSale).
 	================================================================
 
-	Reward kinds (one per product):
+	Rewards (a product may combine several; they are granted in this order):
+	  Sparks = n                       adds exactly n Sparks (no multipliers; does
+	                                   not count toward quests or the run total)
 	  Gems = n                         adds n Gems (not affected by Gem boosts)
 	  Boost = { Seconds, Stat, Mult }  a timed boost; buying again adds time.
+	  Boost = { Seconds, Stat, Add }   (Add for additive stats such as luck)
 	                                   The timer only runs while you play.
 	  Crates = n                       n of the best Spark crate you have unlocked
 	  Crate = "id"                     opens a Robux crate (Config/Chests RobuxList)
@@ -635,19 +644,138 @@ export type Product = {
 	Icon: string,
 	Color: Color3,
 	Description: string,
+	Sparks: number?,
 	Gems: number?,
-	Boost: { Seconds: number, Stat: string, Mult: number }?,
+	Boost: { Seconds: number, Stat: string, Mult: number?, Add: number? }?,
 	Crates: number?,
 	Crate: string?,
 	Op: boolean?,
 	SuggestedPrice: number,
 	ProductId: number,
+	GamePassId: number?,
+	HubName: string?,
 	Order: number?, -- set from the list position below
 }
+
+local RobuxSale = require(script.Parent.Parent.RobuxSale)
 
 local DevProducts = {}
 
 DevProducts.List = {
+	-- The owner's items from the Creator Hub (created as game passes; the server
+	-- confirms the kind with Roblox through HubName and sells them accordingly).
+	{
+		Key = "starter_pack",
+		Name = "Starter Pack",
+		Icon = "🎁",
+		Color = Color3.fromRGB(255, 200, 70),
+		Description = "25,000 Sparks, 150 Gems and 3 crates",
+		Sparks = 25000,
+		Gems = 150,
+		Crates = 3,
+		SuggestedPrice = 49,
+		ProductId = 0,
+		GamePassId = 2037646106,
+		HubName = "Starter Pack",
+	},
+	{
+		Key = "sparks_30k",
+		Name = "Sparks 30,000",
+		Icon = "⚡",
+		Color = Color3.fromRGB(255, 214, 74),
+		Description = "+30,000 Sparks",
+		Sparks = 30000,
+		SuggestedPrice = 49,
+		ProductId = 0,
+		GamePassId = 2037322132,
+		HubName = "Spark 30000",
+	},
+	{
+		Key = "sparks_60k",
+		Name = "Sparks 60,000",
+		Icon = "⚡",
+		Color = Color3.fromRGB(255, 214, 74),
+		Description = "+60,000 Sparks",
+		Sparks = 60000,
+		SuggestedPrice = 99,
+		ProductId = 0,
+		GamePassId = 2036914125,
+		HubName = "Spark 60000",
+	},
+	{
+		Key = "op_sparks_200k",
+		Name = "OP Sparks 200,000",
+		Icon = "⚡",
+		Color = Color3.fromRGB(255, 160, 40),
+		Description = "+200,000 Sparks",
+		Sparks = 200000,
+		Op = true,
+		SuggestedPrice = 199,
+		ProductId = 0,
+		GamePassId = 2039811962,
+		HubName = "OP Sparks 200000",
+	},
+	{
+		Key = "gems_120",
+		Name = "Gems 120",
+		Icon = "💎",
+		Color = Color3.fromRGB(77, 225, 255),
+		Description = "+120 Gems",
+		Gems = 120,
+		SuggestedPrice = 49,
+		ProductId = 0,
+		GamePassId = 2039541981,
+		HubName = "Gems 120",
+	},
+	{
+		Key = "gems_600",
+		Name = "Gems 600",
+		Icon = "💎",
+		Color = Color3.fromRGB(77, 225, 255),
+		Description = "+600 Gems",
+		Gems = 600,
+		SuggestedPrice = 199,
+		ProductId = 0,
+		GamePassId = 2039937934,
+		HubName = "Gems 600",
+	},
+	{
+		Key = "op_gems_15k",
+		Name = "OP Gems 15,000",
+		Icon = "💠",
+		Color = Color3.fromRGB(176, 92, 255),
+		Description = "+15,000 Gems",
+		Gems = 15000,
+		Op = true,
+		SuggestedPrice = 999,
+		ProductId = 0,
+		GamePassId = 2036932058,
+		HubName = "OP Gems 15000",
+	},
+	{
+		Key = "boost_lucky_hour",
+		Name = "Lucky Hour Boost",
+		Icon = "🍀",
+		Color = Color3.fromRGB(74, 222, 128),
+		Description = "+100% Luck for 1 hour of play",
+		Boost = { Seconds = 60 * 60, Stat = "luck", Add = 1 },
+		SuggestedPrice = 99,
+		ProductId = 0,
+		GamePassId = 2039895926,
+		HubName = "Boost Lucky Hour",
+	},
+	{
+		Key = "boost_spark_surge",
+		Name = "Spark Surge Boost",
+		Icon = "🔥",
+		Color = Color3.fromRGB(255, 160, 40),
+		Description = "×2 Sparks for 1 hour of play",
+		Boost = { Seconds = 60 * 60, Stat = "sparksMult", Mult = 2 },
+		SuggestedPrice = 99,
+		ProductId = 0,
+		GamePassId = 2038198094,
+		HubName = "Boost spark search",
+	},
 	{
 		Key = "gems_small",
 		Name = "Pouch of Gems",
@@ -757,20 +885,30 @@ for index, product in ipairs(DevProducts.List) do
 end
 
 function DevProducts.isConfigured(product: Product): boolean
-	return type(product.ProductId) == "number" and product.ProductId > 0
+	return (RobuxSale.of(product)) ~= nil
 end
 
--- The configured product with this Roblox ID (read live, like GamePasses).
-function DevProducts.byProductId(id: any): Product?
+local function bySale(kind: string, id: any): Product?
 	if type(id) ~= "number" or id <= 0 then
 		return nil
 	end
 	for _, product in ipairs(DevProducts.List) do
-		if product.ProductId == id then
+		local saleKind, saleId = RobuxSale.of(product)
+		if saleKind == kind and saleId == id then
 			return product
 		end
 	end
 	return nil
+end
+
+-- The entry sold as this developer product (read live, like GamePasses).
+function DevProducts.byProductId(id: any): Product?
+	return bySale("product", id)
+end
+
+-- The entry sold as this one-time game pass.
+function DevProducts.byGamePassId(id: any): Product?
+	return bySale("pass", id)
 end
 
 return DevProducts
@@ -1146,6 +1284,10 @@ return GameConfig
 	   and paste it as GamePassId below, e.g.  GamePassId = 123456789,
 	6. Publish again. Passes with GamePassId = 0 are "not set up": they are
 	   hidden in live games and do nothing.
+	Optional: HubName = the exact name in the Creator Hub. The server then
+	checks with Roblox whether the ID is really a game pass or a developer
+	product and sells it the right way (see Shared/RobuxSale). An effect pass
+	sold as a developer product is bought once and kept forever too.
 	================================================================
 
 	Effects use the same stats as skills (see Shared/Formulas):
@@ -1169,8 +1311,12 @@ export type Pass = {
 	Op: boolean?,
 	SuggestedPrice: number,
 	GamePassId: number,
+	ProductId: number?,
+	HubName: string?,
 	Order: number?, -- set from the list position below
 }
+
+local RobuxSale = require(script.Parent.Parent.RobuxSale)
 
 local GamePasses = {}
 
@@ -1196,7 +1342,9 @@ GamePasses.List = {
 		Effects = { { Stat = "autoRatePass", Add = 15 } },
 		Op = true,
 		SuggestedPrice = 349,
-		GamePassId = 0,
+		-- Creator Hub: "OP CLICKER".
+		GamePassId = 2038330114,
+		HubName = "OP CLICKER",
 	},
 	{
 		Key = "double_sparks",
@@ -1291,23 +1439,33 @@ for index, pass in ipairs(GamePasses.List) do
 	GamePasses.ByKey[pass.Key] = pass
 end
 
--- A pass is live only once its Roblox pass ID has been pasted in.
+-- A pass is live only once its Roblox ID has been pasted in.
 function GamePasses.isConfigured(pass: Pass): boolean
-	return type(pass.GamePassId) == "number" and pass.GamePassId > 0
+	return (RobuxSale.of(pass)) ~= nil
 end
 
--- The configured pass with this Roblox ID (IDs are read live, so edits in
--- Studio or tests take effect without re-requiring the module).
-function GamePasses.byGamePassId(id: any): Pass?
+local function bySale(kind: string, id: any): Pass?
 	if type(id) ~= "number" or id <= 0 then
 		return nil
 	end
 	for _, pass in ipairs(GamePasses.List) do
-		if pass.GamePassId == id then
+		local saleKind, saleId = RobuxSale.of(pass)
+		if saleKind == kind and saleId == id then
 			return pass
 		end
 	end
 	return nil
+end
+
+-- The pass sold as this Roblox game pass (IDs are read live, so edits in
+-- Studio or tests take effect without re-requiring the module).
+function GamePasses.byGamePassId(id: any): Pass?
+	return bySale("pass", id)
+end
+
+-- The pass sold as this developer product (bought once, kept forever).
+function GamePasses.byProductId(id: any): Pass?
+	return bySale("product", id)
 end
 
 -- Whether owned-pass data (data.Passes) includes this configured pass.
@@ -3176,7 +3334,11 @@ function Formulas.collect(data, ctx: Context?)
 		for _, product in ipairs(DevProducts.List) do
 			local left = boosts[product.Key]
 			if product.Boost and type(left) == "number" and left > 0 then
-				apply(m, product.Boost.Stat, "mult", product.Boost.Mult)
+				if product.Boost.Add then
+					apply(m, product.Boost.Stat, "add", product.Boost.Add)
+				else
+					apply(m, product.Boost.Stat, "mult", product.Boost.Mult or 1)
+				end
 			end
 		end
 	end
@@ -3723,6 +3885,92 @@ return Remotes
       </Item>
       <Item class="ModuleScript" referent="24">
         <Properties>
+          <string name="Name">RobuxSale</string>
+          <string name="Source"><![CDATA[--[[
+	RobuxSale (ModuleScript)
+	Location: ReplicatedStorage/Shared/RobuxSale
+	Depends on: Shared/Remotes (ServerState folder name)
+
+	How a store entry (Config/GamePasses or Config/DevProducts) is sold on Roblox:
+	  "pass"     a game pass: bought once, owned forever
+	  "product"  a developer product: can be bought again and again
+
+	The config holds the ID in GamePassId or ProductId. When an entry also has
+	a HubName (its exact name in the Creator Hub), the server asks Roblox at
+	start which kind that ID really is, so an ID pasted into the "wrong" field
+	still works. The answer is published as the ServerState attribute
+	"Sale_<key>" = "pass:<id>" / "product:<id>" so clients prompt the right
+	purchase. Until then (and in tests without a server) the config decides.
+	Nothing here grants anything: purchases are granted by the server only.
+]]
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Remotes = require(script.Parent.Remotes)
+
+local RobuxSale = {}
+
+local function stateFolder(): Instance?
+	return ReplicatedStorage:FindFirstChild(Remotes.StateFolderName)
+end
+
+-- The configured kind and ID, ignoring the server's check.
+function RobuxSale.configured(entry): (string?, number)
+	if type(entry.GamePassId) == "number" and entry.GamePassId > 0 then
+		return "pass", entry.GamePassId
+	end
+	if type(entry.ProductId) == "number" and entry.ProductId > 0 then
+		return "product", entry.ProductId
+	end
+	return nil, 0
+end
+
+-- ("pass" | "product" | nil, id): how this entry is sold right now. The
+-- server's answer only decides the kind, and only for the ID it checked: if
+-- the config now holds another ID, the config wins.
+function RobuxSale.of(entry): (string?, number)
+	local configuredKind, configuredId = RobuxSale.configured(entry)
+	if not configuredKind then
+		return nil, 0
+	end
+	local folder = stateFolder()
+	local value = folder and folder:GetAttribute("Sale_" .. entry.Key)
+	if type(value) == "string" then
+		local kind, id = string.match(value, "^(%a+):(%d+)$")
+		if (kind == "pass" or kind == "product") and tonumber(id) == configuredId then
+			return kind, configuredId
+		end
+	end
+	return configuredKind, configuredId
+end
+
+-- Server only: records the kind confirmed with Roblox.
+function RobuxSale.publish(entry, kind: string, id: number)
+	local folder = stateFolder()
+	if folder then
+		folder:SetAttribute("Sale_" .. entry.Key, `{kind}:{math.floor(id)}`)
+	end
+end
+
+-- Server only: marks that every entry has been checked (ownership checks wait for it).
+function RobuxSale.markResolved()
+	local folder = stateFolder()
+	if folder then
+		folder:SetAttribute("SalesResolved", true)
+	end
+end
+
+function RobuxSale.isResolved(): boolean
+	local folder = stateFolder()
+	return folder ~= nil and folder:GetAttribute("SalesResolved") == true
+end
+
+return RobuxSale
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="25">
+        <Properties>
           <string name="Name">Signal</string>
           <string name="Source"><![CDATA[--[[
 	Signal (ModuleScript)
@@ -3812,7 +4060,7 @@ return Signal
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="25">
+      <Item class="ModuleScript" referent="26">
         <Properties>
           <string name="Name">Util</string>
           <string name="Source"><![CDATA[--[[
@@ -3930,11 +4178,11 @@ return Util
         </Properties>
       </Item>
     </Item>
-    <Item class="Folder" referent="26">
+    <Item class="Folder" referent="27">
       <Properties>
         <string name="Name">UI</string>
       </Properties>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Effects</string>
           <string name="Source"><![CDATA[--[[
@@ -4184,7 +4432,7 @@ return Effects
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">SoundPlayer</string>
           <string name="Source"><![CDATA[--[[
@@ -4321,7 +4569,7 @@ return SoundPlayer
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">Theme</string>
           <string name="Source"><![CDATA[--[[
@@ -4458,7 +4706,7 @@ return Theme
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="30">
+      <Item class="ModuleScript" referent="31">
         <Properties>
           <string name="Name">UIKit</string>
           <string name="Source"><![CDATA[--[[
@@ -5760,15 +6008,15 @@ return UI
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="31">
+  <Item class="ServerScriptService" referent="32">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="32">
+    <Item class="Folder" referent="33">
       <Properties>
         <string name="Name">Admin</string>
       </Properties>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">AdminActions</string>
           <string name="Source"><![CDATA[--[[
@@ -7170,7 +7418,7 @@ A["progression.reset"] = {
 		elseif scope == "all" then
 			-- Things bought with Robux are never reset: passes, running boosts, and the
 			-- processed receipt ids (wiping those could grant a pending purchase twice).
-			local KEEP = { "Settings", "Meta", "Passes", "Boosts", "Receipts", "Tutorial" }
+			local KEEP = { "Settings", "Meta", "Passes", "Boosts", "Receipts", "PassRewards", "Tutorial" }
 			local keep = {}
 			for _, key in ipairs(KEEP) do
 				keep[key] = data[key]
@@ -7357,7 +7605,7 @@ return AdminActions
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">AdminCommands</string>
           <string name="Source"><![CDATA[--[[
@@ -7600,7 +7848,7 @@ return AdminCommands
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">AdminConfig</string>
           <string name="Source"><![CDATA[--[[
@@ -7855,7 +8103,7 @@ return AdminConfig
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">AdminPermissions</string>
           <string name="Source"><![CDATA[--[[
@@ -8037,7 +8285,7 @@ return AdminPermissions
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">AdminService</string>
           <string name="Source"><![CDATA[--[[
@@ -8648,7 +8896,7 @@ return AdminService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">AuditLog</string>
           <string name="Source"><![CDATA[--[[
@@ -8880,7 +9128,7 @@ return AuditLog
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">ModerationStore</string>
           <string name="Source"><![CDATA[--[[
@@ -9304,7 +9552,7 @@ return ModerationStore
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">PlayerResolver</string>
           <string name="Source"><![CDATA[--[[
@@ -9489,11 +9737,11 @@ return PlayerResolver
         </Properties>
       </Item>
     </Item>
-    <Item class="Folder" referent="41">
+    <Item class="Folder" referent="42">
       <Properties>
         <string name="Name">Core</string>
       </Properties>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">DataOps</string>
           <string name="Source"><![CDATA[--[[
@@ -9597,7 +9845,7 @@ return DataOps
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">DataSchema</string>
           <string name="Source"><![CDATA[--[[
@@ -9621,7 +9869,8 @@ return DataOps
 	     separate Music and SFX volumes, plus newer settings. Later additions
 	     that need no migration (missing sections start empty): Passes (owned
 	     game passes, a cache re-checked on every join), Boosts (seconds left
-	     on bought timed boosts), Receipts (processed purchase IDs), Obby
+	     on bought timed boosts), Receipts (processed purchase IDs),
+	     PassRewards (one-time rewards of game passes already granted), Obby
 	     (obstacle course progress) and Tutorial (first-time tutorial; data
 	     saved before the tutorial existed counts as already finished).
 ]]
@@ -9695,6 +9944,7 @@ DataSchema.Sections = {
 	"Settings",
 	"Passes",
 	"Boosts",
+	"PassRewards",
 	"Obby",
 	"Tutorial",
 }
@@ -9747,6 +9997,8 @@ function DataSchema.default()
 		Boosts = {},
 		-- Purchase IDs of processed developer-product receipts (oldest first, bounded).
 		Receipts = {},
+		-- [productKey] = true once the one-time reward of a game pass was granted.
+		PassRewards = {},
 		-- Obstacle course progress (written only by ObbyService).
 		Obby = { Stage = 0, Best = 0, Completions = 0, Checkpoints = 0 },
 		-- First-time tutorial (written only by TutorialService). Base holds the
@@ -10031,6 +10283,12 @@ function DataSchema.sanitize(raw)
 		end
 	end
 
+	for key, granted in pairs(tbl(raw.PassRewards)) do
+		if granted == true and DevProducts.ByKey[key] then
+			d.PassRewards[key] = true
+		end
+	end
+
 	local receipts = tbl(raw.Receipts)
 	local first = math.max(1, #receipts - DevProducts.ReceiptHistory + 1)
 	for i = first, #receipts do
@@ -10073,7 +10331,7 @@ return DataSchema
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="44">
+      <Item class="ModuleScript" referent="45">
         <Properties>
           <string name="Name">Guard</string>
           <string name="Source"><![CDATA[--[[
@@ -10168,7 +10426,7 @@ return Guard
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="45">
+      <Item class="ModuleScript" referent="46">
         <Properties>
           <string name="Name">Net</string>
           <string name="Source"><![CDATA[--[[
@@ -10319,7 +10577,7 @@ return Net
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="46">
+      <Item class="ModuleScript" referent="47">
         <Properties>
           <string name="Name">RateLimiter</string>
           <string name="Source"><![CDATA[--[[
@@ -10385,7 +10643,7 @@ return RateLimiter
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="47">
+    <Item class="Script" referent="48">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -10468,11 +10726,11 @@ print(`[Main] Click a Button server started with {#ORDER} services.`)
 ]]></string>
       </Properties>
     </Item>
-    <Item class="Folder" referent="48">
+    <Item class="Folder" referent="49">
       <Properties>
         <string name="Name">Services</string>
       </Properties>
-      <Item class="ModuleScript" referent="49">
+      <Item class="ModuleScript" referent="50">
         <Properties>
           <string name="Name">AchievementService</string>
           <string name="Source"><![CDATA[--[[
@@ -10555,7 +10813,7 @@ return AchievementService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="50">
+      <Item class="ModuleScript" referent="51">
         <Properties>
           <string name="Name">ChestService</string>
           <string name="Source"><![CDATA[--[[
@@ -10831,7 +11089,7 @@ return ChestService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="51">
+      <Item class="ModuleScript" referent="52">
         <Properties>
           <string name="Name">ClickService</string>
           <string name="Source"><![CDATA[--[[
@@ -11113,7 +11371,7 @@ return ClickService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="52">
+      <Item class="ModuleScript" referent="53">
         <Properties>
           <string name="Name">DataService</string>
           <string name="Source"><![CDATA[--[[
@@ -11772,7 +12030,7 @@ return DataService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="53">
+      <Item class="ModuleScript" referent="54">
         <Properties>
           <string name="Name">EconomyService</string>
           <string name="Source"><![CDATA[--[[
@@ -11985,7 +12243,7 @@ return EconomyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="54">
+      <Item class="ModuleScript" referent="55">
         <Properties>
           <string name="Name">EventService</string>
           <string name="Source"><![CDATA[--[[
@@ -12097,13 +12355,14 @@ return EventService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="55">
+      <Item class="ModuleScript" referent="56">
         <Properties>
           <string name="Name">GamePassService</string>
           <string name="Source"><![CDATA[--[[
 	GamePassService (ModuleScript)
 	Location: ServerScriptService/Services/GamePassService
-	Depends on: Shared/Config/GamePasses, DataService, StatsService, SyncService, Net
+	Depends on: Shared/Config/{GamePasses,DevProducts}, Shared/RobuxSale, DataService,
+	            StatsService, SyncService, ProductService, Net
 
 	Robux game passes. Ownership is decided on the server only:
 	  * When a player's data loads, MarketplaceService:UserOwnsGamePassAsync is
@@ -12116,16 +12375,26 @@ return EventService
 	There is no remote for passes: the client can only open Roblox's purchase
 	prompt, so nothing a client sends can grant a pass. The effects live in
 	Shared/Formulas (computeStats reads data.Passes).
+
+	Developer-product rewards can also be sold as a one-time game pass
+	(Config/DevProducts with GamePassId). Owning such a pass grants its reward
+	once per player through ProductService:GrantPassReward. Whether an ID is a
+	pass at all is confirmed with Roblox first (Shared/RobuxSale).
 ]]
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local GamePasses = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GamePasses"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local GamePasses = require(Shared:WaitForChild("Config"):WaitForChild("GamePasses"))
+local DevProducts = require(Shared.Config:WaitForChild("DevProducts"))
+local RobuxSale = require(Shared:WaitForChild("RobuxSale"))
 
 local GamePassService = { Name = "GamePassService" }
 
 local CHECK_ATTEMPTS = 3
+-- How long ownership checks wait for ProductService to confirm the sale kinds.
+local RESOLVE_WAIT_SECONDS = 15
 
 function GamePassService:Init(services)
 	self.Services = services
@@ -12170,13 +12439,19 @@ end
 
 -- Re-checks every configured pass with Roblox and updates the stored answers.
 function GamePassService:Refresh(profile)
+	local deadline = os.clock() + RESOLVE_WAIT_SECONDS
+	while not RobuxSale.isResolved() and os.clock() < deadline do
+		task.wait(0.2)
+	end
 	local data = profile.Data
 	local boughtNow = profile.Runtime.PassesBought or {}
 	local gained = {}
 	local changed = false
 	for _, pass in ipairs(GamePasses.List) do
-		if GamePasses.isConfigured(pass) then
-			local owns = self:_owns(profile.UserId, pass.GamePassId)
+		-- Passes sold as developer products are kept by ProcessReceipt, not checked here.
+		local kind, passId = RobuxSale.of(pass)
+		if kind == "pass" then
+			local owns = self:_owns(profile.UserId, passId)
 			-- A purchase finished while we were asking: Roblox's answer may predate it.
 			if owns == false and boughtNow[pass.Key] then
 				owns = nil
@@ -12196,9 +12471,27 @@ function GamePassService:Refresh(profile)
 			self.Services.Net.notify(profile.Player, "Pass", { Key = pass.Key })
 		end
 	end
+	-- One-time rewards sold as game passes (Gems, Sparks, boosts, bundles).
+	for _, product in ipairs(DevProducts.List) do
+		local kind, passId = RobuxSale.of(product)
+		if kind == "pass" and not data.PassRewards[product.Key] and self:_owns(profile.UserId, passId) == true then
+			if self:_isActive(profile) then
+				self.Services.ProductService:GrantPassReward(profile, product)
+			end
+		end
+	end
 end
 
 function GamePassService:_onPurchased(player: Player, passId: any)
+	local reward = DevProducts.byGamePassId(passId)
+	if reward then
+		local DataService = self.Services.DataService
+		local profile = DataService:GetProfile(player) or DataService:WaitForProfile(player, 60)
+		if profile then
+			self.Services.ProductService:GrantPassReward(profile, reward)
+		end
+		return
+	end
 	local pass = GamePasses.byGamePassId(passId)
 	if not pass then
 		warn(`[GamePassService] Purchase of unknown or unconfigured pass {tostring(passId)} by {player.UserId}`)
@@ -12235,7 +12528,7 @@ return GamePassService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="56">
+      <Item class="ModuleScript" referent="57">
         <Properties>
           <string name="Name">InventoryService</string>
           <string name="Source"><![CDATA[--[[
@@ -12529,7 +12822,7 @@ return InventoryService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="57">
+      <Item class="ModuleScript" referent="58">
         <Properties>
           <string name="Name">LeaderboardService</string>
           <string name="Source"><![CDATA[--[[
@@ -12771,7 +13064,7 @@ return LeaderboardService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="58">
+      <Item class="ModuleScript" referent="59">
         <Properties>
           <string name="Name">ObbyService</string>
           <string name="Source"><![CDATA[--[[
@@ -13545,7 +13838,7 @@ return ObbyService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="59">
+      <Item class="ModuleScript" referent="60">
         <Properties>
           <string name="Name">OrbService</string>
           <string name="Source"><![CDATA[--[[
@@ -13682,18 +13975,20 @@ return OrbService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="60">
+      <Item class="ModuleScript" referent="61">
         <Properties>
           <string name="Name">ProductService</string>
           <string name="Source"><![CDATA[--[[
 	ProductService (ModuleScript)
 	Location: ServerScriptService/Services/ProductService
-	Depends on: Shared/Config/{DevProducts,Chests}, Shared/Formulas, Shared/Format,
+	Depends on: Shared/Config/{DevProducts,GamePasses,Chests}, Shared/RobuxSale, Shared/Formulas, Shared/Format,
 	            Core/DataOps, DataService, EconomyService, StatsService, SyncService,
 	            ChestService (Robux crates), Net
 
 	Developer products (repeatable Robux purchases) through
-	MarketplaceService.ProcessReceipt, plus the countdown of bought timed boosts.
+	MarketplaceService.ProcessReceipt, plus the countdown of bought timed boosts,
+	one-time rewards of game passes (GrantPassReward) and the check with Roblox
+	whether each configured ID is a pass or a product (ResolveSales).
 
 	Roblox keeps retrying a receipt until it is answered with PurchaseGranted
 	(also after the player rejoins), so ProcessReceipt follows these rules:
@@ -13716,7 +14011,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local DevProducts = require(Shared.Config.DevProducts)
+local GamePasses = require(Shared.Config.GamePasses)
 local Chests = require(Shared.Config.Chests)
+local RobuxSale = require(Shared.RobuxSale)
 local Formulas = require(Shared.Formulas)
 local Format = require(Shared.Format)
 local DataOps = require(script.Parent.Parent.Core.DataOps)
@@ -13733,6 +14030,7 @@ function ProductService:Start()
 	MarketplaceService.ProcessReceipt = function(receipt)
 		return self:ProcessReceipt(receipt)
 	end
+	task.spawn(self.ResolveSales, self)
 	task.spawn(function()
 		local last = os.clock()
 		while true do
@@ -13783,35 +14081,113 @@ function ProductService:BestCrate(data)
 	return best
 end
 
--- Applies a product's reward. Returns a short description for the receipt toast.
+-- Applies every reward of a product. Returns a short description for the toast.
 function ProductService:Grant(profile, product): string
 	local data = profile.Data
 	local services = self.Services
-	if product.Crate then
-		-- Rolled and applied on the server; the client only plays the animation.
-		local results = services.ChestService:OpenRobuxCrate(profile, product.Crate)
-		services.Net.notify(profile.Player, "CrateOpened", { Chest = product.Crate, Results = results })
-		local first = results[1]
-		return if first then `{product.Name}: {first.Rarity}` else product.Name
-	elseif product.Gems then
+	local parts = {}
+	if product.Sparks then
+		-- Exactly what the name says: no multipliers, and it does not count toward
+		-- quests or the ascension run total.
+		DataOps.addCurrency(data, "Sparks", product.Sparks)
+		services.SyncService:MarkDirty(profile, "Currencies")
+		table.insert(parts, `+{Format.commas(product.Sparks)} Sparks`)
+	end
+	if product.Gems then
 		services.EconomyService:Add(profile, "Gems", product.Gems, "robux")
-		return `+{Format.commas(product.Gems)} Gems`
-	elseif product.Boost then
+		table.insert(parts, `+{Format.commas(product.Gems)} Gems`)
+	end
+	if product.Boost then
 		local before = data.Boosts[product.Key] or 0
 		local total = math.min(DevProducts.MaxBoostSeconds, before + product.Boost.Seconds)
 		data.Boosts[product.Key] = total
 		services.StatsService:Invalidate(profile)
 		services.SyncService:MarkDirty(profile, "Boosts")
-		return `{product.Name} active for {Format.clock(total)}`
-	elseif product.Crates then
+		table.insert(parts, `{product.Name} active for {Format.clock(total)}`)
+	end
+	if product.Crates then
 		local chest = self:BestCrate(data)
 		if chest then
 			DataOps.addChest(data, chest.Id, product.Crates)
 			services.SyncService:MarkDirty(profile, "Chests")
-			return `+{product.Crates} {chest.Name}`
+			table.insert(parts, `+{product.Crates} {chest.Name}`)
 		end
 	end
-	return product.Description
+	if product.Crate then
+		-- Rolled and applied on the server; the client only plays the animation.
+		local results = services.ChestService:OpenRobuxCrate(profile, product.Crate)
+		services.Net.notify(profile.Player, "CrateOpened", { Chest = product.Crate, Results = results })
+		local first = results[1]
+		table.insert(parts, if first then `{product.Name}: {first.Rarity}` else product.Name)
+	end
+	return if #parts > 0 then table.concat(parts, ", ") else product.Description
+end
+
+--[[
+	One-time reward of a product sold as a game pass. Granted at most once per
+	player (data.PassRewards), whether the pass was bought just now or the
+	ownership check on join finds it. Returns true when it was granted now.
+]]
+function ProductService:GrantPassReward(profile, product): boolean
+	local data = profile.Data
+	if data.PassRewards[product.Key] then
+		return false
+	end
+	-- Recorded before anything can yield, so two callers can never both grant it.
+	data.PassRewards[product.Key] = true
+	local summary = self:Grant(profile, product)
+	self.Services.SyncService:MarkDirty(profile, "PassRewards")
+	if not product.Crate then
+		self.Services.Net.notify(profile.Player, "Reward", { Title = `{product.Icon} {product.Name}`, Text = summary })
+	end
+	task.spawn(self.Services.DataService.SaveNow, self.Services.DataService, profile)
+	return true
+end
+
+-- Sale kinds ---------------------------------------------------------------------------------
+
+local function nameOf(id: number, infoType: Enum.InfoType): string?
+	local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, id, infoType)
+	if ok and type(info) == "table" and type(info.Name) == "string" then
+		return info.Name
+	end
+	return nil
+end
+
+--[[
+	For entries with a HubName, asks Roblox whether the configured ID is a game
+	pass or a developer product (matching the name, so an unrelated item with
+	the same number never counts) and publishes the answer (Shared/RobuxSale).
+	If Roblox can't tell, the config decides.
+]]
+function ProductService:ResolveSales()
+	local entries = {}
+	for _, pass in ipairs(GamePasses.List) do
+		table.insert(entries, pass)
+	end
+	for _, product in ipairs(DevProducts.List) do
+		table.insert(entries, product)
+	end
+	for _, entry in ipairs(entries) do
+		local kind, id = RobuxSale.configured(entry)
+		if kind and entry.HubName then
+			local resolved = nil
+			if nameOf(id, Enum.InfoType.GamePass) == entry.HubName then
+				resolved = "pass"
+			elseif nameOf(id, Enum.InfoType.Product) == entry.HubName then
+				resolved = "product"
+			end
+			if resolved == nil then
+				warn(`[ProductService] Could not confirm "{entry.HubName}" ({id}) with Roblox; selling it as a {kind}.`)
+			elseif resolved ~= kind then
+				warn(`[ProductService] "{entry.HubName}" ({id}) is a {resolved} on Roblox, not a {kind}; selling it as a {resolved}.`)
+			end
+			RobuxSale.publish(entry, resolved or kind, id)
+		elseif kind then
+			RobuxSale.publish(entry, kind, id)
+		end
+	end
+	RobuxSale.markResolved()
 end
 
 -- Saves now and reports whether the save (with the latest data) succeeded.
@@ -13839,7 +14215,9 @@ function ProductService:ProcessReceipt(receipt): Enum.ProductPurchaseDecision
 	end
 	local purchaseId = receipt.PurchaseId
 	local product = DevProducts.byProductId(receipt.ProductId)
-	if not product or type(purchaseId) ~= "string" or purchaseId == "" or #purchaseId > 100 then
+	-- An effect pass sold as a developer product: bought once, kept forever.
+	local pass = if product then nil else GamePasses.byProductId(receipt.ProductId)
+	if not (product or pass) or type(purchaseId) ~= "string" or purchaseId == "" or #purchaseId > 100 then
 		warn(`[ProductService] Receipt for unknown or unconfigured product {tostring(receipt.ProductId)}; leaving it for later.`)
 		return notYet
 	end
@@ -13864,13 +14242,20 @@ function ProductService:ProcessReceipt(receipt): Enum.ProductPurchaseDecision
 
 	-- No yields between the check above and recording the ID, so a receipt
 	-- delivered twice at the same time is still granted once.
-	local summary = self:Grant(profile, product)
+	if product then
+		local summary = self:Grant(profile, product)
+		if not product.Crate then
+			self.Services.Net.notify(player, "Reward", { Title = `{product.Icon} {product.Name}`, Text = summary })
+		end
+	elseif not data.Passes[pass.Key] then
+		data.Passes[pass.Key] = true
+		self.Services.StatsService:Invalidate(profile)
+		self.Services.SyncService:MarkDirty(profile, "Passes")
+		self.Services.Net.notify(player, "Pass", { Key = pass.Key })
+	end
 	table.insert(data.Receipts, purchaseId)
 	while #data.Receipts > DevProducts.ReceiptHistory do
 		table.remove(data.Receipts, 1)
-	end
-	if not product.Crate then
-		self.Services.Net.notify(player, "Reward", { Title = `{product.Icon} {product.Name}`, Text = summary })
 	end
 
 	if self:_save(profile) then
@@ -13884,7 +14269,7 @@ return ProductService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="61">
+      <Item class="ModuleScript" referent="62">
         <Properties>
           <string name="Name">ProgressionService</string>
           <string name="Source"><![CDATA[--[[
@@ -14149,7 +14534,7 @@ return ProgressionService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="62">
+      <Item class="ModuleScript" referent="63">
         <Properties>
           <string name="Name">QuestService</string>
           <string name="Source"><![CDATA[--[[
@@ -14382,7 +14767,7 @@ return QuestService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="63">
+      <Item class="ModuleScript" referent="64">
         <Properties>
           <string name="Name">SecurityService</string>
           <string name="Source"><![CDATA[--[[
@@ -14502,7 +14887,7 @@ return SecurityService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="64">
+      <Item class="ModuleScript" referent="65">
         <Properties>
           <string name="Name">SettingsService</string>
           <string name="Source"><![CDATA[--[[
@@ -14569,7 +14954,7 @@ return SettingsService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="65">
+      <Item class="ModuleScript" referent="66">
         <Properties>
           <string name="Name">StatsService</string>
           <string name="Source"><![CDATA[--[[
@@ -14691,7 +15076,7 @@ return StatsService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="66">
+      <Item class="ModuleScript" referent="67">
         <Properties>
           <string name="Name">SyncService</string>
           <string name="Source"><![CDATA[--[[
@@ -14780,7 +15165,7 @@ return SyncService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="67">
+      <Item class="ModuleScript" referent="68">
         <Properties>
           <string name="Name">TutorialService</string>
           <string name="Source"><![CDATA[--[[
@@ -14940,7 +15325,7 @@ return TutorialService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="68">
+      <Item class="ModuleScript" referent="69">
         <Properties>
           <string name="Name">UpgradeService</string>
           <string name="Source"><![CDATA[--[[
@@ -15024,7 +15409,7 @@ return UpgradeService
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="69">
+      <Item class="ModuleScript" referent="70">
         <Properties>
           <string name="Name">WorldService</string>
           <string name="Source"><![CDATA[--[[
@@ -15280,15 +15665,15 @@ return WorldService
       </Item>
     </Item>
   </Item>
-  <Item class="ServerStorage" referent="70">
+  <Item class="ServerStorage" referent="71">
     <Properties>
       <string name="Name">ServerStorage</string>
     </Properties>
-    <Item class="Folder" referent="71">
+    <Item class="Folder" referent="72">
       <Properties>
         <string name="Name">AdminClient</string>
       </Properties>
-      <Item class="LocalScript" referent="72">
+      <Item class="LocalScript" referent="73">
         <Properties>
           <string name="Name">AdminPanel</string>
           <string name="Source"><![CDATA[--[[
@@ -15334,11 +15719,11 @@ Panel.build(gui, hello)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="73">
+      <Item class="Folder" referent="74">
         <Properties>
           <string name="Name">AdminUI</string>
         </Properties>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">AdminNet</string>
             <string name="Source"><![CDATA[--[[
@@ -15462,7 +15847,7 @@ return AdminNet
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">CommandBar</string>
             <string name="Source"><![CDATA[--[[
@@ -15787,7 +16172,7 @@ return CommandBar
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">LogRow</string>
             <string name="Source"><![CDATA[--[[
@@ -15911,7 +16296,7 @@ return LogRow
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">Panel</string>
             <string name="Source"><![CDATA[--[[
@@ -16423,11 +16808,11 @@ return Panel
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="78">
+        <Item class="Folder" referent="79">
           <Properties>
             <string name="Name">Tabs</string>
           </Properties>
-          <Item class="ModuleScript" referent="79">
+          <Item class="ModuleScript" referent="80">
             <Properties>
               <string name="Name">Dashboard</string>
               <string name="Source"><![CDATA[--[[
@@ -16584,7 +16969,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="80">
+          <Item class="ModuleScript" referent="81">
             <Properties>
               <string name="Name">Economy</string>
               <string name="Source"><![CDATA[--[[
@@ -16780,7 +17165,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="81">
+          <Item class="ModuleScript" referent="82">
             <Properties>
               <string name="Name">Items</string>
               <string name="Source"><![CDATA[--[[
@@ -17182,7 +17567,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="82">
+          <Item class="ModuleScript" referent="83">
             <Properties>
               <string name="Name">Logs</string>
               <string name="Source"><![CDATA[--[[
@@ -17410,7 +17795,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="83">
+          <Item class="ModuleScript" referent="84">
             <Properties>
               <string name="Name">Moderation</string>
               <string name="Source"><![CDATA[--[[
@@ -17766,7 +18151,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="84">
+          <Item class="ModuleScript" referent="85">
             <Properties>
               <string name="Name">Players</string>
               <string name="Source"><![CDATA[--[[
@@ -18178,7 +18563,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="85">
+          <Item class="ModuleScript" referent="86">
             <Properties>
               <string name="Name">Progression</string>
               <string name="Source"><![CDATA[--[[
@@ -18435,7 +18820,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="86">
+          <Item class="ModuleScript" referent="87">
             <Properties>
               <string name="Name">Server</string>
               <string name="Source"><![CDATA[--[[
@@ -18666,7 +19051,7 @@ end
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="87">
+          <Item class="ModuleScript" referent="88">
             <Properties>
               <string name="Name">Settings</string>
               <string name="Source"><![CDATA[--[[
@@ -18789,7 +19174,7 @@ end
             </Properties>
           </Item>
         </Item>
-        <Item class="ModuleScript" referent="88">
+        <Item class="ModuleScript" referent="89">
           <Properties>
             <string name="Name">TargetPicker</string>
             <string name="Source"><![CDATA[--[[
@@ -18916,7 +19301,7 @@ return TargetPicker
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="89">
+        <Item class="ModuleScript" referent="90">
           <Properties>
             <string name="Name">Widgets</string>
             <string name="Source"><![CDATA[--[[
@@ -19443,31 +19828,31 @@ return W
       </Item>
     </Item>
   </Item>
-  <Item class="SoundService" referent="90">
+  <Item class="SoundService" referent="91">
     <Properties>
       <string name="Name">SoundService</string>
     </Properties>
   </Item>
-  <Item class="StarterGui" referent="91">
+  <Item class="StarterGui" referent="92">
     <Properties>
       <string name="Name">StarterGui</string>
     </Properties>
   </Item>
-  <Item class="StarterPlayer" referent="92">
+  <Item class="StarterPlayer" referent="93">
     <Properties>
       <string name="Name">StarterPlayer</string>
       <float name="CameraMaxZoomDistance">60</float>
       <float name="CharacterWalkSpeed">16</float>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="93">
+    <Item class="StarterPlayerScripts" referent="94">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="Folder" referent="94">
+      <Item class="Folder" referent="95">
         <Properties>
           <string name="Name">Client</string>
         </Properties>
-        <Item class="ModuleScript" referent="95">
+        <Item class="ModuleScript" referent="96">
           <Properties>
             <string name="Name">BigButton</string>
             <string name="Source"><![CDATA[--[[
@@ -19754,7 +20139,7 @@ return BigButton
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="96">
+        <Item class="ModuleScript" referent="97">
           <Properties>
             <string name="Name">ClientNet</string>
             <string name="Source"><![CDATA[--[[
@@ -19813,7 +20198,7 @@ return ClientNet
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="97">
+        <Item class="ModuleScript" referent="98">
           <Properties>
             <string name="Name">Hud</string>
             <string name="Source"><![CDATA[--[[
@@ -20569,7 +20954,8 @@ function Hud.refreshBoosts()
 	for _, product in ipairs(DevProducts.List) do
 		local endsAt = derived and derived.BoostEndsAt and derived.BoostEndsAt[product.Key]
 		if product.Boost and type(endsAt) == "number" and endsAt > now then
-			table.insert(lines, { `{product.Icon} {product.Name} ×{product.Boost.Mult}`, endsAt - now, product.Color })
+			local amount = if product.Boost.Add then `+{math.floor(product.Boost.Add * 100 + 0.5)}%` else `×{product.Boost.Mult}`
+			table.insert(lines, { `{product.Icon} {product.Name} {amount}`, endsAt - now, product.Color })
 		end
 	end
 	local serverState = ReplicatedStorage:FindFirstChild("ServerState")
@@ -20793,7 +21179,7 @@ return Hud
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="98">
+        <Item class="ModuleScript" referent="99">
           <Properties>
             <string name="Name">InputController</string>
             <string name="Source"><![CDATA[--[[
@@ -20868,7 +21254,7 @@ return InputController
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="99">
+        <Item class="ModuleScript" referent="100">
           <Properties>
             <string name="Name">ItemCard</string>
             <string name="Source"><![CDATA[--[[
@@ -21117,7 +21503,7 @@ return ItemCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="100">
+        <Item class="ModuleScript" referent="101">
           <Properties>
             <string name="Name">Notifications</string>
             <string name="Source"><![CDATA[--[[
@@ -21600,7 +21986,7 @@ return Notifications
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="101">
+        <Item class="ModuleScript" referent="102">
           <Properties>
             <string name="Name">ObbyClient</string>
             <string name="Source"><![CDATA[--[[
@@ -21670,7 +22056,7 @@ return ObbyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="102">
+        <Item class="ModuleScript" referent="103">
           <Properties>
             <string name="Name">Orbs</string>
             <string name="Source"><![CDATA[--[[
@@ -21817,7 +22203,7 @@ return Orbs
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="103">
+        <Item class="ModuleScript" referent="104">
           <Properties>
             <string name="Name">ScreenManager</string>
             <string name="Source"><![CDATA[--[[
@@ -21900,11 +22286,11 @@ return ScreenManager
 ]]></string>
           </Properties>
         </Item>
-        <Item class="Folder" referent="104">
+        <Item class="Folder" referent="105">
           <Properties>
             <string name="Name">Screens</string>
           </Properties>
-          <Item class="ModuleScript" referent="105">
+          <Item class="ModuleScript" referent="106">
             <Properties>
               <string name="Name">Ascend</string>
               <string name="Source"><![CDATA[--[[
@@ -22134,7 +22520,7 @@ return AscendScreen
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="106">
+          <Item class="ModuleScript" referent="107">
             <Properties>
               <string name="Name">ChestOpening</string>
               <string name="Source"><![CDATA[--[[
@@ -22532,7 +22918,7 @@ return ChestOpening
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="107">
+          <Item class="ModuleScript" referent="108">
             <Properties>
               <string name="Name">Chests</string>
               <string name="Source"><![CDATA[--[[
@@ -22567,6 +22953,7 @@ local Items = require(Config.Items)
 local Rarities = require(Config.Rarities)
 local GameConfig = require(Config.GameConfig)
 local DevProducts = require(Config.DevProducts)
+local RobuxSale = require(Shared.RobuxSale)
 
 local Client = script.Parent.Parent
 local State = require(Client.State)
@@ -22684,8 +23071,11 @@ function ChestsScreen.new(ctx)
 		UI.label({ Text = chest.Name, Font = F.Heading, TextSize = 16, TextColor3 = chest.Color, Size = UDim2.new(1, -72, 0, 22), Position = UDim2.fromOffset(64, 8), Parent = card })
 		local sub = UI.label({ Text = "", TextSize = 12, TextColor3 = C.TextDim, Size = UDim2.new(1, -72, 0, 18), Position = UDim2.fromOffset(64, 32), Parent = card })
 		card.Activated:Connect(function()
-			if product and DevProducts.isConfigured(product) then
-				MarketplaceService:PromptProductPurchase(Players.LocalPlayer, product.ProductId)
+			local kind, id = if product then RobuxSale.of(product) else nil, 0
+			if kind == "product" then
+				MarketplaceService:PromptProductPurchase(Players.LocalPlayer, id)
+			elseif kind == "pass" then
+				MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, id)
 			end
 		end)
 		robuxCards[chest.Id] = { Card = card, Sub = sub, Product = product, Chest = chest }
@@ -23011,7 +23401,7 @@ return ChestsScreen
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="108">
+          <Item class="ModuleScript" referent="109">
             <Properties>
               <string name="Name">Collection</string>
               <string name="Source"><![CDATA[--[[
@@ -23212,7 +23602,7 @@ return Collection
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="109">
+          <Item class="ModuleScript" referent="110">
             <Properties>
               <string name="Name">Inventory</string>
               <string name="Source"><![CDATA[--[[
@@ -23844,7 +24234,7 @@ return Inventory
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="110">
+          <Item class="ModuleScript" referent="111">
             <Properties>
               <string name="Name">Quests</string>
               <string name="Source"><![CDATA[--[[
@@ -24192,7 +24582,7 @@ return QuestsScreen
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="111">
+          <Item class="ModuleScript" referent="112">
             <Properties>
               <string name="Name">Settings</string>
               <string name="Source"><![CDATA[--[[
@@ -24421,7 +24811,7 @@ return SettingsScreen
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="112">
+          <Item class="ModuleScript" referent="113">
             <Properties>
               <string name="Name">Shop</string>
               <string name="Source"><![CDATA[--[[
@@ -24670,7 +25060,7 @@ return Shop
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="113">
+          <Item class="ModuleScript" referent="114">
             <Properties>
               <string name="Name">Skills</string>
               <string name="Source"><![CDATA[--[[
@@ -25348,7 +25738,7 @@ return SkillsScreen
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="114">
+          <Item class="ModuleScript" referent="115">
             <Properties>
               <string name="Name">Stats</string>
               <string name="Source"><![CDATA[--[[
@@ -25646,14 +26036,14 @@ return StatsScreen
 ]]></string>
             </Properties>
           </Item>
-          <Item class="ModuleScript" referent="115">
+          <Item class="ModuleScript" referent="116">
             <Properties>
               <string name="Name">Store</string>
               <string name="Source"><![CDATA[--[[
 	Store (ModuleScript)
 	Location: StarterPlayer/StarterPlayerScripts/Client/Screens/Store
-	Depends on: ReplicatedStorage/UI/*, ReplicatedStorage/Shared/{Format,Config/GamePasses,
-	            Config/DevProducts}, Client/State
+	Depends on: ReplicatedStorage/UI/*, ReplicatedStorage/Shared/{Format,RobuxSale,
+	            Config/GamePasses,Config/DevProducts}, Client/State
 
 	The Robux store: game passes (buy once, keep forever) and developer
 	products (Gem packs, a timed Sparks boost, a crate bundle). Buttons only
@@ -25663,6 +26053,9 @@ return StatsScreen
 
 	Items whose Roblox ID is still 0 in the config are hidden in live games and
 	shown as "Not set up" in Studio, so the owner can see what is missing.
+	Each item is prompted as a game pass or a developer product depending on
+	how it is really sold (Shared/RobuxSale); items Roblox reports as not for
+	sale say so instead of opening a prompt that would fail.
 ]]
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -25678,6 +26071,7 @@ local Format = require(Shared.Format)
 local GamePasses = require(Shared.Config.GamePasses)
 local DevProducts = require(Shared.Config.DevProducts)
 local Chests = require(Shared.Config.Chests)
+local RobuxSale = require(Shared.RobuxSale)
 
 local Client = script.Parent.Parent
 local State = require(Client.State)
@@ -25725,8 +26119,20 @@ function Store.new(ctx)
 	})
 	local screen: { [string]: any } = { Window = window }
 	local isStudio = RunService:IsStudio()
-	local prices: { [number]: number } = {}
-	local fetching: { [number]: boolean } = {}
+	-- Keyed "<kind>:<id>" (the same number can be a pass and an unrelated product).
+	local prices: { [string]: number } = {}
+	local notForSale: { [string]: boolean } = {}
+	local fetching: { [string]: boolean } = {}
+
+	-- Opens Roblox's prompt for however the entry is really sold.
+	local function prompt(entry)
+		local kind, id = RobuxSale.of(entry)
+		if kind == "pass" then
+			MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, id)
+		elseif kind == "product" then
+			MarketplaceService:PromptProductPurchase(Players.LocalPlayer, id)
+		end
+	end
 
 	local list = UI.scroll({
 		Name = "List",
@@ -25807,7 +26213,7 @@ function Store.new(ctx)
 			Position = UDim2.fromOffset(52, 22),
 			Parent = panel,
 		})
-		UI.label({
+		local note = UI.label({
 			Text = spec.Description,
 			TextSize = 12,
 			TextColor3 = C.TextDim,
@@ -25828,35 +26234,71 @@ function Store.new(ctx)
 			OnClick = spec.OnBuy,
 			Parent = panel,
 		})
-		return { Panel = panel, Stroke = stroke, Button = button, Effect = effect }
+		return { Panel = panel, Stroke = stroke, Button = button, Effect = effect, Note = note }
 	end
 
-	local function priceText(id: number, suggested: number): string
-		local price = prices[id]
+	local function saleKey(entry): string?
+		local kind, id = RobuxSale.of(entry)
+		return if kind then `{kind}:{id}` else nil
+	end
+
+	local function priceText(entry, suggested: number): string
+		local key = saleKey(entry)
+		local price = key and prices[key]
 		return if price then `R$ {Format.commas(price)}` else `~R$ {Format.commas(suggested)}`
+	end
+
+	local function isNotForSale(entry): boolean
+		local key = saleKey(entry)
+		return key ~= nil and notForSale[key] == true
 	end
 
 	-- Asks Roblox for real prices once per item (failures keep the suggested price).
 	local function fetchPrices()
-		local function fetch(id: number, infoType: Enum.InfoType)
-			if id <= 0 or prices[id] or fetching[id] then
+		local function fetch(entry)
+			local kind, id = RobuxSale.of(entry)
+			local key = saleKey(entry)
+			if not kind or not key or prices[key] or fetching[key] then
 				return
 			end
-			fetching[id] = true
+			fetching[key] = true
+			local infoType = if kind == "pass" then Enum.InfoType.GamePass else Enum.InfoType.Product
 			task.spawn(function()
 				local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, id, infoType)
-				if ok and type(info) == "table" and type(info.PriceInRobux) == "number" and info.PriceInRobux > 0 then
-					prices[id] = info.PriceInRobux
+				if ok and type(info) == "table" then
+					if type(info.PriceInRobux) == "number" and info.PriceInRobux > 0 then
+						prices[key] = info.PriceInRobux
+					end
+					notForSale[key] = info.IsForSale == false
 					screen.Refresh()
+				else
+					-- Try again next time the store opens.
+					fetching[key] = nil
 				end
 			end)
 		end
 		for _, pass in ipairs(GamePasses.List) do
-			fetch(pass.GamePassId, Enum.InfoType.GamePass)
+			fetch(pass)
 		end
 		for _, product in ipairs(DevProducts.List) do
-			fetch(product.ProductId, Enum.InfoType.Product)
+			fetch(product)
 		end
+	end
+
+	local function productNote(product): string
+		local kind = RobuxSale.of(product)
+		if kind == "pass" then
+			return "One-time purchase: each player can buy this once."
+		elseif product.Crate then
+			return crateOdds(product.Crate)
+		elseif product.Boost then
+			return `Stacks: every purchase adds {math.floor(product.Boost.Seconds / 60)} more minutes of play.`
+		elseif product.Crates and not product.Gems and not product.Sparks then
+			return "Picks the most valuable Spark crate your stage has unlocked."
+		elseif product.Sparks and not product.Gems then
+			return "Spend them on upgrades and crates."
+		end
+		return "Gems buy Prism Caches and skill respecs."
 	end
 
 	-- Game passes ------------------------------------------------------------------------------
@@ -25874,15 +26316,15 @@ function Store.new(ctx)
 			Effect = pass.EffectText,
 			Description = pass.Description,
 			OnBuy = function()
-				if GamePasses.isConfigured(pass) and not GamePasses.owns(State.get("Passes"), pass.Key) then
-					MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, pass.GamePassId)
+				if GamePasses.isConfigured(pass) and not GamePasses.owns(State.get("Passes"), pass.Key) and not isNotForSale(pass) then
+					prompt(pass)
 				end
 			end,
 		})
 	end
 
 	-- Developer products -------------------------------------------------------------------------
-	sectionTitle(4, "⚡ Boosts & Gems", "Buy as often as you like. Boost time only runs while you play.")
+	sectionTitle(4, "⚡ Sparks, Gems & Boosts", "Boost time only runs while you play.")
 	local productGrid = grid(5)
 	local productEmpty = emptyLabel(6, "No products available yet.")
 	local productCards = {}
@@ -25894,14 +26336,11 @@ function Store.new(ctx)
 			Color = product.Color,
 			Effect = product.Description,
 			Op = product.Op,
-			Description = if product.Crate
-				then crateOdds(product.Crate)
-				elseif product.Boost then "Stacks: every purchase adds 15 more minutes."
-				elseif product.Crates then "Picks the most valuable Spark crate your stage has unlocked."
-				else "Gems buy Prism Caches and skill respecs.",
+			Description = productNote(product),
 			OnBuy = function()
-				if DevProducts.isConfigured(product) then
-					MarketplaceService:PromptProductPurchase(Players.LocalPlayer, product.ProductId)
+				local owned = (State.get("PassRewards") or {})[product.Key] == true and RobuxSale.of(product) == "pass"
+				if DevProducts.isConfigured(product) and not owned and not isNotForSale(product) then
+					prompt(product)
 				end
 			end,
 		})
@@ -25940,8 +26379,12 @@ function Store.new(ctx)
 				UI.setText(entry.Button, "Not set up (GamePassId missing)")
 				UI.setVariant(entry.Button, "ghost")
 				UI.setEnabled(entry.Button, false)
+			elseif isNotForSale(pass) then
+				UI.setText(entry.Button, "Not for sale yet")
+				UI.setVariant(entry.Button, "ghost")
+				UI.setEnabled(entry.Button, false)
 			else
-				UI.setText(entry.Button, `Buy · {priceText(pass.GamePassId, pass.SuggestedPrice)}`)
+				UI.setText(entry.Button, `Buy · {priceText(pass, pass.SuggestedPrice)}`)
 				UI.setVariant(entry.Button, "gold")
 				UI.setEnabled(entry.Button, true)
 			end
@@ -25962,8 +26405,18 @@ function Store.new(ctx)
 			entry.Effect.Text = if type(endsAt) == "number" and endsAt > now
 				then `{product.Description} · active {Format.clock(endsAt - now)}`
 				else product.Description
-			if configured then
-				UI.setText(entry.Button, `Buy · {priceText(product.ProductId, product.SuggestedPrice)}`)
+			entry.Note.Text = productNote(product)
+			local rewarded = (State.get("PassRewards") or {})[product.Key] == true and RobuxSale.of(product) == "pass"
+			if rewarded then
+				UI.setText(entry.Button, "✓ Owned")
+				UI.setVariant(entry.Button, "success")
+				UI.setEnabled(entry.Button, false)
+			elseif configured and isNotForSale(product) then
+				UI.setText(entry.Button, "Not for sale yet")
+				UI.setVariant(entry.Button, "ghost")
+				UI.setEnabled(entry.Button, false)
+			elseif configured then
+				UI.setText(entry.Button, `Buy · {priceText(product, product.SuggestedPrice)}`)
 				UI.setVariant(entry.Button, "gold")
 				UI.setEnabled(entry.Button, true)
 			else
@@ -25975,7 +26428,7 @@ function Store.new(ctx)
 		productEmpty.Visible = shownProducts == 0
 	end
 
-	State.subscribe({ "Passes", "Boosts", "Derived" }, screen.Refresh)
+	State.subscribe({ "Passes", "Boosts", "PassRewards", "Derived" }, screen.Refresh)
 	local openCount = 0
 	window.Opened.Event:Connect(function()
 		openCount += 1
@@ -25998,7 +26451,7 @@ return Store
             </Properties>
           </Item>
         </Item>
-        <Item class="ModuleScript" referent="116">
+        <Item class="ModuleScript" referent="117">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[--[[
@@ -26125,7 +26578,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="117">
+        <Item class="ModuleScript" referent="118">
           <Properties>
             <string name="Name">Tutorial</string>
             <string name="Source"><![CDATA[--[[
@@ -26370,7 +26823,7 @@ return Tutorial
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="118">
+        <Item class="ModuleScript" referent="119">
           <Properties>
             <string name="Name">WorldFx</string>
             <string name="Source"><![CDATA[--[[
@@ -26458,7 +26911,7 @@ return WorldFx
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="119">
+      <Item class="LocalScript" referent="120">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[--[[
@@ -26677,7 +27130,7 @@ end)
       </Item>
     </Item>
   </Item>
-  <Item class="Workspace" referent="120">
+  <Item class="Workspace" referent="121">
     <Properties>
       <string name="Name">Workspace</string>
       <bool name="NeedsPivotMigration">false</bool>

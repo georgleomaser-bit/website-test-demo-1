@@ -61,6 +61,7 @@ game
 │   │   ├── Formulas  (ModuleScript)
 │   │   ├── Loot  (ModuleScript)
 │   │   ├── Remotes  (ModuleScript)
+│   │   ├── RobuxSale  (ModuleScript)
 │   │   ├── Signal  (ModuleScript)
 │   │   └── Util  (ModuleScript)
 │   └── UI  (Folder)
@@ -293,6 +294,7 @@ Quests{Day, Daily[{Id,Target,Progress,Claimed}], BonusClaimed, StarterIndex, Sta
 Daily{LastClaimDay, Streak}, Settings{Music,SFX,UIScale,ReducedMotion,ScreenShake,
       FloatingNumbers,ConfirmRareSales,AutoSell},
 Passes{passKey→true}, Boosts{boostKey→secondsLeft}, Receipts[purchaseId] (newest 100),
+PassRewards{productKey→true} (one-time rewards of game passes already granted),
 Obby{Stage, Best, Completions, Checkpoints},
 Tutorial{Step, Done, Skipped, Rewarded, Base},
 Meta{Created, LastSave, LastSeen, Sessions}

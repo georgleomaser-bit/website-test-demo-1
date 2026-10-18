@@ -18,11 +18,11 @@ description, icon and thumbnails are in [`branding/`](branding/STORE_PAGE.md).
 |---|---|
 | **Engine** | Roblox (Luau, modern APIs — no deprecated `wait`/`spawn`/`delay`) |
 | **Project format** | [Rojo 7](https://rojo.space) project + a ready-to-open place file |
-| **Scripts** | 1 Script, 2 LocalScripts, 97 ModuleScripts (≈26,000 lines of game code) |
+| **Scripts** | 1 Script, 2 LocalScripts, 98 ModuleScripts (≈26,000 lines of game code) |
 | **Content** | 81 items in 7 crates · 7 rarities · Golden and Rainbow variants with fusing · 10 upgrades in 3 tiers · 9 Prism perks · 65-node skill tree that reveals itself as you buy · 5 stages · 15-stage obby · 37 achievements · 10 daily-quest types + 10-step starter path · 7-step tutorial · 7-day login calendar · 5 server events · bonus orbs · 3 global leaderboards |
-| **Robux** | 9 game passes (Auto Clicker, OP Auto Clicker, 2×/3× Sparks, 2× Gems, Lucky, Super Luck, Fast Crates, VIP) · 9 developer products (Gem packs, Sparks Rush, Crate Bundle, OP / Mega OP / Ultra OP crates, Rainbow Chest). IDs are placeholders until you create them, see [`docs/MONETIZATION.md`](docs/MONETIZATION.md) |
+| **Robux** | 9 game passes (Auto Clicker, OP Auto Clicker, 2×/3× Sparks, 2× Gems, Lucky, Super Luck, Fast Crates, VIP) · 9 developer products (Gem packs, Sparks Rush, Crate Bundle, OP / Mega OP / Ultra OP crates, Rainbow Chest). Live: OP CLICKER and 9 Sparks/Gems/boost items from the owner's Creator Hub; the rest are ready and appear once their IDs are set, see [`docs/MONETIZATION.md`](docs/MONETIZATION.md) |
 | **Admin** | Owner / Admin / Moderator roles, Owners hand out Moderator/Admin in the game, bans across all servers (also via Roblox's Ban API), 9-tab panel, 41 commands, audit log, confirmations, rate limits |
-| **Verification** | luau-lsp type check (Roblox API definitions) clean · 163 automated tests on a headless Roblox simulation (gameplay, obby, fusing, Robux purchases, exploits, persistence, moderation, admin security, UI, multiplayer) |
+| **Verification** | luau-lsp type check (Roblox API definitions) clean · 169 automated tests on a headless Roblox simulation (gameplay, obby, fusing, Robux purchases, exploits, persistence, moderation, admin security, UI, multiplayer) |
 
 ---
 
@@ -167,7 +167,7 @@ button-ascension/
 │   ├── ServerScriptService/    Main script, core, gameplay services, admin system
 │   ├── ServerStorage/          Admin Panel client (only cloned to authorised staff)
 │   └── StarterPlayer/          Client entry point, HUD, screens, input, effects
-├── tests/                      Headless Roblox simulation + 163 tests (Lune)
+├── tests/                      Headless Roblox simulation + 169 tests (Lune)
 ├── branding/                   Store-page description, icon, thumbnails, pass icons (+ sources)
 └── docs/                       Documentation
 ```

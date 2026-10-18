@@ -221,7 +221,9 @@ describe("Game passes", function()
 		h:advance(3)
 		ctx.expect(next(data.Passes)).toBeNil()
 		ctx.expect(next(data.Boosts)).toBeNil()
-		ctx.expect(data.Currencies.Gems).toBe(0)
+		-- The forged press counts as a normal press; a rare golden press may pay up to
+		-- 6 Gems, but never the 1e9 the payload asked for.
+		ctx.expect(data.Currencies.Gems).toBeLessThanOrEqual(6)
 	end)
 end)
 
@@ -478,9 +480,12 @@ describe("Store screen", function()
 		h:click(h:findDescendant(gui, "NavRail", "Frame"):FindFirstChild("Store"))
 		h:advance(1)
 		local window = h:findDescendant(gui, "Store", "Frame")
+		-- Not set up (ID 0): hidden. The owner's configured items: shown.
 		ctx.expect(h:findDescendant(window, "auto_clicker", "Frame").Visible).toBe(false)
-		ctx.expect(h:findByText(window, "No passes available yet.", "TextLabel").Visible).toBe(true)
-		ctx.expect(h:findByText(window, "No products available yet.", "TextLabel").Visible).toBe(true)
+		ctx.expect(h:findDescendant(window, "gems_small", "Frame").Visible).toBe(false)
+		ctx.expect(h:findDescendant(window, "op_auto_clicker", "Frame").Visible).toBe(true)
+		ctx.expect(h:findDescendant(window, "gems_600", "Frame").Visible).toBe(true)
+		ctx.expect(h:findByText(window, "No passes available yet.", "TextLabel").Visible).toBe(false)
 	end)
 end)
 

@@ -1,7 +1,8 @@
 --[[
 	GamePassService (ModuleScript)
 	Location: ServerScriptService/Services/GamePassService
-	Depends on: Shared/Config/GamePasses, DataService, StatsService, SyncService, Net
+	Depends on: Shared/Config/{GamePasses,DevProducts}, Shared/RobuxSale, DataService,
+	            StatsService, SyncService, ProductService, Net
 
 	Robux game passes. Ownership is decided on the server only:
 	  * When a player's data loads, MarketplaceService:UserOwnsGamePassAsync is
@@ -14,16 +15,26 @@
 	There is no remote for passes: the client can only open Roblox's purchase
 	prompt, so nothing a client sends can grant a pass. The effects live in
 	Shared/Formulas (computeStats reads data.Passes).
+
+	Developer-product rewards can also be sold as a one-time game pass
+	(Config/DevProducts with GamePassId). Owning such a pass grants its reward
+	once per player through ProductService:GrantPassReward. Whether an ID is a
+	pass at all is confirmed with Roblox first (Shared/RobuxSale).
 ]]
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local GamePasses = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"):WaitForChild("GamePasses"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local GamePasses = require(Shared:WaitForChild("Config"):WaitForChild("GamePasses"))
+local DevProducts = require(Shared.Config:WaitForChild("DevProducts"))
+local RobuxSale = require(Shared:WaitForChild("RobuxSale"))
 
 local GamePassService = { Name = "GamePassService" }
 
 local CHECK_ATTEMPTS = 3
+-- How long ownership checks wait for ProductService to confirm the sale kinds.
+local RESOLVE_WAIT_SECONDS = 15
 
 function GamePassService:Init(services)
 	self.Services = services
@@ -68,13 +79,19 @@ end
 
 -- Re-checks every configured pass with Roblox and updates the stored answers.
 function GamePassService:Refresh(profile)
+	local deadline = os.clock() + RESOLVE_WAIT_SECONDS
+	while not RobuxSale.isResolved() and os.clock() < deadline do
+		task.wait(0.2)
+	end
 	local data = profile.Data
 	local boughtNow = profile.Runtime.PassesBought or {}
 	local gained = {}
 	local changed = false
 	for _, pass in ipairs(GamePasses.List) do
-		if GamePasses.isConfigured(pass) then
-			local owns = self:_owns(profile.UserId, pass.GamePassId)
+		-- Passes sold as developer products are kept by ProcessReceipt, not checked here.
+		local kind, passId = RobuxSale.of(pass)
+		if kind == "pass" then
+			local owns = self:_owns(profile.UserId, passId)
 			-- A purchase finished while we were asking: Roblox's answer may predate it.
 			if owns == false and boughtNow[pass.Key] then
 				owns = nil
@@ -94,9 +111,27 @@ function GamePassService:Refresh(profile)
 			self.Services.Net.notify(profile.Player, "Pass", { Key = pass.Key })
 		end
 	end
+	-- One-time rewards sold as game passes (Gems, Sparks, boosts, bundles).
+	for _, product in ipairs(DevProducts.List) do
+		local kind, passId = RobuxSale.of(product)
+		if kind == "pass" and not data.PassRewards[product.Key] and self:_owns(profile.UserId, passId) == true then
+			if self:_isActive(profile) then
+				self.Services.ProductService:GrantPassReward(profile, product)
+			end
+		end
+	end
 end
 
 function GamePassService:_onPurchased(player: Player, passId: any)
+	local reward = DevProducts.byGamePassId(passId)
+	if reward then
+		local DataService = self.Services.DataService
+		local profile = DataService:GetProfile(player) or DataService:WaitForProfile(player, 60)
+		if profile then
+			self.Services.ProductService:GrantPassReward(profile, reward)
+		end
+		return
+	end
 	local pass = GamePasses.byGamePassId(passId)
 	if not pass then
 		warn(`[GamePassService] Purchase of unknown or unconfigured pass {tostring(passId)} by {player.UserId}`)

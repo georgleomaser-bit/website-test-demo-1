@@ -30,6 +30,7 @@ local Items = require(Config.Items)
 local Rarities = require(Config.Rarities)
 local GameConfig = require(Config.GameConfig)
 local DevProducts = require(Config.DevProducts)
+local RobuxSale = require(Shared.RobuxSale)
 
 local Client = script.Parent.Parent
 local State = require(Client.State)
@@ -147,8 +148,11 @@ function ChestsScreen.new(ctx)
 		UI.label({ Text = chest.Name, Font = F.Heading, TextSize = 16, TextColor3 = chest.Color, Size = UDim2.new(1, -72, 0, 22), Position = UDim2.fromOffset(64, 8), Parent = card })
 		local sub = UI.label({ Text = "", TextSize = 12, TextColor3 = C.TextDim, Size = UDim2.new(1, -72, 0, 18), Position = UDim2.fromOffset(64, 32), Parent = card })
 		card.Activated:Connect(function()
-			if product and DevProducts.isConfigured(product) then
-				MarketplaceService:PromptProductPurchase(Players.LocalPlayer, product.ProductId)
+			local kind, id = if product then RobuxSale.of(product) else nil, 0
+			if kind == "product" then
+				MarketplaceService:PromptProductPurchase(Players.LocalPlayer, id)
+			elseif kind == "pass" then
+				MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, id)
 			end
 		end)
 		robuxCards[chest.Id] = { Card = card, Sub = sub, Product = product, Chest = chest }

@@ -1,8 +1,8 @@
 --[[
 	Store (ModuleScript)
 	Location: StarterPlayer/StarterPlayerScripts/Client/Screens/Store
-	Depends on: ReplicatedStorage/UI/*, ReplicatedStorage/Shared/{Format,Config/GamePasses,
-	            Config/DevProducts}, Client/State
+	Depends on: ReplicatedStorage/UI/*, ReplicatedStorage/Shared/{Format,RobuxSale,
+	            Config/GamePasses,Config/DevProducts}, Client/State
 
 	The Robux store: game passes (buy once, keep forever) and developer
 	products (Gem packs, a timed Sparks boost, a crate bundle). Buttons only
@@ -12,6 +12,9 @@
 
 	Items whose Roblox ID is still 0 in the config are hidden in live games and
 	shown as "Not set up" in Studio, so the owner can see what is missing.
+	Each item is prompted as a game pass or a developer product depending on
+	how it is really sold (Shared/RobuxSale); items Roblox reports as not for
+	sale say so instead of opening a prompt that would fail.
 ]]
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -27,6 +30,7 @@ local Format = require(Shared.Format)
 local GamePasses = require(Shared.Config.GamePasses)
 local DevProducts = require(Shared.Config.DevProducts)
 local Chests = require(Shared.Config.Chests)
+local RobuxSale = require(Shared.RobuxSale)
 
 local Client = script.Parent.Parent
 local State = require(Client.State)
@@ -74,8 +78,20 @@ function Store.new(ctx)
 	})
 	local screen: { [string]: any } = { Window = window }
 	local isStudio = RunService:IsStudio()
-	local prices: { [number]: number } = {}
-	local fetching: { [number]: boolean } = {}
+	-- Keyed "<kind>:<id>" (the same number can be a pass and an unrelated product).
+	local prices: { [string]: number } = {}
+	local notForSale: { [string]: boolean } = {}
+	local fetching: { [string]: boolean } = {}
+
+	-- Opens Roblox's prompt for however the entry is really sold.
+	local function prompt(entry)
+		local kind, id = RobuxSale.of(entry)
+		if kind == "pass" then
+			MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, id)
+		elseif kind == "product" then
+			MarketplaceService:PromptProductPurchase(Players.LocalPlayer, id)
+		end
+	end
 
 	local list = UI.scroll({
 		Name = "List",
@@ -156,7 +172,7 @@ function Store.new(ctx)
 			Position = UDim2.fromOffset(52, 22),
 			Parent = panel,
 		})
-		UI.label({
+		local note = UI.label({
 			Text = spec.Description,
 			TextSize = 12,
 			TextColor3 = C.TextDim,
@@ -177,35 +193,71 @@ function Store.new(ctx)
 			OnClick = spec.OnBuy,
 			Parent = panel,
 		})
-		return { Panel = panel, Stroke = stroke, Button = button, Effect = effect }
+		return { Panel = panel, Stroke = stroke, Button = button, Effect = effect, Note = note }
 	end
 
-	local function priceText(id: number, suggested: number): string
-		local price = prices[id]
+	local function saleKey(entry): string?
+		local kind, id = RobuxSale.of(entry)
+		return if kind then `{kind}:{id}` else nil
+	end
+
+	local function priceText(entry, suggested: number): string
+		local key = saleKey(entry)
+		local price = key and prices[key]
 		return if price then `R$ {Format.commas(price)}` else `~R$ {Format.commas(suggested)}`
+	end
+
+	local function isNotForSale(entry): boolean
+		local key = saleKey(entry)
+		return key ~= nil and notForSale[key] == true
 	end
 
 	-- Asks Roblox for real prices once per item (failures keep the suggested price).
 	local function fetchPrices()
-		local function fetch(id: number, infoType: Enum.InfoType)
-			if id <= 0 or prices[id] or fetching[id] then
+		local function fetch(entry)
+			local kind, id = RobuxSale.of(entry)
+			local key = saleKey(entry)
+			if not kind or not key or prices[key] or fetching[key] then
 				return
 			end
-			fetching[id] = true
+			fetching[key] = true
+			local infoType = if kind == "pass" then Enum.InfoType.GamePass else Enum.InfoType.Product
 			task.spawn(function()
 				local ok, info = pcall(MarketplaceService.GetProductInfo, MarketplaceService, id, infoType)
-				if ok and type(info) == "table" and type(info.PriceInRobux) == "number" and info.PriceInRobux > 0 then
-					prices[id] = info.PriceInRobux
+				if ok and type(info) == "table" then
+					if type(info.PriceInRobux) == "number" and info.PriceInRobux > 0 then
+						prices[key] = info.PriceInRobux
+					end
+					notForSale[key] = info.IsForSale == false
 					screen.Refresh()
+				else
+					-- Try again next time the store opens.
+					fetching[key] = nil
 				end
 			end)
 		end
 		for _, pass in ipairs(GamePasses.List) do
-			fetch(pass.GamePassId, Enum.InfoType.GamePass)
+			fetch(pass)
 		end
 		for _, product in ipairs(DevProducts.List) do
-			fetch(product.ProductId, Enum.InfoType.Product)
+			fetch(product)
 		end
+	end
+
+	local function productNote(product): string
+		local kind = RobuxSale.of(product)
+		if kind == "pass" then
+			return "One-time purchase: each player can buy this once."
+		elseif product.Crate then
+			return crateOdds(product.Crate)
+		elseif product.Boost then
+			return `Stacks: every purchase adds {math.floor(product.Boost.Seconds / 60)} more minutes of play.`
+		elseif product.Crates and not product.Gems and not product.Sparks then
+			return "Picks the most valuable Spark crate your stage has unlocked."
+		elseif product.Sparks and not product.Gems then
+			return "Spend them on upgrades and crates."
+		end
+		return "Gems buy Prism Caches and skill respecs."
 	end
 
 	-- Game passes ------------------------------------------------------------------------------
@@ -223,15 +275,15 @@ function Store.new(ctx)
 			Effect = pass.EffectText,
 			Description = pass.Description,
 			OnBuy = function()
-				if GamePasses.isConfigured(pass) and not GamePasses.owns(State.get("Passes"), pass.Key) then
-					MarketplaceService:PromptGamePassPurchase(Players.LocalPlayer, pass.GamePassId)
+				if GamePasses.isConfigured(pass) and not GamePasses.owns(State.get("Passes"), pass.Key) and not isNotForSale(pass) then
+					prompt(pass)
 				end
 			end,
 		})
 	end
 
 	-- Developer products -------------------------------------------------------------------------
-	sectionTitle(4, "⚡ Boosts & Gems", "Buy as often as you like. Boost time only runs while you play.")
+	sectionTitle(4, "⚡ Sparks, Gems & Boosts", "Boost time only runs while you play.")
 	local productGrid = grid(5)
 	local productEmpty = emptyLabel(6, "No products available yet.")
 	local productCards = {}
@@ -243,14 +295,11 @@ function Store.new(ctx)
 			Color = product.Color,
 			Effect = product.Description,
 			Op = product.Op,
-			Description = if product.Crate
-				then crateOdds(product.Crate)
-				elseif product.Boost then "Stacks: every purchase adds 15 more minutes."
-				elseif product.Crates then "Picks the most valuable Spark crate your stage has unlocked."
-				else "Gems buy Prism Caches and skill respecs.",
+			Description = productNote(product),
 			OnBuy = function()
-				if DevProducts.isConfigured(product) then
-					MarketplaceService:PromptProductPurchase(Players.LocalPlayer, product.ProductId)
+				local owned = (State.get("PassRewards") or {})[product.Key] == true and RobuxSale.of(product) == "pass"
+				if DevProducts.isConfigured(product) and not owned and not isNotForSale(product) then
+					prompt(product)
 				end
 			end,
 		})
@@ -289,8 +338,12 @@ function Store.new(ctx)
 				UI.setText(entry.Button, "Not set up (GamePassId missing)")
 				UI.setVariant(entry.Button, "ghost")
 				UI.setEnabled(entry.Button, false)
+			elseif isNotForSale(pass) then
+				UI.setText(entry.Button, "Not for sale yet")
+				UI.setVariant(entry.Button, "ghost")
+				UI.setEnabled(entry.Button, false)
 			else
-				UI.setText(entry.Button, `Buy · {priceText(pass.GamePassId, pass.SuggestedPrice)}`)
+				UI.setText(entry.Button, `Buy · {priceText(pass, pass.SuggestedPrice)}`)
 				UI.setVariant(entry.Button, "gold")
 				UI.setEnabled(entry.Button, true)
 			end
@@ -311,8 +364,18 @@ function Store.new(ctx)
 			entry.Effect.Text = if type(endsAt) == "number" and endsAt > now
 				then `{product.Description} · active {Format.clock(endsAt - now)}`
 				else product.Description
-			if configured then
-				UI.setText(entry.Button, `Buy · {priceText(product.ProductId, product.SuggestedPrice)}`)
+			entry.Note.Text = productNote(product)
+			local rewarded = (State.get("PassRewards") or {})[product.Key] == true and RobuxSale.of(product) == "pass"
+			if rewarded then
+				UI.setText(entry.Button, "✓ Owned")
+				UI.setVariant(entry.Button, "success")
+				UI.setEnabled(entry.Button, false)
+			elseif configured and isNotForSale(product) then
+				UI.setText(entry.Button, "Not for sale yet")
+				UI.setVariant(entry.Button, "ghost")
+				UI.setEnabled(entry.Button, false)
+			elseif configured then
+				UI.setText(entry.Button, `Buy · {priceText(product, product.SuggestedPrice)}`)
 				UI.setVariant(entry.Button, "gold")
 				UI.setEnabled(entry.Button, true)
 			else
@@ -324,7 +387,7 @@ function Store.new(ctx)
 		productEmpty.Visible = shownProducts == 0
 	end
 
-	State.subscribe({ "Passes", "Boosts", "Derived" }, screen.Refresh)
+	State.subscribe({ "Passes", "Boosts", "PassRewards", "Derived" }, screen.Refresh)
 	local openCount = 0
 	window.Opened.Event:Connect(function()
 		openCount += 1

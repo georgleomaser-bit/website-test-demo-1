@@ -22,6 +22,10 @@
 	   and paste it as GamePassId below, e.g.  GamePassId = 123456789,
 	6. Publish again. Passes with GamePassId = 0 are "not set up": they are
 	   hidden in live games and do nothing.
+	Optional: HubName = the exact name in the Creator Hub. The server then
+	checks with Roblox whether the ID is really a game pass or a developer
+	product and sells it the right way (see Shared/RobuxSale). An effect pass
+	sold as a developer product is bought once and kept forever too.
 	================================================================
 
 	Effects use the same stats as skills (see Shared/Formulas):
@@ -45,8 +49,12 @@ export type Pass = {
 	Op: boolean?,
 	SuggestedPrice: number,
 	GamePassId: number,
+	ProductId: number?,
+	HubName: string?,
 	Order: number?, -- set from the list position below
 }
+
+local RobuxSale = require(script.Parent.Parent.RobuxSale)
 
 local GamePasses = {}
 
@@ -72,7 +80,9 @@ GamePasses.List = {
 		Effects = { { Stat = "autoRatePass", Add = 15 } },
 		Op = true,
 		SuggestedPrice = 349,
-		GamePassId = 0,
+		-- Creator Hub: "OP CLICKER".
+		GamePassId = 2038330114,
+		HubName = "OP CLICKER",
 	},
 	{
 		Key = "double_sparks",
@@ -167,23 +177,33 @@ for index, pass in ipairs(GamePasses.List) do
 	GamePasses.ByKey[pass.Key] = pass
 end
 
--- A pass is live only once its Roblox pass ID has been pasted in.
+-- A pass is live only once its Roblox ID has been pasted in.
 function GamePasses.isConfigured(pass: Pass): boolean
-	return type(pass.GamePassId) == "number" and pass.GamePassId > 0
+	return (RobuxSale.of(pass)) ~= nil
 end
 
--- The configured pass with this Roblox ID (IDs are read live, so edits in
--- Studio or tests take effect without re-requiring the module).
-function GamePasses.byGamePassId(id: any): Pass?
+local function bySale(kind: string, id: any): Pass?
 	if type(id) ~= "number" or id <= 0 then
 		return nil
 	end
 	for _, pass in ipairs(GamePasses.List) do
-		if pass.GamePassId == id then
+		local saleKind, saleId = RobuxSale.of(pass)
+		if saleKind == kind and saleId == id then
 			return pass
 		end
 	end
 	return nil
+end
+
+-- The pass sold as this Roblox game pass (IDs are read live, so edits in
+-- Studio or tests take effect without re-requiring the module).
+function GamePasses.byGamePassId(id: any): Pass?
+	return bySale("pass", id)
+end
+
+-- The pass sold as this developer product (bought once, kept forever).
+function GamePasses.byProductId(id: any): Pass?
+	return bySale("product", id)
 end
 
 -- Whether owned-pass data (data.Passes) includes this configured pass.

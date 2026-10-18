@@ -807,9 +807,23 @@ Instance.define("MarketplaceService", {
 		PlayerOwnsBundle = function()
 			return false
 		end,
-		GetProductInfo = function(self, id)
-			local price = svc(self, "GetProductInfo").world.marketplace.prices[id]
-			return { Name = "Product " .. tostring(id), PriceInRobux = price or 0, AssetId = id, IsForSale = price ~= nil }
+		-- marketplace.info[id] = { Kind = "pass" | "product", Name, Price, ForSale } makes the
+		-- mock behave like Roblox: asking with the wrong InfoType errors.
+		GetProductInfo = function(self, id, infoType)
+			local market = svc(self, "GetProductInfo").world.marketplace
+			local info = market.info[id]
+			if info then
+				local wanted = if infoType == Enum.InfoType.GamePass
+					then "pass"
+					elseif infoType == Enum.InfoType.Product then "product"
+					else nil
+				if wanted and info.Kind ~= wanted then
+					error("HTTP 400 (Bad Request)", 2)
+				end
+				return { Name = info.Name, PriceInRobux = info.Price or 0, AssetId = id, IsForSale = info.ForSale ~= false }
+			end
+			local price = market.prices[id]
+			return { Name = "Product " .. tostring(id), PriceInRobux = price or 0, AssetId = id, IsForSale = true }
 		end,
 	},
 })

@@ -1397,7 +1397,7 @@ A["progression.reset"] = {
 		elseif scope == "all" then
 			-- Things bought with Robux are never reset: passes, running boosts, and the
 			-- processed receipt ids (wiping those could grant a pending purchase twice).
-			local KEEP = { "Settings", "Meta", "Passes", "Boosts", "Receipts", "Tutorial" }
+			local KEEP = { "Settings", "Meta", "Passes", "Boosts", "Receipts", "PassRewards", "Tutorial" }
 			local keep = {}
 			for _, key in ipairs(KEEP) do
 				keep[key] = data[key]

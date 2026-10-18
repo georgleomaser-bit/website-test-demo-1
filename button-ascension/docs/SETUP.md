@@ -58,7 +58,7 @@ ReplicatedStorage
 │   │     Achievements, Ascension, Chests, DevProducts, GameConfig,
 │   │     GamePasses, Items, Obby, Quests, Rarities, Rewards, Skills,
 │   │     Sounds, Tutorial, Upgrades                         (ModuleScripts)
-│   ├── Format, Formulas, Loot, Remotes, Signal, Util        (ModuleScripts)
+│   ├── Format, Formulas, Loot, Remotes, RobuxSale, Signal, Util (ModuleScripts)
 └── UI                (Folder)
       Effects, SoundPlayer, Theme, UIKit                     (ModuleScripts)
 ```

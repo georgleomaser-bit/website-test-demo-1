@@ -23,6 +23,44 @@ Pass gilt nur für diese Sitzung. Developer Products werden in Studio nur
 vergeben, wenn **Studio-Zugriff auf API-Dienste** eingeschaltet ist, weil der
 Kauf zuerst gespeichert werden muss.
 
+## Deine Artikel aus dem Creator Hub (eingetragen)
+
+Diese 10 Artikel sind mit ihren IDs eingetragen und geben genau das, was ihr
+Name sagt:
+
+| Name im Creator Hub | ID | Was man bekommt | Preisvorschlag |
+|---|---|---|---|
+| OP CLICKER | 2038330114 | OP Auto Clicker: +15 automatische Klicks pro Sekunde, dauerhaft | 349 R$ |
+| Starter Pack | 2037646106 | 25.000 Sparks, 150 Gems und 3 Kisten (die beste freigeschaltete Spark-Kiste) | 49 R$ |
+| Spark 30000 | 2037322132 | 30.000 Sparks | 49 R$ |
+| Spark 60000 | 2036914125 | 60.000 Sparks | 99 R$ |
+| OP Sparks 200000 | 2039811962 | 200.000 Sparks | 199 R$ |
+| Gems 120 | 2039541981 | 120 Gems | 49 R$ |
+| Gems 600 | 2039937934 | 600 Gems | 199 R$ |
+| OP Gems 15000 | 2036932058 | 15.000 Gems | 999 R$ |
+| Boost Lucky Hour | 2039895926 | 1 Stunde Spielzeit +100 % Glück | 99 R$ |
+| Boost spark search | 2038198094 | 1 Stunde Spielzeit ×2 Sparks (im Spiel „Spark Surge Boost“) | 99 R$ |
+
+**Damit man sie kaufen kann:** Im Creator Hub jeden Artikel öffnen →
+**Sales** → **Item for Sale** einschalten, Preis eintragen und speichern.
+Solange „Nicht zum Verkauf“ dasteht, zeigt der Store im Spiel „Not for sale
+yet“.
+
+**Game-Pass oder Developer Product?** Die Artikel wurden als Game-Pässe
+angelegt. Ein Game-Pass kann von jedem Spieler nur **einmal** gekauft werden:
+Die Gems, Sparks oder der Boost werden dann einmal gutgeschrieben (beim Kauf
+oder beim nächsten Beitreten, nie doppelt). Sollen Gems, Sparks und Boosts
+**öfter** kaufbar sein, lege sie im Creator Hub als **Developer Products** an
+und trage die neuen IDs ein (oder schick sie mir). Der Server prüft beim Start
+über den Namen bei Roblox, ob eine ID ein Pass oder ein Produkt ist, und
+verkauft sie richtig, auch wenn eine ID im „falschen“ Feld steht
+(`Shared/RobuxSale`).
+
+Technisch stehen die neun Belohnungs-Artikel in `Config/DevProducts`
+(`GamePassId` + `HubName`), OP CLICKER in `Config/GamePasses`
+(`op_auto_clicker`). Einmal ausgezahlte Pass-Belohnungen merkt sich der
+Spielstand in `PassRewards`.
+
 ## Game passes (buy once, keep forever)
 
 | Pass | Effect | Suggested price | Config key |
