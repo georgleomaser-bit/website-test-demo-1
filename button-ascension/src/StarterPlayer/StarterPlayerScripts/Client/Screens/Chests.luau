@@ -130,6 +130,20 @@ function ChestsScreen.new(ctx)
 		if busy then
 			return
 		end
+		local chest = Chests.ById[chestId]
+		-- Gems are slow to earn, so spending them is confirmed (Sparks crates are bought quickly).
+		if mode == "buy" and chest.Currency == "Gems" then
+			local stats = State.stats()
+			local price = Formulas.chestPrice(chest, if stats then stats.chestDiscount else 0) * count
+			local ok = UI.confirm({
+				Title = `Buy {count}× {chest.Name}?`,
+				Message = `This spends 💎 {Format.commas(price)} Gems.`,
+				ConfirmText = "Buy",
+			})
+			if not ok then
+				return
+			end
+		end
 		busy = true
 		local result = ClientNet.action("OpenChest", { Id = chestId, Amount = count, Mode = mode })
 		busy = false
@@ -137,7 +151,7 @@ function ChestsScreen.new(ctx)
 			ctx.Notifications.error(result.err)
 			return
 		end
-		ChestOpening.play(ctx, Chests.ById[chestId], result.Results or {}, function()
+		ChestOpening.play(ctx, chest, result.Results or {}, function()
 			-- "Open again" with the same settings.
 			openChest(chestId, count, mode)
 		end)

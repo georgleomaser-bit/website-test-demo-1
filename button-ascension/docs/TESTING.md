@@ -2,7 +2,7 @@
 
 Testing has two layers:
 
-1. **Automated:** 94 tests that run the real game scripts in a headless
+1. **Automated:** 96 tests that run the real game scripts in a headless
    Roblox simulation, plus static type checking. They run without Roblox
    Studio, in under a minute.
 2. **Manual:** a checklist for things that need the real engine (rendering,
@@ -15,7 +15,7 @@ Testing has two layers:
 | Static type check against the Roblox API definitions (luau-lsp 1.70, `globalTypes.d.luau`) | `luau-lsp analyze --definitions=globalTypes.d.luau --sourcemap=sourcemap.json src` | **0 errors, 0 warnings** |
 | Every file compiles (luau-compile) | `luau-compile --text <file>` | **all 87 scripts compile** |
 | Rojo build | `rojo build default.project.json -o build/ButtonAscension.rbxlx` | **builds**; 1 Script, 2 LocalScripts, 84 ModuleScripts, 11 Folders |
-| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **94 passed, 0 failed** |
+| Headless game tests (Lune 0.10.4) | `lune run tests/run.luau` | **96 passed, 0 failed** |
 
 ### How the headless tests work
 
@@ -38,142 +38,145 @@ Details: [`tests/README.md`](../tests/README.md).
 
 ### Test list
 
-#**Suite: admin
-##**Suite: Access
+#### Suite: admin
+**Access**
 - delivers the admin panel only to staff
 - makes the place creator Owner in live servers and nobody else
 - rejects every request from a normal player, however it is forged
 - rejects malformed and duplicate requests from staff
-##**Suite: Roles and permissions
+**Roles and permissions**
 - gives Owner, Admin and Moderator different powers
 - protects staff of equal or higher rank from punitive actions
-##**Suite: Economy, items and progression tools
+**Economy, items and progression tools**
 - adds, removes and sets currency through core validation
 - grants and removes items and crates, and runs test drops without changing odds
 - grants upgrades, skills, ascensions, levels and skill points
-##**Suite: Confirmation of destructive actions
+**Confirmation of destructive actions**
 - requires a single-use token from the same admin before resetting
 - resets a chosen progression scope only after confirmation
-##**Suite: Player management
+**Player management**
 - freezes, unfreezes, teleports, respawns and kicks with a reason
-##**Suite: Command bar
+**Command bar**
 - parses commands, resolves players safely and validates arguments
-##**Suite: Safeguards
+**Safeguards**
 - rate limits punitive actions and records everything in the audit log
 - edits offline players only when the role allows it and no session holds the data
-##**Suite: Announcements and events
+**Announcements and events**
 - filters announcements, labels the scope and delivers game-wide ones to other servers
 - starts and stops server events that change player stats
-#**Suite: client
-##**Suite: Interface
+#### Suite: client
+**Interface**
 - boots without errors, hides the loading screen and presses through the big button
 - opens and closes every screen from the navigation rail
 - buys an upgrade from the shop
 - opens a crate and plays the reveal
 - equips an item from the inventory
 - saves settings changed in the settings screen
-##**Suite: Devices
+**Devices**
 - uses the compact layout on a phone with touch input
 - presses the button with a controller trigger
-##**Suite: Admin panel client
+**Admin panel client**
 - boots for an Owner and runs a command from the command bar
-#**Suite: gameplay
-##**Suite: New player
+#### Suite: fuzz
+**Fuzzing**
+- survives random payloads on every player action without throwing or granting anything
+- survives random admin payloads from staff and outsiders
+#### Suite: gameplay
+**New player**
 - gets default data, leaderstats, daily quests and a full snapshot
-##**Suite: Pressing
+**Pressing**
 - awards server-computed Sparks, XP and stats and ignores forged arguments
 - caps instant click floods with the token bucket and flags them
 - ignores presses before the profile has loaded
-##**Suite: Upgrades
+**Upgrades**
 - rejects purchases without funds, unknown ids, bad amounts and locked tiers
 - charges the server price and raises the level; MAX buys as many as affordable
-##**Suite: Crates
+**Crates**
 - validates crate id, amount, mode, stage lock and funds
 - rolls on the server, applies the items and ignores forged rarities
 - guarantees a Legendary or better when pity is reached
 - auto-sells duplicates up to the chosen rarity when enabled
-##**Suite: Inventory
+**Inventory**
 - equips only owned items within the slot limit and sells safely
 - makes extra copies strengthen an equipped item
-##**Suite: Skill tree
+**Skill tree**
 - enforces skill points and prerequisites
-##**Suite: Ascension
+**Ascension**
 - refuses early, then resets only the run and keeps permanent progress
 - keeps Auto-Presser with Loyal Robots and grants Head Start sparks
-##**Suite: Quests, achievements and daily rewards
+**Quests, achievements and daily rewards**
 - tracks the starter path and pays rewards once
 - pays a daily quest only when complete and only once
 - unlocks achievements automatically from stats
 - lets the daily login reward be claimed once per UTC day
-##**Suite: Bonus orbs
+**Bonus orbs**
 - only accepts the orb the server offered, once
-##**Suite: Settings and request validation
+**Settings and request validation**
 - validates every setting and rejects unknown actions
 - rate limits action spam
-#**Suite: harness_selftest
-##**Suite: Instances
+#### Suite: harness_selftest
+**Instances**
 - reports Roblox-style errors for invalid members, types and classes
 - returns reflection defaults and computes GUI geometry
 - fires Changed, property, attribute, child and Destroying signals
 - clones deep trees with attributes and remaps internal references
 - detects cyclic requires
-##**Suite: Scheduler
+**Scheduler**
 - orders task.delay / task.wait / task.defer in virtual time
 - lets tests yield: task.wait inside a test advances virtual time
 - WaitForChild yields until the child appears or the timeout elapses
 - records uncaught errors from script threads
 - completes tweens and fires Completed
-##**Suite: DataStores
+**DataStores**
 - cancels UpdateAsync when the transform returns nil
 - injects failures and rejects unstorable values
 - shares one backend between two servers and serves ordered stores
-##**Suite: Network
+**Network**
 - round-trips remotes with Roblox serialisation rules
 - replicates server changes and lets tests act as exploiters
 - only replicates a PlayerGui to its owner and starts LocalScripts placed there
 - delivers MessagingService messages between servers
 - filters text and runs BindToClose on shutdown
-#**Suite: multiplayer
-##**Suite: Multiplayer
+#### Suite: multiplayer
+**Multiplayer**
 - keeps each player's data isolated
 - runs 8 players with full collections and auto-presses for 3 minutes
 - shares server activity with every client
-#**Suite: persistence
-##**Suite: Saving
+#### Suite: persistence
+**Saving**
 - saves on leave, releases the lock and restores the data in another server
 - autosaves while playing and keeps the session lock fresh
 - saves every player when the server shuts down
-##**Suite: DataStore failures
+**DataStore failures**
 - retries transient failures while loading
 - kicks instead of playing on empty data when loading keeps failing
 - retries failed saves and reports them
 - uses a clearly labelled temporary profile in Studio without API access and never writes
-##**Suite: Session locking
+**Session locking**
 - refuses a second server while the first holds a fresh lock
 - waits for the other server to finish saving, then loads the newest data
 - takes over a stale lock left behind by a crashed server
 - stops saving and removes the player if another server took the lock
-##**Suite: Schema and validation
+**Schema and validation**
 - migrates version 1 data to the current schema
 - sanitises tampered or corrupted values
 - refuses to touch data written by a newer game version
 - refuses to overwrite an unreadable record
-##**Suite: Offline earnings
+**Offline earnings**
 - grants a capped share of passive income for time away
-#**Suite: shared_config
-##**Suite: Configuration
+#### Suite: shared_config
+**Configuration**
 - loads every config module
 - gives every weighted rarity of every crate a non-empty item pool
 - keeps skill prerequisites, upgrades, achievements and quests consistent
-##**Suite: Loot
+**Loot**
 - normalises effective weights for any luck value
 - matches expected odds over 20,000 simulated openings per crate
 - guarantees Legendary or better when the pity threshold is reached
-##**Suite: Formulas and Format
+**Formulas and Format**
 - computes finite stats for fresh and heavily progressed players
 - computes stats from the server's default player data
 - formats numbers like the UI expects
-
 
 ### Bugs found and fixed by these tests during development
 
@@ -277,7 +280,7 @@ the manual pass confirms them in the real engine.
 
 ### Results of this build
 
-* All automated checks above pass (94/94 tests, a clean type check, Rojo
+* All automated checks above pass (96/96 tests, a clean type check, Rojo
   builds).
 * The manual Studio checklist has **not** been run as part of this
   delivery; no Roblox Studio was available in the build environment. The

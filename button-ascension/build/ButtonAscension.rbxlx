@@ -2443,7 +2443,7 @@ return Formulas
           <string name="Source"><![CDATA[--[[
 	Loot (ModuleScript)
 	Location: ReplicatedStorage/Shared/Loot
-	Depends on: Shared/Config/Rarities, Shared/Config/Items, Shared/Config/Chests
+	Depends on: Shared/Config/Rarities, Shared/Config/Items
 
 	Pure crate-roll maths. The SERVER performs every real roll with its own
 	Random object; the client only calls effectiveWeights() to display odds.
@@ -6248,6 +6248,14 @@ AdminConfig.StudioTestUsers = {
 }
 
 --[[
+	STUDIO TESTING ONLY. A place opened from a file that has never been
+	published has no owner (game.CreatorId is 0), so nobody would be Owner in
+	Play Solo. With this on, the solo tester is Owner in that one situation.
+	It never applies to published places or live servers.
+]]
+AdminConfig.StudioOwnerWhenUnpublished = true
+
+--[[
 	Permissions
 	  panel.open               open the panel, dashboard, command bar, help
 	  players.view             list online players and basic stats
@@ -6456,6 +6464,9 @@ function AdminPermissions.roleForUserId(userId: number): string?
 	local role: string? = nil
 	if RunService:IsStudio() then
 		role = validRole(AdminConfig.StudioTestUsers[userId])
+		if not role and AdminConfig.StudioOwnerWhenUnpublished and game.CreatorId == 0 and userId > 0 then
+			role = "Owner"
+		end
 	end
 	if not role then
 		role = validRole(AdminConfig.Users[userId])
@@ -12350,20 +12361,25 @@ function Panel.build(gui: ScreenGui, hello)
 	-- Floating layer: toggle button + toasts (scaled to the screen) ------------------
 	-- Above the window (ZIndex 10) so the toggle and toasts stay reachable; transparent frames do not block clicks.
 	local floating = UI.frame({ Name = "Floating", ZIndex = 15, Parent = gui })
-	local floatScale = Instance.new("UIScale")
-	floatScale.Parent = floating
 	local inset = GuiService:GetGuiInset()
 
-	local toggle = Widgets.button({
-		Name = "AdminToggle",
-		Text = "🛡️ Admin",
-		Variant = "adminPrimary",
+	-- The button keeps its own press-animation UIScale, so layout scaling lives on a holder.
+	local toggleHolder = UI.frame({
+		Name = "AdminToggleHolder",
 		Size = UDim2.fromOffset(112, 34),
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -14, 0, inset.Y + 10),
 		ZIndex = 6,
-		Tooltip = `Admin panel ({hello.PanelKey or "F2"})`,
 		Parent = floating,
+	})
+	local toggle = Widgets.button({
+		Name = "AdminToggle",
+		Text = "🛡️ Admin",
+		Variant = "adminPrimary",
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 6,
+		Tooltip = `Admin panel ({hello.PanelKey or "F2"})`,
+		Parent = toggleHolder,
 	})
 
 	local toasts = UI.frame({
@@ -12376,9 +12392,20 @@ function Panel.build(gui: ScreenGui, hello)
 		Parent = floating,
 	})
 
+	-- Scale each right-anchored element on its own: a UIScale on the full-screen
+	-- frame would scale from the top-left corner and push them off-screen.
+	local floatScales = {}
+	for _, element in ipairs({ toggleHolder, toasts }) do
+		local s = Instance.new("UIScale")
+		s.Parent = element
+		table.insert(floatScales, s)
+	end
 	local function rescaleFloating()
 		local v = UI.viewport()
-		floatScale.Scale = math.clamp(math.min(v.X / 1280, v.Y / 720), 0.75, 1.2)
+		local scale = math.clamp(math.min(v.X / 1280, v.Y / 720), 0.75, 1.2)
+		for _, s in ipairs(floatScales) do
+			s.Scale = scale
+		end
 	end
 	rescaleFloating()
 	UI.onViewportChanged(rescaleFloating)
@@ -15974,7 +16001,7 @@ function Hud.init(ctx)
 		local stroke = UI.stroke(button, { Color = C.StrokeSoft, Thickness = 1.5 })
 		local scale = Instance.new("UIScale")
 		scale.Parent = button
-		UI.label({
+		local icon = UI.label({
 			Name = "Icon",
 			Text = nav.Icon,
 			TextSize = 28,
@@ -16027,7 +16054,7 @@ function Hud.init(ctx)
 			ScreenManager.toggle(nav.Id)
 		end)
 		UI.attachTooltip(button, nav.Text)
-		Hud.NavButtons[nav.Id] = { Button = button, Stroke = stroke, Badge = badge, Text = text }
+		Hud.NavButtons[nav.Id] = { Button = button, Stroke = stroke, Badge = badge, Text = text, Icon = icon }
 	end
 	ScreenManager.Changed:Connect(function(current)
 		for id, nav in pairs(Hud.NavButtons) do
@@ -16185,7 +16212,8 @@ function Hud.init(ctx)
 		Text = "📋",
 		Size = UDim2.fromOffset(44, 44),
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -10, 0.5, 0),
+		-- Above the side cards, so it stays reachable while they are shown.
+		Position = UDim2.new(1, -10, 0.5, -130),
 		Variant = "ghost",
 		Visible = false,
 		OnClick = function()
@@ -16233,9 +16261,14 @@ function Hud.layout()
 	end
 	local inset = GuiService:GetGuiInset()
 	Hud.TopBar.Position = UDim2.new(0.5, 0, 0, inset.Y + 6)
+	-- Phones: icon-only, shorter buttons so all nine fit the screen height.
+	local buttonHeight = if compact then 50 else 70
 	for _, nav in pairs(Hud.NavButtons) do
 		nav.Text.Visible = not compact
+		nav.Button.Size = UDim2.fromOffset(if compact then 58 else 72, buttonHeight)
 	end
+	Hud.Rail.Size = UDim2.fromOffset(84, #NAV * (buttonHeight + 6))
+	Hud.RateLabel.Visible = not compact
 	Hud.Right.Visible = not compact
 	Hud.SideToggle.Visible = compact
 	Hud.Chips.Multi.Parent.Visible = not compact or v.Y > 420
@@ -18213,6 +18246,20 @@ function ChestsScreen.new(ctx)
 		if busy then
 			return
 		end
+		local chest = Chests.ById[chestId]
+		-- Gems are slow to earn, so spending them is confirmed (Sparks crates are bought quickly).
+		if mode == "buy" and chest.Currency == "Gems" then
+			local stats = State.stats()
+			local price = Formulas.chestPrice(chest, if stats then stats.chestDiscount else 0) * count
+			local ok = UI.confirm({
+				Title = `Buy {count}× {chest.Name}?`,
+				Message = `This spends 💎 {Format.commas(price)} Gems.`,
+				ConfirmText = "Buy",
+			})
+			if not ok then
+				return
+			end
+		end
 		busy = true
 		local result = ClientNet.action("OpenChest", { Id = chestId, Amount = count, Mode = mode })
 		busy = false
@@ -18220,7 +18267,7 @@ function ChestsScreen.new(ctx)
 			ctx.Notifications.error(result.err)
 			return
 		end
-		ChestOpening.play(ctx, Chests.ById[chestId], result.Results or {}, function()
+		ChestOpening.play(ctx, chest, result.Results or {}, function()
 			-- "Open again" with the same settings.
 			openChest(chestId, count, mode)
 		end)

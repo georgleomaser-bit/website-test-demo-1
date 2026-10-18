@@ -209,7 +209,7 @@ function Hud.init(ctx)
 		local stroke = UI.stroke(button, { Color = C.StrokeSoft, Thickness = 1.5 })
 		local scale = Instance.new("UIScale")
 		scale.Parent = button
-		UI.label({
+		local icon = UI.label({
 			Name = "Icon",
 			Text = nav.Icon,
 			TextSize = 28,
@@ -262,7 +262,7 @@ function Hud.init(ctx)
 			ScreenManager.toggle(nav.Id)
 		end)
 		UI.attachTooltip(button, nav.Text)
-		Hud.NavButtons[nav.Id] = { Button = button, Stroke = stroke, Badge = badge, Text = text }
+		Hud.NavButtons[nav.Id] = { Button = button, Stroke = stroke, Badge = badge, Text = text, Icon = icon }
 	end
 	ScreenManager.Changed:Connect(function(current)
 		for id, nav in pairs(Hud.NavButtons) do
@@ -420,7 +420,8 @@ function Hud.init(ctx)
 		Text = "📋",
 		Size = UDim2.fromOffset(44, 44),
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -10, 0.5, 0),
+		-- Above the side cards, so it stays reachable while they are shown.
+		Position = UDim2.new(1, -10, 0.5, -130),
 		Variant = "ghost",
 		Visible = false,
 		OnClick = function()
@@ -468,9 +469,14 @@ function Hud.layout()
 	end
 	local inset = GuiService:GetGuiInset()
 	Hud.TopBar.Position = UDim2.new(0.5, 0, 0, inset.Y + 6)
+	-- Phones: icon-only, shorter buttons so all nine fit the screen height.
+	local buttonHeight = if compact then 50 else 70
 	for _, nav in pairs(Hud.NavButtons) do
 		nav.Text.Visible = not compact
+		nav.Button.Size = UDim2.fromOffset(if compact then 58 else 72, buttonHeight)
 	end
+	Hud.Rail.Size = UDim2.fromOffset(84, #NAV * (buttonHeight + 6))
+	Hud.RateLabel.Visible = not compact
 	Hud.Right.Visible = not compact
 	Hud.SideToggle.Visible = compact
 	Hud.Chips.Multi.Parent.Visible = not compact or v.Y > 420
